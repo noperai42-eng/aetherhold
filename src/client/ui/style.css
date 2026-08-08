@@ -1,0 +1,2068 @@
+/*
+ * Aetherhold's HUD: cold slate panels, amber rules, tabular numerals. Deliberately
+ * flat and legible — the game is the pretty part, the interface is the instrument.
+ */
+
+:root {
+  --ink: #e8e4da;
+  --dim: #9aa3ad;
+  --panel: rgba(14, 19, 26, 0.82);
+  --panel-solid: #0e131a;
+  --edge: rgba(214, 168, 92, 0.35);
+  --edge-strong: #d6a85c;
+  --good: #8ddc9a;
+  --bad: #e0745f;
+  --warn: #e6c35c;
+  --threat: #ff8a6a;
+  --font: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --mono: ui-monospace, 'SF Mono', SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  overflow: hidden;
+  background: #05080c;
+  color: var(--ink);
+  font-family: var(--font);
+  font-size: 13px;
+  -webkit-font-smoothing: antialiased;
+}
+
+#canvas {
+  position: fixed;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  touch-action: none;
+}
+
+#hud {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  user-select: none;
+}
+
+#hud button,
+#hud .clickable {
+  pointer-events: auto;
+  cursor: pointer;
+}
+
+.panel {
+  background: var(--panel);
+  border: 1px solid var(--edge);
+  border-radius: 3px;
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+}
+
+.num {
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------- top bar ---------- */
+
+/*
+ * Wrapping, because at 768 wide the row ran off the screen: Work, Research and
+ * Steward were past the right edge with nothing to scroll and — on a tablet —
+ * no keyboard shortcut to reach them with either. Everything anchored below the
+ * bar reads its measured height from --topbar-h, so a second row pushes the
+ * panels down on its own.
+ */
+#topbar {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  right: 8px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+  padding: 6px 10px;
+}
+
+#clock {
+  font-family: var(--mono);
+  font-size: 15px;
+  letter-spacing: 0.5px;
+  min-width: 148px;
+}
+
+#clock .day {
+  color: var(--edge-strong);
+}
+
+#speeds {
+  display: flex;
+  gap: 3px;
+}
+
+#speeds button,
+.btn {
+  pointer-events: auto;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  color: var(--ink);
+  font-family: var(--mono);
+  font-size: 12px;
+  padding: 3px 8px;
+  border-radius: 2px;
+}
+
+#speeds button:hover,
+.btn:hover {
+  background: rgba(214, 168, 92, 0.18);
+  border-color: var(--edge-strong);
+}
+
+#speeds button.on {
+  background: var(--edge-strong);
+  border-color: var(--edge-strong);
+  color: #14100a;
+  font-weight: 700;
+}
+
+#resources {
+  display: flex;
+  gap: 12px;
+  margin-left: auto;
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+}
+
+#resources span i {
+  color: var(--dim);
+  font-style: normal;
+  margin-right: 3px;
+}
+
+#sysbtns {
+  display: flex;
+  gap: 4px;
+}
+
+/* The dual-view switch is the point of the game, so it does not hide in the row. */
+.btn.strong {
+  background: rgba(214, 168, 92, 0.22);
+  border-color: var(--edge-strong);
+  color: #f4e6c8;
+  font-weight: 700;
+}
+
+/* ---------- minimap ---------- */
+
+/*
+ * Top left in both views, because it is the one instrument that means the same
+ * thing from inside a body as it does from above the valley — see `ui/minimap.ts`.
+ *
+ * The canvas covers the whole face of the panel, so the drag grip is pushed out
+ * past the right edge the way the settler strip's is: a handle drawn underneath
+ * the map is a handle the map eats. `touch-action` off because a thumb dragged
+ * across the valley is this panel's own gesture, not the page's.
+ */
+#minimap {
+  position: absolute;
+  top: calc(var(--topbar-h, 44px) + 8px);
+  left: 8px;
+  padding: 3px;
+  line-height: 0;
+  pointer-events: auto;
+  touch-action: none;
+}
+
+#minimap canvas {
+  border-radius: 2px;
+  cursor: crosshair;
+}
+
+#minimap.movable::before {
+  right: -22px;
+}
+
+/* ---------- colonist strip ---------- */
+
+#colonists {
+  position: absolute;
+  /* Clear of the map above it: 8px gap, 200px of canvas, 6px of panel, 8px gap. */
+  top: calc(var(--topbar-h, 44px) + 224px);
+  left: 8px;
+  width: 208px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.colonist {
+  pointer-events: auto;
+  cursor: pointer;
+  padding: 6px 8px;
+}
+
+.colonist.sel {
+  border-color: var(--edge-strong);
+  box-shadow: 0 0 0 1px rgba(214, 168, 92, 0.45) inset;
+}
+
+.colonist.downed {
+  border-color: var(--bad);
+}
+
+.colonist .row1 {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.colonist .name {
+  font-weight: 600;
+  letter-spacing: 0.2px;
+  /* A long name wraps rather than pushing the activity out of the card. */
+  min-width: 0;
+}
+
+/*
+ * The activity is the half of this row that changes, so it wins the space:
+ * a two-line name is legible, "stopped work…" is not.
+ */
+.colonist .act {
+  color: var(--dim);
+  font-size: 11px;
+  text-align: right;
+  white-space: nowrap;
+  flex: none;
+}
+
+.bars {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: 5px;
+}
+
+.bar {
+  position: relative;
+  height: 5px;
+  background: rgba(255, 255, 255, 0.09);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.bar > i {
+  position: absolute;
+  inset: 0 auto 0 0;
+  display: block;
+  border-radius: 2px;
+}
+
+.bar.food > i {
+  background: #cf9a4a;
+}
+.bar.rest > i {
+  background: #6f9ed6;
+}
+.bar.rec > i {
+  background: #a884cf;
+}
+.bar.mood > i {
+  background: #7fc98c;
+}
+.bar.hp > i {
+  background: #d9695a;
+}
+
+.taglist {
+  display: flex;
+  gap: 4px;
+  margin-top: 4px;
+  flex-wrap: wrap;
+}
+
+.tag {
+  font-family: var(--mono);
+  font-size: 10px;
+  padding: 1px 4px;
+  border-radius: 2px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  color: var(--dim);
+}
+
+.tag.draft {
+  color: var(--threat);
+  border-color: rgba(255, 138, 106, 0.5);
+}
+
+/* The same amber the inspector's stack header uses for BY HAND, so the tag on
+   the card and the header on the panel read as one state. */
+.tag.hand {
+  color: var(--accent, #d6a85c);
+  border-color: rgba(214, 168, 92, 0.5);
+}
+
+.tag.you {
+  color: #14100a;
+  background: var(--edge-strong);
+  border-color: var(--edge-strong);
+  font-weight: 700;
+}
+
+/*
+ * A morale break is the one tag the player has to act on rather than wait out,
+ * so it is the only one that fills rather than outlines.
+ */
+.tag.broke {
+  color: #1a0d0a;
+  background: var(--threat);
+  border-color: var(--threat);
+  font-weight: 700;
+}
+
+/* ---------- inspector ---------- */
+
+#inspector {
+  position: absolute;
+  top: calc(var(--topbar-h, 44px) + 8px);
+  right: 8px;
+  width: 234px;
+  padding: 8px 10px;
+  display: none;
+  /* A settler card grows with the settler: eight skills, the trades they hold,
+     three bonds, whatever they are ill with, the control stack, and now eight
+     lines of life. Measured at 741px for a long-lived one, against a 757px
+     window with a topbar on it — which is a card whose Draft button is off the
+     bottom of the screen and unreachable. Scroll the panel rather than trim what
+     is on it: the overflow only appears for the settlers who have earned it. */
+  max-height: calc(100vh - var(--topbar-h, 44px) - 24px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+#inspector h3 {
+  margin: 0 0 6px;
+  font-size: 14px;
+  letter-spacing: 0.3px;
+}
+
+#inspector .sub {
+  color: var(--dim);
+  font-size: 11px;
+  margin-bottom: 8px;
+}
+
+#inspector .kv {
+  display: flex;
+  justify-content: space-between;
+  font-family: var(--mono);
+  font-size: 11px;
+  padding: 1px 0;
+  color: var(--dim);
+}
+
+#inspector .kv b {
+  color: var(--ink);
+  font-weight: 500;
+}
+
+/* Traits sit above the numbers, because they are the part the player remembers
+   a colonist by. Chips rather than another key/value row: they are labels on a
+   person, not readings off one. */
+#inspector .traits {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+  margin: 5px 0 7px;
+}
+
+/* The passion dots, riding on the skill number they belong to. Amber and small:
+   a settler who loves the bench should be findable by glancing down the column,
+   and should never be mistaken for part of the number. */
+#inspector .pass {
+  color: var(--accent, #d6a85c);
+  font-style: normal;
+  font-size: 9px;
+  letter-spacing: 1px;
+  margin-left: 4px;
+  cursor: help;
+}
+
+#inspector .trait {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.02em;
+  padding: 1px 5px;
+  border-radius: 8px;
+  background: rgba(214, 168, 92, 0.12);
+  border: 1px solid rgba(214, 168, 92, 0.3);
+  color: #e8d5ae;
+  cursor: help;
+}
+
+/* A rule with a word on it. Without one, the bond rows read as three more
+   skills with very strange names. */
+#inspector .sect {
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--dim);
+  opacity: 0.7;
+  margin: 8px 0 3px;
+  padding-top: 5px;
+  border-top: 1px solid var(--edge);
+}
+
+/* The mood sum. Same row as everything else, one shade quieter and one notch
+   in — these are the parts of a number that is already printed above, and a
+   settler card where the explanation shouts as loudly as the reading is a card
+   nobody can skim. Signed values are tabular so the column of +/- lines up
+   against the ragged labels on the left. */
+#inspector .kv.why {
+  font-size: 10px;
+  padding-left: 8px;
+  opacity: 0.85;
+}
+
+#inspector .kv.why b {
+  font-variant-numeric: tabular-nums;
+  font-weight: 400;
+}
+
+#inspector .kv b.good {
+  color: var(--good);
+}
+
+#inspector .kv b.bad {
+  color: var(--bad);
+}
+
+/* A recipe is a sentence, not a reading. "nobody here is a herbalist at 5 or a
+   doctor at 4" measures 398px in this font and the panel gives a row 214, so as
+   a key/value pair it shreds into four ragged lines against a crushed label.
+   Name on top, answer under it, wrapping where it likes. */
+#inspector .recipe {
+  font-family: var(--mono);
+  font-size: 11px;
+  padding: 3px 0 4px;
+  color: var(--ink);
+}
+
+#inspector .recipe em {
+  display: block;
+  font-style: normal;
+  font-size: 10px;
+  line-height: 1.35;
+  color: var(--dim);
+}
+
+#inspector .recipe em.good {
+  color: var(--good);
+}
+
+#inspector .recipe em.bad {
+  color: var(--bad);
+}
+
+/* Their story. Sentences rather than numbers, so this is the one block on the
+   card that is not a `.kv` — the day sits in a fixed gutter and the clause wraps
+   against it instead of under it, which is what makes eight of them scannable in
+   a 250px panel. */
+#inspector .mem {
+  display: grid;
+  grid-template-columns: 32px 1fr;
+  gap: 6px;
+  font-size: 10px;
+  line-height: 1.4;
+  padding: 2px 0;
+}
+
+#inspector .mem b {
+  font-family: var(--mono);
+  font-weight: 400;
+  color: var(--dim);
+  font-variant-numeric: tabular-nums;
+}
+
+#inspector .mem span {
+  color: var(--ink);
+}
+
+#inspector .acts {
+  display: flex;
+  gap: 4px;
+  margin-top: 8px;
+  flex-wrap: wrap;
+}
+
+/* ---------- control stack ---------- */
+
+/*
+ * The settler's own to-do list: the job in hand, then whatever is lined up behind
+ * it. Rows rather than key/value pairs because it is a *list* — the order is the
+ * information, and a column of "doing / next / then" would bury it.
+ */
+#inspector .stack-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--dim);
+  opacity: 0.7;
+  margin: 8px 0 4px;
+  padding-top: 5px;
+  border-top: 1px solid var(--edge);
+}
+
+/* The one word that says who is driving. Amber, because it is a state the player
+   switched on and has to remember to switch off. */
+#inspector .stack-head b {
+  font-weight: 500;
+  letter-spacing: 0.1em;
+}
+
+#inspector .stack-head b.hand {
+  color: var(--accent, #d6a85c);
+  opacity: 1;
+}
+
+#inspector .stack-row {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--dim);
+  padding: 2px 3px;
+  border-radius: 3px;
+  cursor: pointer;
+}
+
+#inspector .stack-row:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+/* The job actually in hand is the only row that is happening; the rest are
+   intentions. One being brighter than the others is the whole distinction. */
+#inspector .stack-row.live {
+  color: var(--ink);
+}
+
+#inspector .stack-n {
+  font-style: normal;
+  font-size: 9px;
+  letter-spacing: 0.06em;
+  min-width: 22px;
+  opacity: 0.6;
+}
+
+#inspector .stack-row.live .stack-n {
+  color: var(--good);
+  opacity: 1;
+}
+
+#inspector .stack-what {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+#inspector .stack-at {
+  font-style: normal;
+  font-size: 10px;
+  opacity: 0.55;
+}
+
+#inspector .stack-x {
+  background: none;
+  border: 0;
+  color: var(--dim);
+  font-size: 11px;
+  line-height: 1;
+  padding: 2px 3px;
+  cursor: pointer;
+}
+
+#inspector .stack-x:hover {
+  color: var(--bad);
+}
+
+#inspector .stack-empty,
+#inspector .stack-hint {
+  font-size: 10px;
+  color: var(--dim);
+  opacity: 0.75;
+  padding: 2px 0;
+}
+
+#inspector .stack-hint {
+  margin-top: 3px;
+  line-height: 1.35;
+}
+
+/* Why the board in front of them is empty. Brighter than the `idle` above it and
+   ruled off to the left, because it is the line the player is meant to act on —
+   the row above only names the state, this one names the cause. */
+#inspector .stack-why {
+  font-size: 10px;
+  line-height: 1.35;
+  color: #d8c39a;
+  padding: 3px 0 2px 6px;
+  border-left: 2px solid rgba(214, 168, 92, 0.45);
+  margin-top: 2px;
+}
+
+/* The take-over button while it is on: the same amber as the header word, so the
+   switch and its readout are visibly the same fact. */
+#inspector .btn.on {
+  border-color: rgba(214, 168, 92, 0.55);
+  color: #e8d5ae;
+  background: rgba(214, 168, 92, 0.14);
+}
+
+/* ---------- build bar ---------- */
+
+/*
+ * Two stacked rows — categories, then the tiles of the open category — and every
+ * rule here exists to make "a tile ended up off the screen" impossible rather
+ * than unlikely. The bar is capped at the viewport and both rows wrap, so the
+ * failure mode of adding one building too many is a bar one line taller, never a
+ * button laid out at negative x where nobody can click it.
+ */
+/*
+ * `width: max-content` is load-bearing, not tidying. An absolutely-positioned
+ * box with a left edge and no right edge may only be as wide as what is left of
+ * the screen, so `left: 50%` was quietly capping this bar at half the viewport —
+ * whatever `max-width` claimed. Ten category tabs need about seven hundred
+ * pixels; on a 1280 laptop the bar was being offered six hundred and thirty, and
+ * "Orders" wrapped onto a line of its own with four hundred pixels of empty
+ * screen either side of it. Sized to its content instead, it takes the width it
+ * needs, and `max-width` still clamps it at the viewport so the wrap — and the
+ * guard below — remain the behaviour when there genuinely is not room.
+ */
+#buildbar {
+  position: absolute;
+  bottom: 8px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+  padding: 6px;
+  width: max-content;
+  max-width: calc(100vw - 16px);
+}
+
+#buildbar .bartabs,
+#buildbar .barrow {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 4px;
+  align-items: stretch;
+  max-width: 100%;
+}
+
+.bartab {
+  pointer-events: auto;
+  cursor: pointer;
+  padding: 3px 10px;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  color: var(--dim);
+  border: 1px solid transparent;
+  border-radius: 2px;
+}
+
+.bartab:hover {
+  color: var(--ink);
+  border-color: rgba(255, 255, 255, 0.14);
+}
+
+.bartab.on {
+  color: var(--edge-strong);
+  border-color: var(--edge-strong);
+  background: rgba(214, 168, 92, 0.14);
+}
+
+.tile {
+  pointer-events: auto;
+  cursor: pointer;
+  min-width: 62px;
+  padding: 5px 7px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.04);
+  text-align: center;
+}
+
+.tile:hover {
+  border-color: var(--edge-strong);
+  background: rgba(214, 168, 92, 0.16);
+}
+
+.tile.on {
+  border-color: var(--edge-strong);
+  background: rgba(214, 168, 92, 0.3);
+}
+
+.tile .key {
+  display: block;
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--edge-strong);
+}
+
+.tile .lbl {
+  display: block;
+  font-size: 11px;
+  margin-top: 1px;
+}
+
+.tile .cost {
+  display: block;
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--dim);
+}
+
+.tile.no {
+  opacity: 0.45;
+}
+
+/* ---------- log ---------- */
+
+/*
+ * Above the build bar, at whatever height the bar actually is — the bar owns the
+ * bottom band on every screen, and the two panels that are only ever *read* sit
+ * clear of it. This used to be a tablet-only rule, on the theory that a wide
+ * screen has room for both at the bottom. It has less than it looks: the bar is
+ * centred and seven hundred wide, so its left tab crosses this panel's column
+ * anywhere under about 1370 across, and a laptop was drawing the log straight
+ * over the "Structure" tab — the one tab a player has to find first.
+ */
+#log {
+  position: absolute;
+  bottom: calc(var(--buildbar-h, 112px) + 12px);
+  left: 8px;
+  width: 320px;
+  max-height: 132px;
+  overflow: hidden;
+  padding: 6px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+#log div {
+  font-size: 11px;
+  line-height: 1.35;
+  color: var(--dim);
+}
+
+#log div.good {
+  color: var(--good);
+}
+#log div.bad {
+  color: var(--bad);
+}
+#log div.threat {
+  color: var(--threat);
+  font-weight: 600;
+}
+
+/* ---------- alerts ---------- */
+
+/*
+ * Standing problems, bottom right. The log says what happened; this says what is
+ * still true — so it is a list of rows that come and go on their own rather than
+ * a feed, and it disappears entirely when the colony is fine.
+ */
+/* Clear of the build bar, for the same reason `#log` is. */
+#alerts {
+  position: absolute;
+  bottom: calc(var(--buildbar-h, 112px) + 12px);
+  right: 8px;
+  width: 252px;
+  max-height: 216px;
+  padding: 6px 26px 6px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.alert {
+  border-left: 2px solid var(--warn);
+  padding: 2px 0 2px 7px;
+  line-height: 1.3;
+}
+
+.alert.urgent {
+  border-left-color: var(--bad);
+}
+
+.alert b {
+  display: block;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--warn);
+}
+
+.alert.urgent b {
+  color: var(--bad);
+}
+
+.alert span {
+  font-size: 10.5px;
+  color: var(--dim);
+}
+
+.alert.go {
+  cursor: pointer;
+}
+
+.alert.go:hover {
+  background: rgba(214, 168, 92, 0.09);
+}
+
+/* ---------- goals ---------- */
+
+/*
+ * The other side of the alerts panel, and deliberately the other side of the
+ * screen from the log: alerts are red and say what is wrong, this is quiet and
+ * says what to do next. It sits under the top bar on the right, out of the way
+ * of the build bar, and it retires the moment the list runs out.
+ */
+#goals {
+  position: absolute;
+  /* Clears the top bar, which is 8px down and about 44px tall with its padding. */
+  top: calc(var(--topbar-h, 44px) + 18px);
+  right: 8px;
+  width: 234px;
+  padding: 7px 26px 8px 9px;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  pointer-events: auto;
+}
+
+.goalhead {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 7px;
+  border-bottom: 1px solid var(--edge);
+  padding-bottom: 4px;
+}
+
+.goalhead b {
+  /* Takes the slack so the count and the dismiss sit together on the right,
+     rather than space-between pushing all three to the corners. */
+  flex: 1;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--dim);
+}
+
+/*
+ * The way out of the tutorial. Quiet by design — a player who is reading the
+ * list should not have their eye pulled to the button that deletes it — but on
+ * the header rather than buried in a menu, because that is where somebody who
+ * has had enough of being told what to do is already looking.
+ */
+.goalhead a.off {
+  cursor: pointer;
+  font-size: 11px;
+  line-height: 1;
+  color: var(--edge);
+  padding: 0 1px;
+}
+
+.goalhead a.off:hover {
+  color: var(--ink);
+}
+
+.goalhead span {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  color: var(--dim);
+}
+
+/*
+ * Title and count share a line, the bar sits under them, the hint under that.
+ * A grid rather than three stacked divs so the count stays hard right however
+ * long the title runs.
+ */
+.goal {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 2px 6px;
+  line-height: 1.25;
+}
+
+.goal b {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.goal u {
+  font-family: var(--mono);
+  font-size: 10px;
+  text-decoration: none;
+  color: var(--dim);
+  align-self: center;
+}
+
+.goal .track {
+  grid-column: 1 / -1;
+  height: 3px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+}
+
+.goal .track i {
+  display: block;
+  height: 100%;
+  background: var(--edge-strong);
+  transition: width 0.25s ease-out;
+}
+
+.goal span {
+  grid-column: 1 / -1;
+  font-size: 10.5px;
+  color: var(--dim);
+}
+
+/*
+ * The founding countdown. The one row in this panel that is not advice — every
+ * charter is met and the clock is running — so it is the one row allowed to be
+ * loud, and the bar fills rather than drains so the last three days read as
+ * something arriving rather than something running out.
+ */
+.goal.founding b,
+.goal.founding u {
+  color: var(--good);
+}
+
+.goal.founding .track i {
+  background: var(--good);
+}
+
+/* ---------- work tab ---------- */
+
+#worktab {
+  position: absolute;
+  top: calc(var(--topbar-h, 44px) + 8px);
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 10px 12px;
+  display: none;
+}
+
+#worktab table {
+  border-collapse: collapse;
+  font-family: var(--mono);
+  font-size: 11px;
+}
+
+#worktab th,
+#worktab td {
+  padding: 3px 6px;
+  text-align: center;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+#worktab th:first-child,
+#worktab td:first-child {
+  text-align: left;
+  font-family: var(--font);
+}
+
+#worktab td.p {
+  pointer-events: auto;
+  cursor: pointer;
+  min-width: 26px;
+}
+
+#worktab td.p:hover {
+  background: rgba(214, 168, 92, 0.22);
+}
+
+#worktab td.p1 {
+  color: #14100a;
+  background: var(--good);
+  font-weight: 700;
+}
+#worktab td.p2 {
+  color: var(--good);
+}
+#worktab td.p3 {
+  color: var(--warn);
+}
+#worktab td.p4 {
+  color: var(--dim);
+}
+#worktab td.p0 {
+  color: #55606c;
+}
+
+#worktab .hint {
+  color: var(--dim);
+  font-size: 11px;
+  margin-top: 6px;
+}
+
+/* ---------- research ---------- */
+
+#researchpip {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  color: var(--dim);
+  margin-left: 4px;
+  padding-left: 10px;
+  border-left: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+#researchpip i {
+  font-style: normal;
+  color: var(--ink);
+}
+
+#researchpip .track {
+  display: block;
+  width: 54px;
+  height: 4px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.13);
+  overflow: hidden;
+}
+
+#researchpip .track > span {
+  display: block;
+  height: 100%;
+  background: var(--edge-strong);
+}
+
+#researchpip b {
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+}
+
+#researchtab {
+  position: absolute;
+  top: calc(var(--topbar-h, 44px) + 8px);
+  left: 50%;
+  transform: translateX(-50%);
+  width: 660px;
+  max-height: calc(100vh - 200px);
+  overflow-y: auto;
+  padding: 12px 14px;
+  display: none;
+}
+
+/*
+ * Two columns, because this is a tree and the point of a tree is seeing the
+ * whole of it. At one column the tenth project sat below the fold and the panel
+ * read as a list you scroll rather than a board you plan against — you could not
+ * see that Composite plating exists while deciding whether Rifling is worth it.
+ */
+#researchtab .projects {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 5px;
+  align-items: start;
+}
+
+#researchtab h3 {
+  margin: 0 0 8px;
+  font-size: 13px;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--dim);
+}
+
+#researchtab .now {
+  padding: 9px 10px;
+  margin-bottom: 10px;
+  border: 1px solid rgba(214, 168, 92, 0.4);
+  border-radius: 4px;
+  background: rgba(214, 168, 92, 0.08);
+}
+
+#researchtab .ttl {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 10px;
+  font-weight: 600;
+  font-size: 13px;
+}
+
+#researchtab .ttl span {
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--dim);
+  white-space: nowrap;
+}
+
+#researchtab .now .track {
+  height: 6px;
+  margin: 7px 0 8px;
+  border-radius: 3px;
+  background: rgba(0, 0, 0, 0.35);
+  overflow: hidden;
+}
+
+#researchtab .now .track > span {
+  display: block;
+  height: 100%;
+  background: var(--edge-strong);
+}
+
+#researchtab .now .btn {
+  pointer-events: auto;
+  font-size: 11px;
+  padding: 3px 8px;
+}
+
+#researchtab .proj {
+  padding: 7px 9px;
+  height: 100%;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 4px;
+}
+
+#researchtab .proj.clickable {
+  pointer-events: auto;
+  cursor: pointer;
+}
+
+#researchtab .proj.clickable:hover {
+  border-color: rgba(214, 168, 92, 0.55);
+  background: rgba(214, 168, 92, 0.1);
+}
+
+#researchtab .proj.locked {
+  opacity: 0.42;
+}
+
+#researchtab .proj.done .ttl span {
+  color: var(--good);
+}
+
+#researchtab .proj.done .ttl {
+  color: var(--dim);
+}
+
+#researchtab .blurb {
+  margin-top: 3px;
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--dim);
+}
+
+#researchtab .hint {
+  color: var(--dim);
+  font-size: 11px;
+  margin-top: 8px;
+}
+
+/* ---------- the caravan's stall ---------- */
+
+/*
+ * Narrower than the research tree and single-column: there are five rows at most
+ * and each one is a sentence you read left to right — give, arrow, get. Two
+ * columns would make the eye choose where to start.
+ */
+/*
+ * The road panel wears the shop's clothes on purpose. Both are the same
+ * sentence — this much of that, for this much of the other — and a player who
+ * has learnt to read the pedlar's list should not have to learn a second layout
+ * to read the one that goes the other way. Everything below is shared; the only
+ * difference is which one is on screen.
+ */
+#tradetab, #roadtab, #chronicletab {
+  position: absolute;
+  top: calc(var(--topbar-h, 44px) + 8px);
+  left: 50%;
+  transform: translateX(-50%);
+  width: 440px;
+  max-height: calc(100vh - 200px);
+  overflow-y: auto;
+  padding: 12px 14px;
+  display: none;
+}
+
+/* The one panel here you actually scroll, so it gets the wheel. */
+#chronicletab {
+  pointer-events: auto;
+}
+
+#tradetab h3, #roadtab h3, #chronicletab h3 {
+  margin: 0 0 6px;
+  font-size: 13px;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--dim);
+}
+
+/* ---------- the chronicle ---------- */
+
+/*
+ * The colony's history, newest at the top. Deliberately quieter than the shop
+ * and the road: those are panels you act in, this is one you read, and the only
+ * thing on it that should catch the eye is the day a raid or a death landed.
+ */
+#chronicletab .chron {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+/* The day, once, as a rule across the panel — a busy day should read as a
+   paragraph about that day, not a column of repeated numbers. */
+#chronicletab .chronday {
+  margin: 10px 0 3px;
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--dim);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+  padding-bottom: 2px;
+}
+
+#chronicletab .chronday:first-child {
+  margin-top: 0;
+}
+
+#chronicletab .chronline {
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--ink);
+  padding: 1px 0;
+}
+
+#chronicletab .chronline.good {
+  color: var(--good);
+}
+#chronicletab .chronline.bad {
+  color: var(--bad);
+}
+#chronicletab .chronline.threat {
+  color: var(--threat);
+  font-weight: 600;
+}
+
+/* A headline with a place is somewhere to go. */
+#chronicletab .chronline.goto {
+  pointer-events: auto;
+  cursor: pointer;
+}
+
+#chronicletab .chronline.goto:hover {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+#tradetab .hint, #roadtab .hint, #chronicletab .hint {
+  color: var(--dim);
+  font-size: 11px;
+  line-height: 1.45;
+  margin-bottom: 10px;
+}
+
+#tradetab .deals, #roadtab .deals {
+  display: grid;
+  gap: 5px;
+}
+
+#tradetab .deal, #roadtab .deal {
+  padding: 7px 9px;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 4px;
+}
+
+#tradetab .deal.clickable, #roadtab .deal.clickable {
+  pointer-events: auto;
+  cursor: pointer;
+}
+
+#tradetab .deal.clickable:hover, #roadtab .deal.clickable:hover {
+  border-color: rgba(214, 168, 92, 0.55);
+  background: rgba(214, 168, 92, 0.1);
+}
+
+/* Unaffordable, not gone: "you have 40 of 60" is the thing worth reading. */
+#tradetab .deal.locked, #roadtab .deal.locked {
+  opacity: 0.45;
+}
+
+#tradetab .deal.done, #roadtab .deal.done {
+  opacity: 0.6;
+}
+
+/*
+ * An open request from over the ridge. Warm rather than loud: it has a clock on
+ * it, so it has to be findable at a glance, but it sits in a list of eighteen
+ * rows and a colour that shouts would make the other seventeen look broken.
+ * Beats `.locked` on purpose — a letter the colony cannot answer yet is still
+ * the most interesting line on the panel.
+ */
+#roadtab .deal.asked {
+  border-color: rgba(214, 168, 92, 0.5);
+  background: rgba(214, 168, 92, 0.08);
+  opacity: 1;
+}
+
+#roadtab .deal.asked .gain {
+  color: var(--warn);
+}
+
+#tradetab .deal.done .gain, #roadtab .deal.done .gain {
+  color: var(--good);
+}
+
+#tradetab .deal .ttl, #roadtab .deal .ttl {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+#tradetab .deal .cost, #roadtab .deal .cost,
+#tradetab .deal .gain, #roadtab .deal .gain {
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 12px;
+  font-weight: 400;
+}
+
+/* The colony's side of the swap, dimmed — what you get is what you are shopping for. */
+#tradetab .deal .cost, #roadtab .deal .cost {
+  color: var(--dim);
+}
+
+#tradetab .deal .arrow, #roadtab .deal .arrow {
+  color: var(--edge-strong);
+  font-size: 12px;
+}
+
+#tradetab .deal .gain, #roadtab .deal .gain {
+  flex: 1;
+  text-align: right;
+}
+
+#tradetab .deal .blurb, #roadtab .deal .blurb {
+  margin-top: 3px;
+  font-size: 11px;
+  color: var(--dim);
+}
+
+/* ---------- first person ---------- */
+
+#fpshud {
+  position: absolute;
+  inset: 0;
+  display: none;
+}
+
+#crosshair {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 15px;
+  height: 15px;
+  margin: -7.5px 0 0 -7.5px;
+}
+
+#crosshair::before,
+#crosshair::after {
+  content: '';
+  position: absolute;
+  background: rgba(255, 255, 255, 0.78);
+}
+
+#crosshair::before {
+  left: 50%;
+  top: 0;
+  width: 1px;
+  height: 100%;
+  margin-left: -0.5px;
+}
+
+#crosshair::after {
+  top: 50%;
+  left: 0;
+  height: 1px;
+  width: 100%;
+  margin-top: -0.5px;
+}
+
+#crosshair.armed::before,
+#crosshair.armed::after {
+  background: var(--threat);
+}
+
+#prompt {
+  position: absolute;
+  left: 50%;
+  top: 56%;
+  transform: translateX(-50%);
+  padding: 5px 10px;
+  font-size: 13px;
+  white-space: nowrap;
+  display: none;
+}
+
+#prompt kbd {
+  font-family: var(--mono);
+  background: var(--edge-strong);
+  color: #14100a;
+  border-radius: 2px;
+  padding: 0 4px;
+  margin-right: 6px;
+  font-weight: 700;
+}
+
+#selfpanel {
+  position: absolute;
+  left: 8px;
+  bottom: 8px;
+  width: 216px;
+  padding: 7px 9px;
+}
+
+#selfpanel .who {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 5px;
+}
+
+#selfpanel .who b {
+  font-size: 14px;
+}
+
+#selfpanel .wep {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--dim);
+}
+
+#fpsnote {
+  position: absolute;
+  right: 8px;
+  bottom: 8px;
+  padding: 6px 9px;
+  font-size: 11px;
+  color: var(--dim);
+  text-align: right;
+  line-height: 1.5;
+}
+
+#fpsnote b {
+  color: var(--ink);
+}
+
+#lockhint {
+  position: absolute;
+  left: 50%;
+  top: 62%;
+  transform: translate(-50%, -50%);
+  padding: 10px 16px;
+  font-size: 14px;
+  text-align: center;
+  display: none;
+}
+
+/* ---------- touch controls (first person, tablets) ---------- */
+
+/*
+ * Only ever visible in first person on a machine that has proved it has no
+ * keyboard. `#fpsnote` is the keyboard manual for this view, so it goes away
+ * while these are up rather than sitting under them saying "press W".
+ */
+/*
+ * Above everything. Nothing else in the HUD sets a z-index, so paint order is
+ * document order — and the body panel was landing on top of the thumb pad, which
+ * is a control losing an argument with a label.
+ */
+#touchcontrols {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 5;
+}
+
+#hud.touching #fpsnote {
+  display: none;
+}
+
+/*
+ * The pad and the body panel both want the bottom-left corner, and only one of
+ * them is touched. Same call as the build bar below: the control keeps the
+ * corner and the thing you only read moves up out of it. 146 of pad + 20 of
+ * inset + 20 of air.
+ */
+#hud.touching #selfpanel {
+  bottom: calc(186px + env(safe-area-inset-bottom, 0px));
+}
+
+#touchcontrols .stickpad {
+  position: absolute;
+  left: 20px;
+  bottom: calc(20px + env(safe-area-inset-bottom, 0px));
+  width: 146px;
+  height: 146px;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: rgba(10, 16, 22, 0.34);
+  backdrop-filter: blur(2px);
+  pointer-events: auto;
+  touch-action: none;
+}
+
+#touchcontrols .stickknob {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 62px;
+  height: 62px;
+  margin: -31px 0 0 -31px;
+  border-radius: 50%;
+  border: 1px solid var(--edge-strong);
+  background: rgba(214, 168, 92, 0.22);
+  /* Only the transform is animated: the knob is re-placed every pointermove and
+     a transition on `all` would make the stick feel like it is on elastic. */
+  transition: transform 0.06s linear;
+}
+
+#touchcontrols .touchbtns {
+  position: absolute;
+  right: 18px;
+  bottom: calc(18px + env(safe-area-inset-bottom, 0px));
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+#touchcontrols .touchbtn {
+  pointer-events: auto;
+  touch-action: none;
+  width: 66px;
+  height: 66px;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: rgba(10, 16, 22, 0.44);
+  color: var(--ink);
+  font-family: inherit;
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  backdrop-filter: blur(2px);
+}
+
+#touchcontrols .touchbtn:active {
+  border-color: var(--edge-strong);
+  background: rgba(214, 168, 92, 0.28);
+}
+
+#lockhint span {
+  display: block;
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--dim);
+  letter-spacing: 0.02em;
+}
+
+/* ---------- overlays ---------- */
+
+.overlay {
+  position: absolute;
+  inset: 0;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  background: rgba(4, 7, 11, 0.72);
+  backdrop-filter: blur(3px);
+}
+
+.overlay.on {
+  display: flex;
+}
+
+/*
+ * The card is taller than the screen it lands on. Measured: the Play button sat
+ * 42px below the fold at 1280x800 and 186px below it at 390x844 — so on a common
+ * laptop and on every phone, the only control that starts the game could not be
+ * reached, and the panel gave no sign it had more to it. The card scrolls now,
+ * and the buttons ride along the bottom of it, so "how do I start" is never a
+ * question the reader has to answer by guessing there is more below.
+ */
+.card {
+  pointer-events: auto;
+  max-width: 560px;
+  max-height: calc(100vh - 32px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 20px 24px;
+  background: var(--panel-solid);
+  border: 1px solid var(--edge);
+  border-radius: 4px;
+}
+
+.card h1 {
+  margin: 0 0 4px;
+  font-size: 22px;
+  letter-spacing: 1px;
+}
+
+.card h2 {
+  margin: 14px 0 4px;
+  font-size: 13px;
+  color: var(--edge-strong);
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+}
+
+.card p {
+  margin: 6px 0;
+  line-height: 1.5;
+  color: var(--dim);
+}
+
+.card dl {
+  display: grid;
+  grid-template-columns: 132px 1fr;
+  gap: 2px 10px;
+  margin: 4px 0;
+  font-size: 12px;
+}
+
+.card dt {
+  font-family: var(--mono);
+  color: var(--edge-strong);
+}
+
+.card dd {
+  margin: 0;
+  color: var(--dim);
+}
+
+/*
+ * The colony code. Deliberately short: it holds ~20 kB and no player will ever
+ * read it, so height here buys nothing and costs the buttons their place on the
+ * card. Wrapping is on so the tail of the code is visible rather than running
+ * off to the right, which is the only cue that the box is not empty.
+ */
+.card .codebox {
+  display: block;
+  width: 100%;
+  height: 108px;
+  margin-top: 12px;
+  padding: 8px;
+  box-sizing: border-box;
+  font-family: var(--mono);
+  font-size: 10px;
+  line-height: 1.35;
+  color: var(--dim);
+  background: #060a0e;
+  border: 1px solid var(--edge);
+  border-radius: 3px;
+  resize: vertical;
+  word-break: break-all;
+}
+
+.card .codenote {
+  min-height: 18px;
+  margin: 6px 0 0;
+  font-size: 12px;
+  color: var(--edge-strong);
+}
+
+/*
+ * The three difficulties. A column, not a row: each one carries a sentence of
+ * prose, and three columns of prose at 560px wide is three columns of two-word
+ * lines. Stacked, every card is a full-width tap target — which is the shape the
+ * iPad wanted anyway.
+ */
+.card .picks {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 14px 0 4px;
+}
+
+.card .pick {
+  display: block;
+  width: 100%;
+  padding: 10px 12px;
+  text-align: left;
+  font: inherit;
+  color: var(--dim);
+  background: #0a1016;
+  border: 1px solid var(--edge);
+  border-left: 3px solid transparent;
+  border-radius: 3px;
+  cursor: pointer;
+}
+
+.card .pick:hover {
+  background: #0e161e;
+}
+
+/* The chosen one. A lit left edge rather than a fill, so the card reads as
+   picked at a glance without the blurb underneath losing its contrast. */
+.card .pick.on {
+  border-color: var(--edge-strong);
+  border-left-color: var(--good);
+  background: #111c25;
+}
+
+.card .pick b {
+  display: block;
+  margin-bottom: 3px;
+  color: var(--ink);
+  letter-spacing: 0.4px;
+}
+
+.card .pick span {
+  display: block;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.card .seedrow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.card .seedrow label {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--edge-strong);
+}
+
+.card .seedbox {
+  flex: 1;
+  padding: 7px 8px;
+  box-sizing: border-box;
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--dim);
+  background: #060a0e;
+  border: 1px solid var(--edge);
+  border-radius: 3px;
+}
+
+.card .acts {
+  display: flex;
+  gap: 8px;
+  margin-top: 16px;
+  /* Sticky to the floor of the scrolling card: the negative offset and the
+     matching padding cancel the card's own bottom padding, so the row sits flush
+     on the edge instead of floating a gap above it. */
+  position: sticky;
+  bottom: -20px;
+  padding: 8px 0 20px;
+  background: var(--panel-solid);
+}
+
+/* ---------- headline cards ---------- */
+
+/*
+ * Top centre, in both views. Every corner of this HUD is already taken — the
+ * roster, the details panel, the log, the alerts, the build bar — and the one
+ * place that is empty at every window size is also the place the eye goes when
+ * something changes. The column itself lets clicks through; only the cards in it
+ * take them, so a stack of two does not cost the player the map behind it.
+ */
+#cards {
+  position: absolute;
+  top: calc(var(--topbar-h, 44px) + 12px);
+  /* Where it starts. The HUD overwrites left and width every frame a card is
+     up, to keep the column in the gap between the panels rather than the middle
+     of a window that may not have a gap in the middle — see `cardChannel`. */
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(440px, calc(100vw - 24px));
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  pointer-events: none;
+  /* Under the touch controls (5), over everything else. A card must never be
+     the thing standing between a finger and the thumb pad. */
+  z-index: 4;
+}
+
+.newscard {
+  pointer-events: auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 46px;
+  padding: 7px 8px 7px 11px;
+  background: var(--panel-solid);
+  border: 1px solid var(--edge);
+  border-left: 3px solid var(--dim);
+  border-radius: 4px;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.45);
+  animation: cardin 0.2s ease-out;
+}
+
+/* Slides down out of the top bar rather than fading in place: movement is what
+   catches an eye that is looking somewhere else on the map, which is the entire
+   job of this thing. */
+@keyframes cardin {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .newscard {
+    animation: none;
+  }
+}
+
+.newscard .said {
+  flex: 1;
+  line-height: 1.35;
+  font-size: 13.5px;
+}
+
+.newscard.threat {
+  border-left-color: var(--threat);
+}
+.newscard.bad {
+  border-left-color: var(--bad);
+}
+.newscard.good {
+  border-left-color: var(--good);
+}
+
+.newscard.threat .said {
+  color: var(--threat);
+  font-weight: 600;
+}
+
+/* Both buttons are sized for a thumb, not a pointer — this is the one HUD
+   surface that appears unannounced under wherever the hand already is. */
+.newscard .look {
+  flex: none;
+  min-height: 34px;
+  padding: 0 12px;
+  background: rgba(214, 168, 92, 0.14);
+  border: 1px solid var(--edge);
+  border-radius: 4px;
+  color: var(--edge-strong);
+  font: inherit;
+  font-weight: 600;
+}
+
+.newscard .look:hover {
+  background: rgba(214, 168, 92, 0.26);
+}
+
+.newscard .shut {
+  flex: none;
+  width: 34px;
+  height: 34px;
+  background: none;
+  border: none;
+  color: var(--dim);
+  font-size: 19px;
+  line-height: 1;
+}
+
+.newscard .shut:hover {
+  color: var(--ink);
+}
+
+/* ---------- small windows ---------- */
+
+/*
+ * On a small window the log and the build bar both want the bottom of the
+ * screen, and the log — which is only ever read, never clicked — was printing
+ * itself across the first build tile. The bar takes the corner and the log gives
+ * up width. Last in the file on purpose: these are ID selectors overriding ID
+ * selectors, so only source order decides who wins.
+ */
+/*
+ * A tablet is not a small desktop.
+ *
+ * The old rule tucked the bar into the bottom-right corner and let the log keep
+ * the left. At 1024x768 that put the tile row at x=815 — directly underneath the
+ * alerts panel, which is also bottom-right. The tiles were present, drawn and
+ * completely unreachable, which reads to a player exactly like the build menu
+ * having disappeared. So the bar takes the whole bottom band, and the two panels
+ * that are only ever *read* move up out of it.
+ */
+@media (max-width: 1100px) {
+  #buildbar {
+    left: 8px;
+    right: 8px;
+    transform: none;
+    align-items: center;
+    max-width: none;
+    /* Both edges pinned, so the width comes from them — the `max-content` the
+       desktop rule needs would win over `right` and strand the bar on the left. */
+    width: auto;
+  }
+
+  /* A finger is not a cursor. The tabs are the only way to reach ten of the
+     eleven tile rows, and 21px of tab is a miss on glass. Ten pixels either
+     side rather than twelve because an iPad held upright is 768 across and the
+     ten tabs came to a shade more than that — "Orders" wrapping onto a line of
+     its own, where a tab with no border and no neighbours stops reading as a tab
+     and starts reading as a heading over the tiles below it. The vertical
+     padding is the half that makes the target, and it is untouched. */
+  .bartab {
+    padding: 9px 10px;
+  }
+
+  .tile {
+    min-height: 46px;
+  }
+
+  /* Both already sit above the bar — see their base rules. What a tablet needs
+     on top of that is for them to be smaller: the bar is taller here and the
+     screen is shorter, and two full-height panels would meet in the middle. */
+  #log {
+    width: min(320px, 34vw);
+    max-height: 72px;
+  }
+
+  #alerts {
+    max-height: 180px;
+  }
+}
+
+/* ---------- movable panels ---------- */
+
+/*
+ * The grip is a pseudo-element so that it survives the panel rewriting its own
+ * contents every time the world changes, and it is the only part of a
+ * pointer-transparent panel that takes the mouse.
+ */
+.movable::before {
+  content: '⠿';
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 20px;
+  height: 20px;
+  line-height: 19px;
+  text-align: center;
+  font-size: 12px;
+  color: rgba(154, 163, 173, 0.55);
+  pointer-events: auto;
+  cursor: grab;
+  touch-action: none;
+}
+
+.movable:hover::before {
+  color: var(--edge-strong);
+}
+
+.movable.folded {
+  width: auto;
+  height: auto;
+  min-width: 92px;
+  min-height: 22px;
+  padding: 2px 26px 2px 8px;
+  overflow: hidden;
+  resize: none;
+}
+
+.movable.folded > * {
+  display: none;
+}
+
+/* A folded panel still has to say what it is, or it is just a stub in the corner. */
+.movable.folded::after {
+  content: attr(data-name);
+  font-size: 11px;
+  color: var(--dim);
+}
+
+/*
+ * These two take the mouse across their whole face: a click meant for the log
+ * should not fall through and drop a blueprint on the ground behind it, and the
+ * browser's own resize corner only exists on an element that can be hit at all.
+ */
+#log,
+#alerts,
+#inspector {
+  pointer-events: auto;
+  resize: both;
+  overflow: auto;
+  min-width: 140px;
+  min-height: 40px;
+}
+
+/*
+ * The settler strip is a column of cards rather than a box, so its grip hangs
+ * just outside the column: inside, it would sit on top of the first settler's
+ * name.
+ */
+#colonists.movable::before {
+  right: -22px;
+}
+
+/*
+ * Folding has to beat the panels' own ID-selector sizes, so each one says it
+ * again under its own id. Class rules lose that argument every time.
+ */
+#colonists.folded,
+#log.folded,
+#alerts.folded,
+#goals.folded,
+#inspector.folded,
+#minimap.folded {
+  width: auto;
+  height: auto;
+  min-width: 92px;
+  min-height: 22px;
+  resize: none;
+}
+
+/* The map's own `line-height: 0` would collapse the name a folded panel shows. */
+#minimap.folded {
+  line-height: 1.5;
+}
+
+#colonists.folded {
+  background: var(--panel);
+  border: 1px solid var(--edge);
+  border-radius: 3px;
+}

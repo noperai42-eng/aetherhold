@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <!-- viewport-fit=cover so the layout owns the whole glass and the
+         env(safe-area-inset-*) the touch controls sit above resolves to a real
+         number rather than zero. -->
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Aetherhold — a colony you can walk around inside</title>
+    <meta
+      name="description"
+      content="A browser colony sim with two views onto one simulation: run the settlement from above, or step inside any settler and walk the base yourself."
+    />
+    <!-- A lit keep on a hill under the aether. All four files are drawn by
+         `npm run icons` from one sample function in scripts/make-icons.mjs — no
+         image library, no CDN, and the 180px tile is the same drawing as the
+         512px one rather than a resample of it. -->
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png" />
+    <link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png" />
+    <!-- iOS will not take an SVG or a data: URI here, and fills anything
+         transparent with black, which is why this one is a square raster. -->
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <!-- Saved to a home screen it launches without browser chrome, which for a
+         game that owns the whole viewport is the difference between an app and a
+         bookmark. `black-translucent` puts the status bar over the canvas — the
+         HUD already keeps clear of it via env(safe-area-inset-*). -->
+    <meta name="theme-color" content="#0b1118" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Aetherhold" />
+  </head>
+  <body>
+    <canvas id="canvas"></canvas>
+    <div id="hud"></div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

@@ -1,0 +1,36 @@
+{
+  "name": "aetherhold",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Aetherhold — a colony sim you can also walk around inside. Dual-view: manager overhead + first-person colonist.",
+  "scripts": {
+    "dev": "vite",
+    "play": "vite preview",
+    "ship": "npm run build && echo 'Shipped to the play server. Players pick it up on their next reload — nobody is kicked out mid-game.'",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "test": "vitest run",
+    "eval": "vitest run tests/colony-eval.test.ts --disableConsoleIntercept",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit",
+    "icons": "node scripts/make-icons.mjs",
+    "sweep": "SWEEP=1 vitest run tests/survival-sweep.test.ts --disableConsoleIntercept",
+    "build:eval": "rolldown src/eval/measure.ts src/eval/worker.ts --format esm --platform node -d .eval/build",
+    "measure": "npm run build:eval && node .eval/build/measure.js",
+    "balance": "BALANCE=1 vitest run tests/balance-grid.test.ts --disableConsoleIntercept",
+    "pool": "npm run build:eval && POOL=1 vitest run tests/eval-pool.test.ts --disableConsoleIntercept",
+    "eco": "ECO=1 vitest run tests/ecosystem.test.ts --disableConsoleIntercept",
+    "live": "LIVE=1 vitest run tests/liveness.test.ts --disableConsoleIntercept"
+  },
+  "dependencies": {
+    "three": "^0.180.0"
+  },
+  "devDependencies": {
+    "@types/three": "^0.180.0",
+    "rolldown": "^1.1.5",
+    "typescript": "^5.7.2",
+    "vite": "^8.1.5",
+    "vitest": "^4.1.10"
+  }
+}

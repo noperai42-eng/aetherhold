@@ -1,0 +1,428 @@
+/**
+ * The balance grid: the same seeds played on every difficulty, reduced to the
+ * handful of numbers the setup card makes promises about.
+ *
+ * `run.ts` answers "what happened in this colony". This answers "is Hard country
+ * actually harder than Settler, on more than one map, by more than noise" — which
+ * is a question no single run can answer and the only question a difficulty
+ * setting has to get right. Every number here comes out of the same stepWorld the
+ * browser calls; nothing is modelled or extrapolated.
+ *
+ * A grid is described here (`sweepSpecs`), played one colony at a time
+ * (`runSpec`), and folded back together (`assembleSweep`) — three pure steps with
+ * the *where* taken out of the middle one. That is what lets `measure.ts` play
+ * the identical list across eight workers and a test play it serially, without
+ * either of them owning a second definition of what the grid is.
+ */
+
+import { runColony, type EvalReport, type Verdict } from './run';
+import { DIFFICULTIES, DIFFICULTY_ORDER } from '../sim/difficulty';
+import type { Difficulty } from '../sim/types';
+
+/**
+ * One colony's life, flattened. A `DaySnapshot` is a moment and this is the
+ * whole run, because a difficulty promise ("they come sooner") is a claim about
+ * a run and cannot be read off any single day of it.
+ */
+export interface RunMeasure {
+  seed: number;
+  difficulty: Difficulty;
+  verdict: Verdict;
+  /** days actually played — short of the ask if the colony was wiped or founded */
+  daysLived: number;
+  /**
+   * The day trouble first came. If none ever did this is `daysLived + 1`, not
+   * zero, so that "later" is always the larger number and an ordering check
+   * never reads a peaceful run as the most violent one.
+   */
+  firstThreatDay: number;
+  threats: number;
+  /** most raiders standing in the valley at once, all run */
+  biggestBand: number;
+  /** distinct trips to a sick bed, latched per settler */
+  downs: number;
+  buried: number;
+  survivors: number;
+  raidersKilled: number;
+  peakRung: number;
+  /** hungriest anybody ever got, 0..1 — the number that predicts a starvation */
+  worstFood: number;
+  /** how well fed the colony was on an average day, 0..1 */
+  meanFood: number;
+  /**
+   * Share of a free settler's day spent eating, sleeping or relaxing — the
+   * upkeep column. Read off the last snapshot rather than averaged over them,
+   * because the underlying counters are cumulative and the last one is already
+   * the whole run.
+   */
+  upkeepShare: number;
+  endFoodDays: number;
+  /** distinct raiders seen all run, and the share of them carrying a rifle */
+  raidersSeen: number;
+  armedShare: number;
+  /**
+   * The day the charter closed, or null. On a grid that stops at the founding
+   * this is just `daysLived` again; on one played past it, it is the boundary
+   * between the act the game has always measured and the one after it.
+   */
+  foundedOn: number | null;
+}
+
+export interface SweepOptions {
+  seeds?: number[];
+  difficulties?: Difficulty[];
+  days?: number;
+  steward?: boolean;
+  /**
+   * Play each grid colony to the end of its clock instead of stopping at the
+   * founding. The arm does not take it: the arm is a twelve-day controlled
+   * experiment on one multiplier, held still in every other respect, and twelve
+   * days is short of the earliest founding on any setting — so the flag could
+   * only add variance to a measurement whose whole value is that it has none.
+   */
+  playPastFounding?: boolean;
+}
+
+/**
+ * One point on the controlled arm: Settler played with a single multiplier
+ * moved, everything else — threat, larder, seeds, days — held still.
+ */
+export interface ArmPoint {
+  dial: number;
+  upkeepShare: number;
+}
+
+export interface Sweep {
+  seeds: number[];
+  difficulties: Difficulty[];
+  days: number;
+  /**
+   * Whether the grid colonies played their whole clock. Recorded rather than
+   * inferred, because a principle about what the back half of a run looks like
+   * is measuring the harness rather than the game if the runs stopped at their
+   * founding — and a grid that stopped cannot be told from one that played on
+   * by looking at the numbers, since a colony that never founds also reaches
+   * day sixty.
+   */
+  playPastFounding: boolean;
+  runs: RunMeasure[];
+  /**
+   * The `upkeep` axis, measured with the other axes held still.
+   *
+   * Every other promise on the setup card is checkable straight off the grid,
+   * because the dial that drives it is the loudest thing in its column: nothing
+   * else in the game moves the rifle share the way `tech` does. `upkeep` is not
+   * like that. It moves a settler's day by two to three points, and `larder`
+   * and `band` move the same column by more, in the other direction — so a grid
+   * where all seven multipliers move at once cannot say whether `upkeep` did
+   * anything, and the first thirty-day grid duly reported it broken while the
+   * dial was working exactly as specified.
+   *
+   * An observational grid cannot separate a small effect from the large ones it
+   * travels with. A controlled one can, and this is it.
+   */
+  arm: ArmPoint[];
+}
+
+/**
+ * Five maps, because three of the balance surprises found so far showed up on
+ * exactly one seed and would have been called noise with fewer.
+ */
+export const SWEEP_SEEDS = [20260729, 7, 1312, 99001, 424242];
+
+/**
+ * Thirty, because the two things the grid most needs to see both live past day
+ * twelve: the escalation ladder is built to start after the eval window closes,
+ * and the long probes did not see a colony take real casualties until the back
+ * half of a run. A ten-day grid answers "did the colony get on its feet", which
+ * `npm run sweep` already answers, and every principle about how the settings
+ * differ comes back untested.
+ */
+export const SWEEP_DAYS = 30;
+
+/**
+ * One colony to play, as plain data.
+ *
+ * The grid used to be a pair of nested loops that called `runColony` where they
+ * stood, which is fine until the colonies want to be played somewhere else. A
+ * spec is the same instruction with the *where* taken out of it: it survives
+ * `structuredClone`, so the identical list drives the serial grid in this
+ * process and the parallel one across eight workers, and the two cannot drift
+ * apart because there is only one list.
+ */
+export type RunSpec =
+  | {
+      kind: 'grid';
+      seed: number;
+      days: number;
+      difficulty: Difficulty;
+      steward?: boolean;
+      playPastFounding?: boolean;
+    }
+  | { kind: 'arm'; seed: number; days: number; dial: number; steward?: boolean };
+
+/** A spec and what playing it produced. Ordered results are the caller's job. */
+export interface SpecResult {
+  spec: RunSpec;
+  measure: RunMeasure;
+}
+
+/** Every colony a full sweep plays, grid then arm, in the order the grid prints them. */
+export function sweepSpecs(opts: SweepOptions = {}): RunSpec[] {
+  const seeds = opts.seeds ?? SWEEP_SEEDS;
+  const difficulties = opts.difficulties ?? [...DIFFICULTY_ORDER];
+  const days = opts.days ?? SWEEP_DAYS;
+  const specs: RunSpec[] = [];
+  for (const difficulty of difficulties) {
+    for (const seed of seeds) {
+      specs.push({
+        kind: 'grid',
+        seed,
+        days,
+        difficulty,
+        steward: opts.steward,
+        playPastFounding: opts.playPastFounding,
+      });
+    }
+  }
+  for (const dial of UPKEEP_DIALS) {
+    for (const seed of ARM_SEEDS) {
+      specs.push({ kind: 'arm', seed, days: ARM_DAYS, dial, steward: opts.steward });
+    }
+  }
+  return specs;
+}
+
+/**
+ * Play one spec, wherever this happens to be running.
+ *
+ * This is the only place a colony is played for the grid — serially from a test,
+ * or one per worker from `measure.ts`. There is deliberately no second loop that
+ * also knows how to build a sweep: the numbers every principle is calibrated
+ * against come out of here, and a serial "reference implementation" sitting
+ * beside it would be a second definition of the grid that nothing compares
+ * against the first.
+ *
+ * The arm leg swaps `DIFFICULTIES.settler.upkeep` for the duration. Swapped in
+ * the table rather than threaded through the sim because `difficultyOf` reads
+ * the table on every tick, so this is the whole override — the alternative is an
+ * eval-only parameter on `createWorld` that the game would carry forever for the
+ * sake of one measurement. Put back in `finally`, and put back per *run* rather
+ * than per dial, because a worker is reused across specs: a dial left set by one
+ * arm run would silently rewrite every colony that worker played afterwards,
+ * including ordinary grid runs that have nothing to do with the arm.
+ */
+export function runSpec(spec: RunSpec): SpecResult {
+  if (spec.kind === 'arm') {
+    const settler = DIFFICULTIES.settler;
+    const original = settler.upkeep;
+    try {
+      settler.upkeep = spec.dial;
+      const report = runColony({
+        seed: spec.seed,
+        days: spec.days,
+        difficulty: 'settler',
+        steward: spec.steward,
+      });
+      return { spec, measure: measure(report) };
+    } finally {
+      settler.upkeep = original;
+    }
+  }
+  const report = runColony({
+    seed: spec.seed,
+    days: spec.days,
+    difficulty: spec.difficulty,
+    steward: spec.steward,
+    playPastFounding: spec.playPastFounding,
+  });
+  return { spec, measure: measure(report) };
+}
+
+/**
+ * Fold played specs back into a grid.
+ *
+ * Pure, and deliberately separate from playing them: the same function assembles
+ * a sweep whether the colonies ran here or in eight workers or were read off
+ * disk an hour later, which is what lets a principle be rewritten and re-judged
+ * without playing anything again.
+ */
+export function assembleSweep(opts: SweepOptions, results: SpecResult[]): Sweep {
+  const seeds = opts.seeds ?? SWEEP_SEEDS;
+  const difficulties = opts.difficulties ?? [...DIFFICULTY_ORDER];
+  const days = opts.days ?? SWEEP_DAYS;
+  const runs = results.filter((r) => r.spec.kind === 'grid').map((r) => r.measure);
+
+  // Grouped by the dial that was played rather than by position, so a result
+  // list that came back out of order — which a worker pool's will — still lands
+  // on the right point of the arm.
+  // A dial appears on the arm when its colonies were *played*, never when their
+  // mean looks plausible. Dropping a point because it came back at zero would
+  // turn the one failure this arm exists to catch — a dial that moves nothing —
+  // into a two-point arm that reads as healthy.
+  const arm: ArmPoint[] = [];
+  for (const dial of UPKEEP_DIALS) {
+    const shares = results
+      .filter((r) => r.spec.kind === 'arm' && r.spec.dial === dial)
+      .map((r) => r.measure.upkeepShare);
+    if (shares.length > 0) arm.push({ dial, upkeepShare: mean(shares) });
+  }
+
+  // Read off the specs that were actually played rather than off `opts`, for the
+  // same reason the arm is: `assembleSweep` is what a grid read back from disk
+  // goes through, and the options it is handed there are a description of what
+  // was asked for, not a record of what ran.
+  const playPastFounding = results.some((r) => r.spec.kind === 'grid' && r.spec.playPastFounding);
+
+  return { seeds, difficulties, days, playPastFounding, runs, arm };
+}
+
+/**
+ * Three seeds and twelve days, against the grid's five and thirty. The upkeep
+ * share is a steady-state quantity — a settler's day settles into its shape
+ * within a week and the separation is already clean by day eight — and a
+ * shorter arm means fewer raids to muddy a measurement whose entire purpose is
+ * to hold the fighting still.
+ */
+export const ARM_SEEDS = SWEEP_SEEDS.slice(0, 3);
+export const ARM_DAYS = 12;
+
+/**
+ * The three values to play, read once at module load and never again.
+ *
+ * This is not a convenience. The arm works by writing into `DIFFICULTIES.settler`,
+ * and that is the same object `DIFFICULTIES.settler.upkeep` is read from — so a
+ * loop that reads its next target out of the table mid-sweep reads back what it
+ * wrote on the previous pass, plays the Settler leg at the calm value, and reports
+ * two identical points. That is not a hypothetical: it is what the first grid run
+ * of this arm did, and the check duly called the axis broken over it.
+ */
+export const UPKEEP_DIALS = DIFFICULTY_ORDER.map((d) => DIFFICULTIES[d].upkeep);
+
+export function measure(r: EvalReport): RunMeasure {
+  const last = r.snapshots[r.snapshots.length - 1];
+  const daysLived = r.snapshots.length;
+  const firstThreat = r.snapshots.find((s) => s.threats > 0);
+  return {
+    seed: r.seed,
+    difficulty: r.difficulty,
+    verdict: r.verdict,
+    daysLived,
+    firstThreatDay: firstThreat?.day ?? daysLived + 1,
+    threats: last?.threats ?? 0,
+    biggestBand: last?.biggestBand ?? 0,
+    downs: last?.downs ?? 0,
+    buried: last?.lost ?? 0,
+    survivors: last?.alive ?? 0,
+    raidersKilled: last?.raidersKilled ?? 0,
+    peakRung: Math.max(0, ...r.snapshots.map((s) => s.rung)),
+    worstFood: Math.min(1, ...r.snapshots.map((s) => s.minFood)),
+    meanFood: mean(r.snapshots.map((s) => s.avgFood)),
+    upkeepShare: last?.upkeepShare ?? 0,
+    endFoodDays: last?.foodDays ?? 0,
+    raidersSeen: last?.raidersSeen ?? 0,
+    armedShare: last && last.raidersSeen > 0 ? last.armedRaiders / last.raidersSeen : 0,
+    foundedOn: r.foundedOn,
+  };
+}
+
+/** Every run played on one setting. */
+export function on(sweep: Sweep, d: Difficulty): RunMeasure[] {
+  return sweep.runs.filter((r) => r.difficulty === d);
+}
+
+/** The same seed on two settings, paired — the only fair comparison. */
+export function pairs(
+  sweep: Sweep,
+  a: Difficulty,
+  b: Difficulty,
+): { seed: number; a: RunMeasure; b: RunMeasure }[] {
+  const out: { seed: number; a: RunMeasure; b: RunMeasure }[] = [];
+  for (const seed of sweep.seeds) {
+    const ra = sweep.runs.find((r) => r.seed === seed && r.difficulty === a);
+    const rb = sweep.runs.find((r) => r.seed === seed && r.difficulty === b);
+    if (ra && rb) out.push({ seed, a: ra, b: rb });
+  }
+  return out;
+}
+
+export function mean(xs: number[]): number {
+  if (xs.length === 0) return 0;
+  return xs.reduce((a, b) => a + b, 0) / xs.length;
+}
+
+export const avg = (rs: RunMeasure[], f: (m: RunMeasure) => number) => mean(rs.map(f));
+
+/**
+ * The share of raiders carrying a rifle across a set of runs, pooled rather than
+ * averaged. A mean of per-run ratios weights a quiet map that saw four raiders
+ * the same as a bloody one that saw sixty, which is exactly backwards for a
+ * question about what the Ashbound are typically armed with.
+ */
+export function armedShareOf(rs: RunMeasure[]): number {
+  const seen = rs.reduce((a, m) => a + m.raidersSeen, 0);
+  if (seen === 0) return 0;
+  return rs.reduce((a, m) => a + m.armedShare * m.raidersSeen, 0) / seen;
+}
+
+/** A fixed-width grid, because a balance pass is read by eye. */
+export function formatSweep(sweep: Sweep): string {
+  const cols =
+    'setting        seed  verdict     days  1st  threats  band  downs  buried  alive  kills  rung  worstFood  fed  upkeep  foodDays  raiders  rifles';
+  const lines: string[] = [`balance grid · ${sweep.days} days · ${sweep.seeds.length} seeds`, cols];
+  for (const d of sweep.difficulties) {
+    const rs = on(sweep, d);
+    for (const m of rs) {
+      lines.push(
+        [
+          pad(d, -14),
+          pad(m.seed, 9),
+          '  ' + pad(m.verdict, -10),
+          pad(m.daysLived, 4),
+          pad(m.firstThreatDay, 5),
+          pad(m.threats, 9),
+          pad(m.biggestBand, 6),
+          pad(m.downs, 7),
+          pad(m.buried, 8),
+          pad(m.survivors, 7),
+          pad(m.raidersKilled, 7),
+          pad(m.peakRung, 6),
+          pad(m.worstFood.toFixed(2), 11),
+          pad(m.meanFood.toFixed(2), 5),
+          pad(`${Math.round(m.upkeepShare * 100)}%`, 8),
+          pad(m.endFoodDays.toFixed(1), 10),
+          pad(m.raidersSeen, 9),
+          pad(`${Math.round(m.armedShare * 100)}%`, 8),
+        ].join(''),
+      );
+    }
+    lines.push(
+      [
+        pad(`${d} mean`, -14),
+        pad('—', 9),
+        '  ' + pad(`${rs.filter((r) => r.verdict === 'collapsed').length} lost`, -10),
+        pad(avg(rs, (m) => m.daysLived).toFixed(0), 4),
+        pad(avg(rs, (m) => m.firstThreatDay).toFixed(1), 5),
+        pad(avg(rs, (m) => m.threats).toFixed(1), 9),
+        pad(avg(rs, (m) => m.biggestBand).toFixed(1), 6),
+        pad(avg(rs, (m) => m.downs).toFixed(1), 7),
+        pad(avg(rs, (m) => m.buried).toFixed(1), 8),
+        pad(avg(rs, (m) => m.survivors).toFixed(1), 7),
+        pad(avg(rs, (m) => m.raidersKilled).toFixed(1), 7),
+        pad(avg(rs, (m) => m.peakRung).toFixed(1), 6),
+        pad(avg(rs, (m) => m.worstFood).toFixed(2), 11),
+        pad(avg(rs, (m) => m.meanFood).toFixed(2), 5),
+        pad(`${(avg(rs, (m) => m.upkeepShare) * 100).toFixed(1)}%`, 8),
+        pad(avg(rs, (m) => m.endFoodDays).toFixed(1), 10),
+        pad(avg(rs, (m) => m.raidersSeen).toFixed(1), 9),
+        pad(`${Math.round(armedShareOf(rs) * 100)}%`, 8),
+      ].join(''),
+      '',
+    );
+  }
+  return lines.join('\n');
+}
+
+/** Negative width left-aligns, which the setting column needs and the numbers do not. */
+const pad = (v: string | number, w: number) =>
+  w < 0 ? String(v).padEnd(-w) : String(v).padStart(w);
