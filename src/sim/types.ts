@@ -386,7 +386,7 @@ export interface TradeState {
 /**
  * Somewhere else that people live.
  *
- * Deliberately off the map rather than on it. The 64×64 grid is the colony's
+ * Deliberately off the map rather than on it. The 192×192 grid is the colony's
  * ground, and a neighbour drawn on it would be either a village the player can
  * walk into — a second map's worth of simulation — or a decoration. Off the edge
  * it is a *destination*: a bearing, a number of days, and a reason to send
@@ -1386,9 +1386,10 @@ export interface World {
   crops: number[];
   /**
    * Wild bramblebushes, as a list rather than a per-cell array: there are about
-   * eighty of them on sixteen thousand cells, and every consumer wants "the
-   * nearest ripe one", which a sparse list answers in eighty comparisons and a
-   * grid answers in sixteen thousand. Optional so a colony saved before the
+   * three hundred of them on thirty-seven thousand cells, and every consumer
+   * wants "the nearest ripe one", which a sparse list answers in three hundred
+   * comparisons and a grid answers in thirty-seven thousand. Optional so a colony
+   * saved before the
    * valley had brambles still loads — `ensureBushes` regrows them off the seed,
    * so that colony gets the bushes its own map would always have had.
    */
@@ -1538,7 +1539,7 @@ export interface World {
     /**
      * Cells of the map the colony has ever seen. Kept beside the counters rather
      * than recomputed, because it doubles as the change signal the shroud
-     * renderer keys off: nine thousand cells are cheap to walk once and dear to
+     * renderer keys off: thirty-seven thousand cells are cheap to walk once and dear to
      * walk every frame. Optional, as above.
      */
     explored?: number;

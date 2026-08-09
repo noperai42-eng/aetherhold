@@ -1,8 +1,8 @@
 /**
  * What the colony has actually laid eyes on.
  *
- * The map is 128×128 — sixteen thousand cells — and the colony lands on about eighty
- * of them. Every one of the rest was fully drawn from the first frame, which
+ * The map is 192×192 — thirty-seven thousand cells — and the colony lands on about
+ * eighty of them. Every one of the rest was fully drawn from the first frame, which
  * quietly cost the game two things. The obvious one is a reason to walk: the
  * scouting loop in `scout.ts` sends settlers out to sites that were already
  * visible as pins, so the walk paid in resources and never in *knowing*

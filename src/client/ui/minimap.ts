@@ -107,7 +107,7 @@ export function mapBuffer(world: World): Uint8ClampedArray {
  * What has changed that would make the map look different.
  *
  * The same trick `TerrainView.sync` uses, and for the same reason: repainting
- * nine thousand pixels every frame to discover that nothing moved is work the
+ * thirty-seven thousand pixels every frame to discover that nothing moved is work the
  * game can spend on the world instead. Four things can change the picture — the
  * ground itself (floors get laid, soil gets tilled), how much of it the colony
  * has seen, the buildings standing on it, the snow lying over the lot, and what

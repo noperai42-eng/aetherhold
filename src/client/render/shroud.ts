@@ -97,7 +97,7 @@ export class ShroudView {
    * Ground only ever gets revealed, never re-hidden, so this only ever takes
    * blocks away — and it does not run at all unless the colony discovered
    * something, which on a settled colony is almost never. The scan itself is
-   * nine thousand byte compares; the matrix work is one write per cell that
+   * thirty-seven thousand byte compares; the matrix work is one write per cell that
    * actually changed.
    */
   sync(world: World): void {

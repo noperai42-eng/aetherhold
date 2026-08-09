@@ -1,4 +1,4 @@
-# Playtest — eight steps
+# Playtest — ten steps, and thirty-six side trips
 
 ```bash
 npm install
@@ -11,10 +11,90 @@ port **5062** — so an edit on the dev box can't reload your game mid-run.
 Press `/` or `F1` in game for the full key list. Each step below says what you should see;
 if you see something else, that's a bug worth reporting.
 
+**How to use this.** Steps **1 to 10** are the tour, in order — do those and you have
+exercised the spine of the game. Everything with
+a letter after it is a side trip into one subject, self-contained and skippable, and they
+are grouped below rather than listed in the order they happen to sit in the file. Start
+from the group that covers whatever you just changed.
+
+*The other four documents:* [README.md](README.md) is what the game is and how each
+system works, [ARCHITECTURE.md](ARCHITECTURE.md) is how the code is laid out and why,
+[ACCEPTANCE.md](ACCEPTANCE.md) is what the build promised and which test holds each
+promise down, and [ENDGAME.md](ENDGAME.md) is what is still missing at the far end of a
+run.
+
+## Contents
+
+**The tour** —
+[1. Boot the colony](#1-boot-the-colony-20-seconds) ·
+[2. Build something](#2-build-something) ·
+[3. Decide who does what](#3-decide-who-does-what) ·
+[4. Step inside a body](#4-step-inside-a-body) ·
+[5. Check the books](#5-come-back-up-and-check-the-books) ·
+[6. Watch a day pass](#6-watch-a-day-pass) ·
+[7. Pull the plug](#7-pull-the-plug-1-minute) ·
+[8. Take a hit](#8-take-a-hit) ·
+[9. Get someone sick](#9-get-someone-sick) ·
+[10. Save it, break it, load it](#10-save-it-break-it-load-it)
+
+**Building, and taking it back down** —
+[7b. Build a room and heat it](#7b-build-a-room-and-heat-it-2-minutes) ·
+[7c. Lay a road](#7c-lay-a-road-1-minute) ·
+[7d. Take it all back down](#7d-take-it-all-back-down-2-minutes) ·
+[9ee. Why nobody is building your wall](#9ee-ask-why-nobody-is-building-your-wall-2-minutes)
+
+**The colony talking back** —
+[9c. Watch it tell on itself](#9c-watch-the-colony-tell-on-itself-1-minute) ·
+[9d. Follow the Next steps panel](#9d-follow-the-next-steps-panel-1-minute) ·
+[9cc. Watch someone fetch](#9cc-watch-someone-fetch-5-minutes) ·
+[9hh. Read its own history](#9hh-read-the-colonys-own-history-2-minutes)
+
+**The people** —
+[9f. Watch a friendship form](#9f-watch-a-friendship-form-2-minutes) ·
+[9g. Bury the dead](#9g-bury-the-dead-2-minutes) ·
+[9h. Make the cabin worth living in](#9h-make-the-cabin-worth-living-in-3-minutes) ·
+[9i. An evening off](#9i-an-evening-off-3-minutes) ·
+[9gg. Let two of them make a life](#9gg-let-two-of-them-make-a-life-5-minutes)
+
+**Trouble** —
+[9b. Set the bunk room alight](#9b-set-the-bunk-room-alight-1-minute) ·
+[9e. An undrafted settler shot at](#9e-let-an-undrafted-settler-get-shot-at-1-minute) ·
+[9w. A night with wolves in it](#9w-a-night-with-wolves-in-it-6-minutes)
+
+**The valley** —
+[9k. Send somebody over the ridge](#9k-send-somebody-over-the-ridge-3-minutes) ·
+[9l. Read the path to a win](#9l-read-the-path-to-a-win-1-minute) ·
+[9m. Walk into the haze](#9m-walk-into-the-haze-2-minutes) ·
+[9n. Read the map in the corner](#9n-read-the-map-in-the-corner-2-minutes) ·
+[9aa. Walk to the rim](#9aa-walk-to-the-rim-5-minutes) ·
+[9ff. Choose the valley you land in](#9ff-choose-the-valley-you-land-in-4-minutes)
+
+**Winter, and the lake** —
+[9o. Live through a winter](#9o-live-through-a-winter-6-minutes) ·
+[9p. Find the lake](#9p-find-the-lake-2-minutes) ·
+[9q. Walk on the lake](#9q-walk-on-the-lake-4-minutes) ·
+[9r. Fish it](#9r-fish-it-5-minutes) ·
+[9s. Put the lake to work](#9s-put-the-lake-to-work-5-minutes) ·
+[9t. Cross the lake](#9t-cross-the-lake-4-minutes)
+
+**Things that are not settlers** —
+[9u. Send a Picky](#9u-send-a-picky-4-minutes) ·
+[9v. Tame something and keep it](#9v-tame-something-and-keep-it-5-minutes) ·
+[9x. The pen that holds](#9x-the-pen-that-holds-5-minutes) ·
+[9y. Breed a herd](#9y-breed-a-herd-6-minutes) ·
+[9z. Let something get old](#9z-let-something-get-old-4-minutes-plus-a-long-run) ·
+[9bb. Follow the food chain](#9bb-follow-the-food-chain-7-minutes)
+
+**Leave it alone** —
+[9j. Watch it build without you](#9j-leave-the-colony-alone-and-watch-it-build-4-minutes) ·
+[9dd. Run the moor with nobody in it](#9dd-run-the-moor-with-nobody-in-it-1-minute-of-typing-then-go-and-have-a-coffee)
+
+[Known edges](#known-edges)
+
 ## 1. Boot the colony (~20 seconds)
 
 Open the page. Three settlers — Tibb, Mira and Sela — are standing in an open-topped cabin
-on a 64x64 clearing. The left panel lists them with Food / Rest / Recreation / Mood bars and
+in a 192×192 valley. The left panel lists them with Food / Rest / Recreation / Mood bars and
 what each is doing right now. Top left is the clock and the day counter; bottom right is the
 message log.
 
@@ -986,7 +1066,7 @@ answer works and, just as importantly, that it is *visibly* working.
 
 ## 9aa. Walk to the rim (~5 minutes)
 
-The valley is 128 across now, up from 96 — nearly twice the ground, almost all of it added
+The valley is 192 across now, up from 96 — four times the ground, almost all of it added
 at the edges. The homestead is untouched, so this is only worth checking from the outside in.
 
 - **Read the minimap.** The corner map should still be the whole valley, not a crop of it,

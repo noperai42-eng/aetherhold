@@ -6,12 +6,14 @@
  * swaps: so much steel for so much medicine, wood for food, coin-in-kind for a
  * pair of hands. Then they leave.
  *
- * This exists because the thirty-day sweeps all end the same way — every project
- * researched by day twenty-one, every turret built, and four to six hundred
- * steel sitting in the yard with nothing on the board that wants it. A colony
- * that has won has nothing left to decide, and a game with nothing left to
- * decide is over whether or not the settlers are still walking about. Trade
+ * This exists because the long sweeps all end the same way — the research tree
+ * empty somewhere between day 37 and day 56, every turret built, and four to six
+ * hundred steel sitting in the yard with nothing on the board that wants it. A
+ * colony that has won has nothing left to decide, and a game with nothing left
+ * to decide is over whether or not the settlers are still walking about. Trade
  * turns a surplus back into a choice.
+ *
+ * It is not enough on its own, and the measurements say so: see `ENDGAME.md`.
  *
  * Two rules the deals are built to keep:
  *

@@ -2,12 +2,39 @@
 
 What the build promised, and where each promise is actually held down. Rows marked
 **automated** fail the suite if they stop being true; rows marked **manual** need a
-browser and live as a numbered step in `PLAYTEST.md`.
+browser and live as a numbered step in [PLAYTEST.md](PLAYTEST.md).
 
-Last run: `npx tsc --noEmit` clean · `npm test` 87 files / 1538 tests green (9 skipped: the
-1000-day ecosystem sweep and the liveness census, both opt-in) ·
-`npm run eval` 6/6 seeds THRIVING, no losses · `npm run build` 835 kB (235 kB gzip) ·
-play server answering on `localhost:5062` and `192.168.40.227:5062`, dev server on `5063`.
+*The other four documents:* [README.md](README.md) is what the game is and how each
+system works, [ARCHITECTURE.md](ARCHITECTURE.md) is how the code is laid out and why,
+[PLAYTEST.md](PLAYTEST.md) is the browser tour these manual rows point into, and
+[ENDGAME.md](ENDGAME.md) is what is still missing at the far end of a run.
+
+Four sections: [the killer feature](#the-killer-feature),
+[the engine constraints](#the-engine-constraints), [the anti-slop rules](#the-anti-slop-rules),
+and [what still wants a human](#what-still-wants-a-human) — which is the long one, and is
+ordered to match `PLAYTEST.md` rather than by importance.
+
+Last run — 2026-08-08:
+
+- `npx tsc --noEmit` clean.
+- `npm test` — **88 of 90 files, 1,585 tests green**, 13 skipped. The skips are the
+  opt-in gates and nothing else: the 1000-day ecosystem sweep (`ECO`), the survival sweep
+  (`SWEEP`), the balance grid (`BALANCE`), the liveness census (`LIVE`) and the eval pool
+  (`POOL`). Each is a `describe.runIf` on its environment variable, so a skip is a gate
+  nobody asked for rather than a test that gave up. Two of those files —
+  `tests/liveness.test.ts` and `tests/survival-sweep.test.ts` — hold nothing *but* a
+  gated describe, which is why the file count reads 88 and not 90.
+- `npm run eval` — 11 tests green across five seeds, no collapses.
+- `npm run measure -- --days 60 --past-founding` then `npm run balance` — 4 tests green.
+  24 colonies in 1,982 s. All ten enforced principles hold; the three open ones report
+  without asserting, and one of them (*the valley can still bury somebody*) holds too.
+  The two that do not are the standing findings: *nobody starves beside a full pantry*
+  (6 of 15 runs) and *the escalation ladder is climbable to the top* (highest rung
+  reached anywhere was 3 of 4, and Hard country never leaves rung 0).
+- `npm run build` — 894.79 kB JS (254.38 kB gzip), 22.65 kB CSS (4.97 kB gzip).
+- Dev server on `5063`, play server on `5062` — and on the same port at this machine's
+  LAN address, which is deliberately not written down here because it changes with the
+  network and a stale IP in a document is worse than no IP.
 
 ## The killer feature
 
@@ -320,17 +347,21 @@ rather than what it computes. Each is a numbered step in `PLAYTEST.md`:
   whether the first *old age takes* line lands as a colony's own carelessness or as the game
   taking something away.
 
-- **§9aa** — the valley is 128 across. Nearly twice the ground, and almost none of it lands
+- **§9aa** — the valley is 192 across. Four times the ground the game shipped with, in two
+  goes — 96 to 128, then 128 to 192 — and almost none of it lands
   on the homestead: the cabin, the first ore, the trees and the walk to the water are all
   measured out from the middle and are exactly where they were, so what grows is the rim.
   `tests/lake.test.ts` pins that the water grew with it — the basin is a fraction of the map
   radius rather than a fixed ellipse, or a lake tuned on a 96-wide valley becomes a pond on a
-  128-wide one — and that it still lands at all, which took ten attempts rather than six,
-  because more landmarks means more doorsteps a basin is turned away from. `tests/hunting.ts`
+  192-wide one — and that it still lands at all, which now takes `LAKE_TRIES` = 24 attempts
+  rather than the six it began with,
+  because more landmarks means more doorsteps a basin is turned away from. `tests/hunting.test.ts`
   pins the herd cap as a density (`populationCap`) rather than the flat fourteen it was, and
   the opening fauna scale with area, so a bigger valley carries a bigger population without
   the moor round the fence getting any busier. `findPath`'s budget is two thirds of the map
-  rather than the flat 6000 that happened to be two thirds of the old one.
+  rather than the flat 6000 that happened to be two thirds of the old one. The landmark
+  count moved the same way and for the same reason: one site per 512 cells, so seventy-two
+  of them rather than the eighteen a 96-wide valley carried.
   <br><br>
   The honest cost is the seed pin at `tests/hunting.test.ts:397`: worldgen draws its terrain
   from the same stream the settlers are rolled from, so a wider map is a different draw by
@@ -403,8 +434,10 @@ rather than what it computes. Each is a numbered step in `PLAYTEST.md`:
   measurably more fruit on the moor where something was eating the browsers. That is what
   makes clearing every wolf off the map a decision with a cost rather than free safety.
   <br><br>
-  The carrying capacity is emergent and is not written down anywhere. Roughly a hundred
-  bushes, three quarters of a day fed per bush, six days to regrow: about ten brambletails,
+  The carrying capacity is emergent and is not written down anywhere. Roughly three hundred
+  and thirty bushes on the 192-wide valley — 337, 323 and 345 on the three seeds it was
+  counted on — three quarters of a day fed per bush and six days to regrow: a browser
+  population in the tens,
   arrived at by arithmetic nobody performed. `browserCap` exists only as a runaway backstop
   — the fruit is the real limit, and a constant that set the population directly would have
   made the bushes scenery.
@@ -413,7 +446,7 @@ rather than what it computes. Each is a numbered step in `PLAYTEST.md`:
   past 26 cells, and it only fires when the pantry is genuinely thin — under about four
   days a head, which is a far hungrier line than the one sowing answers to. Both gates are
   direct consequences of §9aa. The range cap is the obvious one: at a fixed bush density an
-  uncapped search on a 128-wide valley always finds a ripe bush *somewhere* and would remove
+  uncapped search on a valley this wide always finds a ripe bush *somewhere* and would remove
   a settler from the colony for half a day to fetch two raw food.
   <br><br>
   The appetite gate is the one that had to be learned. Foraging shared the sowing ceiling to
@@ -427,7 +460,8 @@ rather than what it computes. Each is a numbered step in `PLAYTEST.md`:
   lay in the yard unburied; the freezer thawed because nobody hauled wood to the generator;
   and seed 424242 starved a settler to nothing *while its settlers were out gathering food*.
   That is the shape of the bug and it is worth stating plainly, because the number never
-  changed — the map did, and a gate tuned against a garnish met a hundred and fifty bushes.
+  changed — the map did, and a gate tuned against a garnish on a 96-wide valley met the
+  hundred and fifty bushes of a 128-wide one.
   An errand that never runs out will eat every finite job behind it unless its gate says
   *short*, not *not yet full*. What no test can settle is whether a bramble
   patch reads as a place worth walking to or as scenery the farmhands occasionally wander
@@ -446,3 +480,48 @@ rather than what it computes. Each is a numbered step in `PLAYTEST.md`:
   refused route is not re-asked next tick, and a reachable one is taken on the tick it is
   wanted, because "ask less often" would have fixed the cost by making every animal notice
   its dinner late.
+
+- **§9cc** — watch someone fetch. `tests/hauling.test.ts` pins the two changes as
+  arithmetic: a hauler gathers everything within two cells of the stack it stooped for and
+  makes one trip of it, never reaching through a wall to do it (the region check, which is
+  the bug this could have), and a settler supplying a queued wall carries enough for
+  several frames and walks down the line rather than back to the pile. What a test cannot
+  settle is the thing the change was made for — whether the base *looks* like it is going
+  up faster. Half again as much building on the same three days is a number; a colony that
+  reads as busy rather than as commuting is not.
+
+- **§9dd** — run the moor with nobody in it. Not a browser check at all: `npm run eco`
+  takes the colony out of a valley and runs the real tick for a thousand days. It is on
+  this list rather than in the tables above because the pass condition is a shape, not a
+  threshold — four columns that stay alive, and one of them, `ripe`, that is *supposed* to
+  oscillate while the others hold. A drift too slow for a forty-five-day run to show is
+  exactly what a human reading five hundred days of census rows catches and an assertion
+  does not.
+
+- **§9ee** — ask why nobody is building your wall. `tests/idle.test.ts` pins each line and,
+  more importantly, pins the silences: a settler who is drafted, possessed, asleep, mid
+  morale break or actually working gets no line, because the card already says those. The
+  only bug this feature can have is a line that is not true, and truth is the one thing a
+  human reading it against the board can check.
+
+- **§9ff** — choose the valley you land in. `tests/difficulty.test.ts` pins the three
+  settings as numbers and the balance grid pins that they are three different games — the
+  cost of a run goes ×4.0 from settler to hard country. What wants a human is the card
+  itself: whether a sentence per setting is enough for somebody who has never played to
+  pick one, and whether a blank seed box reads as *optional* rather than as *broken*.
+
+- **§9gg** — let two of them make a life. `tests/partners.test.ts` pins the two-line
+  clock — 70 to start it, below 62 to stop it — and pins why it is two lines rather than
+  one: the top bonds in a real colony wander about ten points over a month, so a
+  single-line version was reset by the ordinary weather of the number it was watching, and
+  three ninety-day colonies produced one pairing between them. What no test settles is
+  whether ten days of `courting` in the bonds row reads as a story building or as a status
+  that never resolves.
+
+- **§9hh** — read the colony's own history. `tests/chronicle.test.ts` pins what gets copied
+  into it — only a message raised as a headline, and `tests/headlines.test.ts` pins which
+  messages those are — that it opens on the founding, that it outlives the eighty-line log
+  underneath it, that it comes back out of a save, and that a save written before it existed
+  loads rather than refusing. The judgement left over is editorial: whether the panel reads
+  as *what happened to us* or as a second, longer log. One line of small talk in it is the
+  whole failure, and only a reader can see it.

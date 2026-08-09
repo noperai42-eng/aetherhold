@@ -979,7 +979,7 @@ const FORAGE_HOME_RANGE = 40;
  *
  * Sharing the sowing line is what broke it, and it broke quietly because the
  * number never changed — the map did. At ten patches per cell brambles were a
- * garnish; at thirty, on sixteen thousand cells, there are about seventeen
+ * garnish; at thirty, on thirty-seven thousand cells, there are about seventeen
  * bushes inside forage range at any hour and a founding colony sits three times
  * under the sowing ceiling, so there was always another bush and always a reason
  * to go. Measured over one day on seed 21: 4 120 colonist-ticks foraging against
