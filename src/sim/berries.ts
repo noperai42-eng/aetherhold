@@ -21,9 +21,10 @@
  * point of the module and it is why `stripBush` exists beside `pickBush`: the two
  * do the same thing to the plant and only one of them puts food in the pantry.
  *
- * Sparse by construction — a list of bushes, not a grid. There are about eighty
- * of them on a map of sixteen thousand cells, and a per-cell array would be a
- * sixteen-thousand-entry scan twenty times a second to find them.
+ * Sparse by construction — a list of bushes, not a grid. There are about three
+ * hundred and thirty of them on a map of thirty-seven thousand cells, and a
+ * per-cell array would be a thirty-seven-thousand-entry scan twenty times a
+ * second to find them.
  */
 
 import { daylight } from './clock';

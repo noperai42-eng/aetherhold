@@ -177,7 +177,7 @@ export class SkyView {
 
   /**
    * `focusX/focusY` is where the player is looking from — the shadow frustum and the
-   * sky dome follow it so a 64×64 map still gets crisp shadows from one light.
+   * sky dome follow it so a 192×192 map still gets crisp shadows from one light.
    */
   sync(world: World, focusX: number, focusY: number): void {
     const day = daylight(world);

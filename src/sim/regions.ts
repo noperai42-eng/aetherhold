@@ -80,7 +80,7 @@ const CACHE = new WeakMap<World, RegionIndex>();
  *
  * Every solid building, by id and cell — trees and boulders included, because a
  * felled tree opens a route just as surely as a demolished wall. Terrain is in
- * here as a revision number rather than a hash: sixteen thousand cells is too
+ * here as a revision number rather than a hash: thirty-seven thousand cells is too
  * many to read on every question and one counter is one multiply, which is why
  * `setTerrain` exists to move it.
  */

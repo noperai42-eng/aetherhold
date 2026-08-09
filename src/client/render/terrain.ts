@@ -229,7 +229,7 @@ export class TerrainView {
    * on top of both.
    *
    * The season is folded in at 64 steps a year rather than continuously, because
-   * a continuous read would rebuild nine thousand cells on every frame for a
+   * a continuous read would rebuild thirty-seven thousand cells on every frame for a
    * colour change too small to see. Sixty-four steps is a repaint about every
    * seventy-five seconds of play and a gradient nobody can find the stairs in.
    * The pack gets its own coarser quantum for the same reason and a different
@@ -458,7 +458,7 @@ export class TerrainView {
         }
         const i = (cy * this.cornerStride + cx) * 3;
         if (n === 0) continue;
-        // A little deterministic mottling so 4096 cells do not read as lino, and
+        // A little deterministic mottling so the whole map does not read as lino, and
         // a darkening with depth so the lake reads as something with a bottom
         // rather than as blue paint. The shading is free: the same count that
         // sinks the bed shades it, so the dark and the deep can never disagree —

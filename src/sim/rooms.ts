@@ -40,9 +40,9 @@ export const ROOM_WALL_HEIGHT = 2;
 
 /**
  * Largest enclosed region that still counts as a room. The starter cabin is 99
- * cells and a generous player base is a few hundred; the outdoors on a 64x64 map
- * is upwards of 2,500. Anything between is a hall so big it may as well have
- * weather in it.
+ * cells and a generous player base is a few hundred; the outdoors on the 192×192
+ * map is tens of thousands. Anything between is a hall so big it may as well
+ * have weather in it.
  */
 export const MAX_ROOM_CELLS = 600;
 

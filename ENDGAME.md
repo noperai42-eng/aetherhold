@@ -1,31 +1,62 @@
 # The end game
 
-> Status: plan, not yet built. Written 2026-08-06 against the measurements in
-> `ARCHITECTURE.md` § *What the grid found*. Nothing in `src/` implements any of
-> it yet.
+> Status: **stage 0 shipped; stages 1 to 5 are still a plan.** Written 2026-08-06
+> against the measurements in [ARCHITECTURE.md](ARCHITECTURE.md) § *What the grid
+> found*, and revised 2026-08-08 against the sixty-day grid it asked for. What is
+> in `src/` is stage 0 and nothing beyond it — the harness plays past the founding
+> and the grid measures a second act. Nothing in stages 1 to 5 is built.
+>
+> Numbers below come from two different grids and are labelled where they differ.
+> The forty-five-day and thirty-day figures are kept where they are the reason a
+> decision was made; the sixty-day grid in
+> [Costs and risks](#costs-and-risks-stated-plainly) is the current reading and
+> wins any disagreement.
+
+*The other four documents:* [README.md](README.md) is what the game is and how each
+system works, [ARCHITECTURE.md](ARCHITECTURE.md) is how the code is laid out and why,
+[PLAYTEST.md](PLAYTEST.md) is the browser tour, and [ACCEPTANCE.md](ACCEPTANCE.md) is what
+the build promised and which test holds each promise down.
+
+## Contents
+
+- [The problem, in numbers](#the-problem-in-numbers) — why a run is over on day
+  twenty-five, and what the measurements say is missing
+- [What the founding becomes](#what-the-founding-becomes) — the charter as Act One
+  rather than the end
+- [The three roads](#the-three-roads) — economy, science, warfare
+- [The substrate: the world beyond the valley](#the-substrate-the-world-beyond-the-valley)
+  — what all three roads need underneath them
+- [The order of work](#the-order-of-work) — six stages, each with the principle that
+  proves it
+- [The one thing to build now for the sequel](#the-one-thing-to-build-now-for-the-sequel)
+- [Costs and risks, stated plainly](#costs-and-risks-stated-plainly) — including the
+  two balance principles still open
 
 ## The problem, in numbers
 
 The game is over about twenty-five days in, and it is over for a duller reason
 than losing.
 
-The research tree holds fifteen projects worth 249,000 points. `trade.ts` says in
-its own opening paragraph that a colony finishes all of them by day twenty-one,
-and that is why the pedlar exists at all — but that sentence is older than the
-tree it describes and no longer true. Played out to sixty days on the quiet
-valley, the last project lands on **day 37**. The five charters of the founding
-land well before it: day 25, 27, 22 and 23 on the quiet valley, day 23, 27 and 28
-on settler. And they land with enormous headroom.
+The research tree holds fifteen projects worth 249,000 points, and the pedlar in
+`trade.ts` exists because a colony runs out of them. Played out to sixty days,
+the last project lands on **day 37** on the quiet valley, and on day 43, 45 or 56
+on the seeds that take longer. The founding lands well before it — day 23 to 40
+across the five quiet-valley maps of the unattended sixty-day grid, day 23, 26
+and 29 on the three settler maps that get there at all.
+And it lands with enormous headroom.
 Sampling every twenty ticks across a forty-five-day run, the colony peaks at
 9–15 research against a bar of 6, 26–41 days of food against a bar of 12, three
 or four turrets against a bar of 2. Four of the five charters are cleared
 without the player ever having aimed at them.
 
 Only one of them ever actually resists: `ally`, thirty points of standing with a
-neighbour. Across nine forty-five-day runs — three per setting — the quiet valley
+neighbour. Across nine **forty-five-day** runs — three per setting, the sample
+this brief was written from — the quiet valley
 founded three times out of three, settler twice out of three, and hard country
 never. Of the four failures, **`ally` was the missing charter in three**, and in
-two of those it was stuck on exactly 24 out of 30.
+two of those it was stuck on exactly 24 out of 30. (The sixty-day grid moves the
+counts and not the diagnosis: see
+[Costs and risks](#costs-and-risks-stated-plainly).)
 
 Twenty-four is not a coincidence. `RELATIONS_PER_VISIT` is 6, so 24 is *four
 round trips*, and the bar sits just past it. What actually decides a founding, on
@@ -45,7 +76,13 @@ turrets — is a solved problem by then.
 And the flatline that follows is measurable rather than a matter of taste — but it
 is not the same flatline on every setting, and that turns out to be the most
 important thing the long runs have to say. Four colonies played the full sixty
-days, past the founding rather than stopping at it:
+days, past the founding rather than stopping at it. This is the **probe that
+argued for stage 0**, run before the grid could play past a founding at all — its
+last three columns are the only place any of them are measured, and they are why
+this document exists. Its founding column has since been superseded: the
+unattended sixty-day grid in
+[Costs and risks](#costs-and-risks-stated-plainly) is the current reading and
+disagrees with it on every row.
 
 | run | founding | tree emptied | days with nothing to choose | steel at d40 → d60 |
 | --- | --- | --- | --- | --- |
@@ -58,12 +95,15 @@ Three findings, and two of them contradict what the thirty-day grid appeared to
 say.
 
 **The game is winnable on every setting; thirty days was just too short to see
-it.** The grid reported hard country founding zero times out of five and that
-reads like a difficulty wall. It is a clock. Given sixty days, harsh founds on day
-51 and the settler seed that failed at forty-five founds on day 57 — both of them
-blocked the whole time on `ally`, both of them eventually walking enough caravans
+it.** The thirty-day grid reported hard country founding zero times out of five
+and that reads like a difficulty wall. It is a clock. Given sixty days, harsh
+founds — on one seed of five, on day 49, with the settler seed that failed at
+forty-five getting there too. Both were
+blocked the whole time on `ally`, and both eventually walked enough caravans
 to clear it. Hard country is not unwinnable. It is *slow*, which is a different
-problem with a different fix.
+problem with a different fix — and one seed in five is slow enough that the
+[Costs and risks](#costs-and-risks-stated-plainly) section calls it a problem in
+its own right rather than a milder version of this one.
 
 **The empty tree is a quiet-valley problem.** Twenty-three dead days on calm,
 fifteen to seventeen on settler, and four on harsh — where the colony is too busy
@@ -266,8 +306,13 @@ that never recorded it. Everything else about that game is that game's problem.
   See `ARCHITECTURE.md` → "Measured once, judged in milliseconds".
 - **Two known-broken principles are still open.** `nobody-starves-beside-a-full-pantry`
   hits 6 of 15 runs on the thirty-day grid and the same 6 of 15 on the sixty-day
-  one — one calm map and every harsh one, and twice the clock does not make it
-  worse. `the-escalation-ladder-is-climbable-to-the-top` is settled by the full
+  one, and twice the clock does not make it worse. On the sixty-day grid those six
+  are one calm map (1312, bottoming out at 0.02 with nineteen days of food in
+  store), one settler map (424242, at 0.00 with sixteen days), and four of the five
+  harsh maps. The fifth harsh map is not on the list for the worst possible reason:
+  20260729 is the colony that collapsed on day 52, and a settler who starves beside
+  an *empty* larder is a different failure that this principle correctly declines to
+  count. `the-escalation-ladder-is-climbable-to-the-top` is settled by the full
   sixty-day grid, and not in its favour: the highest rung reached anywhere was 3
   of 4, on one calm map.
 

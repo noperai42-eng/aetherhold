@@ -271,7 +271,7 @@ describe('taking the fruit off it', () => {
  * happened to walk past a bramble.
  *
  * The deer and hares come off too. They eat nothing, so they can only add
- * pathfinding to the bill, and this loop is A\* on sixteen thousand cells at
+ * pathfinding to the bill, and this loop is A\* on thirty-seven thousand cells at
  * twenty hertz — the difference between a minute a run and a quarter of an hour.
  */
 function runMoor(world: World, days: number): void {

@@ -3,71 +3,139 @@
 One simulation, two views. That sentence is the whole design; everything below is how the
 code keeps it true.
 
+**The other four documents.** [README.md](README.md) is what the game *is* and why each
+system earns its place; this file is how it is built. [PLAYTEST.md](PLAYTEST.md) is the
+hands-on script, [ACCEPTANCE.md](ACCEPTANCE.md) is what has been checked and by whom, and
+[ENDGAME.md](ENDGAME.md) is the plan for what comes after the founding.
+
+## Contents
+
+- [The source map](#the-source-map)
+- [The dependency rule](#the-dependency-rule)
+- [The loop](#the-loop)
+- [What a tick costs](#what-a-tick-costs-and-how-to-find-out)
+- [One scene, two cameras](#one-scene-two-cameras)
+- [Collision equals geometry](#collision-equals-geometry)
+- [Orders, jobs, and taking the wheel](#orders-jobs-and-taking-the-wheel)
+- [The shape of a settler's day](#the-shape-of-a-settlers-day)
+- [Where the walking goes](#where-the-walking-goes-and-the-two-levers-on-it)
+- [A guard that is right about the wrong population](#a-guard-that-is-right-about-the-wrong-population)
+- [The valley with nobody in it](#the-valley-with-nobody-in-it)
+- [The seed contract](#the-seed-contract)
+- [Difficulty multiplies after the draw](#difficulty-multiplies-after-the-draw-never-inside-it)
+- [The balance grid, and why a promise needs an instrument](#the-balance-grid-and-why-a-promise-needs-an-instrument)
+- [The only part of the storyteller that looks at the colony](#the-only-part-of-the-storyteller-that-looks-at-the-colony)
+- [A ceiling is a ratio, not a constant](#a-ceiling-is-a-ratio-not-a-constant)
+- [Grief is duration, not depth](#grief-is-duration-not-depth)
+- [A floor is terrain, not a building](#a-floor-is-terrain-not-a-building)
+- [A window and a history are different lists](#a-window-and-a-history-are-different-lists)
+- [One flag cannot mean two endings](#one-flag-cannot-mean-two-endings)
+- [A cable is not a footpath](#a-cable-is-not-a-footpath)
+- [Save / load](#save--load)
+- [Rendering notes](#rendering-notes)
+
+## The source map
+
+Seventy-three files in `sim/`, and the order below is roughly the order a colony meets them:
+the ground, then the people, then the work, then the weather, then the things that come out
+of the treeline.
+
 ```
 src/
   main.ts              boot: canvas, quality preset, App
   sim/                 THE SIMULATION — plain data + pure-ish functions, no three.js
     types.ts           World, Pawn, Building, Job, constants (TICKS_PER_SECOND = 20)
     world.ts           construction, ids, message log, queries (hostiles, livingColonists)
+    buildings.ts       the one table of building defs — `solid` here is the authority on collision
     worldgen.ts        192x192 map, starter cabin, trees/rock, the three settlers (HOME-anchored)
+    pawn.ts            the one place a body comes into the world: settler, raider, beast, browser
     grid.ts            cell indexing, isSolid(), buildingAt(), nearestWalkable()
     path.ts            A* over the same grid, door cost 1.6
     movement.ts        moveWithCollision(), tickDoors()
     regions.ts         connected components of walkable ground: reachability without A*
+    connectivity.ts    the watchdog: nobody gets walled in, and the colony says so out loud
     jobs.ts            job assignment + per-tick job execution (the biggest file, on purpose)
+    queue.ts           the control stack: what a settler is doing, and what they do next
+    tedium.ts          nobody wants to do the same job all day
+    stranded.ts        work no living settler can reach, called off through the cancel door
+    rebuild.ts         putting back what burned down or was shot to pieces
     needs.ts           food / rest / recreation / mood
     traits.ts          who a settler is: rolled from their own id, never from the world
+    skills.ts          the one place a settler gets better at something, and says so
+    knowhow.ts         what this colony can still make, and telling the player when that changes
+    lifelog.ts         what happened to this one: six or eight lines for a whole life
     social.ts          who they get on with: one number per pair, feeding mood and grief
     partners.ts        who they come home to: earned from bonds, never rolled
     graves.ts          the dead: who is still lying out, burial, and what a body costs
     recreation.ts      where a settler spends an evening: quality, distance and company
     beauty.ts          what a room is worth to look at, and the mood that comes of it
+    gear.ts            what a settler wears and what they carry: two slots, never more
     orders.ts          what the manager's clicks mean: blueprints, zones, designations, drafting
     interact.ts        what "E" means where you stand: describeTarget(), verbForBuilding()
     combat.ts          shooting, melee, projectiles, damage, downing, death, taking cover
     events.ts          the storyteller, raids, wildlife, fire spread
+    encounters.ts      the beats that are not a raid: refugees, a dead grid, a herd passing
     difficulty.ts      how hard the valley bites: one table, three settings, three axes
     firesafety.ts      who runs from a fire and who gets carried out of one
     traps.ts           deadfalls: only hostiles spring one, and a sprung one is a blueprint
     clock.ts           time of day, daylight curve
+    seasons.ts         the year: twenty days, five each, landing on the first morning of summer
     weather.ts         fronts that change decisions: rain, fog, storms
+    snowpack.ts        snow that lies: one number for the whole map, arriving over hours
+    ice.ts             the six days a year the lake is the fastest road on the map
     rooms.ts           the flood fill that turns four walls into a place, and how it seals
     temperature.ts     per-room air: the outdoor swing, coolers, heaters, campfires, lag
     fumes.ts           exhaust indoors: what a generator does to the air of the room it is in
     spoilage.ts        food goes off, slower where it is cold — the reason to build a larder
     farming.ts         growing zones: sow, ripen, harvest — the only renewable food
+    berries.ts         bramblebushes: the only food the player does not have to earn twice
+    fishing.ts         a stage on the shore, and food out of the water in a month with none
     forest.ts          the wood grows back: seed rain, crowding, and a clear yard
     floors.ts          laid ground: what a floor costs, where it may go, what it changes
     wildlife.ts        the herds: grazing, browsing, mating, ageing, and the resident wolves
     predators.ts       what a fenwolf does about all that — stalk, chase, bite, gorge, pack
     livestock.ts       pens: the animals you tamed instead of shooting, and their young
+    husbandry.ts       what the herd pays for being kept alive: milk, down, and a clock
+    pets.ts            the animal a settler keeps, rather than the one the colony eats
+    crafting.ts        the recipe book: two gates, one on the colony and one on the person
     trade.ts           the pedlar who walks in, stands half a day, and swaps
     settlements.ts     the four neighbours off the map, and the caravan that walks to one
+    commissions.ts     the neighbours ask for something back: one pack, on a clock
     prison.ts          what happens to a raider who goes down and does not die
-    research.ts        the one axis that only goes forward
+    research.ts        the one axis that only goes forward: fifteen projects, 249,000 points
     scout.ts           the reason to leave the yard: ruins, caches, survivors
+    explore.ts         what the colony has laid eyes on: one flag a cell, and it only goes up
     power.ts           networks by flood fill, generators, batteries, brownout shedding
     health.ts          illness: the severity-vs-immunity race, tending, bed rest
     alerts.ts          what is still wrong, derived fresh every frame and never stored
     idle.ts            why that settler is doing nothing, in one provable sentence
+    pickies.ts         a question with legs: what you send to ask why nobody goes there
     objectives.ts      what to do next: the sticky curriculum behind the Goals panel
     victory.ts         the exam: five charters, the three days they hold, and no shutdown
     steward.ts         the colony's own foreman: restock, beds, fence, gate, grid, floors, cover
     tick.ts            stepWorld(): the one ordered tick
     save.ts            versioned envelope <-> localStorage
+    transfer.ts        the same envelope as one line of text, so a colony can change origin
     rng.ts             seeded streams so a save reloads to the same future
   client/              THE VIEWS — three.js, DOM, input. Reads sim, never forks it.
     app.ts             fixed-timestep loop, mode switching, wiring
     pace.ts            how many ticks a frame owes: the accumulator, alone and testable
+    devtools.ts        the console handles a developer needs and a player never sees
     input/input.ts     one keyboard/mouse listener set, shared by both modes
+    input/touch-controls.ts  the same intents off a phone: sticks, taps, long-press
     manager/camera.ts  high-oblique camera, pan/zoom/orbit, screen<->cell picking
     manager/controller.ts  selection, drag-rectangles, tool state -> sim/orders
     fps/controller.ts  yaw/pitch, WASD -> moveWithCollision, E -> sim/interact, click -> combat
-    render/            scene graph: terrain, instanced buildings, pawn rigs, sky, fx, palette
+    render/            scene graph: terrain, instanced buildings, pawn rigs, sky, shroud,
+                       landmarks, weather, decor, fx, palette
     ui/hud.ts          both HUDs (manager panels + first-person overlay) in one DOM tree
+    ui/minimap.ts      the corner drawing of the valley, drawn from `world.seen`
+    ui/toasts.ts       the things that must not scroll away in the log
     audio/sfx.ts       WebAudio, generated tones — no audio files
-tests/                 740+ tests: sim units, a two-day headless colony run, and the
-                       first-person controller driven with a stand-in Input
+    audio/ambience.ts  the bed of sound under all of it, mixed by time of day and weather
+  eval/                THE INSTRUMENT — headless colonies, played and scored (see below)
+tests/                 1,585 tests: sim units, headless colony runs, and the first-person
+                       controller driven with a stand-in Input
 ```
 
 ## The dependency rule
@@ -406,18 +474,21 @@ damped by the behaviour it is measuring — a settler eats when hungry and stops
 faster drain buys more trips to the table at about the same average — and it is confounded by
 `larder`, because a fuller store is easier to stay fed from. It had been passing on noise. What
 upkeep actually costs is *time*: the share of a free settler's day spent eating, sleeping or
-relaxing instead of working, counted in pawn-ticks at 20 Hz. On the thirty-day grid that column
-reads 30.7 % → 34.7 % → 36.1 %.
+relaxing instead of working, counted in pawn-ticks at 20 Hz. On the thirty-day grid that column read
+30.7 % → 34.7 % → 36.1 %.
 
-That last step is 1.4 points, and the check asks for one. It passes — and it is still not a
+That last step is 1.4 points, and the check asks for one. It passed — and it was still not a
 measurement anybody should enforce on, because the margin is thinner than the noise. Take the same
 grid, the same code and the same thirty days, and read only the three seeds the arm happens to use:
-Settler 35/34/35, Hard 35/35/35, a step of **+0.3**, comfortably broken. Five seeds say +1.4 and
-pass. Which verdict this column returns is decided by the seed draw.
+Settler 35/34/35, Hard 35/35/35, a step of **+0.3**, comfortably broken. Five seeds said +1.4 and
+passed. Which verdict this column returns is decided by the seed draw — and the sixty-day grid
+proved the point from the other direction, where the same column reads 30.0 % → 33.3 % → 36.0 % and
+that last step is now 2.7. The column did not get more honest; it got a different draw.
 
 The dial is not the problem. Held alone — Settler played three times over with nothing moved but
-`upkeep` — the column reads 30.9 % → 34.6 % → 37.3 %, gaps of 3.7 and 2.7, and a separate probe
-carried it to ×1.30 for 40.5 %: dead straight, with headroom past anything the game ships. The
+`upkeep` — the column reads 30.8 % → 35.1 % → 36.6 %, and on the thirty-day arm it read 30.9 % →
+34.6 % → 37.3 % with a separate probe carrying it to ×1.30 for 40.5 %: dead straight both times,
+with headroom past anything the game ships. The
 confound costs roughly half the effect. `larder` and `band` write into the same column, harder and
 in the opposite direction, because a colony that is starving and fighting spends *less* of its day
 on itself, not more — it has less to eat and less time to eat it in. Nearly three points of upkeep
@@ -475,8 +546,11 @@ start *after* the eval window closes — three clean fights lands past day twelv
 is three for exactly that reason — so a ten-day grid asking whether the ladder reaches its top
 rung is measuring the harness rather than the game. It says so instead of failing, and it says so
 instead of passing. Same for the funerals question, which the long probes did not see move until
-the back half of a hundred-day run. The default is thirty days because that is the shortest grid
-that can see any of it.
+the back half of a hundred-day run. Thirty days was the shortest grid that could see any of it, and
+the default is sixty now for a different reason: at thirty days most of the calm and settler
+colonies closed their charter before the clock ran out, so the grid was measuring a three-week game
+on exactly the maps that did best. Sixty days with `playPastFounding` set is the shortest grid where
+every run is the same length as every other one.
 
 **A principle is `enforced` or `open`, and the open ones are printed, not asserted.** Two questions
 the grid was built to settle are genuinely unsettled — whether the ladder's top rungs should be
@@ -536,9 +610,10 @@ do not count — the pool, the CLI, the on-disk format — is an *exclusion* lis
 invalidates old measurements by default; an inclusion list would have meant new code silently not
 counting, which fails in the direction that looks like everything is fine. And the hash is over
 source text rather than meaning, so it fires on changes that cannot possibly move a number. The
-first thing it ever caught was a dead-code deletion. That is the conservative direction and the
-correct one: the cost of a false alarm is ten minutes of re-measuring, and the cost of a missed one
-is a balance decision made against a game nobody played.
+first thing it ever caught was a dead-code deletion; the second was a batch of comment edits made
+while writing this document. That is the conservative direction and the correct one: the cost of a
+false alarm is ten minutes of re-measuring, and the cost of a missed one is a balance decision made
+against a game nobody played.
 
 Deleting that dead code was itself the point. `runSweep` and `runUpkeepArm` had no callers left once
 the grid was described by `sweepSpecs`, played by `runSpec` and folded by `assembleSweep`, and the
@@ -548,14 +623,15 @@ waiting to drift. There is one definition now. `npm run measure -- --serial` pla
 through the same `runSpec` in one process, so if a parallel grid and a serial one ever disagree the
 argument is settled by running both rather than by reading the pool.
 
-What it bought: twenty-four colonies — 526 colony-days — in **585 seconds** on eight workers of a
-ten-core box, against roughly thirty-five minutes for the same grid played one at a time. Call it
-three and a half times, and do not call it a benchmark: both numbers were taken on a machine doing
-other work, and eight workers buy 3.5× rather than 8× for two reasons worth knowing. The colonies
-are wildly uneven — a calm map that founds on day 23 is half the work of a harsh one that runs the
-full thirty — so the run ends when the *longest* colony ends, and twenty-four specs across eight
-workers is three waves deep with a ragged edge on each. The fix for that is to start the long ones
-first, and it is not worth doing until the grid is long enough that the tail is the cost. The
+What it bought: twenty-four colonies — 1,000 colony-days on the current sixty-day grid — in **1,556
+seconds** on eight workers of a ten-core box, against several hours for the same grid played one at
+a time. Do not call it a benchmark: the numbers were taken on a machine doing other work, and eight
+workers buy something like three and a half times rather than eight for two reasons worth knowing.
+The colonies are wildly uneven — a calm map with fourteen threats in sixty days is a fraction of the
+work of a harsh one with forty-two, and the harsh colonies are also the ones that grow biggest — so
+the run ends when the *longest* colony ends, and twenty-four specs across eight workers is three
+waves deep with a ragged edge on each. The fix for that is to start the long ones first, and it is
+not worth doing until the grid is long enough that the tail is the cost. The
 determinism claim was checked twice over: `tests/eval-pool.test.ts` plays a mixed list of grid and
 arm specs through two workers and asserts the results are identical to playing them one at a time,
 and two independent parallel runs of the full grid, scheduled differently by a differently-loaded
@@ -563,47 +639,57 @@ machine, produced the same numbers row for row.
 
 ### What the grid found
 
-Thirty days, five seeds, three settings, seven multipliers. Eight enforced promises hold on
-measured evidence — trouble comes sooner (day 5.0 → 3.0 → 2.0), more often (6.0 → 12.8 → 21.0
-threats), in bigger bands (2.0 → 5.6 → 8.6), better armed (15 % → 54 % → 82 % of raiders carrying a
-rifle), hitting harder (0.0 → 7.2 → 53.6 trips to a sick bed), nobody is wiped on the quiet valley,
-and Hard country costs ×8.5 what Settler does. Four things it found are worth writing down, because
-none of them was designed:
+Sixty days, five seeds, three settings, seven multipliers, every run played past its founding.
+Thirteen principles are scored; ten of them are enforced and hold on measured evidence — trouble
+comes sooner (day 5.0 → 3.0 → 2.0), more often (14.8 → 29.2 → 41.8 threats), in bigger bands (4.4 →
+6.8 → 8.0), better armed (31 % → 60 % → 84 % of raiders carrying a rifle), hitting harder (2.4 →
+27.6 → 109.4 trips to a sick bed), nobody is wiped on the quiet valley, Hard country costs a colony
+×4.0 what Settler does, and the founding is no longer where the run stops: nine of the fifteen
+colonies closed their charter and every one of them played out the rest of its sixty days. The
+other three are open — findings the grid prints without asserting, because the fix is a design
+decision rather than a number. One of those three holds anyway: four of the five Hard maps buried
+somebody, which is the check that a colony sim where nobody ever dies is a screensaver. The other
+two are below. Four things the grid found are worth writing down, because none of them was
+designed:
 
 **Difficulty reaches the pantry, and it gets there mostly through labour.** All three settings start
-on stores the genesis check has already pinned, and after thirty days calm has 24.7 days of food
-where harsh has 11.9. Only part of that is the `larder` dial handing harsh less; the rest is that a
-settler who is shooting or on the floor is not farming. The enforced check is therefore a ratio
-rather than a floor: threat multiplies ×3.50 across the settings while food in store moves ×2.08,
-and the promise is that the second number stays under the first. It does, but by less than it used
-to — before the direct dial existed the same comparison read ×3.3 against ×1.5. That is the dial
-doing its job and it is also the margin getting thinner, which is the number to watch if `larder`
-is ever widened.
+on stores the genesis check has already pinned, and after sixty days calm ends with 24.5 days of
+food where harsh has 13.6. Only part of that is the `larder` dial handing harsh less; the rest is
+that a settler who is shooting or on the floor is not farming. The enforced check is therefore a
+ratio rather than a floor: threat multiplies ×2.82 across the settings while food in store moves
+×1.80, and the promise is that the second number stays under the first. Watch the gap rather than
+either number — before the direct `larder` dial existed the same comparison read ×3.3 against ×1.5,
+and it is the *distance* between the two that says difficulty is still a valley rather than a
+handicap.
 
-**The upkeep axis is real, and on the grid it is worth about half what it is.** A free settler's day
-runs 30.7 % → 34.7 % → 36.1 % across the settings; held alone, with threat and stores and seeds all
-pinned, the same three dials read 30.9 % → 34.6 % → 37.3 %. The Settler→Hard step is 2.7 points of
-real effect arriving as 1.4, because `larder` and `band` write the same column backwards. It still
-clears the floor on five seeds and it does not on three, which is the definition of a number not to
-enforce on. Hence a controlled arm rather than a better column; the long version is four paragraphs
-up.
+**The upkeep axis is real, and the grid column measuring it is not the axis.** A free settler's day
+runs 30.0 % → 33.3 % → 36.0 % across the grid; held alone in the controlled arm, with threat and
+stores and seeds all pinned, the same three dials read 30.8 % → 35.1 % → 36.6 %. Both are monotone
+and the two disagree about where the *step* is — the grid puts 3.3 points between calm and settler
+where the arm puts 4.3, and 2.7 points between settler and hard where the arm puts 1.5. That is
+`larder` and `band` writing the same column from the other side, and on the thirty-day grid the
+discrepancy pointed the other way, which is the whole argument for not enforcing on the column. The
+enforced promise reads off the arm; the long version is four paragraphs up.
 
-**Nine of fifteen runs had a settler starve beside a stocked larder.** Seed 424242 on the quiet
-valley put a settler at 0.00 food with 20 days of meals in store and nobody hurt all run. That is a
-feeding or hauling failure and it has nothing to do with difficulty — it happens on all three
-settings, which is exactly why it is not hung on a difficulty principle. The first version of that
-check was: it asserted "nobody starves on calm or settler", broke on five runs, and named difficulty
-as the culprit for a bug in the food economy. Worse, by exempting harsh it hid four more instances.
-It is now an open finding that prints the runs and does not claim the cause.
+**Six of fifteen runs had a settler starve beside a stocked larder.** Seed 1312 on the quiet valley
+put a settler at 0.02 food with 19 days of meals in store; seed 424242 on Settler hit 0.00 with 16
+days in store. That is a feeding or hauling failure and it has nothing to do with difficulty — it
+happens on all three settings, which is exactly why it is not hung on a difficulty principle. The
+first version of that check asserted "nobody starves on calm or settler", broke on five runs, and
+named difficulty as the culprit for a bug in the food economy. Worse, by exempting harsh it hid four
+more instances. It is now an open finding that prints the runs and does not claim the cause. Sixty
+days did not move it: the same six-in-fifteen rate came back on the longer grid.
 
 **The top of the escalation ladder is content nobody has ever been shown.** The highest rung reached
-anywhere on the grid is 2 of 4, and harsh averages rung 0.6 against calm's 1.0 — *below* it. The
-ladder is fed by `unbloodied`, a streak of fights that end with nobody on the grass, and Hard
-country cannot hold that streak long enough to climb: it is knocked back to zero by the very
-casualties that make it hard. So the rungs are reachable in principle and, on the setting whose
-whole promise is escalation, unreachable in practice. This is open rather than enforced because the
-fix is a design choice — shorten the ladder, or feed it something other than a streak the hard
-setting is built to break — and the grid's job was to find it, not to make it.
+anywhere on the grid is 3 of 4, on one calm map, and harsh reads rung **0** on all five maps for all
+sixty days — a flat zero on the setting whose entire promise is escalation. The ladder is fed by
+`unbloodied`, a streak of fights that end with nobody on the grass, and Hard country cannot hold
+that streak for a moment: it is knocked back to zero by the very casualties that make it hard. So
+the rungs are reachable in principle and, exactly where they are supposed to matter, unreachable in
+practice. Doubling the grid to sixty days made this *worse*, not better, which is the useful part —
+more time is not the missing ingredient. This is open rather than enforced because the fix is a
+design choice — shorten the ladder, or feed it something other than a streak the hard setting is
+built to break — and the grid's job was to find it, not to make it.
 
 ## The only part of the storyteller that looks at the colony
 
@@ -671,7 +757,7 @@ Fixing the shape then invalidated every number defined against the old one, and 
 remembering: **changing a scale is not done until you have re-measured everything that reads it.** Ninety
 days of three colonies were run again afterwards and the best bond any pair ever reached was 74, 80 and
 74 — against a pairing threshold of 80, so the number of couples formed was zero on all three seeds. The
-fix had quietly deleted the entire partner system, and nothing failed: every test in `tests/partners.ts`
+fix had quietly deleted the entire partner system, and nothing failed: every test in `tests/partners.test.ts`
 sets its own bonds, so all 29 stayed green while the feature became unreachable in play. A test that
 constructs the state it asserts on cannot tell you whether the game ever produces that state.
 `PAIR_BOND` is now 70, read off the measured band the top bonds actually settle into.
@@ -808,12 +894,11 @@ the harness can produce is not scored as the worst.
 
 That separation is what makes an end game possible at all: the founding is already a milestone the
 colony survives rather than a stop, so there is somewhere to put a second half. What there is not yet
-is anything *in* that second half. Played out to sixty days, the founding lands on day 25 in the quiet
-valley and the research tree runs dry on day 37 — twenty-three days at the end of that run with nothing
-left to choose. (`trade.ts` still says in its own opening paragraph that the tree empties on day
-twenty-one. That sentence is older than the tree it describes; the long runs measured 37, 43, 45 and
-56.) `ENDGAME.md` is the plan for what happens after the founding, and the measurements that say it is
-needed.
+is anything *in* that second half. Played out to sixty days, the founding lands between day 23 and day
+40 on the quiet valley and the research tree runs dry on day 37 — twenty-three days at the end of that
+run with nothing left to choose. Across the long runs the tree emptied on days 37, 43, 45 and 56, and
+after that the colony is a going concern with no next thing to want. [ENDGAME.md](ENDGAME.md) is the
+plan for what happens after the founding, and the measurements that say it is needed.
 
 ## A cable is not a footpath
 

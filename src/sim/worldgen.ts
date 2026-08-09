@@ -78,7 +78,7 @@ export const HOME_Y = Math.floor(MAP_H / 2);
 /** The map's own radius, in cells, from the hearth to the nearest border. */
 const MAP_R = Math.min(MAP_W, MAP_H) / 2;
 
-/** How much of the map is kept clear of noise-generated rock. 18 cells at 64×64. */
+/** How much of the map is kept clear of noise-generated rock. 54 cells at 192×192. */
 const OPEN_RADIUS = MAP_R * 0.5625;
 
 function terrainIdx(t: Terrain): number {
@@ -283,8 +283,8 @@ function clearTree(world: World, i: number): void {
  * that failure surfaces days later as a settler who cannot reach the far ore. So
  * the lake is checked rather than trusted: flood-fill from the hearth before,
  * fill again after, and unless the only cells lost are the ones now underwater,
- * the lake is drained and the next site tried. Ten tries, and then the map simply
- * has no lake — which is a fine map, and better than a broken one.
+ * the lake is drained and the next site tried. `LAKE_TRIES` attempts, and then
+ * the map simply has no lake — which is a fine map, and better than a broken one.
  */
 /**
  * How much bigger the lake is than the one tuned on the 96-wide valley.

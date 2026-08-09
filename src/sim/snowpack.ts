@@ -8,10 +8,10 @@
  * reading the manager camera can tell what month it is without looking at the
  * clock.
  *
- * One number for the whole map, not nine thousand.
+ * One number for the whole map, not thirty-seven thousand.
  *
  * A per-cell depth field would let you plough a path and leave the rest white,
- * which sounds better until you price it: it is 9216 more floats in every save,
+ * which sounds better until you price it: it is 36,864 more floats in every save,
  * a per-cell write every tick, and a new chore for a colony that already has
  * more jobs than settlers. A single depth buys the whole readable effect — the
  * valley goes white, the drifts slow everyone down, the thaw takes it away —

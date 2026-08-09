@@ -249,11 +249,11 @@ describe('the difference between watching and playing', () => {
 /**
  * What is left to do once there is nothing left to do.
  *
- * Research runs dry around day fifty-five — `res 15` from day forty-five to day
- * one hundred and twenty on seed 20260729 — and the charter is usually founded
- * before that. So a colony that plays well arrives at a blank panel with seventy
- * days still to run, at the exact moment it finally has the settlers and the
- * steel to be ambitious. The second half of the list is the answer, and the thing
+ * Research runs dry between day 37 and day 56 depending on the seed — day 37 on
+ * the quiet valley, and `res 15` flat from there to the end of a hundred-day
+ * charter — and the charter is usually founded before that. So a colony that
+ * plays well arrives at a blank panel with most of the run still to go, at the
+ * exact moment it finally has the settlers and the steel to be ambitious. The second half of the list is the answer, and the thing
  * worth pinning is the gate: it must be invisible before the founding and whole
  * afterwards, in all three of the places that read the list.
  */

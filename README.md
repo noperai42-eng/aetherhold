@@ -7,6 +7,53 @@ instant and the world never disagrees with itself.
 
 Original setting and art (all geometry is generated in code). No third-party assets.
 
+**The other four documents.** This file is what the game *is* and why each system earns its
+place. [ARCHITECTURE.md](ARCHITECTURE.md) is how it is built.
+[PLAYTEST.md](PLAYTEST.md) is the hands-on script — fifty numbered things to go and try.
+[ACCEPTANCE.md](ACCEPTANCE.md) is what has been checked, by a machine or by a human.
+[ENDGAME.md](ENDGAME.md) is the plan for what the game becomes after the founding.
+
+## Contents
+
+**Playing it** — [Run it](#run-it) · [Controls](#controls) · [The screen](#the-screen) ·
+[What to do next](#what-to-do-next) · [The Steward](#the-steward) ·
+[Winning](#winning) · [Pickies](#pickies)
+
+**Building and keeping a place** — [Breaking ground](#breaking-ground) ·
+[Laying a floor](#laying-a-floor) · [Warmth](#warmth) · [Power](#power) ·
+[Somewhere worth living](#somewhere-worth-living) ·
+[Rebuilding what you lose](#rebuilding-what-you-lose) ·
+[Standing problems](#standing-problems) ·
+[Where a hauler puts it down](#where-a-hauler-puts-it-down) · [Fetching](#fetching)
+
+**Feeding it** — [Food goes off](#food-goes-off) · [The lake feeds you](#the-lake-feeds-you) ·
+[The moor eats before you do](#the-moor-eats-before-you-do) ·
+[The wood grows back](#the-wood-grows-back) · [Keeping animals](#keeping-animals) ·
+[The one you keep](#the-one-you-keep) · [What comes for the herd](#what-comes-for-the-herd) ·
+[The pen that holds](#the-pen-that-holds)
+
+**The valley itself** — [The year](#the-year) · [The lake](#the-lake) ·
+[The lake freezes](#the-lake-freezes) ·
+[The third floor goes over the water](#the-third-floor-goes-over-the-water) ·
+[The ground you make expensive](#the-ground-you-make-expensive) ·
+[The dark part of the map](#the-dark-part-of-the-map) ·
+[The moor without you in it](#the-moor-without-you-in-it)
+
+**Trouble** — [What the raid does about your defences](#what-the-raid-does-about-your-defences) ·
+[The Ashbound learn](#the-ashbound-learn) ·
+[When the fire reaches you](#when-the-fire-reaches-you) · [Falling ill](#falling-ill) ·
+[Prisoners](#prisoners)
+
+**The people** — [Morale](#morale) · [Who your settlers are](#who-your-settlers-are) ·
+[Who they get on with](#who-they-get-on-with) · [An evening off](#an-evening-off) ·
+[Burying them](#burying-them)
+
+**Getting ahead** — [Research](#research) · [Trade](#trade) · [The road](#the-road)
+
+**How it is kept honest** — [Does the game ever actually do this?](#does-the-game-ever-actually-do-this) ·
+[How the two views stay honest](#how-the-two-views-stay-honest) ·
+[What is in the box](#what-is-in-the-box)
+
 ## Run it
 
 ```bash
@@ -26,8 +73,10 @@ progress. `npm run ship` rebuilds; players get the new build on their next reloa
 mid-session. 5062 stays 5062 on purpose — saves live in `localStorage`, which is keyed by
 origin, so changing the players' URL would throw their colonies away.
 
-Other scripts: `npm run build` (typecheck + production bundle), `npm test` (1156 tests),
-`npm run icons` (redraw the home-screen icons).
+Other scripts: `npm run build` (typecheck + production bundle), `npm test` (1,585 tests),
+`npm run icons` (redraw the home-screen icons). The opt-in gates — `sweep`, `balance`,
+`eco`, `live`, `pool` — are described under
+[Does the game ever actually do this?](#does-the-game-ever-actually-do-this)
 
 Saves live in `localStorage`, which the browser files under the exact origin they were
 made at — so a colony does not follow you to a different port, host or device. The
@@ -138,25 +187,40 @@ research work type will sit down at the bench and grind out points; the top bar 
 progress pip so you can watch it move without opening the panel. Switching project throws
 away the progress on the old one.
 
+Fifteen projects, 249,000 points end to end.
+
 | Project | Costs | Needs | Gives |
 | --- | --- | --- | --- |
 | Toolmaking | 6000 | — | Half again as much wood per tree and steel per rock face |
+| Tanning | 7000 | — | Turns hides into leather — jerkins, toolbelts and a doctor's bag |
 | Field medicine | 9000 | — | Wounds close far faster and medicine goes further |
-| Preserved rations | 11000 | — | A cooked meal fills a settler up by a third more |
+| Preserved rations | 11000 | — | A cooked meal fills a settler up by a third more, and keeps twice as long |
 | Stonecutting | 13000 | Toolmaking | Unlocks the stone wall — three times the punishment of timber, and it will not burn |
+| Apprenticeship | 14000 | Toolmaking | Everybody here learns a third faster, at everything |
 | Raised soil beds | 15000 | Toolmaking | The plot ripens half again as fast |
+| Furriery | 15000 | Tanning | Unlocks the fur parka, which is most of a winter night |
 | Rifling | 16000 | Toolmaking | Your settlers shoot like veterans without the years |
 | Cartography | 17000 | Toolmaking | Scouts read a site in half the time |
 | Machining | 22000 | Stonecutting | A rifle or a course of medicine costs a third less |
 | Autoloaders | 24000 | Rifling | Nearly twice the rate of fire from a turret |
+| Plateworks | 24000 | Machining | Unlocks steel plate: two of every five hits stopped outright |
+| Solar cells | 26000 | Machining | Unlocks the solar panel: 200 W of daylight for no wood at all |
 | Composite plating | 30000 | Autoloaders | Everything you build takes a third less punishment |
 
 A colony that can spare somebody finds about four to five thousand points in a day, so the
 first project lands in the opening week and the last is a month's work. Nothing you can
-already do is gated behind the tree — the stone wall is the only building it holds back,
-and it appears in the build bar the moment the project lands, with no reload. Plating is
-applied where the damage lands rather than to the blueprint, so walls that were already
-standing when it finished get the benefit too.
+already do is gated behind the tree — the stone wall, the solar panel and the steel plate
+are the only things it holds back, and each appears in the build bar or the bench the moment
+its project lands, with no reload. Plating is applied where the damage lands rather than to
+the blueprint, so walls that were already standing when it finished get the benefit too.
+
+Two of the fifteen are worth taking early or not at all. **Apprenticeship** makes everyone
+learn faster, which on day five is most of a second doctor by the end of the month and on
+day forty is nothing whatsoever — it is deliberately the one project whose value is entirely
+in *when* you take it. **Tanning** sits at the root with no prerequisite for the opposite
+reason: it is the only line on the tree that makes a *settler* better off rather than the
+colony, and a place that has hunted anything at all should be able to get its people into
+coats without first inventing the pickaxe.
 
 ## Morale
 
@@ -419,10 +483,11 @@ paving is still yours.
 
 ### And then seven more, once you have founded the place
 
-The curriculum ends at day twenty, and the research tree runs dry around day fifty-five —
-measured on seed 20260729, every one of the fifteen projects finished by day forty-five with
-seventy-five days still to run. A colony that plays well therefore arrives at an empty panel
-at the exact moment it finally has the settlers and the steel to be ambitious.
+The curriculum ends at day twenty, and the research tree runs dry not long after — measured
+across the long runs, the last of the fifteen projects lands on day 37, 43, 45 or 56
+depending on the seed, with the rest of a hundred-day charter still to play. A colony that
+plays well therefore arrives at an empty panel at the exact moment it finally has the
+settlers and the steel to be ambitious.
 
 So there is a second half, and it unlocks on the founding: rebuild in stone, a rifle in every
 hand, a hundred meals laid in, a hundred squares paved, the whole research tree, a call paid
@@ -635,7 +700,8 @@ it — so a settler *reroutes* onto your road when the short way goes under, and
 you laid in autumn changes where people walk without anybody re-planning anything. The
 settlers and the body you are possessing ask one function for how fast the ground is, so
 the drift that slows your haulers slows you, on the same cell. One global depth rather than
-nine thousand floats, which is why it costs nothing in the save file and nothing per tick.
+thirty-seven thousand floats, which is why it costs nothing in the save file and nothing per
+tick.
 
 And it has depth you can see. The pack lifts the ground it lies on by about thirteen
 centimetres — far too shallow to stand on, and enough to change everything about how the
@@ -1290,6 +1356,18 @@ game promises and never delivered is named in the failure. Anything that only st
 happening in the back half of the run fails too, because a feature that first fires on day
 eighty-eight is one balance change away from never firing, and nothing else would notice.
 
+Four more gates run the same way — off by default, each behind its own environment
+variable, because none of them finishes fast enough to sit in `npm test`. `npm run sweep`
+plays thirty days on every seed and difficulty and asks whether the colony was still
+standing. `npm run eco` plays a thousand days of empty moor with nobody in it, which is
+the only way to catch a forest that quietly eats itself or a herd that never recovers.
+`npm run balance` judges the grid against named principles — *nobody starves beside a full
+pantry*, *the escalation ladder is climbable to the top* — using numbers that `npm run
+measure` wrote earlier, and refuses to score them if the sim has changed underneath.
+`npm run pool` checks that the worker-thread grid gives the same answer as the serial one,
+which is the property that makes the fast path trustworthy. See
+[ACCEPTANCE.md](ACCEPTANCE.md) for the last run of each.
+
 ## Trade
 
 Every five days or so a pedlar walks out of the treeline with a string of pack-beasts,
@@ -1314,9 +1392,9 @@ Two things are true of every price on that board:
   caravans and runs a max-product search over every exchange rate any of them ever offered
   to prove it.
 
-The reason it exists: a colony that has researched everything by day twenty-one and built
-every turret it wants ends up sitting on five hundred steel with nothing on the board that
-wants it. A game with nothing left to decide is over whether or not the settlers are still
+The reason it exists: a colony that has emptied the research tree — somewhere between day 37
+and day 56 on the measured runs — and built every turret it wants ends up sitting on five
+hundred steel with nothing on the board that wants it. A game with nothing left to decide is over whether or not the settlers are still
 walking about. Trade turns a surplus back into a choice — medicine before the next raid,
 another pair of hands, or a winter's food you did not have to grow.
 
@@ -1657,8 +1735,9 @@ door.
 It was 96 across, then 128, and it is 192 now — four times the ground it started with. Almost
 none of that lands on the homestead. The cabin, the first ore, the first trees and the walk to
 the water are all measured out from the middle and are exactly where they were; what grows is
-the rim. There are more landmarks out there (one per five hundred cells, so seventy-three rather
-than eighteen), more deep-ore country past the near ring, and more animals — the herd cap is a
+the rim. There are more landmarks out there — one site per 512 cells, held constant as the map
+grew, so seventy-two of them rather than the eighteen the 96-wide valley had — more deep-ore
+country past the near ring, and more animals: the herd cap is a
 density now rather than a flat fourteen, so a bigger valley carries a bigger population without
 the moor round the fence getting any busier. The point of the extra ground is that the far
 corners are genuinely far: a scout sent to the north rim is gone for a while, and that is the
@@ -1682,8 +1761,8 @@ Three rules, and the first is the one that matters:
 
 The haze is a volume rather than a dark tile, and it is translucent rather than black. Both
 are deliberate: a flat tile leaves lit rock tops and pine crowns floating over a black
-field, which reads as a rendering fault, and opaque black would delete the eighteen site
-pins that are the only thing telling a new player there is any reason to leave the yard. It
+field, which reads as a rendering fault, and opaque black would delete the site pins that
+are the only thing telling a new player there is any reason to leave the yard. It
 takes most of its colour from the sky, so the edge of the known world and the edge of the
 weather look like the same kind of thing.
 
@@ -1784,33 +1863,53 @@ standing now end with sixty-six.
 
 ## What is in the box
 
-192×192 map, an open-topped starter cabin, three settlers with food/rest/recreation/mood,
-thirteen work types with per-settler priorities, hauling and stockpile filters, blueprints
-for wall/stone wall/fence/door/bed/table/stove/cooler/campfire/heater/workbench/research bench/
-turret/sandbag/deadfall trap/lamp/generator/conduit/battery/solar panel, a
-ten-project research tree, morale that scales how fast everyone works and can stop a
-settler dead until you fix what is wrong,
-a map that starts under haze and is drawn as the colony walks it and a minimap of the
-whole valley that carries across both views,
-scouting parties that walk out to the edges of the map and come
-back with salvage, caravans that turn a surplus back into a choice, an ambient bed that
-follows the weather and the hour, cooking, mining,
-chopping, doctoring,
-firefighting, a colony that puts back what fire and raiders take off it, a day/night cycle that lights both views, weather that actually does
-something (rain ripens crops and drowns fires, fog and storms spoil everyone's aim,
-lightning starts fires, and a storm holds the raiders off), a storyteller that sends
-raids wildlife and fires, herds of mossbacks and dunhares that graze, bolt when they
-are shot at, and become raw food when a rifleman is sent after them, pens you paint and
-livestock you tame, breed and butcher instead of hunting, ground you break into soil,
-a twenty-day year of four seasons that colours the valley as it turns, stops an outdoor
-plot dead through winter and makes a heated room worth building, rooms that know how well
-they seal and hold their own air, campfires and heaters and coolers that fight the weather
-inside them, food that ages at
-the temperature of the cell it sits on and a cold store that stops it, cold that costs a
-settler their mood and their immune system rather than their hit points, a power grid that
-runs through your walls and sheds the lamps before it ever sheds a turret, settlers who
-form friendships and feuds with whoever they work beside and grieve accordingly, drafting
-with ranged and melee combat, save/load to localStorage, and three quality presets.
+**The valley.** A 192×192 map — thirty-seven thousand cells — of grass, soil, sand,
+stone, rock, forest and one lake, generated from a seed and identical every time that
+seed is used. It starts under haze and is drawn as the colony walks it, with a minimap
+of the whole valley that carries across both views. Seventy-two landmarks are scattered
+through it, one per five hundred cells, for scouts to walk out to. A twenty-day year of
+four seasons colours it as it turns, stops an outdoor plot dead through winter, and makes
+a heated room worth building; snow lies for a quarter of it and comes off the ground only
+where somebody laid a floor.
 
-See `ARCHITECTURE.md` for the layout, `PLAYTEST.md` for the tour, and `ACCEPTANCE.md` for
-what the build promised and which test holds each promise down.
+**The people.** Three settlers to start, with food, rest, recreation and mood, eight
+skills that improve by doing, fourteen work types on a per-settler priority grid, and
+friendships and feuds formed with whoever they work beside — and grieved accordingly.
+Morale scales how fast everyone works and can stop a settler dead until you fix what is
+wrong. They can be drafted, and fight at range or in reach.
+
+**Building.** Twenty-seven blueprints — wall, stone wall, fence, door, bed, hospital bed,
+prison bunk, table, games table, statue, grave, cook stove, workbench, research bench,
+fishing stage, cooler, campfire, heater, lamp, turret, sandbags, deadfall trap, wood
+generator, watermill, solar panel, power conduit and battery bank — plus three floors
+(plank, paving and a bridge that decks across open water). Rooms know how well they seal
+and hold their own air; a power grid runs through your walls and sheds the lamps before
+it ever sheds a turret.
+
+**Feeding it.** Ground you break into soil and sow, berries picked off wild bushes,
+herds of mossbacks and dunhares that graze, bolt when they are shot at, and become raw
+food when a rifleman is sent after them, pens you paint and livestock you tame, breed and
+butcher instead of hunting, fish taken off a stage on the shore, and cooking that turns
+any of it into meals. Food ages at the temperature of the cell it sits on, and a cold
+store stops it.
+
+**Trouble.** A storyteller that sends raids, wildlife and fires on three difficulties, on
+a curve that reads what the colony can take. Weather that actually does something — rain
+ripens crops and drowns fires, fog and storms spoil everyone's aim, lightning starts
+fires, and a storm holds the raiders off. Cold that costs a settler their mood and their
+immune system rather than their hit points, illness that has to be doctored, and a colony
+that puts back what fire and raiders take off it.
+
+**Getting ahead.** A fifteen-project research tree, 249,000 points end to end. Scouting
+parties that walk out to the edges of the map and come back with salvage. Caravans that
+turn a surplus back into a choice.
+
+**The frame.** A fixed twenty-tick second and a two-hundred-and-forty-second day. A
+day/night cycle that lights both views, an ambient bed that follows the weather and the
+hour, save/load to `localStorage` with a text backup you can carry anywhere, and three
+quality presets.
+
+See [ARCHITECTURE.md](ARCHITECTURE.md) for the layout, [PLAYTEST.md](PLAYTEST.md) for the
+tour, [ACCEPTANCE.md](ACCEPTANCE.md) for what the build promised and which test holds each
+promise down, and [ENDGAME.md](ENDGAME.md) for what is still missing at the far end of a
+run.

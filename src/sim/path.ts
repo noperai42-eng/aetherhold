@@ -68,14 +68,15 @@ class MinHeap {
  *
  * A* is asked "can this settler get to that sack" dozens of times per decision,
  * and each of those used to allocate three map-sized typed arrays and fill two of
- * them — thirty-six kilobytes and eight thousand writes before a single cell was
- * expanded. The arrays are reused instead, and `seen` holds a run number rather
+ * them — on today's map that is 432 kilobytes and seventy thousand writes before a
+ * single cell was expanded. The arrays are reused instead, and `seen` holds a run number rather
  * than a flag so a fresh search costs one integer increment instead of a wipe.
  *
  * The sim is single-threaded and `findPath` never yields, so there is exactly one
  * search in flight at a time and sharing this is safe. The buffers grow to fit
- * the biggest map they have been asked about and never shrink; one 64×64 map is
- * thirty-six kilobytes held for the life of the tab.
+ * the biggest map they have been asked about and never shrink; one 192×192 map is
+ * three Float32/Int32 arrays of 36,864 entries — 432 kilobytes held for the life
+ * of the tab.
  */
 let gScore = new Float32Array(0);
 let came = new Int32Array(0);
