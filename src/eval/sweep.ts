@@ -17,7 +17,11 @@
 
 import { runColony, type EvalReport, type Verdict } from './run';
 import { DIFFICULTIES, DIFFICULTY_ORDER } from '../sim/difficulty';
+import { RESEARCH } from '../sim/research';
 import type { Difficulty } from '../sim/types';
+
+/** Every project there is. The number a finished bench is finished against. */
+const TREE_SIZE = Object.keys(RESEARCH).length;
 
 /**
  * One colony's life, flattened. A `DaySnapshot` is a moment and this is the
@@ -87,6 +91,34 @@ export interface RunMeasure {
    */
   tripsByRing: number[];
   spareDays: number;
+  /**
+   * Projects finished by the last day, and how many days the colony stood at a
+   * bench with nothing left on it.
+   *
+   * The second is the one that matters and the first is there so it can be read.
+   * A tree that runs dry on day forty and a tree that is one project short on day
+   * sixty both end the run with the bench unused, and only the count of finished
+   * projects tells them apart.
+   */
+  tech: number;
+  emptyTreeDays: number;
+  /**
+   * The steel stock at the end, and the largest it ever fell from a high-water
+   * mark — the two halves of "is this a resource or a scoreboard".
+   *
+   * A stock that only ever climbs is a resource with nothing to buy. Measured as
+   * a drawdown rather than a slope because a material cost is a step, not a
+   * gradient: a project that costs three hundred steel takes three hundred out of
+   * the pile on the day it is started, whenever that day happens to be, and a
+   * check that read the closing fortnight's growth instead would call a colony
+   * that spent its pile on day forty and mined a new one broken.
+   *
+   * Sampled once a day, so a purchase that is mined back before the day rolls
+   * over is invisible here. That is the right blindness for this question: a
+   * cost the colony absorbs inside a day is not a cost it had to plan around.
+   */
+  endSteel: number;
+  steelDrawdown: number;
 }
 
 export interface SweepOptions {
@@ -324,6 +356,15 @@ export function measure(r: EvalReport): RunMeasure {
   const last = r.snapshots[r.snapshots.length - 1];
   const daysLived = r.snapshots.length;
   const firstThreat = r.snapshots.find((s) => s.threats > 0);
+  // The high-water mark walks forward with the column, so the fall recorded is
+  // always a fall from a peak the colony had actually reached — not from the
+  // peak it would go on to reach later.
+  let peakSteel = 0;
+  let steelDrawdown = 0;
+  for (const s of r.snapshots) {
+    if (s.steel > peakSteel) peakSteel = s.steel;
+    if (peakSteel - s.steel > steelDrawdown) steelDrawdown = peakSteel - s.steel;
+  }
   return {
     seed: r.seed,
     difficulty: r.difficulty,
@@ -347,6 +388,12 @@ export function measure(r: EvalReport): RunMeasure {
     ringOpenedOn: r.ringOpenedOn,
     tripsByRing: r.tripsByRing,
     spareDays: r.spareDays,
+    tech: last?.tech ?? 0,
+    // Counted off the whole tree rather than the display list, because the panel
+    // is allowed to leave a project out of its order and the bench is not.
+    emptyTreeDays: r.snapshots.filter((s) => s.tech >= TREE_SIZE).length,
+    endSteel: last?.steel ?? 0,
+    steelDrawdown,
   };
 }
 
@@ -392,7 +439,7 @@ export function armedShareOf(rs: RunMeasure[]): number {
 /** A fixed-width grid, because a balance pass is read by eye. */
 export function formatSweep(sweep: Sweep): string {
   const cols =
-    'setting        seed  verdict     days  1st  threats  band  downs  buried  alive  kills  rung  worstFood  fed  upkeep  foodDays  raiders  rifles     trips  spare';
+    'setting        seed  verdict     days  1st  threats  band  downs  buried  alive  kills  rung  worstFood  fed  upkeep  foodDays  raiders  rifles     trips  spare   tree  idle   steel  spent';
   const lines: string[] = [`balance grid · ${sweep.days} days · ${sweep.seeds.length} seeds`, cols];
   for (const d of sweep.difficulties) {
     const rs = on(sweep, d);
@@ -419,6 +466,10 @@ export function formatSweep(sweep: Sweep): string {
           pad(`${Math.round(m.armedShare * 100)}%`, 8),
           pad((m.tripsByRing ?? []).join('/') || '—', 10),
           pad(`${Math.round((m.spareDays / Math.max(1, m.daysLived)) * 100)}%`, 7),
+          pad(`${m.tech ?? 0}/${TREE_SIZE}`, 7),
+          pad(m.emptyTreeDays ?? 0, 6),
+          pad(m.endSteel ?? 0, 8),
+          pad(m.steelDrawdown ?? 0, 7),
         ].join(''),
       );
     }
@@ -444,6 +495,10 @@ export function formatSweep(sweep: Sweep): string {
         pad(`${Math.round(armedShareOf(rs) * 100)}%`, 8),
         pad([0, 1, 2].map((r) => avg(rs, (m) => m.tripsByRing?.[r] ?? 0).toFixed(1)).join('/'), 10),
         pad(`${Math.round(avg(rs, (m) => m.spareDays / Math.max(1, m.daysLived)) * 100)}%`, 7),
+        pad(`${avg(rs, (m) => m.tech ?? 0).toFixed(1)}/${TREE_SIZE}`, 7),
+        pad(avg(rs, (m) => m.emptyTreeDays ?? 0).toFixed(1), 6),
+        pad(avg(rs, (m) => m.endSteel ?? 0).toFixed(0), 8),
+        pad(avg(rs, (m) => m.steelDrawdown ?? 0).toFixed(0), 7),
       ].join(''),
       '',
     );

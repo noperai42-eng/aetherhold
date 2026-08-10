@@ -26,11 +26,18 @@ Last run — 2026-08-09:
   gated describe, which is why the file count reads 89 and not 91.
 - `npm run eval` — 11 tests green across five seeds, no collapses.
 - `npm run measure -- --days 60 --past-founding` then `npm run balance` — 4 tests green.
-  24 colonies in 1,011 s. All twelve enforced principles hold; the three open ones report
+  24 colonies in 959 s. All twelve enforced principles hold; the five open ones report
   without asserting, and one of them (*the valley can still bury somebody*) holds too.
-  The two that do not are the standing findings: *nobody starves beside a full pantry*
-  (8 of 15 runs) and *the escalation ladder is climbable to the top* (highest rung
-  reached anywhere was 3 of 4, and Hard country never leaves rung 0).
+  The four that do not are the standing findings: *nobody starves beside a full pantry*
+  (8 of 15 runs, every one of them bottoming out at exactly 0.00 while the colony held
+  twelve to twenty-two days of food), *the escalation ladder is climbable to the top*
+  (highest rung reached anywhere was 3 of 4, and Hard country never leaves rung 0), and
+  the two written for stage 2 of `ENDGAME.md` before the feature that is meant to close
+  them: *the tree is not empty at day sixty* (**11 of the 14 full runs finished the whole
+  research tree**, nine of them with a fortnight or more left to play — 21 to 26 idle days
+  on every quiet-valley map) and *the surplus finds a buyer* (4 of the 10 runs that ended
+  rich never spent the pile down by a quarter; the largest fall is roughly constant at
+  183–362 steel whether the pile ends at 369 or 1,337).
   The last two enforced are what stage one of `ENDGAME.md` was for, and they are a pair
   on purpose. *The far ring is earned* — shut for all fifteen runs through day 7, and
   5 of the 10 runs below Hard country had it open by day 42, the earliest on day 17.

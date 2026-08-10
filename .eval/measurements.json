@@ -1,7 +1,7 @@
 {
-  "fingerprint": "00b98702",
-  "taken": "2026-08-10T04:52:36.495Z",
-  "seconds": 1010.725,
+  "fingerprint": "111c4bbe",
+  "taken": "2026-08-10T15:46:09.852Z",
+  "seconds": 958.697,
   "steward": false,
   "sweep": {
     "seeds": [
@@ -49,7 +49,11 @@
           2,
           0
         ],
-        "spareDays": 40
+        "spareDays": 40,
+        "tech": 15,
+        "emptyTreeDays": 24,
+        "endSteel": 1078,
+        "steelDrawdown": 334
       },
       {
         "seed": 7,
@@ -81,7 +85,11 @@
           2,
           0
         ],
-        "spareDays": 39
+        "spareDays": 39,
+        "tech": 15,
+        "emptyTreeDays": 21,
+        "endSteel": 940,
+        "steelDrawdown": 362
       },
       {
         "seed": 1312,
@@ -113,7 +121,11 @@
           4,
           0
         ],
-        "spareDays": 41
+        "spareDays": 41,
+        "tech": 15,
+        "emptyTreeDays": 21,
+        "endSteel": 952,
+        "steelDrawdown": 195
       },
       {
         "seed": 99001,
@@ -145,7 +157,11 @@
           2,
           1
         ],
-        "spareDays": 45
+        "spareDays": 45,
+        "tech": 15,
+        "emptyTreeDays": 22,
+        "endSteel": 1337,
+        "steelDrawdown": 204
       },
       {
         "seed": 424242,
@@ -177,7 +193,11 @@
           4,
           0
         ],
-        "spareDays": 41
+        "spareDays": 41,
+        "tech": 15,
+        "emptyTreeDays": 26,
+        "endSteel": 888,
+        "steelDrawdown": 205
       },
       {
         "seed": 20260729,
@@ -209,7 +229,11 @@
           2,
           0
         ],
-        "spareDays": 37
+        "spareDays": 37,
+        "tech": 15,
+        "emptyTreeDays": 16,
+        "endSteel": 658,
+        "steelDrawdown": 340
       },
       {
         "seed": 7,
@@ -241,7 +265,11 @@
           2,
           0
         ],
-        "spareDays": 22
+        "spareDays": 22,
+        "tech": 15,
+        "emptyTreeDays": 15,
+        "endSteel": 369,
+        "steelDrawdown": 203
       },
       {
         "seed": 1312,
@@ -273,7 +301,11 @@
           4,
           0
         ],
-        "spareDays": 31
+        "spareDays": 31,
+        "tech": 15,
+        "emptyTreeDays": 17,
+        "endSteel": 818,
+        "steelDrawdown": 183
       },
       {
         "seed": 99001,
@@ -305,7 +337,11 @@
           3,
           1
         ],
-        "spareDays": 24
+        "spareDays": 24,
+        "tech": 15,
+        "emptyTreeDays": 16,
+        "endSteel": 859,
+        "steelDrawdown": 250
       },
       {
         "seed": 424242,
@@ -337,7 +373,11 @@
           2,
           0
         ],
-        "spareDays": 16
+        "spareDays": 16,
+        "tech": 14,
+        "emptyTreeDays": 0,
+        "endSteel": 173,
+        "steelDrawdown": 239
       },
       {
         "seed": 20260729,
@@ -369,7 +409,11 @@
           0,
           0
         ],
-        "spareDays": 1
+        "spareDays": 1,
+        "tech": 2,
+        "emptyTreeDays": 0,
+        "endSteel": 66,
+        "steelDrawdown": 201
       },
       {
         "seed": 7,
@@ -401,7 +445,11 @@
           0,
           0
         ],
-        "spareDays": 7
+        "spareDays": 7,
+        "tech": 15,
+        "emptyTreeDays": 3,
+        "endSteel": 210,
+        "steelDrawdown": 276
       },
       {
         "seed": 1312,
@@ -433,7 +481,11 @@
           1,
           0
         ],
-        "spareDays": 21
+        "spareDays": 21,
+        "tech": 12,
+        "emptyTreeDays": 0,
+        "endSteel": 492,
+        "steelDrawdown": 196
       },
       {
         "seed": 99001,
@@ -465,7 +517,11 @@
           1,
           0
         ],
-        "spareDays": 0
+        "spareDays": 0,
+        "tech": 7,
+        "emptyTreeDays": 0,
+        "endSteel": 78,
+        "steelDrawdown": 75
       },
       {
         "seed": 424242,
@@ -497,7 +553,11 @@
           0,
           0
         ],
-        "spareDays": 1
+        "spareDays": 1,
+        "tech": 9,
+        "emptyTreeDays": 0,
+        "endSteel": 145,
+        "steelDrawdown": 177
       }
     ],
     "arm": [

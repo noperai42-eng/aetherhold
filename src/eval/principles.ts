@@ -86,6 +86,33 @@ const FAR_RING = 2;
 const VOUCH_TRIPS = 2;
 
 /**
+ * The full clock, and what running out of game inside it is allowed to look like.
+ *
+ * Sixty days because that is the grid a person would actually be judged by — the
+ * thirty-day one stops before the second tier is finished on any setting, so it
+ * cannot tell a tree with a month of slack from one with none. A week of idle
+ * bench rather than a day because the last project landing on day fifty-nine is a
+ * tree that fit, and a colony standing at nothing for its final week is one that
+ * has run out of somewhere to go.
+ */
+const DAY_SIXTY = 60;
+const IDLE_WEEK = 7;
+
+/**
+ * What counts as a pile, and what counts as having spent it.
+ *
+ * Three hundred steel is ten turrets, or fifteen walls and a workbench with
+ * change: a colony holding that at the end of a run is not saving up, it has
+ * bought everything the game will sell it. A quarter of that pile is the smallest
+ * fall that means something — the biggest single thing there is to buy today
+ * costs thirty, so a stock of a thousand can absorb every purchase in the game
+ * without ever visibly moving, and a check that accepted a two-per-cent dip would
+ * be measuring the mining rate rather than the demand.
+ */
+const A_PILE = 300;
+const SPENT_SHARE = 0.25;
+
+/**
  * The three settings, kindest first, each reduced to one mean. Means rather
  * than per-seed comparisons because a difficulty dial is a claim about the
  * distribution: one map where Hard country happened to stay quiet is not a
@@ -624,6 +651,111 @@ export const PRINCIPLES: Principle[] = [
           homebound
             .map((m) => `${m.difficulty}/${m.seed} ${(m.tripsByRing ?? []).join('/')} on ${spare(m)}% spare days`)
             .join(', '),
+      };
+    },
+  },
+  {
+    id: 'the-tree-is-not-empty-at-day-sixty',
+    claim:
+      'A colony that plays its whole clock still has a project worth starting. ' +
+      'The bench is a place to go back to, not a list to be finished.',
+    enforced: false,
+    check: (s) => {
+      // Open rather than enforced, and deliberately so: the third tier that is
+      // meant to keep this true has not been built, so asserting it would do
+      // nothing but paint the suite red for a month. It becomes enforced the day
+      // the grid says it holds — which is the point of writing it now, before the
+      // feature, rather than after, when the number to beat could be chosen to
+      // flatter whatever shipped.
+      if (s.days < DAY_SIXTY) {
+        return { verdict: 'untested', detail: `${s.days}-day grid cannot see day ${DAY_SIXTY}` };
+      }
+      // Only the colonies that played the whole clock. A run cut short by a wipe
+      // has an unfinished tree for a reason that has nothing to do with the tree.
+      const full = s.runs.filter((m) => m.daysLived >= s.days);
+      if (full.length === 0) {
+        return { verdict: 'untested', detail: `no run reached day ${s.days}` };
+      }
+      const idle = full.filter((m) => (m.emptyTreeDays ?? 0) >= IDLE_WEEK);
+      const tree = (m: RunMeasure) => `${m.tech ?? 0} projects`;
+      if (idle.length > 0) {
+        return {
+          verdict: 'broken',
+          detail:
+            `${idle.length} of ${full.length} full runs finished the tree with time to spare: ` +
+            idle
+              .map((m) => `${m.difficulty}/${m.seed} idle ${m.emptyTreeDays} days`)
+              .join(', '),
+        };
+      }
+      // The nearest miss is the whole story on a passing run. "Nobody ran out" is
+      // true of a tree with one day of slack and of one with a month, and only
+      // one of those is a tree worth having.
+      const closest = full.reduce((a, m) =>
+        (m.emptyTreeDays ?? 0) > (a.emptyTreeDays ?? 0) ? m : a,
+      );
+      const richest = full.reduce((a, m) => ((m.tech ?? 0) > (a.tech ?? 0) ? m : a));
+      return {
+        verdict: 'holds',
+        detail:
+          `no run of ${full.length} stood at an empty bench for ${IDLE_WEEK} days; ` +
+          `furthest anybody got was ${richest.difficulty}/${richest.seed} at ${tree(richest)}, ` +
+          `longest idle was ${closest.emptyTreeDays ?? 0} days`,
+      };
+    },
+  },
+  {
+    id: 'the-surplus-finds-a-buyer',
+    claim:
+      'Steel is something the colony spends. A run that ends sitting on a pile has been handed ' +
+      'a resource with no demand, and a pile that never once came down is the proof.',
+    enforced: false,
+    check: (s) => {
+      // Open for the same reason as its sibling: the thing that is supposed to
+      // buy the surplus is stage 2's third tier, and it does not exist yet.
+      if (s.days < DAY_SIXTY) {
+        return { verdict: 'untested', detail: `${s.days}-day grid cannot see day ${DAY_SIXTY}` };
+      }
+      const full = s.runs.filter((m) => m.daysLived >= s.days);
+      // Only the colonies that ended rich. Hard country reaches day sixty holding
+      // nothing, and a colony with an empty store has not failed this promise —
+      // it never had a surplus for anyone to buy. Scoping it by wealth rather
+      // than by setting is what keeps the check honest when the settings move:
+      // the question is about piles, not about difficulty.
+      const piled = full.filter((m) => (m.endSteel ?? 0) >= A_PILE);
+      if (piled.length === 0) {
+        return {
+          verdict: 'untested',
+          detail: `no run of ${full.length} ended holding ${A_PILE} steel — nothing to find a buyer for`,
+        };
+      }
+      // A quarter of the ending pile, because that is roughly what a material
+      // gate has to cost to be a decision. Smaller than that and the colony pays
+      // it out of change it was never going to spend, which is the situation this
+      // principle exists to describe rather than a fix for it.
+      const spent = (m: RunMeasure) => (m.steelDrawdown ?? 0) / Math.max(1, m.endSteel ?? 0);
+      const ratchets = piled.filter((m) => spent(m) < SPENT_SHARE);
+      if (ratchets.length > 0) {
+        return {
+          verdict: 'broken',
+          detail:
+            `${ratchets.length} of ${piled.length} runs that ended rich never spent the pile down: ` +
+            ratchets
+              .map(
+                (m) =>
+                  `${m.difficulty}/${m.seed} ended on ${m.endSteel} steel, biggest fall ${m.steelDrawdown}`,
+              )
+              .join(', '),
+        };
+      }
+      const leanest = piled.reduce((a, m) => (spent(m) < spent(a) ? m : a));
+      return {
+        verdict: 'holds',
+        detail:
+          `all ${piled.length} runs that ended above ${A_PILE} steel spent at least ` +
+          `${Math.round(SPENT_SHARE * 100)}% of the pile down at some point; ` +
+          `thinnest was ${leanest.difficulty}/${leanest.seed} at ${Math.round(spent(leanest) * 100)}% ` +
+          `of ${leanest.endSteel}`,
       };
     },
   },

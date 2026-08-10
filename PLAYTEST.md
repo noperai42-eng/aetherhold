@@ -524,6 +524,12 @@ Two things to try to break it with:
   the Steward only ever fills an empty bench. Queue a wall at the same time: everything else
   it does stops dead until your wall is up, but the bench keeps working, because choosing
   what to study costs nothing and takes nobody off your build.
+- **Play past day forty and look at `L` again.** On a quiet valley the tree is finished by
+  about day 37, and the last three weeks of a sixty-day run are spent with a settler standing
+  at a bench with nothing on it. That is a known and measured hole rather than a bug to
+  report — `the-tree-is-not-empty-at-day-sixty` is the check that says so, and stage 2 of
+  `ENDGAME.md` is what fills it. Worth seeing, because it is the clearest thing in the game
+  that says the second half has not been built yet.
 
 Press `Steward: on` to turn it off at any point and the marking stops that second. Anything
 already blueprinted stays — it is your colony's plan now, and it cancels like anything else.

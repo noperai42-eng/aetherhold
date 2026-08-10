@@ -51,6 +51,15 @@ function run(difficulty: Difficulty, over: Partial<RunMeasure> = {}): RunMeasure
     // nothing else, which is what the grid measured before anybody counted
     tripsByRing: [6, 0, 0],
     spareDays: 20,
+    // A colony a fortnight into the second tier, with a working store: the tree
+    // still has somewhere to go and the steel is being spent as fast as it is
+    // dug. Both of the industrial-base principles read a sixty-day grid, so the
+    // thirty-day baseline never reaches them — these are here so a case that
+    // *does* want them only has to say which way it differs.
+    tech: 9,
+    emptyTreeDays: 0,
+    endSteel: 120,
+    steelDrawdown: 60,
     ...over,
   };
 }
@@ -431,6 +440,99 @@ describe('the balance principles, read against grids that are known wrong', () =
       true,
     );
     expect(verdictOf(s, 'the-game-does-not-end-at-the-founding')).toBe('untested');
+  });
+
+  // ── the industrial base, measured before it is built ──────────────────────
+  //
+  // Both of these are open, both of them describe a promise the game does not
+  // keep yet, and both of them are here so that the day it does, the number it
+  // has to beat was written down first.
+
+  it('breaks when a colony finishes the whole tree and stands at the bench for a week', () => {
+    const s = sweep(
+      [run('calm', { seed: 1, daysLived: 60, tech: 15, emptyTreeDays: 19 })],
+      60,
+      healthyArm(),
+      true,
+    );
+    expect(verdictOf(s, 'the-tree-is-not-empty-at-day-sixty')).toBe('broken');
+    expect(detailOf(s, 'the-tree-is-not-empty-at-day-sixty')).toContain('idle 19 days');
+  });
+
+  it('lets the last project land on the second-to-last day', () => {
+    // A tree that fits is not a tree that ran out. The distinction the check has
+    // to make is between slack and none, and a colony that finished on day 59 has
+    // spent its whole run with somewhere to go.
+    const s = sweep(
+      [run('calm', { seed: 1, daysLived: 60, tech: 15, emptyTreeDays: 1 })],
+      60,
+      healthyArm(),
+      true,
+    );
+    expect(verdictOf(s, 'the-tree-is-not-empty-at-day-sixty')).toBe('holds');
+    expect(detailOf(s, 'the-tree-is-not-empty-at-day-sixty')).toContain('longest idle was 1 days');
+  });
+
+  it('does not blame the tree for a colony that was wiped before it could finish', () => {
+    // The run that dies on day fifty-two has an unfinished tree for a reason that
+    // has nothing to do with the tree, and counting it as evidence either way
+    // would make a check about content into a check about survival.
+    const s = sweep(
+      [
+        run('harsh', { seed: 1, daysLived: 52, verdict: 'collapsed', tech: 4 }),
+        run('calm', { seed: 2, daysLived: 60, tech: 15, emptyTreeDays: 30 }),
+      ],
+      60,
+      healthyArm(),
+      true,
+    );
+    const detail = detailOf(s, 'the-tree-is-not-empty-at-day-sixty');
+    expect(verdictOf(s, 'the-tree-is-not-empty-at-day-sixty')).toBe('broken');
+    expect(detail).toContain('1 of 1 full runs');
+    expect(detail).not.toContain('harsh/1');
+  });
+
+  it('will not judge the tree on a grid that stopped before day sixty', () => {
+    const s = sweep([run('calm', { seed: 1, daysLived: 30, tech: 15, emptyTreeDays: 17 })]);
+    expect(verdictOf(s, 'the-tree-is-not-empty-at-day-sixty')).toBe('untested');
+  });
+
+  it('breaks when a rich colony ends on a pile that never once came down', () => {
+    // The shape the sixty-day grid actually has: over a thousand steel in store
+    // and a biggest-ever fall of one turret, because a turret is the largest
+    // thing there is to buy and the mine refills it inside a day.
+    const s = sweep(
+      [run('calm', { seed: 1, daysLived: 60, endSteel: 1367, steelDrawdown: 34 })],
+      60,
+      healthyArm(),
+      true,
+    );
+    expect(verdictOf(s, 'the-surplus-finds-a-buyer')).toBe('broken');
+    expect(detailOf(s, 'the-surplus-finds-a-buyer')).toContain('ended on 1367 steel');
+  });
+
+  it('holds when the pile is spent down by something worth a quarter of it', () => {
+    const s = sweep(
+      [run('calm', { seed: 1, daysLived: 60, endSteel: 800, steelDrawdown: 300 })],
+      60,
+      healthyArm(),
+      true,
+    );
+    expect(verdictOf(s, 'the-surplus-finds-a-buyer')).toBe('holds');
+  });
+
+  it('does not call a colony with an empty store a colony that found a buyer', () => {
+    // Hard country reaches day sixty holding nothing. That is poverty, not
+    // demand, and reading it as a kept promise is exactly how a fixed material
+    // gate would come to look fine on the one setting it is a wall for.
+    const s = sweep(
+      [run('harsh', { seed: 1, daysLived: 60, endSteel: 0, steelDrawdown: 0 })],
+      60,
+      healthyArm(),
+      true,
+    );
+    expect(verdictOf(s, 'the-surplus-finds-a-buyer')).toBe('untested');
+    expect(detailOf(s, 'the-surplus-finds-a-buyer')).toContain('nothing to find a buyer for');
   });
 });
 

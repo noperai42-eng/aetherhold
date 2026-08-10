@@ -640,17 +640,22 @@ machine, produced the same numbers row for row.
 ### What the grid found
 
 Sixty days, five seeds, three settings, seven multipliers, every run played past its founding.
-Thirteen principles are scored; ten of them are enforced and hold on measured evidence — trouble
-comes sooner (day 5.0 → 3.0 → 2.0), more often (14.8 → 29.2 → 41.8 threats), in bigger bands (4.4 →
-6.8 → 8.0), better armed (31 % → 60 % → 84 % of raiders carrying a rifle), hitting harder (2.4 →
-27.6 → 109.4 trips to a sick bed), nobody is wiped on the quiet valley, Hard country costs a colony
-×4.0 what Settler does, and the founding is no longer where the run stops: nine of the fifteen
+Seventeen principles are scored; twelve of them are enforced and hold on measured evidence — trouble
+comes sooner (day 5.0 → 3.0 → 2.0), more often (14.8 → 29.2 → 41.8 threats), in bigger bands (4.6 →
+6.8 → 8.4), better armed (29 % → 59 % → 84 % of raiders carrying a rifle), hitting harder (2.6 →
+32.4 → 103.8 trips to a sick bed), nobody is wiped on the quiet valley, Hard country costs a colony
+×3.3 what Settler does, the far country is shut in week one and open by week six on half the maps
+below Hard, the roads past the near ring are actually walked (10 of 10 below Hard, mean trips by
+ring 5.3/2.7/0.2), and the founding is no longer where the run stops: eight of the fifteen
 colonies closed their charter and every one of them played out the rest of its sixty days. The
-other three are open — findings the grid prints without asserting, because the fix is a design
-decision rather than a number. One of those three holds anyway: four of the five Hard maps buried
-somebody, which is the check that a colony sim where nobody ever dies is a screensaver. The other
-two are below. Four things the grid found are worth writing down, because none of them was
-designed:
+other five are open — findings the grid prints without asserting, because the fix is a design
+decision rather than a number. One of those five holds anyway: four of the five Hard maps buried
+somebody, which is the check that a colony sim where nobody ever dies is a screensaver. Two of the
+remaining four were written for a feature that does not exist yet — the third research tier — and
+are broken on purpose until it does: eleven of the fourteen full runs finish the entire tree, nine
+of them with a fortnight or more still to play, and the steel pile ends between 369 and 1,337 with
+a largest-ever fall of 183 to 362 whichever it is. The last two are below. Four things the grid
+found are worth writing down, because none of them was designed:
 
 **Difficulty reaches the pantry, and it gets there mostly through labour.** All three settings start
 on stores the genesis check has already pinned, and after sixty days calm ends with 24.5 days of
@@ -671,14 +676,17 @@ where the arm puts 4.3, and 2.7 points between settler and hard where the arm pu
 discrepancy pointed the other way, which is the whole argument for not enforcing on the column. The
 enforced promise reads off the arm; the long version is four paragraphs up.
 
-**Six of fifteen runs had a settler starve beside a stocked larder.** Seed 1312 on the quiet valley
-put a settler at 0.02 food with 19 days of meals in store; seed 424242 on Settler hit 0.00 with 16
-days in store. That is a feeding or hauling failure and it has nothing to do with difficulty — it
-happens on all three settings, which is exactly why it is not hung on a difficulty principle. The
-first version of that check asserted "nobody starves on calm or settler", broke on five runs, and
-named difficulty as the culprit for a bug in the food economy. Worse, by exempting harsh it hid four
-more instances. It is now an open finding that prints the runs and does not claim the cause. Sixty
-days did not move it: the same six-in-fifteen rate came back on the longer grid.
+**Eight of fifteen runs had a settler starve beside a stocked larder.** Every one of the eight
+bottoms out at exactly 0.00 — a settler at nothing, not a settler running low — and every one does
+it while the colony holds between twelve and twenty-two days of meals. That is a feeding or hauling
+failure and it has nothing to do with difficulty: one quiet-valley map, three Settler maps and four
+of the five Hard ones, which is exactly why it is not hung on a difficulty principle. The first
+version of that check asserted "nobody starves on calm or settler", broke on five runs, and named
+difficulty as the culprit for a bug in the food economy. Worse, by exempting harsh it hid four more
+instances. It is now an open finding that prints the runs and does not claim the cause. Doubling
+the grid to sixty days did not move it; the trade work did, from six in fifteen to eight, which is
+a lead and not a diagnosis — a colony with a settler away on a six-day road has one fewer pair of
+hands to carry a meal, and nobody has yet tested whether that is what happened.
 
 **The top of the escalation ladder is content nobody has ever been shown.** The highest rung reached
 anywhere on the grid is 3 of 4, on one calm map, and harsh reads rung **0** on all five maps for all

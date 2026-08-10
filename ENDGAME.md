@@ -30,7 +30,7 @@ the build promised and which test holds each promise down.
   proves it
 - [The one thing to build now for the sequel](#the-one-thing-to-build-now-for-the-sequel)
 - [Costs and risks, stated plainly](#costs-and-risks-stated-plainly) — including the
-  two balance principles still open
+  four balance findings still open
 
 ## The problem, in numbers
 
@@ -415,12 +415,44 @@ assemblies — gated on goods only the middle and far rings sell. On the quiet
 valley this is where the idle steel goes.
 *Principle:* `the-tree-is-not-empty-at-day-sixty`, and `the-surplus-finds-a-buyer`
 — the steel stock stops climbing monotonically forever.
+
+*Both principles are written and both read broken, which is the point of writing
+them first.* They went in ahead of the feature so the number the third tier has to
+beat was set before anybody knew what it would be, and they are `open` rather than
+enforced because a red suite over a feature that does not exist teaches everyone to
+ignore a red suite. They become enforced the day the grid says they hold. The grid
+they read is the same sixty-day one, with four columns added: `tech` and
+`emptyTreeDays` — days spent at a bench with nothing left on it — and `endSteel`
+and `steelDrawdown`, the largest the pile ever fell from a high-water mark.
+
+*What they measured, first time out.* **Eleven of the fourteen colonies that played
+a full sixty days finished the entire research tree**, and nine of those did it with
+a fortnight or more still to play: every quiet-valley map, idle for 21 to 26 days,
+and four of the five settler maps, idle for 15 to 17. Hard country is the only
+setting where the tree is still a tree at day sixty, and only because three of its
+five maps never got a settler to the bench for long enough. The second tier is
+about five weeks of content on a map that can afford to research, and the grid
+has now said so in a column rather than in a paragraph.
+
+The steel column says something narrower than it first looks, and the difference
+matters for what the fix has to be. Four of the ten runs that ended rich never
+spent the pile down by the quarter the check asks for — but the reason is not that
+nothing buys steel. **The largest fall is roughly constant at 183 to 362 whatever
+the pile is**, on maps ending between 369 and 1,337. Something does spend steel,
+in one spree, once: a defensive build-out is about three hundred. What is missing
+is not a buyer, it is a buyer whose appetite grows with the stock. The share test
+duly passes the calm maps that happened to have their spree late and fails the ones
+that had it early, which is the check being conservative rather than wrong — the
+honest reading of the row is that all ten rich runs end holding a pile nothing
+wants, and the threshold was set before the data arrived and is staying where it is.
+
 *Constraint, from the long runs:* the material cost cannot be a constant. Hard
-country reaches day sixty holding zero steel while the quiet valley holds 1,367,
-so any fixed gate is a sink on one setting and a wall on another. Either it is
-denominated in something that scales with the setting, or the third tier is
-proved on all three before it ships. This is the one place in the plan where the
-difficulty work already done is load-bearing rather than merely adjacent.
+country reaches day sixty holding 66 to 210 steel on four of five maps while the
+quiet valley holds 888 to 1,337, so any fixed gate is a sink on one setting and a
+wall on another — a factor of twenty between the poorest full run and the richest.
+Either it is denominated in something that scales with the setting, or the third
+tier is proved on all three before it ships. This is the one place in the plan
+where the difficulty work already done is load-bearing rather than merely adjacent.
 
 **3 — The three roads get ladders the player can see.** A visible tally per road,
 built on `objectives.ts` and `alerts.ts`, which already do this kind of work. No
@@ -460,17 +492,26 @@ that never recorded it. Everything else about that game is that game's problem.
   closed by a fingerprint over `src/sim` and `src/eval` taken before the first
   colony and re-checked after the last, refused rather than saved on a mismatch.
   See `ARCHITECTURE.md` → "Measured once, judged in milliseconds".
-- **Two known-broken principles are still open.** `nobody-starves-beside-a-full-pantry`
-  hits 6 of 15 runs on the thirty-day grid and the same 6 of 15 on the sixty-day
-  one, and twice the clock does not make it worse. On the sixty-day grid those six
-  are one calm map (1312, bottoming out at 0.02 with nineteen days of food in
-  store), one settler map (424242, at 0.00 with sixteen days), and four of the five
-  harsh maps. The fifth harsh map is not on the list for the worst possible reason:
+- **Four known-broken principles are still open**, and two of them are stage 2's
+  own, described where the stage is. `nobody-starves-beside-a-full-pantry`
+  hit 6 of 15 runs on the thirty-day grid and 6 of 15 on the first sixty-day one;
+  on the grid the trade work has left behind it is **8 of 15**, and the shape got
+  worse rather than merely commoner. Every one of the eight now bottoms out at
+  exactly 0.00 — a settler at nothing, not a settler running low — and every one
+  of them did it while the colony held between twelve and twenty-two days of food.
+  One calm map (7, at 0.00 on twelve days in store), three settler maps (1312 on
+  twenty-one, 99001 on fifteen, 424242 on twenty) and four of the five harsh ones.
+  The fifth harsh map is not on the list for the worst possible reason:
   20260729 is the colony that collapsed on day 52, and a settler who starves beside
   an *empty* larder is a different failure that this principle correctly declines to
-  count. `the-escalation-ladder-is-climbable-to-the-top` is settled by the full
-  sixty-day grid, and not in its favour: the highest rung reached anywhere was 3
-  of 4, on one calm map.
+  count. It moved from six to eight across the two trade fixes and nothing else,
+  which suggests — and does not show — that a colony with a settler away on a
+  six-day road has one fewer pair of hands to carry a meal to the person who needs
+  it. Nobody has tested that, and the last theory of this kind on this project was
+  wrong; it is written here as the first thing to check and not as the answer.
+  `the-escalation-ladder-is-climbable-to-the-top`
+  is settled by the full sixty-day grid, and not in its favour: the highest rung
+  reached anywhere was 3 of 4, on one calm map.
 
   The mechanism, which is more useful than the number. `escalation()` is
   `floor(unbloodied / 3)` capped at 4, and `unbloodied` resets to zero when a raid
