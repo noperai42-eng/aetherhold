@@ -1389,6 +1389,11 @@ Two things to try to break it with:
   reasons that have nothing to do with the gate, and a colony sitting on one — which is
   the normal state — was walking nowhere at all. If it goes out with the barn full and
   stays home with a crate spare, that is the same bug wearing a disguise.
+
+  **Count arrivals, not departures.** A party robbed on the way turns back without ever
+  reaching the household, so it earns no standing: two middle-ring trips open the road
+  only if both of them get there, and about one in five does not. Three or four trips
+  before the vouch lands is the road being a road. Ten of them is a bug.
 - **Open the far ring, then eat the pantry down.** The road should shut again with the meals
   sentence, not the vouch sentence — standing is permanent, provisioning is not, and the
   panel should be clear about which one you have lost.

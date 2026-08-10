@@ -1422,7 +1422,10 @@ Five rules make it a decision rather than a button:
   wipe check knows about it — a colony whose last settler is on the road has not fallen.
 - **Distance is the price.** A day out is a day back, plus the mishap roll on the way:
   bandits on the ridge cost the pack and most of the traveller's blood, never their life.
-  Standing and a steady hand both bring the odds down.
+  Standing and a steady hand both bring the odds down. Each ring is its own risk — a few
+  per cent to the near country, a fifth to the middle, and the far roads sit at the worst
+  the road ever gets. A robbed party turns back before it arrives, so it earns no standing
+  either: the long road costs you the trip as well as the pack.
 - **Standing compounds, and the long road compounds it faster.** A near-ring visit is +6, a
   middle-ring one +10, a far one +14 — a longer road is a bigger commitment and the people
   at the end of it know that. A better rate follows, as does the colony's `social` skill,

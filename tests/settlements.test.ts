@@ -49,6 +49,7 @@ import {
   rateFor,
   rateReasons,
   settlementById,
+  ringOf,
   settlementsOf,
   socialOf,
   specialty,
@@ -222,6 +223,35 @@ describe('the neighbours', () => {
         }
       }
     }
+  });
+
+  it('prices three rings as three different roads, and pins only the far one to the cap', () => {
+    // The cap used to bind from five days out, which made the middle ring and
+    // the far ring equally dangerous and stopped distance meaning anything past
+    // the near country. That is not a rounding complaint. A robbed party turns
+    // back before it arrives and earns no standing, a vouch costs two arrivals,
+    // and two trips against a capped thirty per cent both land barely half the
+    // time — so the far country sat behind a coin flip, and the sixty-day grid
+    // measured the coin flip: three of ten runs below Hard country reached it
+    // inside six weeks.
+    //
+    // A colony walking further should be taking a bigger risk each time it goes
+    // further, right up to the cap, and the cap is for the far country alone.
+    const world = colony();
+    const walker = livingColonists(world)[0]!;
+    walker.skills.shooting = 0;
+    const worst = [0, 0, 0];
+    for (const s of settlementsOf(world)) {
+      s.relations = 0;
+      worst[ringOf(s)] = Math.max(worst[ringOf(s)]!, mishapChance(s, walker));
+    }
+    expect(worst[0]!).toBeLessThan(worst[1]!);
+    expect(worst[1]!).toBeLessThan(worst[2]!);
+    // Only the far ring is allowed to be as bad as the road ever gets. If the
+    // middle ring ever reaches the cap again, the ring structure has collapsed
+    // back into one road with three names.
+    expect(worst[2]!).toBe(0.3);
+    expect(worst[1]!).toBeLessThan(0.3);
   });
 });
 

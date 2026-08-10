@@ -257,14 +257,16 @@ traffic, and they are two principles rather than one clause because the grid fou
 them disagreeing. And the existing no-arbitrage invariant survives the new places
 untouched; that test does not get to be relaxed.
 
-*Shipped, and holding.* Measured on the same sixty-day grid: the far ring was shut
-for all fifteen runs through day 7, and 3 of the 10 runs below Hard country had it
-open by day 42 — the earliest on day 17. Unreachable in week one, reachable by week
-six, which is exactly the promise. It is also a pass with no room in it: seven of
-those ten never got there, and Hard country is excluded from the second half of the
-check because a colony fighting for its life is not owed a trade route. If the
-third tier of the tree is going to want far-ring goods, that seven wants to come
-down first — otherwise stage 2 gates content behind a road most runs never walk.
+*Shipped, and holding.* Measured on the sixty-day grid: the far ring is shut for all
+fifteen runs through day 7, and 5 of the 10 runs below Hard country have it open by
+day 42 — the earliest on day 17, and a sixth on day 44. Unreachable in week one,
+reachable by week six, which is exactly the promise. Hard country is excluded from
+the second half of the check because a colony fighting for its life is not owed a
+trade route.
+
+It was 3 of 10 when the stage first shipped, and getting it to half took two fixes
+and one retracted theory. The rest of this section is that, because the shape of the
+mistake is more use than the numbers.
 
 *The traffic fix, and what it did and did not buy.* Raising `GATE_BONUS` from two
 to five doubled middle-ring traffic: mean trips by ring went from about 9.4/1.5/0.1
@@ -272,20 +274,54 @@ to 5.2/2.9/0.1 below Hard country, and `the-long-road-is-walked` went from a
 would-be 5 of 10 to 10 of 10. Every gentle colony now walks the middle road twice.
 And `the-far-ring-is-earned` did not move at all — still 3 of 10 by day 42.
 
-That is not a failed fix, it is a second bug the first one was hiding, and the grid
-named it. Standing accrues *per town*, and the gate bonus is flat across every
-un-vouched town in a shut ring: a middle-ring place that has already banked ten of
-the eighteen it owes is worth `RATE_PER_RELATION × 10` more than one that has never
-been visited, which is 0.008 on a rate near 0.74 — a fifth of a per cent, against
-distance spreads of seventeen and whichever good happens to be spare that morning.
-So the second trip has no preference for the road the first one started.
-`settler/99001` sent four parties past the near ring — forty standing against a
-vouch that costs eighteen — and never opened the far country, because it spread
-them. Two more runs, `calm/424242` and `calm/99001`, did open it, on days 46 and 52:
-not scattered, just slow, which is the same disease at a milder stage.
+That is not a failed fix, it is a second bug the first one was hiding. The colony now
+walks the middle road, and the middle road robbed it. `mishapChance` was
+`0.06 × days`, floored at 1% and capped at 30%, and the cap is the whole story: a
+five-day road computes 0.30 and a six-day one 0.36, so **both middle-ring roads sit
+exactly at the cap, and so does every far-ring road.** Distance stops pricing risk at
+precisely the distance where the ring structure begins. The cap was written for the
+far country — "capped so the worst one is still worth considering" — and it caught
+the middle country by accident.
 
-The next number, then, is not a bigger bonus. It is that a colony building a road
-should finish the one it started.
+A robbed party turns back on the outbound leg with `take = null` and earns no
+standing, and `tripsByRing` counts departures. So a trip is not a visit. Against a
+capped 30% less a point or two for the traveller's shooting, two middle-ring trips
+both arriving is about 0.72², a hair over half — and a vouch costs two. That is a
+better model of the grid than anything about routing: the five runs that sent two
+parties opened the far country once, the five that sent three or four opened it four
+times, `settler/99001` being the one that sent four and was unlucky four times.
+
+Which also disposes of the first theory, which was that the trips scattered across
+different towns and no household ever reached eighteen. A five-seed walk with the
+cargo rotating between four goods says otherwise: every seed sent every trip to the
+same near town and then the same middle town. The gate bonus concentrates by itself.
+
+The next number, then, is not a bigger bonus and not a stickier foreman. It is that
+three rings should be three risks: `0.06` per day became `0.035`, which puts the near
+country at 4 to 10 per cent, the middle at 18 to 21, and leaves the far ring pinned
+to the cap — where the cap was always meant to bind and nowhere else. A test in
+`tests/settlements.test.ts` now asserts the three rings are three strictly increasing
+risks and that only the far one reaches 0.3, so nothing can quietly flatten them back
+together.
+
+That moved it: 3 of 10 to 5 of 10 by day 42, six of ten opening at all, and the
+runs that still miss are exactly the cohort the model says should — every one of them
+sent two parties past the near ring, and two arrivals against a fifth is 0.64. The
+three fixes are worth reading as one lesson each. `GATE_BONUS` was a number sized
+against a regime the game is hardly ever in. `mishapChance` was a cap written for one
+ring that silently swallowed another. And the scatter theory was a story that fit the
+data and was false, which cost a probe to find out and would have cost a mechanism to
+believe.
+
+*What is left, and why it stops here.* Half is not most, and the remaining three runs
+are not unlucky in a way another constant fixes. Each sent eleven, seven and four
+parties to the near ring and two to the middle, and at roughly two days a near round
+trip and twelve a middle one that is forty-odd days of a sixty-day run already spent
+walking. The colony is not refusing the long road, it is out of calendar. Making that
+better means a second party on the road at once, or a foreman that stops running
+near-ring errands once the vouch is the only thing worth having — both of which are
+mechanisms, not numbers, and neither is stage one's promise. Recorded here so stage 2
+knows the ceiling it is building against.
 
 *What the longer road turned out to be.* Twelve settlements in three rings of
 four, one per quarter of the

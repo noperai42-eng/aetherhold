@@ -414,9 +414,28 @@ export function quote(
  * Distance is most of it, standing and a rifle are the rest. Floored at 1% so
  * the safest run is still a run, and capped so the worst one is still worth
  * considering.
+ *
+ * The per-day figure is 0.035 and not 0.06 because of where the cap landed. At
+ * 0.06 a five-day road computes 0.30 and a six-day road 0.36, so both
+ * middle-ring roads sat exactly on the cap — and so did every far-ring road.
+ * Three rings, one risk. The cap was written for the far country and caught the
+ * middle country by accident, and it flattened the distance term at precisely
+ * the distance where the ring structure starts.
+ *
+ * What that cost is not a matter of taste. A robbed party turns back on the
+ * outbound leg and earns no standing, a vouch costs two arrivals, and two trips
+ * both landing against a capped thirty per cent is 0.72² — a hair over half. So
+ * the far country was behind a coin flip, and the sixty-day grid read exactly
+ * that: of the runs that sent two parties past the near ring one opened it, and
+ * of the runs that sent three or four, four did.
+ *
+ * At 0.035 the rings are three different roads again — about 4 to 10 per cent
+ * near, 18 to 21 in the middle, and the far ring still pinned to the cap, which
+ * is where the cap was always meant to bind and nowhere else.
  */
 export function mishapChance(s: Settlement, pawn: Pawn): number {
-  const raw = 0.06 * s.days - Math.max(0, s.relations) * 0.0004 - (pawn.skills?.shooting ?? 0) * 0.004;
+  const raw =
+    0.035 * s.days - Math.max(0, s.relations) * 0.0004 - (pawn.skills?.shooting ?? 0) * 0.004;
   return Math.min(0.3, Math.max(0.01, raw));
 }
 
