@@ -9,10 +9,25 @@ import { BUILD_GROUPS, defOf, isBed } from '../../sim/buildings';
 import { SKILL_NAMES, WORK_TYPES } from '../../sim/types';
 import { clockString, dayNumber } from '../../sim/clock';
 import { DAYS_PER_SEASON, dayOfSeason, seasonLabel, seasonOf } from '../../sim/seasons';
-import { countResource, findBuilding, findItem, findPawn, livingColonists } from '../../sim/world';
+import {
+  countResource,
+  findBuilding,
+  findItem,
+  findPawn,
+  livingColonists,
+  spendableResource,
+} from '../../sim/world';
 import { describeTarget } from '../../sim/interact';
-import { buildingUnlocked, RESEARCH, RESEARCH_ORDER, available, researchFraction } from '../../sim/research';
-import type { ResearchId } from '../../sim/research';
+import {
+  buildingUnlocked,
+  RESEARCH,
+  RESEARCH_ORDER,
+  available,
+  researchFraction,
+  researchNeeds,
+  researchStalled,
+} from '../../sim/research';
+import type { ResearchDef, ResearchId } from '../../sim/research';
 import { weatherLabel } from '../../sim/weather';
 import { isBreaking, moodBreakdown } from '../../sim/needs';
 import { tediumOf } from '../../sim/tedium';
@@ -284,7 +299,15 @@ function saveGuideOff(off: boolean): void {
 }
 
 const SPEEDS = [0, 1, 2, 3];
-const RESOURCE_ROW: ResourceKind[] = ['wood', 'steel', 'rawfood', 'meal', 'medicine', 'hide'];
+const RESOURCE_ROW: ResourceKind[] = [
+  'wood',
+  'steel',
+  'rawfood',
+  'meal',
+  'medicine',
+  'hide',
+  'components',
+];
 const RESOURCE_LABEL: Record<ResourceKind, string> = {
   wood: 'Wood',
   steel: 'Steel',
@@ -292,7 +315,26 @@ const RESOURCE_LABEL: Record<ResourceKind, string> = {
   meal: 'Meals',
   medicine: 'Meds',
   hide: 'Hides',
+  components: 'Parts',
 };
+
+/**
+ * A project's material bill, and how much of it is already in the yard.
+ *
+ * Counted with `spendableResource` rather than the headline stock, because that
+ * is what the bench will actually be able to pay with — a bill that reads
+ * "180 / 180" off a number including the crate in a hauler's arms, next to a
+ * project that then refuses to finish, is the panel lying to the player.
+ */
+function billHtml(world: World, def: ResearchDef): string {
+  const bill = Object.entries(def.materials ?? {}) as Array<[ResourceKind, number]>;
+  return bill
+    .map(([kind, want]) => {
+      const have = Math.min(want, spendableResource(world, kind));
+      return `<span class="${have >= want ? 'paid' : 'owed'}">${have} / ${want} ${escapeHtml(RESOURCE_LABEL[kind].toLowerCase())}</span>`;
+    })
+    .join('');
+}
 
 export class Hud {
   private readonly root: HTMLElement;
@@ -1396,8 +1438,17 @@ export class Hud {
     }
     this.researchPip.style.display = '';
     const pct = Math.round(researchFraction(world) * 100);
+    // A bar sitting at a hundred per cent with nothing happening is a bug unless
+    // the strip says why, and the strip is the only part of this the player sees
+    // without opening a panel. So the percentage gives way to the reason.
+    const short = researchStalled(world)
+      ? researchNeeds(world)
+          .map((n) => `${n.amount} ${RESOURCE_LABEL[n.kind].toLowerCase()}`)
+          .join(', ')
+      : null;
     this.researchPip.innerHTML =
-      `<i>${escapeHtml(RESEARCH[id].label)}</i><span class="track"><span style="width:${pct}%"></span></span><b>${pct}%</b>`;
+      `<i>${escapeHtml(RESEARCH[id].label)}</i><span class="track"><span style="width:${pct}%"></span></span>` +
+      (short ? `<b class="short">needs ${escapeHtml(short)}</b>` : `<b>${pct}%</b>`);
   }
 
   /**
@@ -1411,9 +1462,15 @@ export class Hud {
     if (!this.researchOpen) return;
     const r = s.world.research;
     const openable = new Set(available(s.world).map((d) => d.id));
+    const short = researchNeeds(s.world);
     // Redraw only when something actually moved. The progress number changes every
-    // tick, so it is deliberately rounded into the signature.
-    const sig = `${r.current}|${r.done.join(',')}|${Math.round(researchFraction(s.world) * 200)}`;
+    // tick, so it is deliberately rounded into the signature. The shortfall is in
+    // it because a crate landing in the yard changes nothing else on this panel,
+    // and a bill that still reads "needs 12 parts" with twelve parts on the floor
+    // is worse than not showing the bill at all.
+    const sig =
+      `${r.current}|${r.done.join(',')}|${Math.round(researchFraction(s.world) * 200)}` +
+      `|${short.map((n) => `${n.kind}${n.amount}`).join(',')}`;
     if (sig === this.researchSig) return;
     this.researchSig = sig;
 
@@ -1430,7 +1487,15 @@ export class Hud {
       const now = el('div', 'now');
       now.innerHTML =
         `<div class="ttl">${escapeHtml(def.label)}<span>${Math.floor(r.progress)} / ${def.cost}</span></div>` +
-        `<div class="track"><span style="width:${pct}%"></span></div>`;
+        `<div class="track"><span style="width:${pct}%"></span></div>` +
+        // The bill, and where the colony stands against it. Shown from the moment
+        // the project is chosen rather than when the points run out, because the
+        // whole point of the third tier is that somebody should already be on the
+        // road by then — and nobody walks for a cost they were not told about.
+        (def.materials ? `<div class="bill">${billHtml(s.world, def)}</div>` : '') +
+        (researchStalled(s.world)
+          ? `<div class="hint">Worked out, and waiting on the delivery. Nothing here makes parts — they come off a road.</div>`
+          : '');
       const stop = el('button', 'btn', {}, 'Set aside') as HTMLButtonElement;
       stop.title = 'Stops the project. Progress on it is lost.';
       stop.onclick = () => this.hooks.setResearch(null);
@@ -1458,7 +1523,11 @@ export class Hud {
       const opens = unlockedBy(id);
       row.innerHTML =
         `<div class="ttl">${escapeHtml(def.label)}<span>${escapeHtml(tag)}</span></div>` +
-        `<div class="blurb">${escapeHtml(def.blurb)}${opens ? ` <b>${escapeHtml(opens)}</b>` : ''}</div>`;
+        `<div class="blurb">${escapeHtml(def.blurb)}${opens ? ` <b>${escapeHtml(opens)}</b>` : ''}</div>` +
+        // On every row, not just the one on the bench. The third tier costs goods
+        // one of which cannot be made here at all, and a player who finds that out
+        // by starting the project and waiting has been ambushed by the tree.
+        (def.materials && !done ? `<div class="bill">${billHtml(s.world, def)}</div>` : '');
       if (open && id !== r.current) row.onclick = () => this.hooks.setResearch(id);
       list.append(row);
     }

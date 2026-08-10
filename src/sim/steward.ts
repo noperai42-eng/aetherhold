@@ -79,8 +79,10 @@ export const RESERVE: Record<ResourceKind, number> = {
   meal: 0,
   medicine: 0,
   // Nothing the Steward builds is made of hide, so there is nothing to protect
-  // it from.
+  // it from. Components likewise: they are spent at the bench and nowhere else,
+  // and the bench is not something the Steward can outbid.
   hide: 0,
+  components: 0,
 };
 
 /**

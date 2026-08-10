@@ -21,7 +21,8 @@
  * ending up spelled out in four files that drift apart.
  */
 
-import type { BuildingKind, World } from './types';
+import type { BuildingKind, ResourceKind, World } from './types';
+import { spendableResource, takeResource } from './world';
 
 export type ResearchId =
   | 'toolmaking'
@@ -38,7 +39,11 @@ export type ResearchId =
   | 'tanning'
   | 'apprenticeship'
   | 'weaving'
-  | 'plateworks';
+  | 'plateworks'
+  | 'foundry'
+  | 'freighting'
+  | 'instruments'
+  | 'waystations';
 
 export interface ResearchDef {
   id: ResearchId;
@@ -59,6 +64,31 @@ export interface ResearchDef {
   cost: number;
   /** Projects that must be finished first. */
   needs: ResearchId[];
+  /**
+   * Goods the project eats on the day it lands, on top of the points.
+   *
+   * Absent on everything up to and including the second tier, where a project is
+   * purely a settler's afternoons and the only thing it can be short of is time.
+   * The third tier is where the tree stops being free, and the bill is
+   * deliberately in two parts that do different jobs:
+   *
+   * The *steel* line is a constant, and it is a constant on purpose. Its job is
+   * to be a sink. The sixty-day grid had the quiet valley finishing the whole
+   * tree on day thirty-seven and then sitting on nine hundred to thirteen
+   * hundred steel with nothing left in the game to spend it on, and a sink only
+   * works if it is big enough to notice. It is only ever reached by colonies the
+   * same grid shows are holding that much, which is what makes a fixed number
+   * safe here and nowhere else.
+   *
+   * The *components* line is the one that actually paces the tier, and it is not
+   * denominated in a resource at all. Nothing in this valley makes a component;
+   * they come off a middle-ring workshop's shelf, one pack per round trip, and
+   * the pack is paid for with whatever the colony happens to have spare that
+   * week. So the real price of a project is *a settler on the road for eleven
+   * days* — the same price on a quiet valley as on hard country, which is
+   * exactly what a fixed material cost could never be.
+   */
+  materials?: Partial<Record<ResourceKind, number>>;
   /** Player-facing, and the only place the effect is described in words. */
   blurb: string;
 }
@@ -189,6 +219,56 @@ export const RESEARCH: Record<ResearchId, ResearchDef> = {
     needs: ['machining'],
     blurb: 'Beaten, quenched and strapped. Unlocks steel plate: two of every five hits stopped outright.',
   },
+
+  // Third tier — the industrial base, and the first projects in the game that
+  // cost something other than time.
+  //
+  // Everything above this point a colony can reach alone: put somebody at a
+  // bench for a month and the whole second tier lands whether or not anyone has
+  // ever walked over the ridge. That is why the tree ran out. The valley is a
+  // closed system with a ceiling, and a closed system finishes.
+  //
+  // These four do not open on their own. Each wants a crate of milled parts that
+  // only exists five days' walk away, so the tier is paced by how often the
+  // colony can put somebody on a road and get them home — which is a clock the
+  // valley does not control. It is also why what they *do* is roads, carts and
+  // instruments rather than another point of armour: this is the tier where the
+  // colony stops being a farm with a wall round it and starts being somewhere
+  // that trades, and everything past it is built on being able to reach further.
+  foundry: {
+    id: 'foundry',
+    label: 'Foundry',
+    cost: 34000,
+    needs: ['plateworks'],
+    materials: { steel: 180, components: 12 },
+    blurb:
+      'A crucible line, a proper furnace and a set of patterns bought from people who use them. ' +
+      'Everything the workbench makes costs a third less again.',
+  },
+  freighting: {
+    id: 'freighting',
+    label: 'Freighting',
+    cost: 40000,
+    needs: ['foundry'],
+    materials: { steel: 220, components: 18 },
+    blurb: 'Braced handcarts and axles that survive a ford. Every party that leaves here carries half again as much.',
+  },
+  instruments: {
+    id: 'instruments',
+    label: 'Precision instruments',
+    cost: 46000,
+    needs: ['foundry'],
+    materials: { steel: 200, components: 22 },
+    blurb: 'Calipers, gauges and tables somebody else spent a lifetime compiling. The bench studies half again as fast.',
+  },
+  waystations: {
+    id: 'waystations',
+    label: 'Waystations',
+    cost: 52000,
+    needs: ['freighting'],
+    materials: { steel: 260, components: 28 },
+    blurb: 'A shed, a cache and a name at every ford between here and the far country. The long roads stop eating parties.',
+  },
 };
 
 /** Display order for the research panel: roughly cheapest-first, forks together. */
@@ -208,6 +288,15 @@ export const RESEARCH_ORDER: ResearchId[] = [
   'plateworks',
   'solarcells',
   'plating',
+  // The third tier last, and in dependency order rather than by price. The
+  // Steward takes the first thing this list offers it, so the order here is also
+  // the order an unattended colony works the tier in — foundry opens the two
+  // branches, the cheaper branch first, and the road project last because it is
+  // the one worth having only once there is somewhere far enough to use it.
+  'foundry',
+  'freighting',
+  'instruments',
+  'waystations',
 ];
 
 export interface ResearchState {
@@ -256,18 +345,84 @@ export function setProject(world: World, id: ResearchId | null): boolean {
 }
 
 /**
+ * What the current project still wants that the colony has not got.
+ *
+ * Empty when the bench is idle, when the project is free, or when the goods are
+ * already in the yard. Answered against what the colony could actually *pay* —
+ * not the headline count, which includes the crate in a hauler's arms and would
+ * have the panel promising a project the bench then refuses to finish.
+ *
+ * Deliberately answered from the moment the project is chosen rather than from
+ * the moment the points run out. A colony that waits until the bench is at a
+ * hundred per cent before it thinks about sending for the parts has volunteered
+ * for a fortnight of standing still; a colony that reads this on day one puts
+ * somebody on the road while it studies and finishes the two together. Both the
+ * panel and the foreman read it, which is what makes the second of those the
+ * behaviour an unattended colony actually has.
+ */
+export function researchNeeds(world: World): Array<{ kind: ResourceKind; amount: number }> {
+  const id = world.research.current;
+  const bill = id === null ? undefined : RESEARCH[id].materials;
+  if (!bill) return [];
+  const short: Array<{ kind: ResourceKind; amount: number }> = [];
+  for (const [kind, want] of Object.entries(bill) as Array<[ResourceKind, number]>) {
+    const gap = want - spendableResource(world, kind);
+    if (gap > 0) short.push({ kind, amount: gap });
+  }
+  return short;
+}
+
+/**
+ * The bench has done everything it can and is waiting on a delivery.
+ *
+ * A distinct state from "studying" and from "idle", and worth its own name
+ * because it is the one the player has to be able to see: a bar sitting at full
+ * with nothing happening is a bug unless the game says why.
+ */
+export function researchStalled(world: World): boolean {
+  const id = world.research.current;
+  if (id === null) return false;
+  return world.research.progress >= RESEARCH[id].cost && researchNeeds(world).length > 0;
+}
+
+/**
+ * Pay a project's bill, or pay none of it.
+ *
+ * All-or-nothing on purpose. A bill with two lines that took the steel, found
+ * the parts short and left the project unfinished would quietly burn the
+ * colony's stock every tick it stood there waiting — the worst kind of bug,
+ * because the symptom is a number going down for no visible reason.
+ */
+function payMaterials(world: World, def: ResearchDef): boolean {
+  const bill = def.materials;
+  if (!bill) return true;
+  const lines = Object.entries(bill) as Array<[ResourceKind, number]>;
+  for (const [kind, want] of lines) {
+    if (spendableResource(world, kind) < want) return false;
+  }
+  for (const [kind, want] of lines) takeResource(world, kind, want);
+  return true;
+}
+
+/**
  * Apply a tick of study. Returns the project that just finished, if one did, so
  * the caller can say so out loud — this module never touches the message log.
  */
 export function addResearchPoints(world: World, points: number): ResearchDef | null {
   const id = world.research.current;
   if (id === null) return null;
-  world.research.progress += points;
-  if (world.research.progress < RESEARCH[id].cost) return null;
+  const def = RESEARCH[id];
+  // Clamped rather than accumulated. A project held up a fortnight waiting on a
+  // crate would otherwise bank two weeks of study it never needed and hand the
+  // overflow to whatever the colony chose next, which would make the stall pay
+  // — and a stall that pays is not a reason to go anywhere.
+  world.research.progress = Math.min(def.cost, world.research.progress + points);
+  if (world.research.progress < def.cost) return null;
+  if (!payMaterials(world, def)) return null;
   world.research.done.push(id);
   world.research.current = null;
   world.research.progress = 0;
-  return RESEARCH[id];
+  return def;
 }
 
 /** 0..1 through the current project, for the HUD bar. */
@@ -348,9 +503,57 @@ export function learnRateScale(world: World): number {
   return hasResearch(world, 'apprenticeship') ? 1.35 : 1;
 }
 
-/** Multiplier on the materials a workbench recipe consumes. */
+/**
+ * Multiplier on the materials a workbench recipe consumes.
+ *
+ * Two projects, and they multiply rather than each setting the number, so the
+ * second one is worth taking whether or not the first already landed. Machining
+ * is jigs on the bench you have; the Foundry is not having to buy the stock in
+ * the first place. Together 0.45, which is a rifle for sixteen steel instead of
+ * thirty-five — a large number, and it is meant to be: it is the first thing the
+ * third tier hands back, and the tier costs more steel than it saves for a long
+ * while yet.
+ */
 export function recipeCostScale(world: World): number {
-  return hasResearch(world, 'machining') ? 0.67 : 1;
+  return (hasResearch(world, 'machining') ? 0.67 : 1) * (hasResearch(world, 'foundry') ? 0.67 : 1);
+}
+
+/**
+ * Multiplier on points a settler puts into the bench.
+ *
+ * The one project that makes the rest of the tree cheaper, and therefore the one
+ * whose value is entirely in when it lands — the same argument as
+ * Apprenticeship, one tier up. Taken as the first thing past the Foundry it pays
+ * for itself across the two projects behind it; taken last it is a trophy.
+ */
+export function benchRateScale(world: World): number {
+  return hasResearch(world, 'instruments') ? 1.5 : 1;
+}
+
+/**
+ * Multiplier on the load a trading party walks out with.
+ *
+ * Half again on every road, near and far, which on the middle ring is three
+ * hundred of something becoming four hundred and fifty. Written as a load rather
+ * than as a rate because the rate is the one number in the trade system nothing
+ * is allowed to touch: a better price would be a thumb on the exchange, whereas
+ * a bigger cart is the colony having built something.
+ */
+export function packScale(world: World): number {
+  return hasResearch(world, 'freighting') ? 1.5 : 1;
+}
+
+/**
+ * Points off the chance a road goes badly, as a fraction.
+ *
+ * Subtracted from the raw figure before it is clamped, so it works on the far
+ * ring — which is the only place it matters. Every far road sits pinned to the
+ * thirty per cent cap and standing barely moves it; this is the one thing in the
+ * game that gets a party off that cap, and it takes the worst road on the board
+ * from three trips in ten going wrong to about two.
+ */
+export function roadSafety(world: World): number {
+  return hasResearch(world, 'waystations') ? 0.09 : 0;
 }
 
 /**

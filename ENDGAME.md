@@ -454,6 +454,179 @@ Either it is denominated in something that scales with the setting, or the third
 tier is proved on all three before it ships. This is the one place in the plan
 where the difficulty work already done is load-bearing rather than merely adjacent.
 
+*How the bill answers that constraint.* Four projects — `foundry`, `freighting`,
+`instruments`, `waystations` — at 34,000 to 52,000 points each, taking the tree
+from fifteen projects and 249,000 points to nineteen and 421,000. Each is billed
+in two currencies at once, and the two answer the constraint in different ways.
+
+The steel half (180, 220, 200, 260 — 860 across the tier) *is* a constant, and
+deliberately so, because **the thing that scales with the setting is not the
+number, it is who is ever shown the number.** The bill is gated behind the points
+first: no colony sees a material cost until it has already spent 249,000 points
+clearing the two tiers below. On the sixty-day grid that set is not a sample of
+the three settings — it is *precisely* the eleven colonies that ran out of tree,
+which is to say precisely the ones ending rich. Hard country does not hit a steel
+wall at the third tier because hard country never arrives at it; it runs out of
+research points nine tiers earlier, and that is the difficulty axis doing its own
+job rather than this one borrowing it. A poor colony that *does* arrive has, by
+arriving, proved it can afford to.
+
+The components half (12, 18, 22, 28) is not denominated in a stock at all.
+Components have no resource patch, no recipe and no bench — the only supply on
+the map is a road, and only the middle ring sells them. That half
+costs a caravan, and a caravan costs whatever the colony can spare, which is by
+definition scaled to what it has. It is the first material in the game whose
+price is a *journey*.
+
+The claim that this is not a wall is falsifiable rather than asserted, which is
+why the grid grew a fifth new column, `wait`: days the bench spent worked-out and
+short. A stalled bench and an empty bench are indistinguishable from `tech` alone,
+so without it the grid would happily report the tree fixed while every colony on
+it stood still for the opposite reason. It is reported in the detail line of
+`the-tree-is-not-empty-at-day-sixty` and asserted on by nothing — a few stalled
+days is a colony organising a road trip, which is the tier working as designed.
+A run that spends a fortnight short is the wall, and it will say so by name.
+
+*And it did, on the first grid with the tier in it.* Three colonies stood at a
+worked-out bench for 13, 18 and 22 days, and three of the five quiet-valley maps
+finished at fifteen projects of nineteen having never bought a single component.
+The column was written to catch exactly this and caught it on its first outing,
+which is the argument for writing the check before the feature in one line.
+
+The cause was arithmetic rather than pace, and it was in this document's own
+reasoning. `VALUE.components` was set from a middle-ring road's *limit* — a pack
+of three hundred steel, five hundred and seventy of worth, four hundred and
+twenty after the quote — and every step of that is true about `packLimit` and
+none of it is true about the load. The foreman does not ship a road's limit. He
+ships `spareGoods`, which is what is left after `SURPLUS` and then six tenths of
+what remains, and a colony arrives at this tier holding about three hundred and
+twenty steel. So fifty walks out of the gate, not three hundred. Seventy of
+worth, not four hundred and twenty. **Five components against a bill of twelve**,
+on a twelve-day round trip, with twenty days left on the clock — sixteen trips
+where the design said two. A per-tick probe put it beyond argument: `d40 STALL
+needs componentsx12` · `d41 DEPART sells=components give=steelx50` · `d53 PARTS
+0 -> 5`. The number was measured against a pack the colony owns at day sixty and
+billed against a day it has to pay at day forty.
+
+Re-derived from the load instead of the limit — 5.5, with the pack size restruck
+to sixteen to hold the ninety-of-worth rule the table is built on — the same
+fifty steel comes home as fifteen parts, and the same probe now reads `d53 PARTS
+0 -> 15` · `d53 UNSTALL` · `d53 DONE 16 (foundry)`. One trip, one rung, which is
+the pace the tier was written for. What the grid says, run by run:
+
+| run | tree | waiting | end steel | biggest fall |
+|---|---|---|---|---|
+| calm/20260729 | 17 → 17 | 12 → 12 | 888 → **738** | 374 → **390** |
+| calm/7 | 15 → **16** | 17 → **13** | 854 → 1,064 | 228 → **436** |
+| calm/99001 | 16 → **18** | 13 → **7** | 1,006 → **468** | 204 → **359** |
+| settler/20260729 | 16 → **17** | 9 → **5** | 949 → **512** | 340 → **479** |
+| settler/7 | 15 → **16** | 9 → **3** | 433 → **199** | 155 → **297** |
+
+Days waiting on a delivery fell from 8.1 a run to 6.6, the furthest anybody got
+went from seventeen projects to eighteen of nineteen, and *the surplus finds a
+buyer* came down from three rich runs in ten to two in nine. Both halves of that
+last number moved for the right reason rather than by rounding: calm/99001 went
+from spending 204 of a 1,006 pile to spending 359 of 468, and settler/7 spent
+433 down to 199 — far enough that it is no longer a run that ended rich at all.
+That is the pile finding a buyer in the most literal sense the check has.
+
+**Every hard-country row is byte-identical across the two grids**, which is the
+constraint at the top of this section answered in data rather than in argument.
+A change to what parts cost cannot reach a setting that never arrives at parts.
+
+*What is left, and it is not the price.* Three runs — calm/1312, calm/424242 and
+settler/1312 — came back byte-identical too, and a byte-identical row is a proof
+of its own: any purchase at all would now resolve to a different number, so those
+colonies **never got a delivery home inside sixty days**. They stalled 18, 22 and
+13 days on a road, not on a bill. A middle-ring round trip is twelve days, the
+tier opens around day forty, and a robbery costs the whole tier because there is
+no calendar left for a second attempt. Two of the three are the same seed, and
+seed 1312 is also both of the runs still failing the surplus check — one map's
+road, not three separate problems.
+
+There is a bootstrap in that worth naming before the next slice starts, because
+it is the kind of thing that reads as a balance number until somebody draws the
+graph: **`waystations` is the project that lowers the mishap chance on every
+road, and it is the last rung of the tier that is gated behind the road.** The
+fix for the robberies is sitting on the far side of the robberies.
+
+*What the four projects buy.* An industrial base has to industrialise something,
+so each project pays back into a system the colony already runs rather than
+adding a fifth one. `foundry` stacks with `machining` to take every recipe to
+0.45 of its original input cost — the second multiplier on the same number, so
+the tier compounds with the tier below instead of sitting beside it.
+`freighting` widens every pack on every road by half again. `instruments` runs
+the bench itself half again as fast, which is the project that pays for the rest
+of the tier. `waystations` lowers the mishap chance on every road by a flat nine
+points, which finally unpins the far ring from the 0.30 it had been fixed at
+since the ring work shipped — the answer to the ceiling stage 1 recorded and
+could not fix from inside itself.
+
+*How the colony finds the parts.* Left alone, the foreman scored a destination on
+`worth / (days + 1)` and nothing else, so an unattended colony would have sold
+steel to the best-paying neighbour forever while the last four projects sat at
+100% and waited. Destination scoring grew a second term: a town selling something
+the bench is short of scores ×3. It is a cliff rather than a curve, keyed on the
+*shortfall* — so it switches itself off the moment the crates land, and it is
+exactly ×1 for every town on every run that never reaches the third tier, which
+is what makes every sixty-day number measured before this change still comparable
+to the ones after it. It is deliberately smaller than the ×5 a town scores for
+opening the next ring, because parts cannot be fetched from behind a gate that is
+still shut. The two combine with `max`, not by multiplying: they are independent
+facts about the same trip, and ×15 would stop being a tiebreak and start being
+the only decision the foreman ever made.
+
+*What the guarantee cost, before it was made cheap.* A per-town roll leaves
+better than three maps in ten — (3/4)⁴, about 32% — with no parts anywhere on
+them, and a colony that walked two vouches out to the workshops only to find four
+towns all selling steel has been shut out of the last tier by a coin, with no way
+of knowing that is what happened. The obvious fix was to stop rolling the middle
+ring and start *dealing* it: a bag holding every kind, shuffled, one to each of
+the four. Guaranteed, elegant, and it moved every die after it.
+
+Measured on the sixty-day grid, that cost eight foundings out of fifteen down to
+four, and the far gate open on seven maps in ten down to three. A third arm with
+the deal on and the need bonus off returned the same four and the same three,
+which is what exonerated the bonus and left the deal holding the bill. Nothing
+about dealing is worse than rolling — but a different draw order is a different
+world, and the fourteen maps in twenty that *already had* a parts town were
+re-rolled for nothing. Two thirds of the grid paid a bearing-and-names shuffle to
+fix the other third.
+
+So the draw is untouched and only the maps that need it are repaired.
+`ensureParts` runs after a ring is drawn, converts the *second* seller of
+whatever that ring has most of — with four towns drawing four kinds, a ring
+missing components must be doubled up somewhere, which is what keeps it from
+taking away the middle country's only medicine — and consumes no randomness at
+all. Every seed that could already reach the third tier keeps the exact world it
+had; the third of maps that could not get a parts town instead of a shrug. The
+same lesson as the near ring's, arrived at from the other side: *the cheapest
+guarantee is the one that spends no dice.*
+
+The deal left one thing behind it that outlives it. Halving the foundings was a
+regression on the most important number in the first act, and **the whole board
+of principles reported HOLDS while it happened** — because
+`the-game-does-not-end-at-the-founding` asks only whether the colonies that
+founded played on afterwards, never whether anybody founds. A first act half the
+colonies never finish is a different game and it was invisible, so
+`the-first-act-is-finishable` now measures the rate: at least half the runs below
+hard country, floored under a measured seven in ten. Hard country is deliberately
+outside it — not founding there is the setting working, and averaging it in would
+let a real fall on the kind settings hide behind a number that was always going
+to be low. It costs nothing to check, it reads a grid that was already being
+measured, and it exists because a promise nothing measures is not a promise.
+
+*Not there yet:* `assemblies` and the far-ring top of the tier. The middle ring
+sells the parts; the far ring is still selling nothing that only it sells, which
+was the reason stage 1 left the autonomous far-ring walk on the table. That is
+the second slice of this stage, and the need bonus above is the mechanism it will
+reuse rather than a second one written for it. It carries the road problem with
+it: a tier bought one twelve-day round trip at a time is a tier one robbery can
+end, and adding a *longer* road to the top of it makes that worse before it makes
+it better. Whatever answers it — a second party, a standing order, a shorter
+first rung — belongs to that slice, and the `wait` column is already the place it
+will be read.
+
 **3 — The three roads get ladders the player can see.** A visible tally per road,
 built on `objectives.ts` and `alerts.ts`, which already do this kind of work. No
 new simulation; this is the stage that makes the previous two legible.
@@ -509,6 +682,11 @@ that never recorded it. Everything else about that game is that game's problem.
   six-day road has one fewer pair of hands to carry a meal to the person who needs
   it. Nobody has tested that, and the last theory of this kind on this project was
   wrong; it is written here as the first thing to check and not as the answer.
+  Stage 2 has since given the foreman a *reason* to walk further and more often —
+  parts can only be bought — so if the road-hands theory is right this number
+  should get worse on the next grid, and it is the only place in the plan where a
+  principle getting worse would be evidence rather than a regression. If it moves,
+  check the hands before checking the tier.
   `the-escalation-ladder-is-climbable-to-the-top`
   is settled by the full sixty-day grid, and not in its favour: the highest rung
   reached anywhere was 3 of 4, on one calm map.

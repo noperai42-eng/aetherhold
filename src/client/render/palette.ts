@@ -235,6 +235,11 @@ export const RESOURCE_COLOR: Record<ResourceKind, number> = {
   meal: 0xc9a13f,
   medicine: 0xd8dde2,
   hide: 0xc08a5a,
+  // Brass, and the only warm metal in the stockpile. Steel is the cold grey the
+  // colony digs out of the hill; a crate of components has to read as somebody
+  // else's workshop from across the yard, or the one pile on the map that cost a
+  // fortnight of road looks like the one that cost an afternoon of mining.
+  components: 0xb08d3f,
 };
 
 export const SKY_DAY = new THREE.Color(0x7fa6c9);

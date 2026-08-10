@@ -264,6 +264,44 @@ export function countResource(world: World, kind: ResourceKind): number {
 }
 
 /**
+ * Whether `takeResource` would be willing to spend this stack.
+ *
+ * Loose stock always; stock a job has merely spoken for as long as nobody has
+ * set off towards it; never stock in somebody's arms. Extracted so the two
+ * places that need the rule — spending it, and asking first whether it is there
+ * — cannot come to different conclusions.
+ */
+function spendableStack(world: World, s: ItemStack, kind: ResourceKind): boolean {
+  if (s.kind !== kind || s.carriedBy !== null) return false;
+  if (s.reservedBy === null) return true;
+  const job = world.jobs.find((j) => j.id === s.reservedBy);
+  if (!job) return false;
+  const owner = world.pawns.find((p) => p.id === job.pawnId);
+  // A reservation whose owner is no longer on the map — buried, or a raider who
+  // ran — is left alone rather than swept up. It looks like free stock and it is
+  // not obviously wrong to take it, but the sweeper for a dangling job belongs
+  // wherever jobs are reaped, not in the middle of paying a bill. Written as
+  // `owner !== undefined` on purpose: the truthiness version quietly changed this
+  // rule when this predicate was lifted out of `takeResource`.
+  return owner !== undefined && owner.jobId !== job.id;
+}
+
+/**
+ * What the colony could actually pay out of stock right now.
+ *
+ * The honest counterpart to `countResource`, which counts every stack on the map
+ * including the one in a builder's arms and is therefore the right number for a
+ * readout and the wrong one for a decision. Anything that has to know *before*
+ * it spends — a bill with more than one line on it, where paying half and
+ * failing on the rest would be worse than not starting — asks this instead.
+ */
+export function spendableResource(world: World, kind: ResourceKind): number {
+  let n = 0;
+  for (const s of world.items) if (spendableStack(world, s, kind)) n += s.amount;
+  return n;
+}
+
+/**
  * Spend loose colony stock. Returns how much it actually got.
  *
  * Only stacks nobody is holding and nobody has reserved: a settler halfway to
@@ -296,15 +334,11 @@ export function takeResource(world: World, kind: ResourceKind, amount: number): 
   // a colony that cannot pay a caravan or fuel a generator out of three hundred
   // logs because every one of them is on a to-do list. Cancelling releases the
   // claim, which is why this reads `reservedBy` again on the way past.
+  // The job in a settler's hands is off limits — they are on their way there —
+  // which is one of the rules `spendableStack` keeps.
   const waiting: ItemStack[] = [];
   for (const s of world.items) {
-    if (s.kind !== kind || s.carriedBy !== null || s.reservedBy === null) continue;
-    const job = world.jobs.find((j) => j.id === s.reservedBy);
-    if (!job) continue;
-    const owner = world.pawns.find((p) => p.id === job.pawnId);
-    // The job in a settler's hands is off limits. They are on their way there.
-    if (!owner || owner.jobId === job.id) continue;
-    waiting.push(s);
+    if (s.reservedBy !== null && spendableStack(world, s, kind)) waiting.push(s);
   }
   for (const s of waiting) {
     if (left <= 0) break;

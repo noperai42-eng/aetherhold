@@ -35,6 +35,7 @@ import { HUNGRY, TIRED } from './needs';
 import { regionAt } from './regions';
 import { Rng } from './rng';
 import { CRAFT_DEFS, RECIPE_ORDER, outputKind } from './crafting';
+import { packScale, researchNeeds, roadSafety } from './research';
 import { gainSkill } from './skills';
 import { TICKS_PER_DAY } from './types';
 import type { Caravan, CraftRecipe, Pawn, ResourceKind, Settlement, World } from './types';
@@ -68,6 +69,40 @@ export const VALUE: Record<ResourceKind, number> = {
   // made of. Between steel and a cooked meal, which is what a hunter's afternoon
   // is worth against a cook's.
   hide: 2.6,
+  /**
+   * Milled parts. Set from the road, and set twice — the first derivation was
+   * measured against a pack the colony does not own on the day it needs one.
+   *
+   * That reasoning went: a middle-ring road walks a pack of three hundred steel,
+   * five hundred and seventy of worth, quoted to a stranger at about 0.74 — call
+   * it four hundred and twenty of parts a trip, so fourteen apiece buys thirty,
+   * and a tier wanting sixty costs the two round trips it is meant to. Every
+   * step of that is true about `packLimit`. None of it is true about the load.
+   * The foreman does not ship a road's limit; he ships `spareGoods`, which is
+   * what is left after `SURPLUS` and then six tenths of that. A quiet valley
+   * unlocks this tier holding about three hundred and twenty steel, so what
+   * actually walks out of the gate is fifty. Seventy of worth. Five components.
+   *
+   * The probe, on the calm map that ended at fifteen projects of nineteen:
+   * `d40 STALL needs componentsx12` · `d41 DEPART sells=components give=steelx50`
+   * · `d53 PARTS 0 -> 5`. Twelve days of walking for five of a bill of twelve,
+   * against a tier that opens with twenty days left on the clock — sixteen trips
+   * where the design said two or three.
+   *
+   * So it is derived from the load instead: seventy of worth a trip at the
+   * moment the tier opens. At five and a half that first walk comes home with
+   * twelve, which is the foundry's bill exactly, and a colony that has let its
+   * pile grow to seven hundred spares two hundred and seventy-six and clears
+   * the rest of the tier in one more. That last part is the point rather than a
+   * side effect: what a colony can buy here scales with the steel it has spare,
+   * which is the only way a fixed bill can be neither a sink on the quiet valley
+   * nor a wall on hard country.
+   *
+   * Nothing on the map makes it, so unlike every other line here this number
+   * cannot open a loop by being wrong — there is no second route to a component
+   * to arbitrage against. What it sets is purely how much road a project costs.
+   */
+  components: 5.5,
 };
 
 /**
@@ -202,9 +237,59 @@ const PER_RING = 4;
  */
 const RINGS: ReadonlyArray<{ days: readonly number[]; sells: readonly ResourceKind[] }> = [
   { days: [1, 2, 2, 3], sells: KINDS },
-  { days: [5, 5, 6, 6], sells: ['meal', 'medicine', 'steel'] },
+  { days: [5, 5, 6, 6], sells: ['components', 'meal', 'medicine', 'steel'] },
   { days: [9, 9, 10, 10], sells: ['steel', 'medicine'] },
 ];
+
+/**
+ * Make sure somebody out in the middle country sells parts.
+ *
+ * Every town draws its stock one at a time and always has — five things it might
+ * have too much of, four places to have it, and whether anybody within a day's
+ * walk sells medicine this run is exactly the kind of thing a seed is allowed to
+ * decide. Nothing is gated on the near ring, so a bad draw there is colour.
+ *
+ * The middle ring is the only place in the world that sells components, and a
+ * straight per-town draw leaves better than three maps in ten — (3/4)⁴, about
+ * 32 % — with no parts anywhere on them. A colony that walked two vouches out to
+ * the workshops and found four towns all selling steel has been shut out of the
+ * last tier of the tree by a coin, and would have no way of knowing that is what
+ * happened.
+ *
+ * So this repairs the draw instead of replacing it, and that distinction is the
+ * whole point. The first version dealt the ring from a shuffled bag: guaranteed,
+ * elegant, and it moved every die after it. Measured on the sixty-day grid, that
+ * cost eight foundings out of fifteen down to four, and the far gate open on
+ * seven maps in ten down to three — not because dealing is worse, but because a
+ * different draw order is a different world, and the fourteen maps that already
+ * had a parts town were re-rolled for nothing. Repairing touches only the two in
+ * three that need it, spends no dice at all, and leaves every other seed's
+ * bearings, names and stock exactly where they were.
+ *
+ * Which town gets converted is the *second* seller of whatever the ring has most
+ * of, because with four towns drawing from four kinds a ring missing components
+ * must be doubled up somewhere. That is what keeps this from taking away the only
+ * medicine in the middle country to hand out parts.
+ */
+export function ensureParts(ring: Settlement[]): void {
+  if (ring.some((s) => s.sells === 'components')) return;
+  const count = new Map<ResourceKind, number>();
+  for (const s of ring) count.set(s.sells, (count.get(s.sells) ?? 0) + 1);
+  let most: ResourceKind | null = null;
+  for (const [kind, n] of count) {
+    if (most === null || n > count.get(most)!) most = kind;
+  }
+  const doubled = ring.filter((s) => s.sells === most);
+  const victim = doubled[doubled.length - 1];
+  if (!victim) return;
+  victim.sells = 'components';
+  // `buys` is left alone and is still right. It was drawn from everything the
+  // town was not sitting on, and a parts town is short of all five ordinary
+  // goods — so whatever it wanted before, it still wants. `craft` has to be
+  // re-derived and comes back null: nothing on the map makes components, so a
+  // parts town is a place that mills rather than a place with a workshop.
+  victim.craft = craftFor('components', victim.id);
+}
 
 /** Every settlement on a map, near ring first. */
 const NEIGHBOUR_COUNT = RINGS.length * PER_RING;
@@ -228,6 +313,7 @@ export function settlementsOf(world: World): Settlement[] {
   for (let ring = 0; ring < RINGS.length; ring++) {
     const { days, sells: stock } = RINGS[ring]!;
     const names = ring === 0 ? near : far;
+    const first = made.length;
     for (let i = 0; i < PER_RING; i++) {
       const name = names.splice(rng.int(names.length), 1)[0]!;
       // One per quarter of the compass, jittered inside it. Four places all out
@@ -238,7 +324,10 @@ export function settlementsOf(world: World): Settlement[] {
       // hidden directly under it.
       const bearing = (i * Math.PI) / 2 + (ring * Math.PI) / 6 + rng.range(-0.5, 0.5);
       const sells = stock[rng.int(stock.length)]!;
-      // Never short of the thing they are drowning in.
+      // Never short of the thing they are drowning in. A parts town is short of
+      // all five ordinary goods, because it does not produce any of them — which
+      // is the right answer and falls straight out of `components` not being on
+      // the list of things anybody trades *for*.
       const wants = KINDS.filter((k) => k !== sells);
       const id = made.length + 1;
       made.push({
@@ -254,6 +343,9 @@ export function settlementsOf(world: World): Settlement[] {
         visits: 0,
       });
     }
+    // After the ring is drawn, never during it — a repair that ran inside the
+    // loop would have to guess at towns that do not exist yet.
+    if (ring === 1) ensureParts(made.slice(first));
   }
   // A save from before the world had depth already knows its near ring, and that
   // ring is who the colony has been trading with — so it is kept, standing and
@@ -433,9 +525,15 @@ export function quote(
  * near, 18 to 21 in the middle, and the far ring still pinned to the cap, which
  * is where the cap was always meant to bind and nowhere else.
  */
-export function mishapChance(s: Settlement, pawn: Pawn): number {
+export function mishapChance(s: Settlement, pawn: Pawn, world?: World): number {
   const raw =
-    0.035 * s.days - Math.max(0, s.relations) * 0.0004 - (pawn.skills?.shooting ?? 0) * 0.004;
+    0.035 * s.days -
+    Math.max(0, s.relations) * 0.0004 -
+    (pawn.skills?.shooting ?? 0) * 0.004 -
+    // Sheds and caches, subtracted before the cap rather than after it. After
+    // the cap it would be worth nothing on the far ring, which is pinned there
+    // and is the only road anyone would build waystations for.
+    (world ? roadSafety(world) : 0);
   return Math.min(0.3, Math.max(0.01, raw));
 }
 
@@ -522,9 +620,16 @@ export function packMultiple(s: Settlement): number {
   return RING_PACK[ringOf(s)] ?? 1;
 }
 
-/** The largest pack that goes out on this road. */
-export function packLimit(s: Settlement): number {
-  return PACK_MAX * packMultiple(s);
+/**
+ * The largest pack that goes out on this road.
+ *
+ * Takes a world because Freighting makes every cart on the board bigger, and is
+ * tolerant of not being given one: `PACK_CEILING` and the panel's pack sizes are
+ * asked about roads in the abstract, before anybody has chosen a destination or,
+ * in the ceiling's case, before there is a colony at all.
+ */
+export function packLimit(s: Settlement, world?: World): number {
+  return Math.floor(PACK_MAX * packMultiple(s) * (world ? packScale(world) : 1));
 }
 
 export type Reach = { ok: true } | { ok: false; text: string };
@@ -620,7 +725,7 @@ export function planCaravan(
   // answer that stands however much wood is in the yard.
   const reach = withinRange(world, s);
   if (!reach.ok) return { ok: false, text: reach.text };
-  if (give.amount > packLimit(s)) {
+  if (give.amount > packLimit(s, world)) {
     return { ok: false, text: `That is more than one party carries to ${s.name}.` };
   }
   if (countResource(world, give.kind) < give.amount) {
@@ -712,7 +817,7 @@ export function tickCaravan(world: World): void {
     // the same run gets the same luck twice and no other system moves.
     const rng = new Rng((world.seed ^ ((s.id * 733 + s.visits + 1) * 0x9e3779b9)) >>> 0);
     s.visits++;
-    if (rng.chance(mishapChance(s, c.pawn))) {
+    if (rng.chance(mishapChance(s, c.pawn, world))) {
       // Robbed. The pack is gone and so is the trip; they are hurt but walking,
       // because the alternative is a settler who dies where nobody can see it.
       c.take = null;
@@ -789,6 +894,22 @@ const SURPLUS: Record<ResourceKind, number> = {
   // Low, because a colony that has dressed everybody has no further use for
   // hides at all and the pile only grows from there.
   hide: 120,
+  /**
+   * Never. A colony does not have spare components.
+   *
+   * Every one of them was walked here across five days of open country to be
+   * spent at the bench, and the foreman sending them back out because the pile
+   * looked large would be undoing the last three weeks of its own work. The
+   * number is above anything the tier can ask for rather than merely large, so
+   * "the foreman will not trade these away" is a fact about the table and not a
+   * bet on how much the colony happens to be holding.
+   *
+   * The player may still load a crate of them onto somebody's back from the
+   * panel and walk it to a town that will take it. They will be quoted for it
+   * like anything else and they will lose on the deal, which is the honest
+   * answer to selling a thing back to the people who make it.
+   */
+  components: 100000,
 };
 
 /** The most they will load, and the least worth walking for. */
@@ -796,10 +917,23 @@ const PACK_MAX = 150;
 const PACK_MIN = 40;
 
 /**
- * The biggest pack any road on the board takes. What "spare" is measured
- * against, since what is spare is known before the road is chosen.
+ * The biggest pack any road on the board takes, before anybody has built a cart.
+ * What "spare" is measured against, since what is spare is known before the road
+ * is chosen.
  */
 export const PACK_CEILING = PACK_MAX * Math.max(...RING_PACK);
+
+/**
+ * The same ceiling for a colony that has done some reading.
+ *
+ * Freighting is worth nothing if the foreman goes on measuring what it can spare
+ * against the cart it used to have: it would fill the old load, find the new one
+ * half empty, and the project would have bought a bigger sack nobody puts
+ * anything in.
+ */
+export function packCeiling(world: World): number {
+  return Math.floor(PACK_CEILING * packScale(world));
+}
 
 /**
  * One pack of each thing, for the panel.
@@ -817,6 +951,11 @@ export const PACK_SIZES: Record<ResourceKind, number> = {
   meal: 30,
   medicine: 8,
   hide: 40,
+  // Sixteen, which is within a third of the worth of every other pack here —
+  // the rule this table is built on, re-struck when `VALUE.components` was.
+  // It exists so the panel can offer the button; the foreman never reaches for
+  // it, for the reason in `SURPLUS`.
+  components: 16,
 };
 
 /**
@@ -964,6 +1103,35 @@ export function caravanAllowed(world: World, pawn: Pawn): boolean {
 const GATE_BONUS = 5;
 
 /**
+ * Worth this place, if it sells something the bench is waiting on.
+ *
+ * The third tier of the research tree is bought with milled parts, and nothing
+ * in this valley makes a milled part — the only way one arrives is that somebody
+ * walked to a town that sells them. But `pickDestination` scores by what a pack
+ * is *worth*, and worth knows nothing about what comes home in exchange. Without
+ * this the foreman would carry steel to the best-paying neighbour forever and
+ * the last four projects would sit at a hundred per cent, unfinishable, with the
+ * player watching a bar that never moves. So: a town that stocks the thing the
+ * bench is short of is worth more than the price it quotes.
+ *
+ * Three, from the same arithmetic as `GATE_BONUS` and to be beaten by it. A near
+ * neighbour quoting its best at one day out scores about a hundred and thirty; a
+ * middle-ring town nobody here has met quotes 0.74 on a double pack five days
+ * out and scores about seventy. That is a gap of one and eight tenths, so two
+ * would flip the choice and leave it wobbling on whichever good happened to be
+ * spare that morning. Three clears it with room and still loses to a trip that
+ * opens a ring — which is the right order, because parts cannot be fetched from
+ * behind a gate that is still shut.
+ *
+ * A cliff, and self-cancelling like the gate one: `researchNeeds` returns only
+ * the *shortfall*, so the moment the crates are in the yard this is 1 again and
+ * the foreman goes back to trading on price. When the bench wants nothing — which
+ * is every project below the third tier, and so every run the grid has measured
+ * so far — it is 1 for every town on the map and this changes nothing.
+ */
+const NEED_BONUS = 3;
+
+/**
  * Where an unasked trade run would go, or null if none is worth making.
  *
  * Nearest first among the ones that want what the colony has spare, then nearest
@@ -988,6 +1156,9 @@ export function pickDestination(
   // to one. Index is the ring being *entered*, so [0] is meaningless and only
   // the two outer rings are gates: there is nothing past the far one to open.
   const shut = [false, !ringOpen(world, 1), !ringOpen(world, 2)];
+  // What the bench is waiting on, asked once for the same reason as `shut`.
+  // Usually empty, and empty means every multiple below is 1.
+  const wanted = new Set(researchNeeds(world).map((n) => n.kind));
   for (const s of settlementsOf(world)) {
     // A road the colony cannot walk is not a choice it gets to weigh. Checked
     // here as well as in `planCaravan` because the foreman never goes near the
@@ -997,11 +1168,18 @@ export function pickDestination(
     // What actually comes home, not what one crate is worth: the far ring goes
     // with handcarts, and a score that ignored the size of the load would rank
     // three weeks of road against an afternoon's and never once pick the road.
-    const carried = Math.min(amount, packLimit(s));
+    const carried = Math.min(amount, packLimit(s, world));
     const worth = VALUE[give] * carried * rateOf(s, 0, give);
     // Worth this place, if walking to it is also what opens the ring behind it.
     const opens = shut[ringOf(s) + 1] === true && s.relations < PASSAGE_RELATIONS;
-    const score = (worth / (s.days + 1)) * (opens ? GATE_BONUS : 1);
+    // The larger of the two reasons, not both multiplied together. They are
+    // independent facts about the same trip and a town that is both would score
+    // fifteen times its neighbours — a cliff that steep stops being a tiebreak
+    // and starts being the only decision the foreman ever makes. Taking the
+    // larger picks the same destination in every case that matters and leaves
+    // the rest of the ranking recognisable.
+    const bonus = Math.max(opens ? GATE_BONUS : 1, wanted.has(s.sells) ? NEED_BONUS : 1);
+    const score = (worth / (s.days + 1)) * bonus;
     // Ties break toward the nearer town, which is also the old behaviour when
     // nothing on the map has a workshop.
     if (score > bestScore || (score === bestScore && best !== null && s.days < best.days)) {

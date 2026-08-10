@@ -14,39 +14,56 @@ Four sections: [the killer feature](#the-killer-feature),
 and [what still wants a human](#what-still-wants-a-human) — which is the long one, and is
 ordered to match `PLAYTEST.md` rather than by importance.
 
-Last run — 2026-08-09:
+Last run — 2026-08-10:
 
 - `npx tsc --noEmit` clean.
-- `npm test` — **89 of 91 files, 1,615 tests green**, 13 skipped. The skips are the
-  opt-in gates and nothing else: the 1000-day ecosystem sweep (`ECO`), the survival sweep
+- `npm test` — **89 of 91 files, 1,643 tests green**, 13 skipped, in 1,112 s. The skips are
+  the opt-in gates and nothing else: the 1000-day ecosystem sweep (`ECO`), the survival sweep
   (`SWEEP`), the balance grid (`BALANCE`), the liveness census (`LIVE`) and the eval pool
   (`POOL`). Each is a `describe.runIf` on its environment variable, so a skip is a gate
   nobody asked for rather than a test that gave up. Two of those files —
   `tests/liveness.test.ts` and `tests/survival-sweep.test.ts` — hold nothing *but* a
   gated describe, which is why the file count reads 89 and not 91.
+  Worth writing down because it will happen again: an earlier run of this same tree, started
+  while the box was still busy, came back 1 failed / 1,642 passed — `colony-eval.test.ts`'s
+  twenty-one-day run against the 300 s per-test ceiling in `vite.config.ts`. It passes
+  standalone and it passed here, so it is the load flake that ceiling comment already
+  describes rather than a regression; but the margin is thin enough that a suite result taken
+  on a loaded machine is not evidence of anything, in either direction.
 - `npm run eval` — 11 tests green across five seeds, no collapses.
 - `npm run measure -- --days 60 --past-founding` then `npm run balance` — 4 tests green.
-  24 colonies in 959 s. All twelve enforced principles hold; the five open ones report
-  without asserting, and one of them (*the valley can still bury somebody*) holds too.
-  The four that do not are the standing findings: *nobody starves beside a full pantry*
-  (8 of 15 runs, every one of them bottoming out at exactly 0.00 while the colony held
-  twelve to twenty-two days of food), *the escalation ladder is climbable to the top*
-  (highest rung reached anywhere was 3 of 4, and Hard country never leaves rung 0), and
-  the two written for stage 2 of `ENDGAME.md` before the feature that is meant to close
-  them: *the tree is not empty at day sixty* (**11 of the 14 full runs finished the whole
-  research tree**, nine of them with a fortnight or more left to play — 21 to 26 idle days
-  on every quiet-valley map) and *the surplus finds a buyer* (4 of the 10 runs that ended
-  rich never spent the pile down by a quarter; the largest fall is roughly constant at
-  183–362 steel whether the pile ends at 369 or 1,337).
-  The last two enforced are what stage one of `ENDGAME.md` was for, and they are a pair
-  on purpose. *The far ring is earned* — shut for all fifteen runs through day 7, and
-  5 of the 10 runs below Hard country had it open by day 42, the earliest on day 17.
-  *The long road is walked* — 10 of 10 below Hard country sent two or more trade parties
-  past the near ring, mean trips by ring 5.3/2.7/0.2. That one exists because the first
-  measured only permission and read like traffic; before the routing fix it would have
-  been 5 of 10. Both numbers moved this run: the far ring was 3 of 10 until the road
-  risk was rescaled so the middle ring stopped sharing the far ring's cap.
-- `npm run build` — 896.69 kB JS (255.26 kB gzip), 22.65 kB CSS (4.97 kB gzip).
+  24 colonies in 2,355 s. All **fourteen** enforced principles hold; the four open ones
+  report without asserting, and one of them (*the valley can still bury somebody*) holds
+  too. The three that do not are the standing findings.
+  *Nobody starves beside a full pantry* — 7 of 15 runs, each bottoming out at exactly
+  0.00 while the colony held thirteen to twenty-two days of food. That is one fewer than
+  the previous grid, and the run that left was the quiet-valley one, so the seven are now
+  3 Settler and 4 Hard country: the finding is weaker than it was, because it now
+  correlates with difficulty and can no longer be told apart from Hard country being hard
+  by this measurement alone.
+  *The escalation ladder is climbable to the top* — highest rung reached anywhere was
+  3 of 4; the five Hard country maps read 0, 1, 1, 0, 1.
+  *The surplus finds a buyer* — 2 of the 9 runs that ended rich never spent the pile down
+  by a quarter (calm/1312 ended on 986 steel with a largest fall of 196; settler/1312 on
+  757 with 123). It was 4 of 10 before the third research tier landed, and both survivors
+  are the same seed on two settings — the two runs whose caravan never made it home with
+  a delivery at all, which is a road problem rather than a demand problem and is written
+  up as such in `ENDGAME.md`.
+  Its pair, *the tree is not empty at day sixty*, now **holds**: no run of the fourteen
+  that played a full clock stood at an empty bench for a week, the furthest anybody got
+  was calm/99001 at 18 projects of 19, the longest idle stretch was 0 days, and colonies
+  spend 6.6 days a run waiting on a parts delivery — worst 22.
+  Three enforced principles are what stage one of `ENDGAME.md` was for, and the first two
+  are a pair on purpose. *The far ring is earned* — shut for all fifteen runs through
+  day 7, and 7 of the 10 runs below Hard country had it open by day 42, the earliest on
+  day 16. *The long road is walked* — 10 of 10 below Hard country sent two or more trade
+  parties past the near ring, mean trips by ring 4.6/3.0/0.1. That one exists because the
+  first measured only permission and read like traffic. *The first act is finishable* —
+  7 of the 10 below Hard country reached the founding (70%, against a 50% floor); the
+  three that never got there were calm/1312, settler/99001 and settler/424242. It was
+  written after a regression halved the foundings while every other principle on the board
+  still read HOLDS.
+- `npm run build` — 900.07 kB JS (256.51 kB gzip), 23.07 kB CSS (5.04 kB gzip).
 - Dev server on `5063`, play server on `5062` — and on the same port at this machine's
   LAN address, which is deliberately not written down here because it changes with the
   network and a stale IP in a document is worse than no IP.
@@ -97,7 +114,15 @@ rather than what it computes. Each is a numbered step in `PLAYTEST.md`:
 - **§4** — step into a body, walk at a door, come back up. The switch has to feel like
   turning your head, not like loading a level.
 - **§7** — pull the plug mid-raid: save, reload, and check the colony came back the same.
-- **§9j** — leave the colony alone for four minutes and watch the foreman build.
+- **§9j** — leave the colony alone for four minutes and watch the foreman build. The same
+  step now covers the third research tier: whether a bill under a project row reads as a
+  price rather than as an error, and whether a bench that has worked something out and is
+  waiting on a delivery reads as *waiting* rather than as broken, are the parts that need
+  eyes. What it computes is pinned by `tests/research.test.ts` — all-or-nothing payment, the
+  shortfall netted against the yard, and the project landing in the tick the crate does — and
+  whether the foreman actually walks to the parts town is pinned by `tests/rings.test.ts`.
+  Neither can tell you whether an amber chip saying `0 / 12 components` sends a player to the
+  road or to the bug tracker.
 - **§9k** — send somebody over the ridge and get them home again.
 - **§9l** — read the founding panel and understand, without help, what to do next.
 - **§9m** — walk into the haze. Whether the edge of the known world reads as weather or as

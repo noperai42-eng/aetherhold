@@ -160,15 +160,23 @@ describe('the founding', () => {
     expect(world.gameOver).toBe(false);
     expect(foundingLeft(world)!).toBeLessThan(HOLD_TICKS);
 
-    stepWorldN(world, streams, HOLD_TICKS);
+    // Run to the founding and read the log *there*. This used to step a flat
+    // `HOLD_TICKS` and then look for the headline, which put the assertion a day
+    // and a half past the event — and `world.messages` is a window of the last
+    // eighty lines, not a transcript. Eight settlers putting up a fence write
+    // eighty lines in well under a day and a half, so the headline had been
+    // scrolled off by the work log and the test reported it as "never founded".
+    // It survived by two lines on the old trade layer and by none on the new
+    // one, which is the tell: what it was measuring was the ring buffer.
+    for (let i = 0; i < HOLD_TICKS && !hasWon(world); i++) stepWorldN(world, streams, 1);
     expect(hasWon(world)).toBe(true);
+    expect(world.messages.some((m) => m.text.includes('Aetherhold is founded'))).toBe(true);
     // Founded, and *not* over. These were the same flag once, and nine sim
     // passes read `gameOver` as "everybody is dead" — so the prize for winning
     // was that the Steward stopped planning, the events stopped firing and the
     // caravans stopped coming while the colony burned its woodpile down to zero.
     // See `tickVictory`.
     expect(world.gameOver).toBe(false);
-    expect(world.messages.some((m) => m.text.includes('Aetherhold is founded'))).toBe(true);
   });
 
   it('keeps being a colony after it is founded', () => {

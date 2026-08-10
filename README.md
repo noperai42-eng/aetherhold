@@ -48,7 +48,8 @@ place. [ARCHITECTURE.md](ARCHITECTURE.md) is how it is built.
 [Who they get on with](#who-they-get-on-with) · [An evening off](#an-evening-off) ·
 [Burying them](#burying-them)
 
-**Getting ahead** — [Research](#research) · [Trade](#trade) · [The road](#the-road)
+**Getting ahead** — [Research](#research) · [The industrial base](#the-industrial-base) ·
+[Trade](#trade) · [The road](#the-road)
 
 **How it is kept honest** — [Does the game ever actually do this?](#does-the-game-ever-actually-do-this) ·
 [How the two views stay honest](#how-the-two-views-stay-honest) ·
@@ -187,7 +188,8 @@ research work type will sit down at the bench and grind out points; the top bar 
 progress pip so you can watch it move without opening the panel. Switching project throws
 away the progress on the old one.
 
-Fifteen projects, 249,000 points end to end.
+Nineteen projects, 421,000 points end to end. The last four also cost goods; that half of
+the tree is [its own section](#the-industrial-base) below.
 
 | Project | Costs | Needs | Gives |
 | --- | --- | --- | --- |
@@ -206,6 +208,10 @@ Fifteen projects, 249,000 points end to end.
 | Plateworks | 24000 | Machining | Unlocks steel plate: two of every five hits stopped outright |
 | Solar cells | 26000 | Machining | Unlocks the solar panel: 200 W of daylight for no wood at all |
 | Composite plating | 30000 | Autoloaders | Everything you build takes a third less punishment |
+| Foundry | 34000 | Composite plating | Every recipe costs less again — with Machining, 0.45 of what it once did |
+| Freighting | 40000 | Foundry | Half again as much in every pack, on every road |
+| Instruments | 46000 | Freighting | The research bench itself runs half again as fast |
+| Waystations | 52000 | Instruments | Nine points off the mishap chance on every road, near ring to far |
 
 A colony that can spare somebody finds about four to five thousand points in a day, so the
 first project lands in the opening week and the last is a month's work. Nothing you can
@@ -214,13 +220,43 @@ are the only things it holds back, and each appears in the build bar or the benc
 its project lands, with no reload. Plating is applied where the damage lands rather than to
 the blueprint, so walls that were already standing when it finished get the benefit too.
 
-Two of the fifteen are worth taking early or not at all. **Apprenticeship** makes everyone
+Two of them are worth taking early or not at all. **Apprenticeship** makes everyone
 learn faster, which on day five is most of a second doctor by the end of the month and on
 day forty is nothing whatsoever — it is deliberately the one project whose value is entirely
 in *when* you take it. **Tanning** sits at the root with no prerequisite for the opposite
 reason: it is the only line on the tree that makes a *settler* better off rather than the
 colony, and a place that has hunted anything at all should be able to get its people into
 coats without first inventing the pickaxe.
+
+### The industrial base
+
+The four projects past **Composite plating** are billed in two currencies at once. Points as
+usual — and, under each row in `L`, a line of goods: `12 / 180 steel`, green once you have
+covered it and amber while you have not. The bill is netted against what is in the yard, so
+what you are looking at is the shortfall, not the sticker price.
+
+Nothing is taken until the whole bill can be paid. A settler will grind a third-tier project
+all the way to 100 % on credit and it will simply *sit* there, worked out and waiting; the pip
+at the top of the screen stops showing a percentage and starts naming what is missing, and the
+settler gets up and finds other work, because there is nothing left to do at that bench. Once
+the last crate is unloaded the bench goes back on the board, somebody walks over and fits the
+parts, and the project and the goods leave the store in the same tick. It is
+all-or-nothing on purpose: a bench that nibbled at a part-delivery would leave
+you unable to tell a project that is nearly paid for from one that has quietly eaten a hundred
+steel and stopped.
+
+Steel you can dig. **Components you cannot.** There is no patch of them on the map, no recipe
+at the workbench and no bench that makes them — the middle ring is the only place in the
+world that sells them, and a caravan is the only way any arrive in your yard. That is the point of the tier:
+the first four projects of the game are paid for with your valley, and the last four are paid
+for with the road. A colony that never opened the middle ring has a research tree it can see
+the end of and cannot reach.
+
+Left to itself the colony works this out. The Steward's trade party normally walks to whoever
+pays best; a town selling something the bench is short of outbids that, and stops outbidding it
+the moment the shortfall is covered. It will not, however, choose a road that is still shut for
+you — opening the next ring still outranks fetching parts, because parts cannot be fetched from
+behind a gate.
 
 ## Morale
 
@@ -483,11 +519,12 @@ paving is still yours.
 
 ### And then seven more, once you have founded the place
 
-The curriculum ends at day twenty, and the research tree runs dry not long after — measured
-across the long runs, the last of the fifteen projects lands on day 37, 43, 45 or 56
-depending on the seed, with the rest of a hundred-day charter still to play. A colony that
-plays well therefore arrives at an empty panel at the exact moment it finally has the
-settlers and the steel to be ambitious.
+The curriculum ends at day twenty, and the research tree used to run dry not long after —
+measured across the long runs, the last of the *first fifteen* projects lands on day 37, 43,
+45 or 56 depending on the seed, with the rest of a hundred-day charter still to play. A colony
+that played well therefore arrived at an empty panel at the exact moment it finally had the
+settlers and the steel to be ambitious. The [industrial base](#the-industrial-base) is what now
+sits past that day, and it is deliberately priced in the surplus that colony is standing on.
 
 So there is a second half, and it unlocks on the founding: rebuild in stone, a rifle in every
 hand, a hundred meals laid in, a hundred squares paved, the whole research tree, a call paid
@@ -1934,7 +1971,8 @@ fires, and a storm holds the raiders off. Cold that costs a settler their mood a
 immune system rather than their hit points, illness that has to be doctored, and a colony
 that puts back what fire and raiders take off it.
 
-**Getting ahead.** A fifteen-project research tree, 249,000 points end to end. Scouting
+**Getting ahead.** A nineteen-project research tree, 421,000 points end to end, whose top
+tier is bought with goods off the road as well as with points. Scouting
 parties that walk out to the edges of the map and come back with salvage. Caravans that
 turn a surplus back into a choice.
 

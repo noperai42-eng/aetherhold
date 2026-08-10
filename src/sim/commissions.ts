@@ -133,10 +133,20 @@ const REASONS: Record<ResourceKind, string[]> = {
     'their herbalist died in the spring and nobody was taught',
     'a mine collapse left nine hurt and nothing to dress them with',
   ],
+  // The last two are written for completeness and never read: a letter asks for
+  // `s.buys`, which is drawn from the five goods everybody trades, and neither
+  // hides nor components are on that list. Kept because the table is exhaustive
+  // over the type, so the day one of them becomes tradeable the flavour is
+  // already there rather than the game being one crash from a missing key.
   hide: [
     'the herds moved off their range and the tannery has stopped',
     'they have thirty people and eleven coats going into the cold',
     'rot got into the store and every skin in it went green',
+  ],
+  components: [
+    'their millwright walked out in the spring and took the patterns with him',
+    'the drive shaft in their shop sheared and there is nothing to cut a new one on',
+    'a buyer from further out bought the whole year and left them with the sweepings',
   ],
 };
 
@@ -221,6 +231,9 @@ const COMMISSION_KEEP: Record<ResourceKind, number> = {
   meal: 40,
   medicine: 10,
   hide: 20,
+  // Unreachable for the same reason as the two dead entries in `REASONS`. Were
+  // it ever reached, the honest number would be "all of them".
+  components: 0,
 };
 
 /**

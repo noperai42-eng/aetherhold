@@ -1189,6 +1189,52 @@ body {
   margin-top: 8px;
 }
 
+/*
+ * The material bill. Chips rather than a sentence, because the only question the
+ * player is asking is "which line is short", and a colour answers that from
+ * across the room in a way "180 of 180 steel and 4 of 12 parts" does not.
+ */
+#researchtab .bill {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 6px;
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 10px;
+}
+
+#researchtab .bill span {
+  padding: 1px 5px;
+  border-radius: 3px;
+  border: 1px solid transparent;
+}
+
+/* Borders are the text colour at 40 %, spelled out because the two are the same
+ * ink and a chip whose outline is a different green from its number reads as two
+ * states rather than one. Keep these in step with `--good` and `--warn`. */
+#researchtab .bill .paid {
+  color: var(--good);
+  border-color: rgba(141, 220, 154, 0.4);
+}
+
+#researchtab .bill .owed {
+  color: var(--warn);
+  border-color: rgba(230, 195, 92, 0.4);
+}
+
+/*
+ * The stall reads as a warning in the strip, not as a percentage. It is a much
+ * longer string than the "100%" it replaces — `needs 12 parts, 74 steel` against
+ * four characters — so it is pinned to one line: a shortfall that wrapped would
+ * change the height of the top bar and shove every other readout in it sideways
+ * the moment a project ran out of points.
+ */
+#researchpip b.short {
+  color: var(--warn);
+  white-space: nowrap;
+}
+
 /* ---------- the caravan's stall ---------- */
 
 /*

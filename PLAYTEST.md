@@ -524,12 +524,29 @@ Two things to try to break it with:
   the Steward only ever fills an empty bench. Queue a wall at the same time: everything else
   it does stops dead until your wall is up, but the bench keeps working, because choosing
   what to study costs nothing and takes nobody off your build.
-- **Play past day forty and look at `L` again.** On a quiet valley the tree is finished by
-  about day 37, and the last three weeks of a sixty-day run are spent with a settler standing
-  at a bench with nothing on it. That is a known and measured hole rather than a bug to
-  report — `the-tree-is-not-empty-at-day-sixty` is the check that says so, and stage 2 of
-  `ENDGAME.md` is what fills it. Worth seeing, because it is the clearest thing in the game
-  that says the second half has not been built yet.
+- **Play past day forty and look at `L` again.** The tree used to run out here — on a quiet
+  valley it was finished by about day 37, and the last three weeks of a sixty-day run were
+  spent with a settler standing at a bench with nothing on it. Past `plateworks` there are now
+  four more projects, and they are the reason to keep looking: each carries a **bill** under
+  its row, in chips reading `12 / 180 steel`, green once that line is covered and amber while
+  it is not. That is the third tier, and it is the first thing in the game that costs goods as
+  well as time.
+- **Take up `Foundry` with an empty yard and watch what the bench does.** Points still
+  accumulate; the project does not land. At 100 % the strip at the top stops showing a
+  percentage and reads **needs 12 parts, 74 steel** in amber, the project row says *Worked out,
+  and waiting on the delivery*, and the settler walks away from the bench — there is nothing
+  left there to do. The bill is netted against the yard, so the number you see is what is
+  *missing*, not what it costs. Watch the rest of the top bar while it says so: the shortfall
+  is a far longer string than the `100%` it replaced, and nothing else up there should move.
+- **Now leave the Steward on and go and make tea.** The parts are not on your map. Components
+  have no patch and no recipe; the middle ring is the only place that sells them, and a caravan
+  is the only way any arrive. An unattended colony is supposed to work this out — watch `J`
+  and the log, and the next trade party should set off for the parts town rather than for the
+  best-paying neighbour it has been using all game. When the crate lands the bench goes back on
+  the board — somebody has to walk over and fit the parts, so give it a minute — and then the
+  project and the components go together. The foreman returns to its old route. If it keeps
+  walking to the parts town after the bill is paid, that is worth reporting: the pull is keyed
+  on the shortfall and is supposed to switch itself off.
 
 Press `Steward: on` to turn it off at any point and the marking stops that second. Anything
 already blueprinted stays — it is your colony's plan now, and it cancels like anything else.

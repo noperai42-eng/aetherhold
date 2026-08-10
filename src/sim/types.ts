@@ -60,7 +60,29 @@ export function isFloor(t: Terrain): boolean {
  */
 export type FloorKind = 'plank' | 'paved' | 'bridge';
 
-export type ResourceKind = 'wood' | 'steel' | 'rawfood' | 'meal' | 'medicine' | 'hide';
+/**
+ * Everything that can sit in a stockpile.
+ *
+ * The first five are the economy: dug up, grown, cooked or brewed here, and
+ * every one of them is something a neighbour will both buy and sell. `hide` was
+ * the first thing on this list the colony could not trade — it comes off an
+ * animal and goes onto a settler's back, and no town on the map deals in it.
+ *
+ * `components` is the second, and it is the opposite shape. Nothing here makes
+ * it and no amount of mining produces it: the only way a crate of milled parts
+ * arrives in this valley is on somebody's back, from a workshop five days out.
+ * That is the whole point of it. It is the first material in the game whose
+ * supply is a *road* rather than a resource patch, which is what lets the last
+ * tier of the research tree cost something a colony cannot simply dig harder for.
+ */
+export type ResourceKind =
+  | 'wood'
+  | 'steel'
+  | 'rawfood'
+  | 'meal'
+  | 'medicine'
+  | 'hide'
+  | 'components';
 
 export const RESOURCE_KINDS: ResourceKind[] = [
   'wood',
@@ -69,6 +91,7 @@ export const RESOURCE_KINDS: ResourceKind[] = [
   'meal',
   'medicine',
   'hide',
+  'components',
 ];
 
 export type BuildingKind =

@@ -38,6 +38,7 @@ import {
   RELATIONS_PER_VISIT,
   VALUE,
   caravanOf,
+  ensureParts,
   packLimit,
   packMultiple,
   pickDestination,
@@ -52,6 +53,14 @@ import {
   withinRange,
 } from '../src/sim/settlements';
 import { COMMISSION_EVERY, commissionOf, tickCommissions } from '../src/sim/commissions';
+import {
+  RESEARCH,
+  addResearchPoints,
+  hasResearch,
+  researchNeeds,
+  setProject,
+} from '../src/sim/research';
+import type { ResearchId } from '../src/sim/research';
 import { addItem, livingColonists, removeItem } from '../src/sim/world';
 import { Rng } from '../src/sim/rng';
 import { makePawn } from '../src/sim/pawn';
@@ -93,6 +102,20 @@ function stockWhatTheyBuy(world: World, packs = 2.5): void {
     want.set(s.buys, Math.max(want.get(s.buys) ?? 0, Math.round(PACK_SIZES[s.buys] * packs)));
   }
   for (const [kind, amount] of want) stock(world, kind, amount);
+}
+
+/**
+ * Work a project out, and everything it stands on, the way the sim does.
+ *
+ * Only ever used below the third tier here, so no bill is ever owed — the point
+ * of calling it is to get a *child* of the second tier onto the bench, which is
+ * the only way this file can ask what a colony that needs parts does next.
+ */
+function grantThrough(world: World, id: ResearchId): void {
+  for (const need of RESEARCH[id].needs) grantThrough(world, need);
+  if (hasResearch(world, id)) return;
+  expect(setProject(world, id)).toBe(true);
+  expect(addResearchPoints(world, RESEARCH[id].cost)?.id).toBe(id);
 }
 
 /** Standing at every place in a ring, as a colony that has walked it would have. */
@@ -698,5 +721,153 @@ describe('a letter that has gone stale', () => {
     // And the letter is still sitting there unanswered, which is the honest
     // outcome — not silently rewritten to somewhere easier.
     expect(commissionOf(world)?.settlementId).toBe(far.id);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// the parts town
+// ---------------------------------------------------------------------------
+
+/**
+ * The third tier of the research tree is bought with milled parts, nothing in
+ * the valley makes one, and exactly one ring on the map sells them. That turns
+ * two things that used to be colour into load-bearing structure: *whether there
+ * is a parts town at all*, which a per-town draw left to a coin, and *whether the
+ * foreman will ever walk to it*, which a ranking on price alone never would.
+ *
+ * Both are checked across seeds rather than on one, because both failures are
+ * probabilistic — a map with no parts town and a foreman that happens to prefer
+ * the parts town this morning both look fine once.
+ */
+describe('the parts town', () => {
+  it('exists on every map, in the middle ring and nowhere else', () => {
+    // The guarantee the third tier is standing on. A straight per-town draw
+    // leaves better than three maps in ten — (3/4)⁴ — with no parts anywhere,
+    // and a colony that walked two vouches out to the workshops and found four
+    // steel merchants has been shut out of the last tier by a coin with no way
+    // of knowing that is what happened.
+    for (let seed = 1; seed <= 40; seed++) {
+      const world = colony(seed * 7919);
+      const parts = settlementsOf(world).filter((s) => s.sells === 'components');
+      expect(parts.length).toBeGreaterThan(0);
+      for (const s of parts) {
+        expect(ringOf(s)).toBe(1);
+        // Nothing in the world makes components, so a parts town is a place that
+        // mills rather than a place with a workshop — and it still wants an
+        // ordinary good, because it is short of all five of them.
+        expect(s.craft).toBeNull();
+        expect(KINDS).toContain(s.buys);
+      }
+    }
+  });
+
+  it('still rolls the middle ring one town at a time, repeats and all', () => {
+    // The distinction that cost eight foundings out of fifteen to learn. The
+    // first version of this guarantee dealt the ring from a shuffled bag — four
+    // towns, four goods, no repeats — which is elegant and moves every die after
+    // it, and a different draw order is a different world: measured on the
+    // sixty-day grid it halved the foundings and the far-ring openings, because
+    // the fourteen maps in twenty that already had a parts town were re-rolled
+    // for nothing. So the draw is untouched and only the maps that need it are
+    // repaired. If this ever comes back empty, somebody has restored the deal.
+    let repeats = 0;
+    for (let seed = 1; seed <= 20; seed++) {
+      const world = colony(seed * 5011);
+      const sells = inRing(world, 1).map((s) => s.sells);
+      if (new Set(sells).size < sells.length) repeats++;
+    }
+    expect(repeats).toBeGreaterThan(0);
+  });
+
+  it('repairs a ring by converting a doubled town, never the only seller of something', () => {
+    const ring = inRing(colony(4242), 1);
+    const deal = (kinds: ResourceKind[]): ResourceKind[] => {
+      ring.forEach((s, i) => {
+        s.sells = kinds[i]!;
+        s.craft = null;
+      });
+      ensureParts(ring);
+      return ring.map((s) => s.sells);
+    };
+
+    // Two steel merchants, one cook, one doctor. With four towns drawing four
+    // goods, a ring missing components *must* be doubled up somewhere — which is
+    // what keeps this from taking away the middle country's only medicine.
+    expect(deal(['steel', 'medicine', 'steel', 'meal'])).toEqual([
+      'steel',
+      'medicine',
+      'components',
+      'meal',
+    ]);
+    expect(ring[2]!.craft).toBeNull();
+
+    // A ring that is all one thing loses one of them and no more.
+    expect(deal(['steel', 'steel', 'steel', 'steel'])).toEqual([
+      'steel',
+      'steel',
+      'steel',
+      'components',
+    ]);
+
+    // And a ring that drew a parts town on its own is left exactly as it fell,
+    // including the repeat. Two thirds of maps take this branch.
+    expect(deal(['components', 'steel', 'steel', 'meal'])).toEqual([
+      'components',
+      'steel',
+      'steel',
+      'meal',
+    ]);
+  });
+
+  it('leaves the near ring draw exactly where it was', () => {
+    // The near ring is the economy every other number was balanced against, and
+    // it is still rolled one town at a time off the same stream. Nobody within a
+    // day's walk sells parts, and a map is still allowed to have two neighbours
+    // sitting on the same good.
+    for (let seed = 1; seed <= 20; seed++) {
+      const world = colony(seed * 3607);
+      for (const s of inRing(world, 0)) {
+        expect(KINDS).toContain(s.sells);
+      }
+    }
+  });
+
+  it('walks to the parts town when the bench is waiting on parts, and not before', () => {
+    // The one behaviour that makes the third tier reachable by a colony nobody
+    // is steering. `pickDestination` ranks on what a pack is worth, and a crate
+    // of parts is not worth anything until there is a project that eats it — so
+    // the same colony, same morning, same goods, has to answer differently
+    // depending only on what is on the bench.
+    const world = colony();
+    grownTo(world, 6);
+    vouch(world, 0, PASSAGE_RELATIONS);
+    stock(world, 'meal', 900);
+    stock(world, 'steel', 600);
+    const parts = settlementsOf(world).filter((s) => s.sells === 'components');
+    expect(parts.length).toBeGreaterThan(0);
+    expect(withinRange(world, parts[0]!).ok).toBe(true);
+
+    // Nothing on the bench: the foreman trades on price, which on a colony that
+    // has already vouched everywhere near is the near ring's business.
+    for (const s of settlementsOf(world)) s.relations = PASSAGE_RELATIONS;
+    const idle = pickDestination(world, 'steel', 600);
+    expect(idle).not.toBeNull();
+    expect(idle!.sells).not.toBe('components');
+
+    // A project that costs parts, and the answer changes to a town that has any
+    // — which town is the ranking's business, and on a map that rolled two parts
+    // towns naturally there is more than one right answer.
+    grantThrough(world, 'plateworks');
+    setProject(world, 'foundry');
+    expect(pickDestination(world, 'steel', 600)!.sells).toBe('components');
+
+    // And it changes back the moment the crates are home. The bonus buys the
+    // trips the bench is short of and nothing else.
+    const p = livingColonists(world)[0]!;
+    addItem(world, 'components', RESEARCH.foundry.materials!.components!, Math.round(p.x), Math.round(p.y));
+    // The steel line was never short — six hundred of it is on the floor — so
+    // the crate of parts is the whole of what the bench was waiting for.
+    expect(researchNeeds(world)).toEqual([]);
+    expect(pickDestination(world, 'steel', 600)!.id).toBe(idle!.id);
   });
 });

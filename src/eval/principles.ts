@@ -113,6 +113,25 @@ const A_PILE = 300;
 const SPENT_SHARE = 0.25;
 
 /**
+ * How much of the grid below hard country has to reach the founding.
+ *
+ * Half, set as a floor under a measured seven of ten rather than as a target to
+ * climb to — the gap is the room a fair map is allowed to be unlucky in, not
+ * slack to spend. It is scoped below hard country because hard country not
+ * founding is the setting working; harsh managed one map in five and that is a
+ * fact about harsh, not a broken promise.
+ *
+ * It exists because of a regression that nothing caught. The middle ring used to
+ * be guaranteed a parts town by dealing it a fixed card, which quietly moved
+ * every other town on the ring and halved the foundings from eight to four — and
+ * the whole board of principles reported HOLDS, because `the-game-does-not-end-
+ * at-the-founding` only asks whether founded runs play on, never whether anybody
+ * founds. A first act half the colonies never finish is a different game, and it
+ * was invisible for as long as nothing measured the rate.
+ */
+const FOUNDING_SHARE = 0.5;
+
+/**
  * The three settings, kindest first, each reduced to one mean. Means rather
  * than per-seed comparisons because a difficulty dial is a claim about the
  * distribution: one map where Hard country happened to stay quiet is not a
@@ -541,6 +560,45 @@ export const PRINCIPLES: Principle[] = [
     },
   },
   {
+    id: 'the-first-act-is-finishable',
+    claim:
+      'Most colonies below hard country should reach the founding. The first act is the one ' +
+      'every player is promised; a map where half of them never finish it is a different game.',
+    enforced: true,
+    check: (s) => {
+      if (s.days < DAY_SIXTY) {
+        return { verdict: 'untested', detail: `${s.days}-day grid cannot see day ${DAY_SIXTY}` };
+      }
+      // Below hard country only. Not founding on harsh is the setting doing its
+      // job, and averaging it in would let a real fall on the kind settings hide
+      // behind a number that was always going to be low.
+      const fair = s.runs.filter((m) => m.difficulty !== 'harsh');
+      if (fair.length === 0) {
+        return { verdict: 'untested', detail: 'no runs below hard country on this grid' };
+      }
+      const founded = fair.filter((m) => m.foundedOn !== null);
+      const share = founded.length / fair.length;
+      const missed = fair
+        .filter((m) => m.foundedOn === null)
+        .map((m) => `${m.difficulty}/${m.seed}`)
+        .join(', ');
+      const seen =
+        `${founded.length} of ${fair.length} below hard country founded ` +
+        `(${Math.round(share * 100)}%)`;
+      return share >= FOUNDING_SHARE
+        ? {
+            verdict: 'holds',
+            detail: missed === '' ? seen : `${seen}; never got there: ${missed}`,
+          }
+        : {
+            verdict: 'broken',
+            detail:
+              `${seen}, under the ${Math.round(FOUNDING_SHARE * 100)}% floor; ` +
+              `never got there: ${missed}`,
+          };
+    },
+  },
+  {
     id: 'the-far-ring-is-earned',
     claim:
       'The far country is a capability, not an unlock. No colony can reach it in its first week, ' +
@@ -659,14 +717,15 @@ export const PRINCIPLES: Principle[] = [
     claim:
       'A colony that plays its whole clock still has a project worth starting. ' +
       'The bench is a place to go back to, not a list to be finished.',
-    enforced: false,
+    enforced: true,
     check: (s) => {
-      // Open rather than enforced, and deliberately so: the third tier that is
-      // meant to keep this true has not been built, so asserting it would do
-      // nothing but paint the suite red for a month. It becomes enforced the day
-      // the grid says it holds — which is the point of writing it now, before the
-      // feature, rather than after, when the number to beat could be chosen to
-      // flatter whatever shipped.
+      // Written open, on purpose, a tier before the feature that would satisfy
+      // it: nine of fourteen full runs finished the whole tree and then stood at
+      // an empty bench, and asserting that would have painted the suite red for
+      // a month. Enforced now because the third tier landed and the grid agrees
+      // — fourteen full runs, longest idle nought days. Writing it first is what
+      // makes that number worth anything: the bar was set before there was a
+      // result to choose it to flatter.
       if (s.days < DAY_SIXTY) {
         return { verdict: 'untested', detail: `${s.days}-day grid cannot see day ${DAY_SIXTY}` };
       }
@@ -678,6 +737,20 @@ export const PRINCIPLES: Principle[] = [
       }
       const idle = full.filter((m) => (m.emptyTreeDays ?? 0) >= IDLE_WEEK);
       const tree = (m: RunMeasure) => `${m.tech ?? 0} projects`;
+      // Carried on every verdict below, never asserted on. The third tier can fail
+      // this principle two ways now — a bench with nothing on it, and a bench with
+      // something on it that will never finish because the parts are five days out
+      // — and only the first is what the check measures. A grid that reports this
+      // holding with thirty stalled days a run has not fixed the tree, it has moved
+      // where the colony stands still, and the number has to be in front of whoever
+      // reads the verdict for that to be noticed.
+      const stall = (rs: RunMeasure[]) => {
+        const days = rs.map((m) => m.stalledDays ?? 0);
+        const worst = Math.max(0, ...days);
+        if (worst === 0) return 'no run waited on a delivery';
+        const mean = days.reduce((a, b) => a + b, 0) / days.length;
+        return `waiting on deliveries ${mean.toFixed(1)} days a run, worst ${worst}`;
+      };
       if (idle.length > 0) {
         return {
           verdict: 'broken',
@@ -685,7 +758,8 @@ export const PRINCIPLES: Principle[] = [
             `${idle.length} of ${full.length} full runs finished the tree with time to spare: ` +
             idle
               .map((m) => `${m.difficulty}/${m.seed} idle ${m.emptyTreeDays} days`)
-              .join(', '),
+              .join(', ') +
+            `; ${stall(full)}`,
         };
       }
       // The nearest miss is the whole story on a passing run. "Nobody ran out" is
@@ -700,7 +774,7 @@ export const PRINCIPLES: Principle[] = [
         detail:
           `no run of ${full.length} stood at an empty bench for ${IDLE_WEEK} days; ` +
           `furthest anybody got was ${richest.difficulty}/${richest.seed} at ${tree(richest)}, ` +
-          `longest idle was ${closest.emptyTreeDays ?? 0} days`,
+          `longest idle was ${closest.emptyTreeDays ?? 0} days; ${stall(full)}`,
       };
     },
   },
@@ -711,8 +785,16 @@ export const PRINCIPLES: Principle[] = [
       'a resource with no demand, and a pile that never once came down is the proof.',
     enforced: false,
     check: (s) => {
-      // Open for the same reason as its sibling: the thing that is supposed to
-      // buy the surplus is stage 2's third tier, and it does not exist yet.
+      // Still open, but for a smaller reason than its sibling was. The third tier
+      // arrived and took seven of the ten piles down with it. What is left is
+      // three maps — calm/1312 ending on 986 steel having never given back more
+      // than 196 of it, calm/99001 on 1006 against 204, settler/1312 on 757
+      // against 123 — roughly a fifth returned, against the quarter this asks
+      // for. Near enough to read as a tier that costs a little too little rather
+      // than one nobody reaches, which is what the earlier grid showed. It stays
+      // open until stage 2's assemblies give the far ring something to sell;
+      // enforcing it on the strength of seven out of ten would be scoring the
+      // grid on the runs that agreed with it.
       if (s.days < DAY_SIXTY) {
         return { verdict: 'untested', detail: `${s.days}-day grid cannot see day ${DAY_SIXTY}` };
       }

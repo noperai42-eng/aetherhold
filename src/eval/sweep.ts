@@ -103,6 +103,18 @@ export interface RunMeasure {
   tech: number;
   emptyTreeDays: number;
   /**
+   * Days that ended with the bench worked out and short of materials.
+   *
+   * The bookend to `emptyTreeDays` and the reason it can be trusted. The third
+   * tier was added to stop the tree running dry at day forty; the obvious way to
+   * do that badly is to trade an idle bench for a stalled one, where the count of
+   * finished projects stops climbing for exactly as long and the colony is no
+   * better off. Reported, not asserted on — a few stalled days is a colony
+   * organising a road trip, which is the tier working. It is what the number does
+   * across a grid that says whether the road is walkable.
+   */
+  stalledDays: number;
+  /**
    * The steel stock at the end, and the largest it ever fell from a high-water
    * mark — the two halves of "is this a resource or a scoreboard".
    *
@@ -392,6 +404,7 @@ export function measure(r: EvalReport): RunMeasure {
     // Counted off the whole tree rather than the display list, because the panel
     // is allowed to leave a project out of its order and the bench is not.
     emptyTreeDays: r.snapshots.filter((s) => s.tech >= TREE_SIZE).length,
+    stalledDays: r.snapshots.filter((s) => s.stalled).length,
     endSteel: last?.steel ?? 0,
     steelDrawdown,
   };
@@ -439,7 +452,7 @@ export function armedShareOf(rs: RunMeasure[]): number {
 /** A fixed-width grid, because a balance pass is read by eye. */
 export function formatSweep(sweep: Sweep): string {
   const cols =
-    'setting        seed  verdict     days  1st  threats  band  downs  buried  alive  kills  rung  worstFood  fed  upkeep  foodDays  raiders  rifles     trips  spare   tree  idle   steel  spent';
+    'setting        seed  verdict     days  1st  threats  band  downs  buried  alive  kills  rung  worstFood  fed  upkeep  foodDays  raiders  rifles     trips  spare   tree  idle   wait   steel  spent';
   const lines: string[] = [`balance grid · ${sweep.days} days · ${sweep.seeds.length} seeds`, cols];
   for (const d of sweep.difficulties) {
     const rs = on(sweep, d);
@@ -468,6 +481,7 @@ export function formatSweep(sweep: Sweep): string {
           pad(`${Math.round((m.spareDays / Math.max(1, m.daysLived)) * 100)}%`, 7),
           pad(`${m.tech ?? 0}/${TREE_SIZE}`, 7),
           pad(m.emptyTreeDays ?? 0, 6),
+          pad(m.stalledDays ?? 0, 7),
           pad(m.endSteel ?? 0, 8),
           pad(m.steelDrawdown ?? 0, 7),
         ].join(''),
@@ -497,6 +511,7 @@ export function formatSweep(sweep: Sweep): string {
         pad(`${Math.round(avg(rs, (m) => m.spareDays / Math.max(1, m.daysLived)) * 100)}%`, 7),
         pad(`${avg(rs, (m) => m.tech ?? 0).toFixed(1)}/${TREE_SIZE}`, 7),
         pad(avg(rs, (m) => m.emptyTreeDays ?? 0).toFixed(1), 6),
+        pad(avg(rs, (m) => m.stalledDays ?? 0).toFixed(1), 7),
         pad(avg(rs, (m) => m.endSteel ?? 0).toFixed(0), 8),
         pad(avg(rs, (m) => m.steelDrawdown ?? 0).toFixed(0), 7),
       ].join(''),

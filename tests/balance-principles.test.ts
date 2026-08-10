@@ -58,6 +58,10 @@ function run(difficulty: Difficulty, over: Partial<RunMeasure> = {}): RunMeasure
     // *does* want them only has to say which way it differs.
     tech: 9,
     emptyTreeDays: 0,
+    // Nobody standing at a finished bench waiting for a cart. The default is a
+    // colony that fetched what the project cost before the points ran out, which
+    // is the behaviour the third tier is built to produce.
+    stalledDays: 0,
     endSteel: 120,
     steelDrawdown: 60,
     ...over,
@@ -440,6 +444,59 @@ describe('the balance principles, read against grids that are known wrong', () =
       true,
     );
     expect(verdictOf(s, 'the-game-does-not-end-at-the-founding')).toBe('untested');
+  });
+
+  it('holds the first act finishable on the settings it is promised on, not on hard country', () => {
+    // Seven below hard country reach it and hard country reaches nothing, which
+    // is the shape of the real grid. The harsh column has to be invisible here:
+    // averaged in, five settlers who never found would drag a healthy 70% to
+    // 47% and the check would fail a valley that is working.
+    const s = sweep(
+      [
+        run('calm', { seed: 1, foundedOn: 27, daysLived: 60 }),
+        run('calm', { seed: 2, foundedOn: 49, daysLived: 60 }),
+        run('calm', { seed: 3, foundedOn: null, daysLived: 60 }),
+        run('settler', { seed: 4, foundedOn: 26, daysLived: 60 }),
+        run('harsh', { seed: 5, foundedOn: null, daysLived: 60 }),
+        run('harsh', { seed: 6, foundedOn: null, daysLived: 60 }),
+      ],
+      60,
+      healthyArm(),
+      true,
+    );
+    expect(verdictOf(s, 'the-first-act-is-finishable')).toBe('holds');
+    expect(detailOf(s, 'the-first-act-is-finishable')).toContain('3 of 4');
+    // and it names the map that missed, because a rate with no names is a number
+    // nobody can go and look at
+    expect(detailOf(s, 'the-first-act-is-finishable')).toContain('calm/3');
+  });
+
+  it('breaks when half the kind settings never finish the first act', () => {
+    // The regression this exists to catch, in the numbers it actually had:
+    // guaranteeing the middle ring a parts town by dealing it a fixed card
+    // moved every die after it and took the foundings from eight in fifteen to
+    // four, and every other principle on the board still said HOLDS.
+    const s = sweep(
+      [
+        run('calm', { seed: 1, foundedOn: 27, daysLived: 60 }),
+        run('calm', { seed: 2, foundedOn: null, daysLived: 60 }),
+        run('calm', { seed: 3, foundedOn: null, daysLived: 60 }),
+        run('settler', { seed: 4, foundedOn: null, daysLived: 60 }),
+      ],
+      60,
+      healthyArm(),
+      true,
+    );
+    expect(verdictOf(s, 'the-first-act-is-finishable')).toBe('broken');
+    expect(detailOf(s, 'the-first-act-is-finishable')).toContain('1 of 4');
+    expect(detailOf(s, 'the-first-act-is-finishable')).toContain('50% floor');
+  });
+
+  it('says untested rather than broken on a grid too short to reach a founding', () => {
+    // Thirty days is not a colony that failed to found; it is a clock that
+    // stopped before the question was asked.
+    const s = sweep([run('calm', { seed: 1, foundedOn: null, daysLived: 30 })], 30);
+    expect(verdictOf(s, 'the-first-act-is-finishable')).toBe('untested');
   });
 
   // ── the industrial base, measured before it is built ──────────────────────

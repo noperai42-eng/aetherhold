@@ -71,9 +71,9 @@ import { findPath } from './path';
 import { forgetRebuild } from './rebuild';
 import { regionAt } from './regions';
 import {
-  PACK_CEILING,
   caravanAllowed,
   departCaravan,
+  packCeiling,
   packLimit,
   pickDestination,
   planCaravan,
@@ -96,8 +96,10 @@ import {
 import { followPath, WALK_SPEED } from './movement';
 import {
   addResearchPoints,
+  benchRateScale,
   mealValueScale,
   recipeCostScale,
+  researchStalled,
   toolYield,
   treatmentPotency,
 } from './research';
@@ -1716,6 +1718,11 @@ function tryWorkType(world: World, pawn: Pawn, work: WorkType): boolean {
       // Nothing chosen means nothing to do. This is the cheap test and it is the
       // usual answer, so it goes before the bench search — which is a path probe.
       if (world.research.current === null) return false;
+      // A project that has run out of points and is waiting on a crate of parts
+      // is not work. Standing at it would tie up the colony's best researcher
+      // for the fortnight it takes somebody to walk to the workshops and back —
+      // and that somebody is quite likely to be them.
+      if (researchStalled(world)) return false;
       const lab = findBuildingOfKind(world, pawn, 'lab');
       if (!lab) return false;
       // One settler at a time. Two people pushing the same project would double
@@ -1860,13 +1867,13 @@ function tryWorkType(world: World, pawn: Pawn, work: WorkType): boolean {
       // What is spare is found before the road is chosen, so it is measured
       // against the biggest pack anywhere on the board and clamped below to what
       // the road actually chosen will carry.
-      const give = (honour ? asked : null) ?? spareGoods(world, PACK_CEILING);
+      const give = (honour ? asked : null) ?? spareGoods(world, packCeiling(world));
       if (!give) return false;
       const dest = honour ? at : pickDestination(world, give.kind, give.amount);
       if (!dest) return false;
       const head = roadHead(world, dest, pawn);
       if (!head) return false;
-      const amount = Math.min(give.amount, packLimit(dest));
+      const amount = Math.min(give.amount, packLimit(dest, world));
       createJob(world, pawn, 'caravan', head.x, head.y, {
         settlementId: dest.id,
         resource: give.kind,
@@ -2770,7 +2777,12 @@ export function tickJob(world: World, pawn: Pawn, rng: Rng): void {
       const lab = findBuilding(world, job.buildingId);
       if (!lab || lab.kind !== 'lab' || !lab.built) return cancelJob(world, job.id);
       // The player can change their mind while somebody is standing at the bench.
-      if (world.research.current === null) return finishJob(world, pawn, job);
+      // Stalling counts as being finished with for now, for the same reason it is
+      // not offered in the first place: there is nothing left here to do until a
+      // party gets back.
+      if (world.research.current === null || researchStalled(world)) {
+        return finishJob(world, pawn, job);
+      }
       const r = walkTo(world, pawn, lab.x, lab.y, false);
       if (r === 'blocked') return cancelJob(world, job.id);
       if (r !== 'arrived') return;
@@ -2781,7 +2793,7 @@ export function tickJob(world: World, pawn: Pawn, rng: Rng): void {
       // days of colony time and will be interrupted by every meal and every raid;
       // banking the points as they are earned is what makes those interruptions
       // cost an afternoon instead of the whole project.
-      const done = addResearchPoints(world, workRate(pawn, 'research'));
+      const done = addResearchPoints(world, workRate(pawn, 'research') * benchRateScale(world));
       // Every other skill is awarded per finished piece of work — a rock mined,
       // a meal cooked. Research has no such unit, so it pays out every tick, and
       // at the rate the other skills use that took a settler from novice to

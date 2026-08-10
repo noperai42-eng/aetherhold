@@ -30,6 +30,7 @@ import {
   spareGoods,
 } from '../sim/settlements';
 import { escalation } from '../sim/events';
+import { researchStalled } from '../sim/research';
 import { stewardTick } from './steward';
 
 export interface DaySnapshot {
@@ -99,6 +100,17 @@ export interface DaySnapshot {
    * from one that simply got a quiet week.
    */
   tech: number;
+  /**
+   * Was the bench, at this moment, worked out and waiting on a delivery?
+   *
+   * The third tier costs goods as well as points, and that opens a failure mode
+   * the tree did not have before: a project at a hundred per cent that never
+   * finishes because the parts are five days away and nobody went. It looks
+   * exactly like an idle bench from `tech` alone — the count stops climbing
+   * either way — so without this column a grid could report the tree fixed while
+   * every colony on it was standing still for a different reason.
+   */
+  stalled: boolean;
   /**
    * Morale breaks started so far. `avgMood` alone cannot tell a colony that
    * never faltered from one that broke on day three and recovered by day five —
@@ -416,6 +428,7 @@ function snapshot(
     plot: cells.length,
     ripe: cells.filter((c) => (world.crops[c] ?? CROP_NONE) >= 1).length,
     tech: world.research.done.length,
+    stalled: researchStalled(world),
     breaks: world.stats.moraleBreaks ?? 0,
     trades: world.stats.trades ?? 0,
     captured: world.stats.captured ?? 0,
