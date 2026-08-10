@@ -71,10 +71,13 @@ import { findPath } from './path';
 import { forgetRebuild } from './rebuild';
 import { regionAt } from './regions';
 import {
+  PACK_CEILING,
   caravanAllowed,
   departCaravan,
+  packLimit,
   pickDestination,
   planCaravan,
+  withinRange,
   roadHead,
   settlementById,
   spareGoods,
@@ -1843,24 +1846,37 @@ function tryWorkType(world: World, pawn: Pawn, work: WorkType): boolean {
       // a pile of wood next week — and `answerable` has already checked that the
       // pack can go without eating into the colony's own reserve.
       const asked = answerable(world);
-      const give = asked ?? spareGoods(world);
+      // Whether the letter can still be answered, which is not the same question
+      // as whether it could be answered when it arrived. `pickRequest` will not
+      // write from a place the colony cannot reach, but a letter runs a fortnight
+      // and that is long enough for the pantry to fall under the road it needs or
+      // for the escort to be buried. Falling through to an ordinary surplus run is
+      // what `answerable` already promises for a letter the colony cannot afford,
+      // and a stale letter deserves the same treatment: a colony that answers
+      // being asked a favour by refusing to trade at all for two weeks has been
+      // made poorer by having been asked.
+      const at = asked ? settlementById(world, asked.settlementId) : null;
+      const honour = at !== null && withinRange(world, at).ok;
+      // What is spare is found before the road is chosen, so it is measured
+      // against the biggest pack anywhere on the board and clamped below to what
+      // the road actually chosen will carry.
+      const give = (honour ? asked : null) ?? spareGoods(world, PACK_CEILING);
       if (!give) return false;
-      const dest = asked
-        ? settlementById(world, asked.settlementId)
-        : pickDestination(world, give.kind);
+      const dest = honour ? at : pickDestination(world, give.kind, give.amount);
       if (!dest) return false;
       const head = roadHead(world, dest, pawn);
       if (!head) return false;
+      const amount = Math.min(give.amount, packLimit(dest));
       createJob(world, pawn, 'caravan', head.x, head.y, {
         settlementId: dest.id,
         resource: give.kind,
-        amount: give.amount,
+        amount,
       });
       msg(
         world,
-        asked
-          ? `${pawn.name} loads the ${give.amount} ${give.kind} ${dest.name} asked for and sets out.`
-          : `${pawn.name} loads ${give.amount} ${give.kind} and sets out for ${dest.name}.`,
+        honour
+          ? `${pawn.name} loads the ${amount} ${give.kind} ${dest.name} asked for and sets out.`
+          : `${pawn.name} loads ${amount} ${give.kind} and sets out for ${dest.name}.`,
         'info',
       );
       return true;

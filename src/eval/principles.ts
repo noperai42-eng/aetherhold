@@ -61,6 +61,21 @@ export function formatPrinciples(results: PrincipleResult[]): string {
 // ── the checks ──────────────────────────────────────────────────────────────
 
 /**
+ * The two dates the far country is measured against.
+ *
+ * Week one is the shape of the promise: a colony that has not yet fed itself
+ * twice has no business on a ten-day road, and if the grid ever finds one out
+ * there the gate has stopped gating. Week six is the other half — a road that
+ * is shut in week one and still shut on day sixty is not a distance, it is a
+ * wall, and the far ring may as well not have been built.
+ */
+const WEEK_ONE = 7;
+const WEEK_SIX = 42;
+
+/** the outermost ring; the one the promise is about */
+const FAR_RING = 2;
+
+/**
  * The three settings, kindest first, each reduced to one mean. Means rather
  * than per-seed comparisons because a difficulty dial is a claim about the
  * distribution: one map where Hard country happened to stay quiet is not a
@@ -485,6 +500,65 @@ export const PRINCIPLES: Principle[] = [
             detail:
               `${short.length} founded runs stopped short of day ${s.days}: ` +
               short.map((m) => `${m.difficulty}/${m.seed} at ${m.daysLived}`).join(', '),
+          };
+    },
+  },
+  {
+    id: 'the-far-ring-is-earned',
+    claim:
+      'The far country is a capability, not an unlock. No colony can reach it in its first week, ' +
+      'and a colony that trades its way outward reaches it by its sixth.',
+    enforced: true,
+    check: (s) => {
+      // A grid that never gets to week six can only answer half of this, and the
+      // half it can answer is the easy one — so it does not get to say "holds".
+      if (s.days < WEEK_SIX) {
+        return { verdict: 'untested', detail: `${s.days}-day grid cannot see day ${WEEK_SIX}` };
+      }
+      const opened = (m: RunMeasure) => m.ringOpenedOn?.[FAR_RING] ?? null;
+      // Shut in week one, everywhere, no exceptions: this is the half that says
+      // the far ring is a place and not a button.
+      const early = s.runs.filter((m) => {
+        const day = opened(m);
+        return day !== null && day <= WEEK_ONE;
+      });
+      if (early.length > 0) {
+        return {
+          verdict: 'broken',
+          detail:
+            `${early.length} runs opened the far road inside week one: ` +
+            early.map((m) => `${m.difficulty}/${m.seed} on day ${opened(m)}`).join(', '),
+        };
+      }
+      // Open by week six, somewhere a person would actually be playing. Scoped
+      // to the settled half of the grid on purpose: Hard country reaching day
+      // sixty without ever provisioning a three-week road is a fact about Hard
+      // country, and stage 2's note about fixed gates is the same warning.
+      const gentle = s.runs.filter((m) => m.difficulty !== 'harsh');
+      if (gentle.length === 0) {
+        return { verdict: 'untested', detail: 'grid ran nothing below harsh' };
+      }
+      const earned = gentle.filter((m) => {
+        const day = opened(m);
+        return day !== null && day <= WEEK_SIX;
+      });
+      const best = gentle.reduce((soonest: number | null, m) => {
+        const day = opened(m);
+        return day === null ? soonest : soonest === null ? day : Math.min(soonest, day);
+      }, null);
+      return earned.length > 0
+        ? {
+            verdict: 'holds',
+            detail:
+              `shut for all ${s.runs.length} runs through day ${WEEK_ONE}; ` +
+              `${earned.length} of ${gentle.length} below harsh opened it by day ${WEEK_SIX}, earliest day ${best}`,
+          }
+        : {
+            verdict: 'broken',
+            detail:
+              `shut through day ${WEEK_ONE} as promised, but none of ${gentle.length} runs below harsh ` +
+              `reached it by day ${WEEK_SIX}` +
+              (best === null ? ' — or ever' : ` — soonest anywhere was day ${best}`),
           };
     },
   },

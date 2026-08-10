@@ -14,24 +14,28 @@ Four sections: [the killer feature](#the-killer-feature),
 and [what still wants a human](#what-still-wants-a-human) — which is the long one, and is
 ordered to match `PLAYTEST.md` rather than by importance.
 
-Last run — 2026-08-08:
+Last run — 2026-08-09:
 
 - `npx tsc --noEmit` clean.
-- `npm test` — **88 of 90 files, 1,585 tests green**, 13 skipped. The skips are the
+- `npm test` — **89 of 91 files, 1,612 tests green**, 13 skipped. The skips are the
   opt-in gates and nothing else: the 1000-day ecosystem sweep (`ECO`), the survival sweep
   (`SWEEP`), the balance grid (`BALANCE`), the liveness census (`LIVE`) and the eval pool
   (`POOL`). Each is a `describe.runIf` on its environment variable, so a skip is a gate
   nobody asked for rather than a test that gave up. Two of those files —
   `tests/liveness.test.ts` and `tests/survival-sweep.test.ts` — hold nothing *but* a
-  gated describe, which is why the file count reads 88 and not 90.
+  gated describe, which is why the file count reads 89 and not 91.
 - `npm run eval` — 11 tests green across five seeds, no collapses.
 - `npm run measure -- --days 60 --past-founding` then `npm run balance` — 4 tests green.
-  24 colonies in 1,982 s. All ten enforced principles hold; the three open ones report
+  24 colonies in 1,425 s. All eleven enforced principles hold; the three open ones report
   without asserting, and one of them (*the valley can still bury somebody*) holds too.
   The two that do not are the standing findings: *nobody starves beside a full pantry*
   (6 of 15 runs) and *the escalation ladder is climbable to the top* (highest rung
   reached anywhere was 3 of 4, and Hard country never leaves rung 0).
-- `npm run build` — 894.79 kB JS (254.38 kB gzip), 22.65 kB CSS (4.97 kB gzip).
+  The eleventh is new and is what stage one of `ENDGAME.md` was for: *the far ring is
+  earned* — shut for all fifteen runs through day 7, and 3 of the 10 runs below Hard
+  country had it open by day 42, the earliest on day 17. Three of ten is a pass with
+  no room in it, and the note under the principle says so.
+- `npm run build` — 896.62 kB JS (255.25 kB gzip), 22.65 kB CSS (4.97 kB gzip).
 - Dev server on `5063`, play server on `5062` — and on the same port at this machine's
   LAN address, which is deliberately not written down here because it changes with the
   network and a stale IP in a document is worse than no IP.
@@ -525,3 +529,15 @@ rather than what it computes. Each is a numbered step in `PLAYTEST.md`:
   loads rather than refusing. The judgement left over is editorial: whether the panel reads
   as *what happened to us* or as a second, longer log. One line of small talk in it is the
   whole failure, and only a reader can see it.
+
+- **§9ii** — walk the map open, one ring at a time. `tests/rings.test.ts` pins the structure
+  (twelve places, four per ring, distances that only grow outward), each of the three gates
+  alone with the other two satisfied, the exact standing at which a road opens, and that a
+  colony left to itself walks outward rather than in a circle. The balance grid pins the
+  promise across sixty days as `the-far-ring-is-earned`. What no test can settle is whether
+  a locked road reads as *somewhere to work towards* or as *decoration*: the whole mechanism
+  is eight headings that say what would lift them, and if a player reads those sentences and
+  still cannot tell what to do next, the far country is a wall with a label on it. The
+  second thing a human has to judge is the order the gates bind in — the vouch is supposed
+  to be the interesting one, and headcount is supposed to be the last, because a far ring
+  that is really a population counter would be a trade system wearing somebody else's coat.

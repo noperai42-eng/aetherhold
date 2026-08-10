@@ -99,7 +99,7 @@ src/
     pets.ts            the animal a settler keeps, rather than the one the colony eats
     crafting.ts        the recipe book: two gates, one on the colony and one on the person
     trade.ts           the pedlar who walks in, stands half a day, and swaps
-    settlements.ts     the four neighbours off the map, and the caravan that walks to one
+    settlements.ts     the twelve neighbours off the map in three rings, and the caravan that walks to one
     commissions.ts     the neighbours ask for something back: one pack, on a clock
     prison.ts          what happens to a raider who goes down and does not die
     research.ts        the one axis that only goes forward: fifteen projects, 249,000 points

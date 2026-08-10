@@ -44,6 +44,9 @@ function run(difficulty: Difficulty, over: Partial<RunMeasure> = {}): RunMeasure
     raidersSeen: 20,
     armedShare: 0.3,
     foundedOn: null,
+    // thirty days is the default grid, and thirty days is not long enough to
+    // walk the far road, so the baseline run has only ever stood in ring zero
+    ringOpenedOn: [0, null, null],
     ...over,
   };
 }

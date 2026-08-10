@@ -369,9 +369,9 @@ const LATE: Goal[] = [
     id: 'lateNeighbours',
     // Visits, not trades. A settlement the colony has walked to is one it has a
     // relationship with, and a caravan that came home empty still went.
-    title: 'Call on every settlement in the valley',
-    hint: 'Click a settlement out on the map and send a caravan. Distant neighbours pay better.',
-    earned: 'the colony has called on every neighbour',
+    title: 'Call on all three rings',
+    hint: 'Click a settlement out on the map and send a caravan. The far ones only open once somebody nearer will vouch for you.',
+    earned: 'the colony has called on every neighbour, out to the far ring',
     measure: (w) => {
       const all = w.settlements ?? [];
       return { at: all.filter((s) => (s.visits ?? 0) > 0).length, of: Math.max(1, all.length) };

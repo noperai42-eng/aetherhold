@@ -194,10 +194,14 @@ describe('the neighbours', () => {
     expect(a.map((s) => s.name)).not.toEqual(settlementsOf(colony(4243)).map((s) => s.name));
   });
 
-  it('are four distinct places, and none of them wants what it is drowning in', () => {
+  it('are twelve distinct places, and none of them wants what it is drowning in', () => {
+    // Four, until the world grew three rings. The count lives in `rings.test.ts`
+    // now along with everything else about how they are laid out; what this one
+    // is here for is the older and simpler promise, which the eight new places
+    // have to keep too: a settlement never asks for the thing it sells.
     const places = settlementsOf(colony());
-    expect(places).toHaveLength(4);
-    expect(new Set(places.map((s) => s.name)).size).toBe(4);
+    expect(places).toHaveLength(12);
+    expect(new Set(places.map((s) => s.name)).size).toBe(12);
     for (const s of places) {
       expect(s.buys).not.toBe(s.sells);
       expect(s.days).toBeGreaterThan(0);

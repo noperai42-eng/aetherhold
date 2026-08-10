@@ -22,6 +22,7 @@ import {
   type World,
 } from '../sim/types';
 import { hasWon } from '../sim/victory';
+import { ringOpen } from '../sim/settlements';
 import { escalation } from '../sim/events';
 import { stewardTick } from './steward';
 
@@ -158,6 +159,16 @@ export interface EvalReport {
    * judged on what day 60 looked like.
    */
   foundedOn: number | null;
+  /**
+   * The first day the colony could have put a party on the road to the middle
+   * ring, and to the far one, or null if it never could.
+   *
+   * Latched per day rather than read at the end, because range is a state the
+   * colony passes through and not one it keeps: a colony that opened the far
+   * road on day forty and then ate its way back below the provisioning floor is
+   * a colony that earned it, and an end-of-run read would call it locked.
+   */
+  ringOpenedOn: (number | null)[];
 }
 
 export interface EvalOptions {
@@ -226,6 +237,9 @@ export function runColony(opts: EvalOptions = {}): EvalReport {
   // the colony founded and never *when* — and when is the interesting half the
   // moment the founding stops being the last day of the run.
   let foundedOn: number | null = null;
+  // Index is the ring. Ring 0 is home country and never shut, so it is stamped
+  // day zero and the loop below starts at one.
+  const ringOpenedOn: (number | null)[] = [0, null, null];
 
   for (let day = 1; day <= days; day++) {
     for (let i = 0; i < TICKS_PER_DAY; i++) {
@@ -271,6 +285,9 @@ export function runColony(opts: EvalOptions = {}): EvalReport {
       }),
     );
     if (foundedOn === null && hasWon(world)) foundedOn = day;
+    for (let ring = 1; ring < ringOpenedOn.length; ring++) {
+      if (ringOpenedOn[ring] === null && ringOpen(world, ring)) ringOpenedOn[ring] = day;
+    }
     // Two endings, and only one of them is an ending. `gameOver` is a wipe and
     // always stops the run; a founding stops it only because the harness has
     // always asked "how did this run end", and the game itself goes on. Asked
@@ -288,6 +305,7 @@ export function runColony(opts: EvalOptions = {}): EvalReport {
     snapshots,
     incidents,
     foundedOn,
+    ringOpenedOn,
     ...judge(world, snapshots, foundedOn, playPastFounding),
   };
 }

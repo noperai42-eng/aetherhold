@@ -42,12 +42,14 @@ import {
   bestTalker,
   caravanDaysLeft,
   caravanOf,
+  packMultiple,
   quote,
   rateReasons,
   settlementById,
   settlementsOf,
   socialOf,
   specialty,
+  withinRange,
 } from '../../sim/settlements';
 import { commissionDaysLeft, commissionOf, satisfies } from '../../sim/commissions';
 import { CRAFT_DEFS, RECIPE_ORDER, bestCrafter, canCraft, craftBlocker, pawnQualified, unlockedBy } from '../../sim/crafting';
@@ -1553,6 +1555,10 @@ export class Hud {
           'in',
           talker ? `${talker.id}:${Math.round(socialOf(talker) * 4)}` : 'none',
           PACK_KINDS.map((k) => countResource(s.world, k)).join(','),
+          // Headcount rides along because it is the one thing range turns on
+          // that nothing else in this signature already moves. Standing and the
+          // pantry are both above.
+          String(livingColonists(s.world).length),
           places.map((p) => `${p.id}:${Math.round(p.relations)}:${p.visits}`).join(','),
           comSig,
         ].join('|');
@@ -1616,16 +1622,26 @@ export class Hud {
       // shrug — and it reads as an answer when the colony itself cannot make it.
       const trade = specialty(place);
       const known = trade ? ` · ${CRAFT_DEFS[trade].trade}` : '';
+      // Out of range is a state of the *place*, not of the pack, so it is said
+      // once in the heading and the six rows below it are not drawn at all. A
+      // road the colony cannot walk yet still gets a line, because the sentence
+      // that says what would open it is the only way the far country reads as
+      // somewhere to work towards rather than decoration.
+      const reach = withinRange(s.world, place);
       const head = el('div', 'deal locked');
       head.innerHTML =
         `<div class="ttl"><span class="cost">${escapeHtml(place.name)}</span>` +
         `<span class="arrow">·</span><span class="gain">${place.days} days each way</span></div>` +
         `<div class="blurb">short of ${escapeHtml(place.buys)}, pays in ${escapeHtml(place.sells)}${escapeHtml(known)} · ` +
-        `${place.visits === 0 ? 'never visited' : `${place.visits} visit${place.visits === 1 ? '' : 's'}, standing ${Math.round(place.relations)}`}</div>`;
+        `${place.visits === 0 ? 'never visited' : `${place.visits} visit${place.visits === 1 ? '' : 's'}, standing ${Math.round(place.relations)}`}` +
+        `${reach.ok ? '' : `<br>${escapeHtml(reach.text)}`}</div>`;
       list.append(head);
-      if (!talker) continue;
+      if (!talker || !reach.ok) continue;
+      // A party three weeks out goes with handcarts and more than one back, so
+      // the pack the panel offers is the one that road actually takes.
+      const load = packMultiple(place);
       for (const kind of PACK_KINDS) {
-        const amount = PACK_SIZES[kind];
+        const amount = PACK_SIZES[kind] * load;
         const have = countResource(s.world, kind);
         // Unaffordable packs stay on the board greyed, for the same reason the
         // shop's do: "you have 40 of 80" is the thing worth reading.

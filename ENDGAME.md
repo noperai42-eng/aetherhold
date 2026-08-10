@@ -253,6 +253,58 @@ reach at the start.
 six. And the existing no-arbitrage invariant survives the new places untouched;
 that test does not get to be relaxed.
 
+*Shipped, and holding.* Measured on the same sixty-day grid: the far ring was shut
+for all fifteen runs through day 7, and 3 of the 10 runs below Hard country had it
+open by day 42 — the earliest on day 17. Unreachable in week one, reachable by week
+six, which is exactly the promise. It is also a pass with no room in it: seven of
+those ten never got there, and Hard country is excluded from the second half of the
+check because a colony fighting for its life is not owed a trade route. If the
+third tier of the tree is going to want far-ring goods, that seven wants to come
+down first — otherwise stage 2 gates content behind a road most runs never walk.
+
+*What the longer road turned out to be.* Twelve settlements in three rings of
+four, one per quarter of the
+compass, each ring turned a little against the one inside it so the far country
+reads as being behind the near country rather than hidden under it. The near ring
+is one to three days out and sells whatever it is sitting on; the middle ring is
+five or six days out and sells what somebody made; the far ring is nine or ten
+days out and deals only in steel and medicine, the two things dense enough to be
+worth carrying that far. `withinRange` is the entire gate, and it refuses in
+sentences rather than booleans: somebody one ring in has to vouch for you
+(`PASSAGE_RELATIONS = 18`, which is three visits), the pantry has to hold the
+meals the road eats there and back, and enough settlers have to stay behind to
+hold the valley. `ringOpen` is what the principle reads, latched once per day in
+`run.ts`.
+
+*What "pure data and existing code paths" turned out to cost.* Two numbers that
+are not data. `RING_PACK = [1, 2, 4]` scales the pack with the ring, because a
+nine-day road carrying a near-ring pack is a fortnight spent to move one crate and
+no player would ever walk it twice; `PACK_CEILING` follows from it, so the foreman
+measures what it can spare against the biggest pack on the board rather than the
+smallest. And `GATE_BONUS = 2` in `pickDestination` makes a trip that is also what
+opens the ring behind it count double while the vouch is still owed — a cliff, not
+a slope, so the moment a place vouches the reason to keep walking there is gone.
+Without it the near ring's throughput advantage runs to a little under two and the
+colony never once walks outward on its own.
+
+*And two livelocks, both found by writing the test.* A commission is worth three
+visits' standing and outranks an ordinary surplus run, which is right — but a
+letter from a place the colony cannot reach would then hold the one commission
+slot for its whole fortnight while the foreman declined to trade at all. So
+`pickRequest` will not write from an unreachable place, and — separately, because
+a letter runs a fortnight and that is long enough for the pantry to fall or the
+escort to be buried — a letter that has *gone* stale falls through to the ordinary
+surplus run and lapses, which is what `answerable` already promised for a letter
+the colony merely could not afford. A colony that answers being asked a favour by
+refusing to trade for two weeks has been made poorer by having been asked.
+
+*Not there yet:* the autonomous foreman does not choose a far-ring destination
+even once the map is open. Near-ring throughput genuinely wins, at four packs and
+at the gate bonus both. The far ring is reachable, player-selectable and
+commission-eligible, which is what this stage promised; a foreman that walks it
+unprompted is a scoring change rather than a gate change, and it belongs with
+stage 2, when there is finally something out there that only the far ring sells.
+
 **2 — The tree grows a third tier: the industrial base.** Projects past
 `plateworks` that cost *materials* as well as points — components, then
 assemblies — gated on goods only the middle and far rings sell. On the quiet

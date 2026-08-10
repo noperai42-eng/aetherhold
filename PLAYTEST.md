@@ -63,6 +63,7 @@ run.
 
 **The valley** —
 [9k. Send somebody over the ridge](#9k-send-somebody-over-the-ridge-3-minutes) ·
+[9ii. Walk the map open](#9ii-walk-the-map-open-one-ring-at-a-time-10-minutes-mostly-waiting) ·
 [9l. Read the path to a win](#9l-read-the-path-to-a-win-1-minute) ·
 [9m. Walk into the haze](#9m-walk-into-the-haze-2-minutes) ·
 [9n. Read the map in the corner](#9n-read-the-map-in-the-corner-2-minutes) ·
@@ -529,8 +530,10 @@ already blueprinted stays — it is your colony's plan now, and it cancels like 
 
 ## 9k. Send somebody over the ridge (~3 minutes)
 
-Press `J`. Four neighbours, one per compass quarter: how far each is, what they are short
-of, what they pay in, and how well they know you. Pick a pack you can actually spare — the
+Press `J`. Twelve neighbours in three rings — how far each is, what they are short of, what
+they pay in, and how well they know you. Only the near four have packs under them on day
+one; the other eight are headings with a sentence saying what would open that road. That is
+9ii's business. For now pick a pack you can actually spare from the near ring — the
 affordable rows are the bright ones — and send your best talker.
 
 **Expect:**
@@ -1341,6 +1344,44 @@ Then save and load (section 10) and open it again — the history comes back wit
 save written before this panel existed loads with an empty one and starts keeping the story from
 that moment, which is a real loss of one save's past, chosen deliberately over a save-version bump
 that would have cost every player their colony.
+
+## 9ii. Walk the map open, one ring at a time (~10 minutes, mostly waiting)
+
+This is 9k's other half and it is the one that takes patience. Press `J` and read the eight
+locked headings before you do anything: each says, in a sentence, exactly what is standing
+between the colony and that road. Early on every one of them will say the same thing —
+*"Nobody on this road will vouch for you yet — Bitterfold stands at 0 of 18."*
+
+**Expect:** three refusals, each with its own sentence, and each liftable on its own.
+
+- **The vouch.** Trade with one near-ring neighbour until the road panel shows their standing
+  at 18 — three ordinary visits, or an answered letter and a bit. The moment it lands, all
+  four middle-ring headings stop talking about vouching. This is the interesting gate and it
+  is the one that should bind first.
+- **The pantry.** Now look at a middle-ring road: *"20 meals feed that road there and back.
+  The pantry holds 11."* Two meals a day, both ways, at the distance shown in the heading —
+  the arithmetic should check out against the days on the same line. Cook until it clears.
+- **The hands.** The far ring wants four settlers left holding the valley, which a colony
+  founded with three cannot do with somebody on the road. Take in migrants until the
+  sentence goes away. The near ring never asks this and the middle ring asks for two, so
+  headcount should be the *last* thing to bind, not the first.
+
+Then send one. **Expect:** four settlers' worth of pack on the far road where the near road
+took one — a nine-day trip that carried a single settler's load would never be worth
+walking. The mishap odds are worse out there too, and they should be: a lost pack that size
+hurts.
+
+Two things to try to break it with:
+
+- **Do nothing but obey the Steward.** Leave it on its own with a surplus and watch which
+  way it walks. It should go to the same near neighbour about three times, then switch to a
+  middle-ring one for about three more, then stop wandering and settle back into whatever is
+  actually most profitable. If it walks to the same one-day town thirty times running, the
+  bonus that pays for opening a road has stopped working and the far country is unreachable
+  in practice however open it says it is.
+- **Open the far ring, then eat the pantry down.** The road should shut again with the meals
+  sentence, not the vouch sentence — standing is permanent, provisioning is not, and the
+  panel should be clear about which one you have lost.
 
 ## 10. Save it, break it, load it
 

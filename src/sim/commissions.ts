@@ -39,6 +39,7 @@ import {
   rateOf,
   settlementById,
   settlementsOf,
+  withinRange,
 } from './settlements';
 import { gainSkill } from './skills';
 import { TICKS_PER_DAY } from './types';
@@ -253,6 +254,13 @@ function pickRequest(world: World): { s: Settlement; kind: ResourceKind } | null
   let best: { s: Settlement; kind: ResourceKind } | null = null;
   let bestShare = COMMISSION_HAVE;
   for (const s of settlementsOf(world)) {
+    // A place the colony cannot get to does not write to it. Partly because a
+    // stranger ten days out who has never met anybody from the valley has no
+    // reason to, and partly because the alternative is a letter that cannot be
+    // answered: it would hold the one commission slot for its whole fortnight,
+    // and the foreman — which puts an open letter ahead of an ordinary surplus
+    // run — would spend that fortnight declining to trade at all.
+    if (!withinRange(world, s).ok) continue;
     const kind = s.buys;
     const want = PACK_SIZES[kind];
     if (want <= 0) continue;

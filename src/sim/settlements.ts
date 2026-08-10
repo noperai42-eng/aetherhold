@@ -125,8 +125,17 @@ export const RELATIONS_MAX = 100;
 /** Social levelled by one completed round trip. Four or five runs is a specialist. */
 export const SOCIAL_PER_TRIP = 0.9;
 
-/** The names over the ridge. Four of these end up on any one map. */
-const NEIGHBOUR_NAMES = [
+/**
+ * The names over the ridge, in two pools.
+ *
+ * The split is load-bearing rather than flavour. The near ring draws from the
+ * first list exactly as it always did — same eight names, same draw, same order
+ * of dice — so every seed ever played still meets the four neighbours it met
+ * before the world had any depth to it. The country past them draws from its
+ * own list, which holds eight names for eight places and is therefore a
+ * shuffling rather than a choice.
+ */
+const NEAR_NAMES = [
   'Ashfen',
   'Marrow Deep',
   'Kell Hollow',
@@ -137,11 +146,45 @@ const NEIGHBOUR_NAMES = [
   'Ninefold',
 ];
 
-/** How many neighbours a map has. Four is one per quarter of the compass. */
-const NEIGHBOUR_COUNT = 4;
+/** The country past the near ring. Eight names for the eight places out there. */
+const FAR_NAMES = [
+  'Fallowmere',
+  'Stonewake',
+  'Duskmoor',
+  'Harrowgate',
+  'Coldwater',
+  'Emberfall',
+  'Longbarrow',
+  'Saltmarch',
+];
 
-/** Days of walking, one way, in the order the four are laid out. */
-const DISTANCES = [1, 2, 2, 3];
+/** Everything a settlement might be short of. Depth changes what they sell, never what they want. */
+const KINDS: ResourceKind[] = ['wood', 'steel', 'rawfood', 'meal', 'medicine'];
+
+/** How many places sit in each ring. Four is one per quarter of the compass. */
+const PER_RING = 4;
+
+/**
+ * The world, in rings.
+ *
+ * Distance was always the entire cost of dealing with somebody, so distance is
+ * what the depth is made of. The near ring is today's four, unchanged down to
+ * the list of things they might be sitting on: every number on the setup card
+ * was calibrated against those four, and quietly moving them would recalibrate
+ * the game while claiming to have added to it. The middle ring is five or six
+ * days out and is where the workshops are — it sells what somebody made rather
+ * than what somebody dug up. The far ring is nine or ten days out, deals only in
+ * the dense stuff worth carrying that far, and is not somewhere a young colony
+ * goes at all.
+ */
+const RINGS: ReadonlyArray<{ days: readonly number[]; sells: readonly ResourceKind[] }> = [
+  { days: [1, 2, 2, 3], sells: KINDS },
+  { days: [5, 5, 6, 6], sells: ['meal', 'medicine', 'steel'] },
+  { days: [9, 9, 10, 10], sells: ['steel', 'medicine'] },
+];
+
+/** Every settlement on a map, near ring first. */
+const NEIGHBOUR_COUNT = RINGS.length * PER_RING;
 
 /**
  * The neighbours of this map.
@@ -153,34 +196,58 @@ const DISTANCES = [1, 2, 2, 3];
  * existed meets exactly the same four people when it loads.
  */
 export function settlementsOf(world: World): Settlement[] {
-  if (world.settlements) return world.settlements;
+  const known = world.settlements;
+  if (known && known.length >= NEIGHBOUR_COUNT) return known;
   const rng = new Rng((world.seed ^ 0x5bf03635) >>> 0);
-  const names = [...NEIGHBOUR_NAMES];
-  const kinds: ResourceKind[] = ['wood', 'steel', 'rawfood', 'meal', 'medicine'];
+  const near = [...NEAR_NAMES];
+  const far = [...FAR_NAMES];
   const made: Settlement[] = [];
-  for (let i = 0; i < NEIGHBOUR_COUNT; i++) {
-    const name = names.splice(rng.int(names.length), 1)[0]!;
-    // One per quarter of the compass, jittered inside it. Four places all out
-    // past the same treeline would make "which way is Ashfen" a question with no
-    // answer, and the bearing is most of what makes them feel like places.
-    const bearing = (i * Math.PI) / 2 + rng.range(-0.5, 0.5);
-    const sells = kinds[rng.int(kinds.length)]!;
-    // Never short of the thing they are drowning in.
-    const wants = kinds.filter((k) => k !== sells);
-    made.push({
-      id: i + 1,
-      name,
-      bearing,
-      days: DISTANCES[i] ?? 2,
-      sells,
-      buys: wants[rng.int(wants.length)]!,
-      craft: craftFor(sells, i + 1),
-      relations: 0,
-      visits: 0,
-    });
+  for (let ring = 0; ring < RINGS.length; ring++) {
+    const { days, sells: stock } = RINGS[ring]!;
+    const names = ring === 0 ? near : far;
+    for (let i = 0; i < PER_RING; i++) {
+      const name = names.splice(rng.int(names.length), 1)[0]!;
+      // One per quarter of the compass, jittered inside it. Four places all out
+      // past the same treeline would make "which way is Ashfen" a question with
+      // no answer, and the bearing is most of what makes them feel like places.
+      // Each ring is turned a sixth of a quarter against the one inside it, so
+      // the far country reads as being *behind* the near country rather than
+      // hidden directly under it.
+      const bearing = (i * Math.PI) / 2 + (ring * Math.PI) / 6 + rng.range(-0.5, 0.5);
+      const sells = stock[rng.int(stock.length)]!;
+      // Never short of the thing they are drowning in.
+      const wants = KINDS.filter((k) => k !== sells);
+      const id = made.length + 1;
+      made.push({
+        id,
+        name,
+        bearing,
+        days: days[i] ?? 2,
+        sells,
+        buys: wants[rng.int(wants.length)]!,
+        craft: craftFor(sells, id),
+        ring: ring as 0 | 1 | 2,
+        relations: 0,
+        visits: 0,
+      });
+    }
   }
+  // A save from before the world had depth already knows its near ring, and that
+  // ring is who the colony has been trading with — so it is kept, standing and
+  // all, and only the country past it is new. The draw above reproduces those
+  // four exactly for the seed, so this is a splice rather than a merge.
+  if (known) made.splice(0, known.length, ...known);
   world.settlements = made;
   return made;
+}
+
+/**
+ * How deep this place sits, tolerating a save written before the world had
+ * rings. Read off the distance, which is what the ring *is*.
+ */
+export function ringOf(s: Settlement): 0 | 1 | 2 {
+  if (s.ring === undefined) s.ring = s.days <= 3 ? 0 : s.days <= 6 ? 1 : 2;
+  return s.ring;
 }
 
 export function settlementById(world: World, id: number): Settlement | null {
@@ -351,6 +418,126 @@ export function roadHead(world: World, s: Settlement, from: Pawn): { x: number; 
   return null;
 }
 
+/**
+ * Meals the pantry has to hold, per day of road, before a party sets out.
+ *
+ * A readiness test rather than a toll: the goods are not taken, because the
+ * traveller has always eaten out of their own pack and turning that into a
+ * second withdrawal would make one trip cost two packs. What it says is that a
+ * colony living hand to mouth has no business sending anybody over the horizon,
+ * and — because it is denominated in the colony's own cooking rather than in a
+ * constant — it asks the same question of Hard country that it asks of the quiet
+ * valley, at the scale each of them actually runs at.
+ */
+const ROAD_MEALS_PER_DAY = 2;
+
+/**
+ * Standing somebody one ring in will want before they see a stranger past their
+ * own gate. Three ordinary visits, or one answered letter and a bit.
+ *
+ * This is the whole of why the far ring is *earned* rather than unlocked. There
+ * is no counter that ticks up on its own: reaching the middle ring means having
+ * dealt with the near one until they know your face, and reaching the far ring
+ * means having done the same again with somebody five days out — which cannot
+ * happen until the middle ring is open, so the depth is walked rather than
+ * waited out.
+ */
+export const PASSAGE_RELATIONS = 18;
+
+/**
+ * Settlers who have to stay home while a party is on this ring's road.
+ *
+ * Counted as who is *left*, not as a headcount, because that is the sentence a
+ * player reads and the two differ by the traveller. The colony is founded with
+ * three, which is deliberately just enough for the middle ring and not enough
+ * for the far one: the near ring asks nothing, the middle ring asks that the
+ * valley is not emptied, and the far ring — a party gone the better part of
+ * three weeks — asks that the colony has actually grown since the founding.
+ *
+ * Kept low on purpose. The gate that is supposed to be interesting is the
+ * standing one; if headcount bound first, the far country would be a population
+ * counter wearing a trade system's clothes.
+ */
+const ESCORT_FLOOR = [1, 2, 4];
+
+/**
+ * How much one party carries, as a multiple of a settler's pack, by ring.
+ *
+ * Not a fudge for the far ring's arithmetic — it *is* the far ring's arithmetic.
+ * `pickDestination` scores worth against days, so a nine-day place carrying a
+ * one-settler pack loses to the neighbour up the valley by five to one no matter
+ * what it pays, and a road nothing ever walks is not a road. A party going over
+ * the horizon for three weeks goes with handcarts and more than one back, which
+ * is the same reason the colony has to be able to spare the hands and feed them.
+ * The no-arbitrage guarantee does not notice: every quote is still worth times a
+ * rate below `RATE_CAP`, and multiplying both sides of that does not make steel
+ * out of steel.
+ */
+const RING_PACK = [1, 2, 4];
+
+/** How many settlers' worth of load this road takes. */
+export function packMultiple(s: Settlement): number {
+  return RING_PACK[ringOf(s)] ?? 1;
+}
+
+/** The largest pack that goes out on this road. */
+export function packLimit(s: Settlement): number {
+  return PACK_MAX * packMultiple(s);
+}
+
+export type Reach = { ok: true } | { ok: false; text: string };
+
+/**
+ * Can the colony put a party on the road to this place at all?
+ *
+ * Distance is the gate, and this is what the gate is made of: food for the road,
+ * hands to spare for it, and somebody nearer who will vouch for you. Every
+ * refusal is a sentence for the same reason `planCaravan`'s are — a locked road
+ * that does not say what would unlock it has taught the player that the far
+ * country is decoration.
+ */
+export function withinRange(world: World, s: Settlement): Reach {
+  const ring = ringOf(s);
+  if (ring === 0) return { ok: true };
+
+  const inside = settlementsOf(world).filter((o) => ringOf(o) === ring - 1);
+  const vouch = inside.reduce((best, o) => Math.max(best, o.relations), 0);
+  if (vouch < PASSAGE_RELATIONS) {
+    const nearest = inside.reduce(
+      (best: Settlement | null, o) => (best === null || o.relations > best.relations ? o : best),
+      null,
+    );
+    return {
+      ok: false,
+      text: nearest
+        ? `Nobody on this road will vouch for you yet — ${nearest.name} stands at ${Math.round(nearest.relations)} of ${PASSAGE_RELATIONS}.`
+        : 'There is nobody nearer who could see you past their own gate.',
+    };
+  }
+
+  const needed = ROAD_MEALS_PER_DAY * 2 * s.days;
+  const meals = countResource(world, 'meal');
+  if (meals < needed) {
+    return { ok: false, text: `${needed} meals feed that road there and back. The pantry holds ${meals}.` };
+  }
+
+  const floor = ESCORT_FLOOR[ring] ?? 1;
+  const staying = livingColonists(world).length - 1;
+  if (staying < floor) {
+    return {
+      ok: false,
+      text: `A party gone ${s.days * 2} days wants ${floor} left holding the valley. There would be ${Math.max(0, staying)}.`,
+    };
+  }
+
+  return { ok: true };
+}
+
+/** Is any place in this ring reachable right now? What the far-ring principle reads. */
+export function ringOpen(world: World, ring: number): boolean {
+  return settlementsOf(world).some((s) => ringOf(s) === ring && withinRange(world, s).ok);
+}
+
 export type CaravanPlan =
   | { ok: true; settlement: Settlement; head: { x: number; y: number } }
   | { ok: false; text: string };
@@ -387,6 +574,13 @@ export function planCaravan(
     return { ok: false, text: 'There is nobody who can be spared.' };
   }
   if (give.amount <= 0) return { ok: false, text: 'A pack with nothing in it is a walk.' };
+  // Range is checked before the pack, because "you cannot get there" is the
+  // answer that stands however much wood is in the yard.
+  const reach = withinRange(world, s);
+  if (!reach.ok) return { ok: false, text: reach.text };
+  if (give.amount > packLimit(s)) {
+    return { ok: false, text: `That is more than one party carries to ${s.name}.` };
+  }
   if (countResource(world, give.kind) < give.amount) {
     return { ok: false, text: `Not enough ${give.kind} for that pack.` };
   }
@@ -560,6 +754,12 @@ const PACK_MAX = 150;
 const PACK_MIN = 40;
 
 /**
+ * The biggest pack any road on the board takes. What "spare" is measured
+ * against, since what is spare is known before the road is chosen.
+ */
+export const PACK_CEILING = PACK_MAX * Math.max(...RING_PACK);
+
+/**
  * One pack of each thing, for the panel.
  *
  * A player ordering a caravan picks a *place*, not an amount: the sizes are
@@ -577,13 +777,23 @@ export const PACK_SIZES: Record<ResourceKind, number> = {
   hide: 40,
 };
 
-/** What the colony can spare, or null if it can spare nothing. */
-export function spareGoods(world: World): { kind: ResourceKind; amount: number } | null {
+/**
+ * What the colony can spare, or null if it can spare nothing.
+ *
+ * `limit` is the biggest pack anywhere on the board rather than the biggest one
+ * this trip will take — the destination is picked *after* this, out of what is
+ * spare, and each road then clamps the load to what a party walks it with. Asked
+ * for the near ring's limit it answers exactly what it always did.
+ */
+export function spareGoods(
+  world: World,
+  limit: number = PACK_MAX,
+): { kind: ResourceKind; amount: number } | null {
   let best: { kind: ResourceKind; amount: number } | null = null;
   for (const kind of Object.keys(SURPLUS) as ResourceKind[]) {
     const over = countResource(world, kind) - SURPLUS[kind];
     if (over < PACK_MIN) continue;
-    const amount = Math.min(PACK_MAX, Math.floor(over * 0.6));
+    const amount = Math.min(limit, Math.floor(over * 0.6));
     if (amount < PACK_MIN) continue;
     // Measured in worth, not in units, so a hundred wood does not beat forty
     // medicine just because a hundred is the bigger number.
@@ -662,12 +872,45 @@ export function caravanAllowed(world: World, pawn: Pawn): boolean {
 }
 
 /**
+ * What a trip is worth over and above the crate it carries, when the trip is
+ * what opens the next ring.
+ *
+ * Left to plain worth-over-distance the foreman is a throughput machine and the
+ * map collapses to one town: the closest neighbour turns a pack around five
+ * times while a nine-day road turns it once, so it wins every comparison, and
+ * every trip raises its standing, which raises its rate, which makes it win by
+ * more. Thirty-five runs to the same gate and eleven places nobody has ever
+ * seen. That is correct arithmetic and a dead world, and it is self-sealing:
+ * standing is only bought by showing up, so a colony that never goes anywhere
+ * never earns the vouch, and the far country stays shut not because it is far
+ * but because nothing ever went anywhere.
+ *
+ * The fix is not to make the long road pay better — it does not, and pretending
+ * otherwise would be a thumb on the exchange rate. It is that a road, once
+ * opened, stays open, and the colony knows it. A crate sold at the gate is worth
+ * a crate. A crate sold to the one household five days out who will vouch for
+ * you is worth a crate *and the country behind them*, and a colony weighs it
+ * that way until the vouch is in hand — then stops, because the road is open and
+ * a crate is a crate again.
+ *
+ * Two, because the near ring's throughput advantage over the middle one runs to
+ * a little under that and the bonus has to actually move the decision. It is
+ * deliberately a cliff rather than a slope: the moment a place vouches, the
+ * reason to keep walking there is gone.
+ */
+const GATE_BONUS = 2;
+
+/**
  * Where an unasked trade run would go, or null if none is worth making.
  *
  * Nearest first among the ones that want what the colony has spare, then nearest
  * outright: the walk is the cost, so the colony pays as little of it as it can.
  */
-export function pickDestination(world: World, give: ResourceKind): Settlement | null {
+export function pickDestination(
+  world: World,
+  give: ResourceKind,
+  amount: number = PACK_MAX,
+): Settlement | null {
   // Used to be "nearest town that wants it", which was fine while every
   // neighbour was interchangeable. Now that some of them have workshops, the
   // nearest buyer is often the wrong answer: a crate of balm is worth twice as
@@ -676,9 +919,26 @@ export function pickDestination(world: World, give: ResourceKind): Settlement | 
   // walk, and let the specialty earn the extra days.
   let best: Settlement | null = null;
   let bestScore = -1;
+  // Which rings are still shut, worked out once rather than per candidate —
+  // `ringOpen` walks the settlement list and counts the pantry, and asking it
+  // twelve times over would make choosing a destination cost more than walking
+  // to one. Index is the ring being *entered*, so [0] is meaningless and only
+  // the two outer rings are gates: there is nothing past the far one to open.
+  const shut = [false, !ringOpen(world, 1), !ringOpen(world, 2)];
   for (const s of settlementsOf(world)) {
-    const worth = VALUE[give] * rateOf(s, 0, give);
-    const score = worth / (s.days + 1);
+    // A road the colony cannot walk is not a choice it gets to weigh. Checked
+    // here as well as in `planCaravan` because the foreman never goes near the
+    // panel, and a caravan job created for somewhere out of reach would be a
+    // settler who walks to the map edge and turns round.
+    if (!withinRange(world, s).ok) continue;
+    // What actually comes home, not what one crate is worth: the far ring goes
+    // with handcarts, and a score that ignored the size of the load would rank
+    // three weeks of road against an afternoon's and never once pick the road.
+    const carried = Math.min(amount, packLimit(s));
+    const worth = VALUE[give] * carried * rateOf(s, 0, give);
+    // Worth this place, if walking to it is also what opens the ring behind it.
+    const opens = shut[ringOf(s) + 1] === true && s.relations < PASSAGE_RELATIONS;
+    const score = (worth / (s.days + 1)) * (opens ? GATE_BONUS : 1);
     // Ties break toward the nearer town, which is also the old behaviour when
     // nothing on the map has a workshop.
     if (score > bestScore || (score === bestScore && best !== null && s.days < best.days)) {

@@ -412,6 +412,16 @@ export interface Settlement {
    * because half the neighbours are raw producers with no workshop at all.
    */
   craft?: CraftRecipe | null;
+  /**
+   * How deep into the world this place sits: 0 near, 1 middle, 2 far.
+   *
+   * Distance is the cost model, so depth is the gate — a ring is not reachable
+   * until the colony can keep a party alive on the road that long and somebody
+   * one ring in will vouch for them. Optional for the same reason `craft` is: a
+   * save written when the world was four places wide has no ring on anybody, and
+   * `ringOf` reads one off the distance the first time it is asked.
+   */
+  ring?: 0 | 1 | 2;
   /** −100 hostile to +100 allied. Trading lifts it; being robbed on their road does not. */
   relations: number;
   /** How many caravans the colony has walked out to them. */

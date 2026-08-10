@@ -285,13 +285,25 @@ describe('alerts', () => {
       expect(hint).toContain('herbalism 5');
     }
 
-    // And the seed the survey turned up with no brewer anywhere: the hint must
-    // not invent a town, and must still leave the player a way out.
+    // And a map with no brewer anywhere: the hint must not invent a town, and
+    // must still leave the player a way out.
+    //
+    // This used to be seed 7302, which the survey had turned up as the one map
+    // in the sweep with nobody brewing. It is not that map any more — the world
+    // went from four places to twelve and eight of the new ones sell medicine,
+    // so a map with no brewer on it is now rare enough that pinning the test to
+    // a seed is pinning it to a coincidence. The situation is built instead,
+    // which is what the branch was ever about: the alert has to cope with there
+    // being nobody, however the map came to be that way.
     const alone = createWorld(7302);
     alone.items = alone.items.filter((s) => s.kind !== 'medicine');
     for (const p of livingColonists(alone)) {
       p.skills.plants = 1;
       p.skills.medicine = 1;
+    }
+    for (const s of settlementsOf(alone)) {
+      const t = specialty(s);
+      if (t === 'balm' || t === 'medicine') s.craft = null;
     }
     expect(
       settlementsOf(alone).some((s) => {

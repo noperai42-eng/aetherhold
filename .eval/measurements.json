@@ -1,7 +1,7 @@
 {
-  "fingerprint": "274c22cd",
-  "taken": "2026-08-08T18:46:17.758Z",
-  "seconds": 1982.246,
+  "fingerprint": "f224b165",
+  "taken": "2026-08-10T01:33:52.188Z",
+  "seconds": 1424.963,
   "steward": false,
   "sweep": {
     "seeds": [
@@ -22,23 +22,28 @@
       {
         "seed": 20260729,
         "difficulty": "calm",
-        "verdict": "thriving",
+        "verdict": "holding",
         "daysLived": 60,
         "firstThreatDay": 5,
         "threats": 14,
         "biggestBand": 4,
         "downs": 1,
-        "buried": 0,
-        "survivors": 14,
+        "buried": 1,
+        "survivors": 11,
         "raidersKilled": 10,
         "peakRung": 2,
         "worstFood": 0.09,
-        "meanFood": 0.6453333333333334,
-        "upkeepShare": 0.299,
-        "endFoodDays": 26.02,
-        "raidersSeen": 19,
-        "armedShare": 0.3157894736842105,
-        "foundedOn": 23
+        "meanFood": 0.6453333333333333,
+        "upkeepShare": 0.3,
+        "endFoodDays": 28.1,
+        "raidersSeen": 23,
+        "armedShare": 0.2608695652173913,
+        "foundedOn": 23,
+        "ringOpenedOn": [
+          0,
+          5,
+          null
+        ]
       },
       {
         "seed": 7,
@@ -59,28 +64,38 @@
         "endFoodDays": 22.89,
         "raidersSeen": 29,
         "armedShare": 0.41379310344827586,
-        "foundedOn": 27
+        "foundedOn": 27,
+        "ringOpenedOn": [
+          0,
+          10,
+          null
+        ]
       },
       {
         "seed": 1312,
         "difficulty": "calm",
-        "verdict": "holding",
+        "verdict": "thriving",
         "daysLived": 60,
         "firstThreatDay": 5,
-        "threats": 14,
+        "threats": 15,
         "biggestBand": 4,
-        "downs": 5,
-        "buried": 1,
-        "survivors": 14,
-        "raidersKilled": 25,
+        "downs": 1,
+        "buried": 0,
+        "survivors": 16,
+        "raidersKilled": 14,
         "peakRung": 2,
-        "worstFood": 0.02,
-        "meanFood": 0.6305000000000001,
-        "upkeepShare": 0.295,
-        "endFoodDays": 18.95,
-        "raidersSeen": 32,
-        "armedShare": 0.28125,
-        "foundedOn": 24
+        "worstFood": 0.14,
+        "meanFood": 0.6328333333333335,
+        "upkeepShare": 0.29,
+        "endFoodDays": 16.38,
+        "raidersSeen": 24,
+        "armedShare": 0.20833333333333334,
+        "foundedOn": null,
+        "ringOpenedOn": [
+          0,
+          5,
+          32
+        ]
       },
       {
         "seed": 99001,
@@ -92,16 +107,21 @@
         "biggestBand": 5,
         "downs": 0,
         "buried": 0,
-        "survivors": 14,
-        "raidersKilled": 13,
+        "survivors": 13,
+        "raidersKilled": 11,
         "peakRung": 3,
-        "worstFood": 0.16,
-        "meanFood": 0.6166666666666666,
-        "upkeepShare": 0.304,
-        "endFoodDays": 30.09,
+        "worstFood": 0.13,
+        "meanFood": 0.6344999999999996,
+        "upkeepShare": 0.3,
+        "endFoodDays": 21.55,
         "raidersSeen": 23,
-        "armedShare": 0.17391304347826086,
-        "foundedOn": 26
+        "armedShare": 0.30434782608695654,
+        "foundedOn": 26,
+        "ringOpenedOn": [
+          0,
+          4,
+          29
+        ]
       },
       {
         "seed": 424242,
@@ -109,20 +129,25 @@
         "verdict": "thriving",
         "daysLived": 60,
         "firstThreatDay": 5,
-        "threats": 16,
+        "threats": 15,
         "biggestBand": 5,
         "downs": 0,
         "buried": 0,
-        "survivors": 13,
-        "raidersKilled": 9,
-        "peakRung": 2,
-        "worstFood": 0.1,
+        "survivors": 12,
+        "raidersKilled": 6,
+        "peakRung": 3,
+        "worstFood": 0.11,
         "meanFood": 0.6329999999999999,
         "upkeepShare": 0.302,
-        "endFoodDays": 24.31,
-        "raidersSeen": 15,
-        "armedShare": 0.3333333333333333,
-        "foundedOn": 40
+        "endFoodDays": 23.27,
+        "raidersSeen": 22,
+        "armedShare": 0.36363636363636365,
+        "foundedOn": 41,
+        "ringOpenedOn": [
+          0,
+          6,
+          null
+        ]
       },
       {
         "seed": 20260729,
@@ -138,12 +163,17 @@
         "raidersKilled": 38,
         "peakRung": 2,
         "worstFood": 0.08,
-        "meanFood": 0.5651666666666667,
+        "meanFood": 0.567,
         "upkeepShare": 0.33,
-        "endFoodDays": 30.77,
+        "endFoodDays": 25.35,
         "raidersSeen": 91,
         "armedShare": 0.6373626373626373,
-        "foundedOn": 26
+        "foundedOn": 26,
+        "ringOpenedOn": [
+          0,
+          6,
+          null
+        ]
       },
       {
         "seed": 7,
@@ -164,7 +194,12 @@
         "endFoodDays": 22.08,
         "raidersSeen": 100,
         "armedShare": 0.53,
-        "foundedOn": 23
+        "foundedOn": 23,
+        "ringOpenedOn": [
+          0,
+          10,
+          null
+        ]
       },
       {
         "seed": 1312,
@@ -174,39 +209,49 @@
         "firstThreatDay": 3,
         "threats": 29,
         "biggestBand": 7,
-        "downs": 14,
+        "downs": 13,
         "buried": 1,
-        "survivors": 11,
-        "raidersKilled": 54,
+        "survivors": 12,
+        "raidersKilled": 50,
         "peakRung": 1,
-        "worstFood": 0.14,
-        "meanFood": 0.6413333333333334,
-        "upkeepShare": 0.331,
-        "endFoodDays": 26.89,
+        "worstFood": 0,
+        "meanFood": 0.6091666666666666,
+        "upkeepShare": 0.333,
+        "endFoodDays": 20.92,
         "raidersSeen": 85,
-        "armedShare": 0.6,
-        "foundedOn": 29
+        "armedShare": 0.5764705882352941,
+        "foundedOn": 44,
+        "ringOpenedOn": [
+          0,
+          6,
+          17
+        ]
       },
       {
         "seed": 99001,
         "difficulty": "settler",
-        "verdict": "holding",
+        "verdict": "thriving",
         "daysLived": 60,
         "firstThreatDay": 3,
         "threats": 30,
-        "biggestBand": 6,
-        "downs": 35,
-        "buried": 1,
+        "biggestBand": 8,
+        "downs": 20,
+        "buried": 0,
         "survivors": 13,
-        "raidersKilled": 68,
+        "raidersKilled": 45,
         "peakRung": 2,
         "worstFood": 0.12,
-        "meanFood": 0.6181666666666665,
-        "upkeepShare": 0.334,
-        "endFoodDays": 29.81,
-        "raidersSeen": 111,
-        "armedShare": 0.5765765765765766,
-        "foundedOn": null
+        "meanFood": 0.5706666666666664,
+        "upkeepShare": 0.331,
+        "endFoodDays": 27.71,
+        "raidersSeen": 104,
+        "armedShare": 0.6442307692307693,
+        "foundedOn": 35,
+        "ringOpenedOn": [
+          0,
+          4,
+          null
+        ]
       },
       {
         "seed": 424242,
@@ -216,18 +261,23 @@
         "firstThreatDay": 3,
         "threats": 29,
         "biggestBand": 7,
-        "downs": 46,
+        "downs": 47,
         "buried": 1,
-        "survivors": 13,
-        "raidersKilled": 57,
+        "survivors": 10,
+        "raidersKilled": 58,
         "peakRung": 1,
         "worstFood": 0,
-        "meanFood": 0.5993333333333333,
-        "upkeepShare": 0.34,
-        "endFoodDays": 15.9,
-        "raidersSeen": 91,
-        "armedShare": 0.6703296703296703,
-        "foundedOn": null
+        "meanFood": 0.5818333333333334,
+        "upkeepShare": 0.341,
+        "endFoodDays": 16.84,
+        "raidersSeen": 89,
+        "armedShare": 0.6629213483146067,
+        "foundedOn": null,
+        "ringOpenedOn": [
+          0,
+          15,
+          null
+        ]
       },
       {
         "seed": 20260729,
@@ -248,7 +298,12 @@
         "endFoodDays": 0,
         "raidersSeen": 146,
         "armedShare": 0.815068493150685,
-        "foundedOn": null
+        "foundedOn": null,
+        "ringOpenedOn": [
+          0,
+          29,
+          null
+        ]
       },
       {
         "seed": 7,
@@ -269,7 +324,12 @@
         "endFoodDays": 17.44,
         "raidersSeen": 196,
         "armedShare": 0.8673469387755102,
-        "foundedOn": null
+        "foundedOn": null,
+        "ringOpenedOn": [
+          0,
+          55,
+          null
+        ]
       },
       {
         "seed": 1312,
@@ -277,20 +337,25 @@
         "verdict": "holding",
         "daysLived": 60,
         "firstThreatDay": 2,
-        "threats": 43,
-        "biggestBand": 8,
-        "downs": 131,
-        "buried": 3,
-        "survivors": 8,
-        "raidersKilled": 70,
-        "peakRung": 0,
+        "threats": 44,
+        "biggestBand": 10,
+        "downs": 115,
+        "buried": 1,
+        "survivors": 9,
+        "raidersKilled": 53,
+        "peakRung": 1,
         "worstFood": 0,
-        "meanFood": 0.4716666666666668,
-        "upkeepShare": 0.359,
-        "endFoodDays": 18.08,
-        "raidersSeen": 181,
-        "armedShare": 0.7955801104972375,
-        "foundedOn": 49
+        "meanFood": 0.5335000000000001,
+        "upkeepShare": 0.347,
+        "endFoodDays": 17,
+        "raidersSeen": 195,
+        "armedShare": 0.8666666666666667,
+        "foundedOn": 44,
+        "ringOpenedOn": [
+          0,
+          11,
+          55
+        ]
       },
       {
         "seed": 99001,
@@ -300,18 +365,23 @@
         "firstThreatDay": 2,
         "threats": 41,
         "biggestBand": 8,
-        "downs": 116,
-        "buried": 1,
-        "survivors": 8,
+        "downs": 113,
+        "buried": 2,
+        "survivors": 6,
         "raidersKilled": 21,
         "peakRung": 0,
         "worstFood": 0,
-        "meanFood": 0.5096666666666669,
-        "upkeepShare": 0.369,
-        "endFoodDays": 13.87,
+        "meanFood": 0.5120000000000003,
+        "upkeepShare": 0.37,
+        "endFoodDays": 13.43,
         "raidersSeen": 155,
         "armedShare": 0.8580645161290322,
-        "foundedOn": null
+        "foundedOn": null,
+        "ringOpenedOn": [
+          0,
+          9,
+          59
+        ]
       },
       {
         "seed": 424242,
@@ -319,30 +389,35 @@
         "verdict": "holding",
         "daysLived": 60,
         "firstThreatDay": 2,
-        "threats": 43,
+        "threats": 42,
         "biggestBand": 8,
-        "downs": 123,
+        "downs": 114,
         "buried": 2,
-        "survivors": 4,
-        "raidersKilled": 36,
-        "peakRung": 0,
+        "survivors": 5,
+        "raidersKilled": 29,
+        "peakRung": 1,
         "worstFood": 0,
-        "meanFood": 0.5393333333333333,
-        "upkeepShare": 0.354,
-        "endFoodDays": 18.44,
-        "raidersSeen": 196,
-        "armedShare": 0.8520408163265306,
-        "foundedOn": null
+        "meanFood": 0.5511666666666666,
+        "upkeepShare": 0.355,
+        "endFoodDays": 22.26,
+        "raidersSeen": 187,
+        "armedShare": 0.8074866310160428,
+        "foundedOn": null,
+        "ringOpenedOn": [
+          0,
+          6,
+          null
+        ]
       }
     ],
     "arm": [
       {
         "dial": 0.85,
-        "upkeepShare": 0.3076666666666667
+        "upkeepShare": 0.3096666666666667
       },
       {
         "dial": 1,
-        "upkeepShare": 0.3506666666666667
+        "upkeepShare": 0.3513333333333333
       },
       {
         "dial": 1.12,

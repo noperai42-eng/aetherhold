@@ -491,7 +491,7 @@ settlers and the steel to be ambitious.
 
 So there is a second half, and it unlocks on the founding: rebuild in stone, a rifle in every
 hand, a hundred meals laid in, a hundred squares paved, the whole research tree, a call paid
-on every settlement in the valley, and a hundred days. It is gated rather than simply
+on all twelve neighbours out to the far ring, and a hundred days. It is gated rather than simply
 appended because a list of twenty-one on day one would put "pave a hundred squares" on screen
 next to "pave twenty", and because everything in the first half is something a colony that
 skips it might *die* of, while nothing in the second half will kill anybody. Those are two
@@ -1400,14 +1400,21 @@ another pair of hands, or a winter's food you did not have to grow.
 
 ## The road
 
-Four settlements sit off the edge of the map, one in each quarter, one to three days out.
+Twelve settlements sit off the edge of the map, in three rings of four — one per quarter of
+the compass, each ring turned a little against the one inside it so the far country reads as
+being *behind* the near country rather than hidden under it. The near ring is one to three
+days out and sells whatever it is sitting on. The middle ring is five or six days out and is
+where the workshops are: it sells what somebody made rather than what somebody dug up. The
+far ring is nine or ten days out and deals only in steel and medicine, the two things dense
+enough to be worth carrying that far.
+
 `J` opens the road panel: each neighbour, how far, what they are short of, what they pay
 in, and how well they know you. Pick a settler, pick a pack, and they walk to the edge of
 the map and are *gone* — lifted off the world entirely, not a dot walking a long path.
 They come back days later with goods, a level in social, and a colony that has been a
 settler short the whole time.
 
-Four rules make it a decision rather than a button:
+Five rules make it a decision rather than a button:
 
 - **They are genuinely away.** The traveller is taken out of `world.pawns` and stored in
   the caravan record, so nothing can path to them, shoot at them, feed them or count on
@@ -1418,14 +1425,31 @@ Four rules make it a decision rather than a button:
   Standing and a steady hand both bring the odds down.
 - **Standing compounds.** Every visit is +6, and a better rate follows — as does the
   colony's `social` skill, which pays again in the prison and at the stall.
+- **Depth is earned, not unlocked.** Nothing past the near ring is reachable on day one and
+  no counter ticks up on its own. A ring opens when somebody one ring in will vouch for you
+  — standing 18, three ordinary visits — *and* the pantry holds the meals that road eats
+  there and back, *and* there are enough settlers left to hold the valley while the party is
+  gone. So reaching the far ring means having dealt with the middle ring until they know your
+  face, which cannot happen until the middle ring is open: the depth is walked rather than
+  waited out. Every refusal says in a sentence what would lift it, because a locked road that
+  will not say why has taught the player the far country is decoration.
 - **There is still no loop.** The road and the pedlar price off one value vector, and the
   road's best possible rate is 0.98. `tests/settlements.test.ts` holds both books together
   and searches every rate either system can ever offer, at every standing and every skill
-  level, to prove no cycle across the two of them turns steel into more steel.
+  level, to prove no cycle across the two of them turns steel into more steel. The eight new
+  places changed none of that: a party going three weeks out goes with four settlers' worth
+  of handcarts, and multiplying both sides of *worth × a rate below 0.98* does not make steel
+  out of steel. `tests/rings.test.ts` re-runs the same search over all twelve.
 
 The Steward will send caravans on its own once the colony can spare somebody — four
 settlers alive, nobody hungry, no raid, daylight, and the best talker free — but it always
-takes the trip from the surplus, never from the reserve.
+takes the trip from the surplus, never from the reserve. Left to plain worth-over-distance
+it would walk to the nearest gate forever — a one-day road turns a pack around five times
+while a nine-day road turns it once — and since standing is only bought by showing up, a
+colony that never went anywhere could never earn the vouch that opens the map. So a trip
+that is also what opens the next ring counts double while the vouch is still owed, and
+counts normally the moment it lands. The colony pays to open roads, then goes back to
+trading efficiently.
 
 ## Winning
 

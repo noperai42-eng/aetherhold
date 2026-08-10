@@ -66,6 +66,16 @@ export interface RunMeasure {
    * between the act the game has always measured and the one after it.
    */
   foundedOn: number | null;
+  /**
+   * First day each ring of the world came into range, indexed by ring, or null
+   * for a ring that never did. Ring 0 is home country and is always day 0.
+   *
+   * The only column here that is about somewhere the colony is not. It is what
+   * `the-far-ring-is-earned` reads, and it is a day rather than a flag because
+   * the promise has two halves — shut in week one, open by week six — and a
+   * boolean can only ever answer one of them.
+   */
+  ringOpenedOn: (number | null)[];
 }
 
 export interface SweepOptions {
@@ -323,6 +333,7 @@ export function measure(r: EvalReport): RunMeasure {
     raidersSeen: last?.raidersSeen ?? 0,
     armedShare: last && last.raidersSeen > 0 ? last.armedRaiders / last.raidersSeen : 0,
     foundedOn: r.foundedOn,
+    ringOpenedOn: r.ringOpenedOn,
   };
 }
 
