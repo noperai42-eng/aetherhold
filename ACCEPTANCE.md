@@ -17,7 +17,7 @@ ordered to match `PLAYTEST.md` rather than by importance.
 Last run — 2026-08-09:
 
 - `npx tsc --noEmit` clean.
-- `npm test` — **89 of 91 files, 1,612 tests green**, 13 skipped. The skips are the
+- `npm test` — **89 of 91 files, 1,614 tests green**, 13 skipped. The skips are the
   opt-in gates and nothing else: the 1000-day ecosystem sweep (`ECO`), the survival sweep
   (`SWEEP`), the balance grid (`BALANCE`), the liveness census (`LIVE`) and the eval pool
   (`POOL`). Each is a `describe.runIf` on its environment variable, so a skip is a gate
@@ -26,16 +26,20 @@ Last run — 2026-08-09:
   gated describe, which is why the file count reads 89 and not 91.
 - `npm run eval` — 11 tests green across five seeds, no collapses.
 - `npm run measure -- --days 60 --past-founding` then `npm run balance` — 4 tests green.
-  24 colonies in 1,425 s. All eleven enforced principles hold; the three open ones report
+  24 colonies in 1,051 s. All twelve enforced principles hold; the three open ones report
   without asserting, and one of them (*the valley can still bury somebody*) holds too.
   The two that do not are the standing findings: *nobody starves beside a full pantry*
-  (6 of 15 runs) and *the escalation ladder is climbable to the top* (highest rung
+  (8 of 15 runs) and *the escalation ladder is climbable to the top* (highest rung
   reached anywhere was 3 of 4, and Hard country never leaves rung 0).
-  The eleventh is new and is what stage one of `ENDGAME.md` was for: *the far ring is
-  earned* — shut for all fifteen runs through day 7, and 3 of the 10 runs below Hard
-  country had it open by day 42, the earliest on day 17. Three of ten is a pass with
-  no room in it, and the note under the principle says so.
-- `npm run build` — 896.62 kB JS (255.25 kB gzip), 22.65 kB CSS (4.97 kB gzip).
+  The last two enforced are what stage one of `ENDGAME.md` was for, and they are a pair
+  on purpose. *The far ring is earned* — shut for all fifteen runs through day 7, and
+  3 of the 10 runs below Hard country had it open by day 42, the earliest on day 17.
+  Three of ten is a pass with no room in it, and the note under the principle says so.
+  *The long road is walked* — 10 of 10 below Hard country sent two or more trade parties
+  past the near ring, mean trips by ring 5.2/2.9/0.1. That one exists because the first
+  measured only permission and read like traffic; before the routing fix it would have
+  been 5 of 10.
+- `npm run build` — 896.69 kB JS (255.26 kB gzip), 22.65 kB CSS (4.97 kB gzip).
 - Dev server on `5063`, play server on `5062` — and on the same port at this machine's
   LAN address, which is deliberately not written down here because it changes with the
   network and a stale IP in a document is worse than no IP.

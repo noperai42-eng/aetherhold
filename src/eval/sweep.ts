@@ -76,6 +76,17 @@ export interface RunMeasure {
    * boolean can only ever answer one of them.
    */
   ringOpenedOn: (number | null)[];
+  /**
+   * Trade parties sent, indexed by the ring walked to, and the days the colony
+   * had something to spare.
+   *
+   * Here because `ringOpenedOn` on its own was misleading in the way a metric
+   * usually is: it measures permission, and permission read like traffic. The
+   * middle ring opened on day five in ten runs out of ten and was walked to
+   * twice in sixty days, and nothing on the grid said so.
+   */
+  tripsByRing: number[];
+  spareDays: number;
 }
 
 export interface SweepOptions {
@@ -334,6 +345,8 @@ export function measure(r: EvalReport): RunMeasure {
     armedShare: last && last.raidersSeen > 0 ? last.armedRaiders / last.raidersSeen : 0,
     foundedOn: r.foundedOn,
     ringOpenedOn: r.ringOpenedOn,
+    tripsByRing: r.tripsByRing,
+    spareDays: r.spareDays,
   };
 }
 
@@ -379,7 +392,7 @@ export function armedShareOf(rs: RunMeasure[]): number {
 /** A fixed-width grid, because a balance pass is read by eye. */
 export function formatSweep(sweep: Sweep): string {
   const cols =
-    'setting        seed  verdict     days  1st  threats  band  downs  buried  alive  kills  rung  worstFood  fed  upkeep  foodDays  raiders  rifles';
+    'setting        seed  verdict     days  1st  threats  band  downs  buried  alive  kills  rung  worstFood  fed  upkeep  foodDays  raiders  rifles     trips  spare';
   const lines: string[] = [`balance grid · ${sweep.days} days · ${sweep.seeds.length} seeds`, cols];
   for (const d of sweep.difficulties) {
     const rs = on(sweep, d);
@@ -404,6 +417,8 @@ export function formatSweep(sweep: Sweep): string {
           pad(m.endFoodDays.toFixed(1), 10),
           pad(m.raidersSeen, 9),
           pad(`${Math.round(m.armedShare * 100)}%`, 8),
+          pad((m.tripsByRing ?? []).join('/') || '—', 10),
+          pad(`${Math.round((m.spareDays / Math.max(1, m.daysLived)) * 100)}%`, 7),
         ].join(''),
       );
     }
@@ -427,6 +442,8 @@ export function formatSweep(sweep: Sweep): string {
         pad(avg(rs, (m) => m.endFoodDays).toFixed(1), 10),
         pad(avg(rs, (m) => m.raidersSeen).toFixed(1), 9),
         pad(`${Math.round(armedShareOf(rs) * 100)}%`, 8),
+        pad([0, 1, 2].map((r) => avg(rs, (m) => m.tripsByRing?.[r] ?? 0).toFixed(1)).join('/'), 10),
+        pad(`${Math.round(avg(rs, (m) => m.spareDays / Math.max(1, m.daysLived)) * 100)}%`, 7),
       ].join(''),
       '',
     );

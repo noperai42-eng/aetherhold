@@ -250,8 +250,12 @@ the check is the weaker one, and it says so.
 rings. Tiered goods, range as a real constraint, the far ring genuinely out of
 reach at the start.
 *Principle:* `the-far-ring-is-earned` — unreachable in week one, reachable by week
-six. And the existing no-arbitrage invariant survives the new places untouched;
-that test does not get to be relaxed.
+six. And, added after the first grid caught the difference, `the-long-road-is-walked`
+— most colonies below Hard country actually send parties past the near ring, twice,
+which is what a vouch costs. The first measures permission and the second measures
+traffic, and they are two principles rather than one clause because the grid found
+them disagreeing. And the existing no-arbitrage invariant survives the new places
+untouched; that test does not get to be relaxed.
 
 *Shipped, and holding.* Measured on the same sixty-day grid: the far ring was shut
 for all fifteen runs through day 7, and 3 of the 10 runs below Hard country had it
@@ -262,6 +266,27 @@ check because a colony fighting for its life is not owed a trade route. If the
 third tier of the tree is going to want far-ring goods, that seven wants to come
 down first — otherwise stage 2 gates content behind a road most runs never walk.
 
+*The traffic fix, and what it did and did not buy.* Raising `GATE_BONUS` from two
+to five doubled middle-ring traffic: mean trips by ring went from about 9.4/1.5/0.1
+to 5.2/2.9/0.1 below Hard country, and `the-long-road-is-walked` went from a
+would-be 5 of 10 to 10 of 10. Every gentle colony now walks the middle road twice.
+And `the-far-ring-is-earned` did not move at all — still 3 of 10 by day 42.
+
+That is not a failed fix, it is a second bug the first one was hiding, and the grid
+named it. Standing accrues *per town*, and the gate bonus is flat across every
+un-vouched town in a shut ring: a middle-ring place that has already banked ten of
+the eighteen it owes is worth `RATE_PER_RELATION × 10` more than one that has never
+been visited, which is 0.008 on a rate near 0.74 — a fifth of a per cent, against
+distance spreads of seventeen and whichever good happens to be spare that morning.
+So the second trip has no preference for the road the first one started.
+`settler/99001` sent four parties past the near ring — forty standing against a
+vouch that costs eighteen — and never opened the far country, because it spread
+them. Two more runs, `calm/424242` and `calm/99001`, did open it, on days 46 and 52:
+not scattered, just slow, which is the same disease at a milder stage.
+
+The next number, then, is not a bigger bonus. It is that a colony building a road
+should finish the one it started.
+
 *What the longer road turned out to be.* Twelve settlements in three rings of
 four, one per quarter of the
 compass, each ring turned a little against the one inside it so the far country
@@ -271,21 +296,64 @@ five or six days out and sells what somebody made; the far ring is nine or ten
 days out and deals only in steel and medicine, the two things dense enough to be
 worth carrying that far. `withinRange` is the entire gate, and it refuses in
 sentences rather than booleans: somebody one ring in has to vouch for you
-(`PASSAGE_RELATIONS = 18`, which is three visits), the pantry has to hold the
+(`PASSAGE_RELATIONS = 18`, which is three near-ring visits or two middle-ring
+ones — standing scales with the length of the road that earned it, `RING_STANDING
+= [6, 10, 14]`), the pantry has to hold the
 meals the road eats there and back, and enough settlers have to stay behind to
 hold the valley. `ringOpen` is what the principle reads, latched once per day in
 `run.ts`.
 
-*What "pure data and existing code paths" turned out to cost.* Two numbers that
+*What "pure data and existing code paths" turned out to cost.* Three numbers that
 are not data. `RING_PACK = [1, 2, 4]` scales the pack with the ring, because a
 nine-day road carrying a near-ring pack is a fortnight spent to move one crate and
 no player would ever walk it twice; `PACK_CEILING` follows from it, so the foreman
 measures what it can spare against the biggest pack on the board rather than the
-smallest. And `GATE_BONUS = 2` in `pickDestination` makes a trip that is also what
-opens the ring behind it count double while the vouch is still owed — a cliff, not
-a slope, so the moment a place vouches the reason to keep walking there is gone.
-Without it the near ring's throughput advantage runs to a little under two and the
-colony never once walks outward on its own.
+smallest. `RING_STANDING = [6, 10, 14]` scales what a visit is worth the same way
+and for the same reason, which is what puts the middle ring's vouch inside two
+trips rather than three — at three it is thirty-odd days of walking against a
+window with forty-two in it. And `GATE_BONUS = 5` in `pickDestination` makes a trip
+that is also what opens the ring behind it outrank an ordinary errand while the
+vouch is still owed — a cliff, not a slope, so the moment a place vouches the
+reason to keep walking there is gone.
+
+*And why that last one is five and not two.* This is the stage's real lesson and
+it is a lesson about measurement, not about trade. Two was derived honestly, from
+throughput: the near ring turns a pack round about twice as fast as the middle one.
+That is true, and it is true only when both roads are carrying a full load. They
+almost never are. `carried` is `min(spare, packLimit)`, so a colony has to be
+sitting on more than one whole near-ring pack — roughly six hundred and forty meals
+against a reserve of a hundred and forty — before the middle ring's double pack is
+anything but decoration. Below that both roads carry the same crate, the load falls
+out of the comparison entirely, and what is left is bare distance: one day against
+five, a factor of three that a bonus of two cannot close.
+
+So the foreman stopped walking outward and no test went red, because the test that
+proves it walks outward hands it `PACK_CEILING` — four packs, a fortune. It tested
+the rich regime; the game is played in the poor one. What found it was giving the
+grid a column for the thing itself: `tripsByRing` counts trade parties by where
+they actually went, latched on the tick one leaves, and `spareDays` counts the days
+the colony had a crate to spare at all. The first grid to carry them said calm
+colonies send eight to fourteen parties over sixty days, sit on spare goods two
+days in three, and hand all but about two of those parties to the near ring. Not
+too poor to trade and not short of hands — near-sighted.
+
+Five is derived from the constants rather than from feel: a near town at its best
+quotes a shade under 0.9 one day out, so about 0.45; a middle-ring town the colony
+has never met quotes 0.74 at five days, so it needs 0.74/6 × bonus to clear that,
+which wants a little over three and a half. Four is an eleven per cent edge, and
+eleven per cent is inside the noise of which good happens to be spare that morning
+— which is exactly the mistake that came before it, a change that was directionally
+right and moved one run in ten. The cliff is what keeps a number this size from
+distorting anything: it can only ever buy the two trips that open the road, and it
+is gone the moment they are made. `tests/rings.test.ts` now walks the same forward
+play at one ordinary pack, and that test fails at a bonus of two — the far ring
+never opens in forty trips.
+
+*The measurement lesson, stated plainly, because it will recur.* `ringOpenedOn`
+measures permission and reads like traffic. The middle ring came into range on day
+five of ten runs out of ten and went almost entirely unvisited, and nothing on the
+grid could tell the difference between a road that was open and a road that was
+walked. A principle asserted on the first is not a promise about the second.
 
 *And two livelocks, both found by writing the test.* A commission is worth three
 visits' standing and outranks an ordinary surplus run, which is right — but a

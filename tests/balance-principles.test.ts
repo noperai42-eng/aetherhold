@@ -47,6 +47,10 @@ function run(difficulty: Difficulty, over: Partial<RunMeasure> = {}): RunMeasure
     // thirty days is the default grid, and thirty days is not long enough to
     // walk the far road, so the baseline run has only ever stood in ring zero
     ringOpenedOn: [0, null, null],
+    // and a colony that never left home country walked the near ring and
+    // nothing else, which is what the grid measured before anybody counted
+    tripsByRing: [6, 0, 0],
+    spareDays: 20,
     ...over,
   };
 }

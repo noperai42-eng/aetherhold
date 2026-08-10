@@ -22,7 +22,13 @@ import {
   type World,
 } from '../sim/types';
 import { hasWon } from '../sim/victory';
-import { ringOpen } from '../sim/settlements';
+import {
+  PACK_CEILING,
+  ringOf,
+  ringOpen,
+  settlementById,
+  spareGoods,
+} from '../sim/settlements';
 import { escalation } from '../sim/events';
 import { stewardTick } from './steward';
 
@@ -169,6 +175,23 @@ export interface EvalReport {
    * a colony that earned it, and an end-of-run read would call it locked.
    */
   ringOpenedOn: (number | null)[];
+  /**
+   * Trade parties sent, indexed by the ring they walked to.
+   *
+   * The companion to `ringOpenedOn`, and the more honest of the two: that one
+   * says the colony *could* have gone, this one says whether it did. They came
+   * apart the first time anybody looked — the middle ring came into range on
+   * day five of nearly every run and then went almost entirely unvisited.
+   */
+  tripsByRing: number[];
+  /**
+   * Days the colony had a pack it could spare.
+   *
+   * The other half of "why didn't it trade": a colony sends no caravans either
+   * because it never had a spare crate or because it never had a spare hand,
+   * and only the first of those is a problem with the economy.
+   */
+  spareDays: number;
 }
 
 export interface EvalOptions {
@@ -240,11 +263,39 @@ export function runColony(opts: EvalOptions = {}): EvalReport {
   // Index is the ring. Ring 0 is home country and never shut, so it is stamped
   // day zero and the loop below starts at one.
   const ringOpenedOn: (number | null)[] = [0, null, null];
+  // Where the colony's trade parties actually went, indexed by ring.
+  //
+  // `ringOpenedOn` says the road was walkable; it does not say anybody walked
+  // it, and those turned out to be very different claims. Latched on the tick a
+  // party leaves rather than counted at the end, because a caravan is only in
+  // `world.caravan` while it is out and a near-ring round trip can be over
+  // inside two days.
+  const tripsByRing = [0, 0, 0];
+  let onTheRoad = false;
+  // Days the colony had a pack it could spare, which is the other half of the
+  // question: a colony that never trades is either too busy or too poor, and
+  // only one of those is fixed by making the road cheaper.
+  //
+  // Sampled at the day boundary rather than per tick — it is a share and sixty
+  // samples is plenty for one, and `spareGoods` counts every stack on the map.
+  let spareDays = 0;
 
   for (let day = 1; day <= days; day++) {
     for (let i = 0; i < TICKS_PER_DAY; i++) {
       stepWorld(world, streams);
       if (useSteward) stewardTick(world, world.tick);
+      // Edge, not level: a party that is out stays out for days, and counting
+      // the level would count one trip once per tick of the road.
+      const out = world.caravan;
+      if (out !== null && out !== undefined) {
+        if (!onTheRoad) {
+          onTheRoad = true;
+          const to = settlementById(world, out.settlementId);
+          if (to) tripsByRing[ringOf(to)]!++;
+        }
+      } else {
+        onTheRoad = false;
+      }
       // One pass for all of it, because this runs 4 800 times a game day and the
       // sweep runs it across fifteen colonies.
       let band = 0;
@@ -285,6 +336,7 @@ export function runColony(opts: EvalOptions = {}): EvalReport {
       }),
     );
     if (foundedOn === null && hasWon(world)) foundedOn = day;
+    if (spareGoods(world, PACK_CEILING) !== null) spareDays++;
     for (let ring = 1; ring < ringOpenedOn.length; ring++) {
       if (ringOpenedOn[ring] === null && ringOpen(world, ring)) ringOpenedOn[ring] = day;
     }
@@ -306,6 +358,8 @@ export function runColony(opts: EvalOptions = {}): EvalReport {
     incidents,
     foundedOn,
     ringOpenedOn,
+    tripsByRing,
+    spareDays,
     ...judge(world, snapshots, foundedOn, playPastFounding),
   };
 }

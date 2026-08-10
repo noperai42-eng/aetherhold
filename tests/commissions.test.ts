@@ -47,6 +47,7 @@ import {
   PACK_SIZES,
   RATE_CAP,
   RELATIONS_PER_VISIT,
+  relationsPerVisit,
   VALUE,
 
   caravanOf,
@@ -525,7 +526,7 @@ describe('a colony left to itself', () => {
     expect(world.stats.commissions).toBe(1);
     // Three ordinary visits' worth of standing, on top of the visit itself.
     expect(place.relations).toBe(
-      Math.min(100, standingBefore + RELATIONS_PER_VISIT + RELATIONS_PER_COMMISSION),
+      Math.min(100, standingBefore + relationsPerVisit(place) + RELATIONS_PER_COMMISSION),
     );
     expect(world.messages.some((m) => m.text.includes('has what it needed'))).toBe(true);
 

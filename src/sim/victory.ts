@@ -57,10 +57,14 @@ export const NEED_TURRETS = 2;
 export const NEED_RESEARCH = 6;
 
 /**
- * Standing with any one neighbour. `RELATIONS_PER_VISIT` is 6, so this is five
+ * Standing with any one neighbour. A near-ring visit is worth 6, so this is five
  * round trips over the ridge to the same place: about twenty days of a colony
  * that can spare a settler for four days at a stretch, which is what makes the
- * road the thing that paces the whole win.
+ * road the thing that paces the whole win. It is three trips to a middle-ring
+ * place and three to a far one, and both of those roads are longer by more than
+ * they pay — twenty days near against thirty-odd and fifty-odd — so the near ring
+ * stays the cheapest way to a charter. Standing scaling with distance buys the
+ * far country, not the win.
  */
 export const NEED_RELATIONS = 30;
 

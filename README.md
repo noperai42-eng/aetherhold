@@ -1423,16 +1423,23 @@ Five rules make it a decision rather than a button:
 - **Distance is the price.** A day out is a day back, plus the mishap roll on the way:
   bandits on the ridge cost the pack and most of the traveller's blood, never their life.
   Standing and a steady hand both bring the odds down.
-- **Standing compounds.** Every visit is +6, and a better rate follows — as does the
-  colony's `social` skill, which pays again in the prison and at the stall.
+- **Standing compounds, and the long road compounds it faster.** A near-ring visit is +6, a
+  middle-ring one +10, a far one +14 — a longer road is a bigger commitment and the people
+  at the end of it know that. A better rate follows, as does the colony's `social` skill,
+  which pays again in the prison and at the stall.
 - **Depth is earned, not unlocked.** Nothing past the near ring is reachable on day one and
   no counter ticks up on its own. A ring opens when somebody one ring in will vouch for you
-  — standing 18, three ordinary visits — *and* the pantry holds the meals that road eats
+  — standing 18, so three ordinary visits to the near ring or two to the middle — *and* the pantry holds the meals that road eats
   there and back, *and* there are enough settlers left to hold the valley while the party is
   gone. So reaching the far ring means having dealt with the middle ring until they know your
   face, which cannot happen until the middle ring is open: the depth is walked rather than
   waited out. Every refusal says in a sentence what would lift it, because a locked road that
-  will not say why has taught the player the far country is decoration.
+  will not say why has taught the player the far country is decoration. And a colony left to
+  its own devices walks it: while a vouch is still owed, the foreman ranks the trip that
+  would open the next ring five times an ordinary errand, and stops the moment the vouch
+  lands. Without that it is a throughput machine, and a throughput machine never leaves the
+  first valley — which is not a theory, it is what the grid measured before the number was
+  right.
 - **There is still no loop.** The road and the pedlar price off one value vector, and the
   road's best possible rate is 0.98. `tests/settlements.test.ts` holds both books together
   and searches every rate either system can ever offer, at every standing and every skill

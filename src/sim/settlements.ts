@@ -118,9 +118,32 @@ const MADE_GOODS: ReadonlySet<ResourceKind> = new Set(
   RECIPE_ORDER.map((r) => outputKind(CRAFT_DEFS[r])).filter((k): k is ResourceKind => k !== null),
 );
 
-/** Standing gained by walking a pack to somebody's door. */
-export const RELATIONS_PER_VISIT = 6;
+/**
+ * Standing gained by walking a pack to somebody's door, by ring.
+ *
+ * A longer road is a bigger commitment and the people at the far end of it know
+ * that: six days out with a pack on your back buys more goodwill than a stroll to
+ * the next valley. The same argument as `RING_PACK` — distance is the cost the
+ * whole trade system is denominated in, so it is what the rewards scale on.
+ *
+ * It is also what makes the far country reachable inside a run. The first grid
+ * that shipped the rings paid a flat six everywhere, so the middle ring wanted
+ * three visits to vouch — thirty-odd days of walking against a window with
+ * forty-two in it, and only three runs in ten ever got out there. They did not run
+ * out of goods, they ran out of calendar. At ten a visit the middle ring vouches
+ * after two, which is the difference between a road most colonies walk and a road
+ * most colonies hear about.
+ */
+const RING_STANDING: readonly number[] = [6, 10, 14];
+
+/** Standing gained by walking a pack to the near ring, which is the baseline. */
+export const RELATIONS_PER_VISIT = RING_STANDING[0]!;
 export const RELATIONS_MAX = 100;
+
+/** What one visit here is worth, which is what the road here cost. */
+export function relationsPerVisit(s: Settlement): number {
+  return RING_STANDING[ringOf(s)] ?? RELATIONS_PER_VISIT;
+}
 
 /** Social levelled by one completed round trip. Four or five runs is a specialist. */
 export const SOCIAL_PER_TRIP = 0.9;
@@ -686,7 +709,7 @@ export function tickCaravan(world: World): void {
       // file having to know that commissions exist. See the note at the top of
       // that one: the import runs one way and this is the whole of the seam.
       c.dealtTick = world.tick;
-      s.relations = Math.min(RELATIONS_MAX, s.relations + RELATIONS_PER_VISIT);
+      s.relations = Math.min(RELATIONS_MAX, s.relations + relationsPerVisit(s));
       msg(
         world,
         `${c.pawn.name} reaches ${s.name} and deals: ${c.give.amount} ${c.give.kind} for ${c.take.amount} ${c.take.kind}.`,
@@ -893,12 +916,33 @@ export function caravanAllowed(world: World, pawn: Pawn): boolean {
  * that way until the vouch is in hand — then stops, because the road is open and
  * a crate is a crate again.
  *
- * Two, because the near ring's throughput advantage over the middle one runs to
- * a little under that and the bonus has to actually move the decision. It is
- * deliberately a cliff rather than a slope: the moment a place vouches, the
- * reason to keep walking there is gone.
+ * Five, and the first grid to measure trade traffic is why it is not two.
+ *
+ * Two was derived from throughput — the near ring turns a pack round about twice
+ * as fast as the middle one *when both are carrying a full load*. They almost
+ * never are. `carried` is `min(spare, packLimit)`, and a colony has to be sitting
+ * on more than a whole near-ring pack before the middle ring's double pack is
+ * anything but decoration: about six hundred and forty meals against a reserve of
+ * a hundred and forty. Below that both roads carry the same crate, the load falls
+ * out of the comparison entirely, and what is left is bare distance — one day
+ * against five or six, which is a factor of three that a bonus of two cannot
+ * close. So the number was right about a regime the game is hardly ever in.
+ *
+ * What it has to beat, taken from the constants above rather than from feel: the
+ * best a near town can quote is `RATE_BASE + RATE_WANTED + RATE_CRAFT_OUTPUT`
+ * plus a run's worth of standing, a shade under 0.9, at one day out — call it
+ * 0.9/2. A middle-ring town the colony has never visited quotes 0.74 at five days
+ * out, so it needs 0.74/6 × bonus to clear 0.45, which wants a shade over three
+ * and a half. Four would be an eleven per cent edge, which is inside the noise of
+ * which good happens to be spare that morning; five leaves the decision no room
+ * to wobble.
+ *
+ * It is still deliberately a cliff rather than a slope: the moment a place
+ * vouches, the reason to keep walking there is gone. The cliff is what keeps a
+ * bonus this size from distorting anything — it can only ever buy the two trips
+ * that open the road, and it is unreachable again the moment they are made.
  */
-const GATE_BONUS = 2;
+const GATE_BONUS = 5;
 
 /**
  * Where an unasked trade run would go, or null if none is worth making.

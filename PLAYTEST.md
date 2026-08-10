@@ -1355,9 +1355,12 @@ between the colony and that road. Early on every one of them will say the same t
 **Expect:** three refusals, each with its own sentence, and each liftable on its own.
 
 - **The vouch.** Trade with one near-ring neighbour until the road panel shows their standing
-  at 18 — three ordinary visits, or an answered letter and a bit. The moment it lands, all
+  at 18 — three ordinary visits, or one answered letter. The moment it lands, all
   four middle-ring headings stop talking about vouching. This is the interesting gate and it
-  is the one that should bind first.
+  is the one that should bind first. Then note what the middle ring costs: two visits, not
+  three, because a visit out there is worth 10 rather than 6. That is deliberate — three
+  middle-ring round trips is more calendar than most runs have, and a road most colonies
+  only hear about is not a road.
 - **The pantry.** Now look at a middle-ring road: *"20 meals feed that road there and back.
   The pantry holds 11."* Two meals a day, both ways, at the distance shown in the heading —
   the arithmetic should check out against the days on the same line. Cook until it clears.
@@ -1374,11 +1377,18 @@ hurts.
 Two things to try to break it with:
 
 - **Do nothing but obey the Steward.** Leave it on its own with a surplus and watch which
-  way it walks. It should go to the same near neighbour about three times, then switch to a
-  middle-ring one for about three more, then stop wandering and settle back into whatever is
+  way it walks. It should go to the same near neighbour three times, then switch to a
+  middle-ring one for two more, then stop wandering and settle back into whatever is
   actually most profitable. If it walks to the same one-day town thirty times running, the
   bonus that pays for opening a road has stopped working and the far country is unreachable
   in practice however open it says it is.
+
+  **Do this on a thin surplus, not a fat one** — one pack, not a full barn. This is the
+  test that was passed for a year by a colony that could not actually do it: the outer
+  rings carry bigger packs, so a colony sitting on four packs' worth walks outward for
+  reasons that have nothing to do with the gate, and a colony sitting on one — which is
+  the normal state — was walking nowhere at all. If it goes out with the barn full and
+  stays home with a crate spare, that is the same bug wearing a disguise.
 - **Open the far ring, then eat the pantry down.** The road should shut again with the meals
   sentence, not the vouch sentence — standing is permanent, provisioning is not, and the
   panel should be clear about which one you have lost.

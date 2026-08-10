@@ -76,6 +76,16 @@ const WEEK_SIX = 42;
 const FAR_RING = 2;
 
 /**
+ * What a road costs in trips, and therefore what "went there" is allowed to mean.
+ *
+ * A vouch from a middle-ring town is two visits' worth of standing, so two is
+ * the smallest number that is about the road rather than about the town. One is
+ * a tourist: a colony that walks out once and never again has not made the far
+ * country reachable, it has run a long errand.
+ */
+const VOUCH_TRIPS = 2;
+
+/**
  * The three settings, kindest first, each reduced to one mean. Means rather
  * than per-seed comparisons because a difficulty dial is a claim about the
  * distribution: one map where Hard country happened to stay quiet is not a
@@ -560,6 +570,61 @@ export const PRINCIPLES: Principle[] = [
               `reached it by day ${WEEK_SIX}` +
               (best === null ? ' — or ever' : ` — soonest anywhere was day ${best}`),
           };
+    },
+  },
+  {
+    id: 'the-long-road-is-walked',
+    claim:
+      'The rings past the first are places the colony goes, not places it is permitted to go. ' +
+      'Left to itself, a colony below Hard country walks out past the near ring often enough to earn a vouch there.',
+    enforced: true,
+    check: (s) => {
+      // The sibling above measures permission. This one measures traffic, and
+      // the two came apart the first time anybody looked: the middle ring came
+      // into range on day five of ten runs out of ten and went almost entirely
+      // unvisited, and no column on the grid could tell the difference between a
+      // road that was open and a road that was walked. A promise asserted on the
+      // first is not a promise about the second, which is why this is its own
+      // principle and not another clause of that one.
+      if (s.days < WEEK_SIX) {
+        return { verdict: 'untested', detail: `${s.days}-day grid cannot see day ${WEEK_SIX}` };
+      }
+      // Scoped below Hard for the same reason its sibling is: hard country
+      // finishing sixty days with nothing to spare is a fact about hard country,
+      // and a colony with an empty barn is not refusing to trade, it is unable
+      // to. Whether that is a problem is stage 2's question, not this one's.
+      const gentle = s.runs.filter((m) => m.difficulty !== 'harsh');
+      if (gentle.length === 0) {
+        return { verdict: 'untested', detail: 'grid ran nothing below harsh' };
+      }
+      const outward = (m: RunMeasure) =>
+        (m.tripsByRing?.[1] ?? 0) + (m.tripsByRing?.[FAR_RING] ?? 0);
+      const spare = (m: RunMeasure) =>
+        Math.round((m.spareDays / Math.max(1, m.daysLived)) * 100);
+      const walked = gentle.filter((m) => outward(m) >= VOUCH_TRIPS);
+      // A majority rather than every run, because five seeds a setting is a
+      // small sample of weather and a colony that spent its sixth week putting
+      // out fires is allowed to stay home. Half is not enough: half is what the
+      // grid measured while the foreman was, in fact, never leaving the valley.
+      if (walked.length * 2 > gentle.length) {
+        const ring = (r: number) =>
+          (gentle.reduce((sum, m) => sum + (m.tripsByRing?.[r] ?? 0), 0) / gentle.length).toFixed(1);
+        return {
+          verdict: 'holds',
+          detail:
+            `${walked.length} of ${gentle.length} below harsh sent ${VOUCH_TRIPS} or more parties past the near ring; ` +
+            `mean trips by ring ${ring(0)}/${ring(1)}/${ring(FAR_RING)}`,
+        };
+      }
+      const homebound = gentle.filter((m) => outward(m) < VOUCH_TRIPS);
+      return {
+        verdict: 'broken',
+        detail:
+          `only ${walked.length} of ${gentle.length} below harsh walked past the near ring ${VOUCH_TRIPS} times: ` +
+          homebound
+            .map((m) => `${m.difficulty}/${m.seed} ${(m.tripsByRing ?? []).join('/')} on ${spare(m)}% spare days`)
+            .join(', '),
+      };
     },
   },
 ];

@@ -44,6 +44,7 @@ import {
   planCaravan,
   quote,
   rateOf,
+  relationsPerVisit,
   ringOf,
   ringOpen,
   settlementById,
@@ -182,6 +183,36 @@ describe('twelve places, one value table', () => {
       if (ringOf(s) === 0) expect(packMultiple(s)).toBe(1);
       expect(packLimit(s)).toBeLessThanOrEqual(PACK_CEILING);
     }
+  });
+
+  it('pays standing by the ring, so the middle ring vouches in two visits', () => {
+    // The number that decides whether the far country is a place or a rumour.
+    // Vouching is per-visit, and a visit to the middle ring is ten or twelve days
+    // of round trip, so the difference between three visits and two is the
+    // difference between thirty-odd days of walking and twenty-odd — against a
+    // window with forty-two in it. On the first measured grid it was a flat six
+    // everywhere, and 3 runs in 10 ever reached the far ring; the other seven ran
+    // out of calendar rather than out of goods.
+    //
+    // Asserted as *visits to a vouch* rather than as the constants, because the
+    // constants are not the promise. The promise is how many times somebody has
+    // to walk that road before the people at the end of it will speak for you.
+    const world = colony();
+    const visitsToVouch = (s: Settlement): number => Math.ceil(PASSAGE_RELATIONS / relationsPerVisit(s));
+    for (const s of settlementsOf(world)) {
+      // Never free, at any distance: standing is always something walked for.
+      expect(relationsPerVisit(s)).toBeGreaterThan(0);
+      expect(visitsToVouch(s)).toBe([3, 2, 2][ringOf(s)]);
+      // And a longer road is never worth less standing than a shorter one, which
+      // is the whole argument — distance is the cost, so distance is what pays.
+      for (const nearer of settlementsOf(world)) {
+        if (nearer.days < s.days) expect(relationsPerVisit(nearer)).toBeLessThanOrEqual(relationsPerVisit(s));
+      }
+    }
+    // The near ring's number does not move because eight places were built past
+    // it, for the same reason its pack does not: it is what the rest is measured
+    // against, and `NEED_RELATIONS` is denominated in it.
+    expect(relationsPerVisit(inRing(world, 0)[0]!)).toBe(RELATIONS_PER_VISIT);
   });
 });
 
@@ -448,7 +479,7 @@ describe('the road out opens to a colony that earns it', () => {
       if (!dest) break;
       walked.push(ringOf(dest));
       dest.visits++;
-      dest.relations = Math.min(RELATIONS_MAX, dest.relations + RELATIONS_PER_VISIT);
+      dest.relations = Math.min(RELATIONS_MAX, dest.relations + relationsPerVisit(dest));
       if (midOpenedOn < 0 && ringOpen(world, 1)) midOpenedOn = trip;
       if (farOpenedOn < 0 && ringOpen(world, 2)) farOpenedOn = trip;
     }
@@ -468,6 +499,50 @@ describe('the road out opens to a colony that earns it', () => {
     // And once the country is open the colony goes back to trading where trade
     // is good, rather than walking three weeks out of habit.
     expect(walked.slice(farOpenedOn + 1).every((r) => r === 0)).toBe(true);
+  });
+
+  it('walks outward at an ordinary pack, not only when the barn is full', () => {
+    // The same walk as the test above with one number changed, and the number is
+    // the whole point of the test. That one asks the foreman where to go with
+    // `PACK_CEILING` in hand — four packs, the largest load any road on the board
+    // takes. A colony is almost never holding that. `carried` is
+    // `min(spare, packLimit)`, so at anything under one near-ring pack the outer
+    // rings' bigger packs are decoration: every road carries the same crate, the
+    // load drops out of the comparison, and what is left is bare distance.
+    //
+    // Which is how the foreman stopped walking outward without one test going
+    // red. The gate bonus was sized against throughput at full packs; the
+    // forward-play test handed it full packs; and the first grid that counted
+    // trade parties found calm colonies sending eight to fourteen of them and
+    // handing all but two to the near ring, while sitting on spare goods two days
+    // in three. Permission to walk the road had been tested from the first day.
+    // Whether anybody walked it had not.
+    const world = colony();
+    grownTo(world, 6);
+    stock(world, 'meal', 900);
+
+    // One near-ring pack: the most a road can carry that every road can carry,
+    // which is the regime where the ring multiplier buys the outer rings nothing.
+    const load = onePack(world);
+    const walked: number[] = [];
+    let farOpenedOn = -1;
+    for (let trip = 0; trip < 40; trip++) {
+      const dest = pickDestination(world, 'steel', load);
+      if (!dest) break;
+      walked.push(ringOf(dest));
+      dest.visits++;
+      dest.relations = Math.min(RELATIONS_MAX, dest.relations + relationsPerVisit(dest));
+      if (farOpenedOn < 0 && ringOpen(world, 2)) farOpenedOn = trip;
+    }
+
+    // Same promise as at four packs, and the same budget: a colony that trades at
+    // all earns the far country, and it does not take a fortune to do it.
+    expect(farOpenedOn).toBeGreaterThanOrEqual(0);
+    expect(farOpenedOn).toBeLessThanOrEqual(8);
+    // Walked, not merely permitted — the distinction the grid had no column for
+    // until it went looking for this one. Two is what the middle ring's vouch
+    // costs, so two is what a colony that is actually going there spends.
+    expect(walked.filter((r) => r === 1).length).toBeGreaterThanOrEqual(2);
   });
 
   it('lets a party actually leave for the far ring once everything is in hand', () => {
