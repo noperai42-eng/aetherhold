@@ -258,7 +258,13 @@ export const RESEARCH: Record<ResearchId, ResearchDef> = {
     label: 'Precision instruments',
     cost: 46000,
     needs: ['foundry'],
-    materials: { steel: 200, components: 22 },
+    // The top of the tier stops asking for parts and starts asking for finished
+    // machinery, which is the one thing the middle country does not sell. That is
+    // the whole of what makes these two projects different from the two below
+    // them: same bench, same steel, a road twice as long. Eight because that is
+    // one far-country load — `VALUE.assemblies` is derived from exactly this
+    // bill, so the two move together or neither does.
+    materials: { steel: 200, assemblies: 8 },
     blurb: 'Calipers, gauges and tables somebody else spent a lifetime compiling. The bench studies half again as fast.',
   },
   waystations: {
@@ -266,7 +272,13 @@ export const RESEARCH: Record<ResearchId, ResearchDef> = {
     label: 'Waystations',
     cost: 52000,
     needs: ['freighting'],
-    materials: { steel: 260, components: 28 },
+    // A load and a half, for the last project in the tree. It is also the one
+    // bootstrap in the tier and worth naming: the project that makes the long
+    // roads safer is now bought with two trips down a long road. That is the
+    // right way round — a colony earns the shed by having already walked the
+    // ford — but it means the far country is at its most dangerous exactly while
+    // a colony is paying for the thing that fixes it.
+    materials: { steel: 260, assemblies: 12 },
     blurb: 'A shed, a cache and a name at every ford between here and the far country. The long roads stop eating parties.',
   },
 };

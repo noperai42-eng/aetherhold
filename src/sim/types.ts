@@ -74,6 +74,15 @@ export type FloorKind = 'plank' | 'paved' | 'bridge';
  * That is the whole point of it. It is the first material in the game whose
  * supply is a *road* rather than a resource patch, which is what lets the last
  * tier of the research tree cost something a colony cannot simply dig harder for.
+ *
+ * `assemblies` is the same shape one ring further out, and it exists because
+ * "the supply is a road" was only half true while there was one road worth
+ * walking. Parts come from the middle country, five days out, and a colony that
+ * has reached the third tier walks there as a matter of routine. Nothing on the
+ * board was sold *only* by the far ring, so nine days out stayed a place the
+ * colony was permitted to go and did not — the grid opened that road on ten maps
+ * in ten and saw two of them use it. Finished machinery is what the far country
+ * has and the middle country does not, and it is the top of the tier's bill.
  */
 export type ResourceKind =
   | 'wood'
@@ -82,7 +91,8 @@ export type ResourceKind =
   | 'meal'
   | 'medicine'
   | 'hide'
-  | 'components';
+  | 'components'
+  | 'assemblies';
 
 export const RESOURCE_KINDS: ResourceKind[] = [
   'wood',
@@ -92,6 +102,7 @@ export const RESOURCE_KINDS: ResourceKind[] = [
   'medicine',
   'hide',
   'components',
+  'assemblies',
 ];
 
 export type BuildingKind =

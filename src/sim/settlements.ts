@@ -103,6 +103,27 @@ export const VALUE: Record<ResourceKind, number> = {
    * to arbitrage against. What it sets is purely how much road a project costs.
    */
   components: 5.5,
+  /**
+   * Finished machinery, from the far country. Derived the same way parts were
+   * and off the same instrument: what one load is worth on the day the colony
+   * first needs one.
+   *
+   * A colony reaching the top of the tier has paid four hundred steel for the
+   * two rungs below it, and the shipped grid says what it is holding when it
+   * gets there — between two hundred and three hundred and thirty. `spareGoods`
+   * takes six tenths of whatever sits above `SURPLUS`, so what actually walks
+   * out of the gate is fifty-odd steel or eighty-odd wood: call it a hundred of
+   * worth, quoted at a far town at about eight tenths, so eighty of worth comes
+   * home. At ten apiece that is eight, which is the `instruments` bill exactly —
+   * one load, one rung, which is the same promise `components` makes one ring in.
+   *
+   * Ten rather than something grander because this is a yardstick and not a
+   * price tag: it has to be the worth of a far-country load divided by the bill
+   * a load should cover, and flavour does not get a vote. What flavour gets is
+   * the bill — twelve for the last project in the tree, which is a load and a
+   * half, so the top of the tree costs a walk and then some.
+   */
+  assemblies: 10,
 };
 
 /**
@@ -257,15 +278,51 @@ const PER_RING = 4;
  * than what somebody dug up. The far ring is nine or ten days out, deals only in
  * the dense stuff worth carrying that far, and is not somewhere a young colony
  * goes at all.
+ *
+ * The far ring sells `assemblies` and nowhere else does, which is a correction
+ * rather than an addition. It used to deal in steel and medicine — two things
+ * the middle ring also sells, four days nearer — so `pickDestination`, which
+ * scores worth over distance, could never rank it first and `shoppingRun`, which
+ * takes the nearest road that ends at what the bench wants, never had a reason
+ * to look past the workshops. Ten maps in ten opened that road on the shipped
+ * grid and two walked it. A ring that sells nothing only it sells is scenery.
  */
 const RINGS: ReadonlyArray<{ days: readonly number[]; sells: readonly ResourceKind[] }> = [
   { days: [1, 2, 2, 3], sells: KINDS },
   { days: [5, 5, 6, 6], sells: ['components', 'meal', 'medicine', 'steel'] },
-  { days: [9, 9, 10, 10], sells: ['steel', 'medicine'] },
+  { days: [9, 9, 10, 10], sells: ['steel', 'medicine', 'assemblies'] },
 ];
 
 /**
- * Make sure somebody out in the middle country sells parts.
+ * How long a round trip to a ring takes, at its worst, in days.
+ *
+ * The eval's ruler for what a delivery is allowed to cost, kept here because the
+ * distance is a fact about the map and a principle that wrote its own copy of it
+ * would go on measuring the old map after this table moved. The worst road in
+ * the ring rather than the mean: a colony does not get to choose which of the
+ * four towns sells the thing its bench is waiting on.
+ */
+export function roundTripDays(ring: number): number {
+  const days = RINGS[ring]?.days;
+  return days ? Math.max(...days) * 2 : 0;
+}
+
+/**
+ * The nearest ring that sells a thing, or −1 if nobody does.
+ *
+ * Off the table rather than off a particular map, which is only honest because
+ * the two `ensureSold` repairs below make the table true of every map: the
+ * middle ring always has somebody selling parts and the far ring always has
+ * somebody selling machinery, so "the nearest ring that sells it" and "the
+ * nearest ring that sells it *here*" are the same sentence. Without those
+ * repairs this would be a claim about the average world.
+ */
+export function sellingRing(kind: ResourceKind): number {
+  return RINGS.findIndex((r) => r.sells.includes(kind));
+}
+
+/**
+ * Make sure somebody in this ring sells the one thing the ring exists to sell.
  *
  * Every town draws its stock one at a time and always has — five things it might
  * have too much of, four places to have it, and whether anybody within a day's
@@ -293,25 +350,33 @@ const RINGS: ReadonlyArray<{ days: readonly number[]; sells: readonly ResourceKi
  * of, because with four towns drawing from four kinds a ring missing components
  * must be doubled up somewhere. That is what keeps this from taking away the only
  * medicine in the middle country to hand out parts.
+ *
+ * The far ring needs the same repair for the same reason and at worse odds: it
+ * draws three kinds across four towns, so (2/3)⁴ — about one map in five — has
+ * no machinery anywhere in it, and a colony that provisioned a twenty-day round
+ * trip to find three steel towns and a chemist would be shut out of the top of
+ * the tree by a coin it never saw flipped. Taking a `kind` rather than assuming
+ * components is the whole of the generalisation; everything else here was
+ * already about "the thing this ring is for".
  */
-export function ensureParts(ring: Settlement[]): void {
-  if (ring.some((s) => s.sells === 'components')) return;
+export function ensureSold(ring: Settlement[], kind: ResourceKind): void {
+  if (ring.some((s) => s.sells === kind)) return;
   const count = new Map<ResourceKind, number>();
   for (const s of ring) count.set(s.sells, (count.get(s.sells) ?? 0) + 1);
   let most: ResourceKind | null = null;
-  for (const [kind, n] of count) {
-    if (most === null || n > count.get(most)!) most = kind;
+  for (const [k, n] of count) {
+    if (most === null || n > count.get(most)!) most = k;
   }
   const doubled = ring.filter((s) => s.sells === most);
   const victim = doubled[doubled.length - 1];
   if (!victim) return;
-  victim.sells = 'components';
+  victim.sells = kind;
   // `buys` is left alone and is still right. It was drawn from everything the
   // town was not sitting on, and a parts town is short of all five ordinary
   // goods — so whatever it wanted before, it still wants. `craft` has to be
   // re-derived and comes back null: nothing on the map makes components, so a
   // parts town is a place that mills rather than a place with a workshop.
-  victim.craft = craftFor('components', victim.id);
+  victim.craft = craftFor(kind, victim.id);
 }
 
 /** Every settlement on a map, near ring first. */
@@ -367,8 +432,13 @@ export function settlementsOf(world: World): Settlement[] {
       });
     }
     // After the ring is drawn, never during it — a repair that ran inside the
-    // loop would have to guess at towns that do not exist yet.
-    if (ring === 1) ensureParts(made.slice(first));
+    // loop would have to guess at towns that do not exist yet. Neither repair
+    // spends a die, which is what lets the far ring gain a trade good without
+    // re-rolling anybody's near country: the rings are drawn outward, so nothing
+    // after ring two exists to be moved and ring two's own draw is the last one
+    // this seed makes.
+    if (ring === 1) ensureSold(made.slice(first), 'components');
+    if (ring === 2) ensureSold(made.slice(first), 'assemblies');
   }
   // A save from before the world had depth already knows its near ring, and that
   // ring is who the colony has been trading with — so it is kept, standing and
@@ -1061,6 +1131,8 @@ const SURPLUS: Record<ResourceKind, number> = {
    * answer to selling a thing back to the people who make it.
    */
   components: 100000,
+  /** Never, and more so — nine days of open country each way bought every one. */
+  assemblies: 100000,
 };
 
 /** The most they will load, and the least worth walking for. */
@@ -1107,6 +1179,8 @@ export const PACK_SIZES: Record<ResourceKind, number> = {
   // It exists so the panel can offer the button; the foreman never reaches for
   // it, for the reason in `SURPLUS`.
   components: 16,
+  // Nine, on the same rule and the same arithmetic.
+  assemblies: 9,
 };
 
 /**
@@ -1307,6 +1381,28 @@ function shoppingList(world: World): Set<ResourceKind> {
   const short = researchNeeds(world).map((n) => n.kind);
   const road = short.filter((k) => !HOMEGROWN.has(k));
   return new Set(road.length > 0 ? road : short);
+}
+
+/**
+ * How far out the bench's outstanding bill reaches, or −1 if it has none.
+ *
+ * The eval asks this and the sim is the only thing that can answer it, for the
+ * same reason `everyPartySpent` lives here: a principle that reimplemented the
+ * shopping list would be judging its own copy of the rule and no test could tell
+ * when the two drifted. What it buys is a bar that moves with the map. "Twelve
+ * days is long enough to wait for a delivery" was a sentence about the near ring
+ * written while every bill was payable in the middle one, and the moment the top
+ * of the tier started asking for machinery it became a sentence about a road
+ * half the length of the one the colony has to walk.
+ *
+ * The deepest ring on the list, because the bench is not started again until the
+ * last item lands; the *nearest* ring per item, because that is the road the
+ * colony would actually walk for it.
+ */
+export function errandRing(world: World): number {
+  let deepest = -1;
+  for (const kind of shoppingList(world)) deepest = Math.max(deepest, sellingRing(kind));
+  return deepest;
 }
 
 /**

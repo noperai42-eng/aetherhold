@@ -27,6 +27,7 @@ import {
   bestTalker,
   caravanAllowed,
   caravansOf,
+  errandRing,
   ringOf,
   ringOpen,
   settlementById,
@@ -114,6 +115,22 @@ export interface DaySnapshot {
    * every colony on it was standing still for a different reason.
    */
   stalled: boolean;
+  /**
+   * How far out the road is that ends this stall — the ring, or −1 for none.
+   *
+   * `stalled` says the bench is waiting; this says what it is waiting on, in the
+   * only unit a waiting time can fairly be judged in. Twelve days was a
+   * reasonable bar while every bill in the game was payable at a workshop five
+   * days out and an unreasonable one the moment the top of the tier started
+   * asking for machinery from nine. The bar has to move with the map or it stops
+   * being a claim about the colony.
+   *
+   * A day sample like `stalled` beside it, and safe for the same reason: an
+   * outstanding bill lasts as long as the stall does, so it does not flicker
+   * inside an hour the way permission to leave does. It asks the sim's own
+   * shopping list rather than a copy — see `errandRing`.
+   */
+  errandRing: number;
   /**
    * There is deliberately no `unsent` here any more. It was a day-boundary
    * boolean and that is precisely what was wrong with it — see `unsentDays` on
@@ -509,6 +526,7 @@ function snapshot(
     ripe: cells.filter((c) => (world.crops[c] ?? CROP_NONE) >= 1).length,
     tech: world.research.done.length,
     stalled: researchStalled(world),
+    errandRing: errandRing(world),
     breaks: world.stats.moraleBreaks ?? 0,
     trades: world.stats.trades ?? 0,
     captured: world.stats.captured ?? 0,

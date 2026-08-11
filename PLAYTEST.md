@@ -547,6 +547,15 @@ Two things to try to break it with:
   project and the components go together. The foreman returns to its old route. If it keeps
   walking to the parts town after the bill is paid, that is worth reporting: the pull is keyed
   on the shortfall and is supposed to switch itself off.
+- **Then take up `Instruments`, and watch where the party goes this time.** The last two rungs
+  do not bill parts. They bill **machinery** — `8 / 200 steel` on Instruments, `12 / 260` on
+  Waystations — and machinery is sold in the *far* ring and nowhere else, nine or ten days
+  out. Same behaviour, longer road: the foreman should pass the parts town it has been using
+  and set off for the works. Two things are worth watching on the way. The pantry has to cover
+  forty meals for that road and four settlers have to stay home, so a small colony will simply
+  refuse — `J` says which. And the strip at the top gains a **Rigs** count beside Parts once
+  any arrive. A twenty-day round trip for eight units is the price of the top of the tree; if
+  the party goes somewhere nearer while the bill is outstanding, report it.
 
 Press `Steward: on` to turn it off at any point and the marking stops that second. Anything
 already blueprinted stays — it is your colony's plan now, and it cancels like anything else.

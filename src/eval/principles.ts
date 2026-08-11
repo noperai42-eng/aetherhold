@@ -23,6 +23,7 @@
 
 import { DIFFICULTY_ORDER } from '../sim/difficulty';
 import { RESEARCH, RESEARCH_ORDER } from '../sim/research';
+import { roundTripDays } from '../sim/settlements';
 import { armedShareOf, avg, on, type RunMeasure, type Sweep } from './sweep';
 
 export type PrincipleVerdict = 'holds' | 'broken' | 'untested';
@@ -209,8 +210,42 @@ const A_DECISION = 2;
  * somebody to look at where components are actually sold. Both of those colonies
  * had a road free for one hour in sixty days: they were not deciding badly, they
  * were walking.
+ *
+ * **Re-derived here, in the slice that moved where the tier's goods come from,
+ * which is the slice the note above said owed it.** The number is gone and a
+ * function stands in its place: one round trip to the ring the bill is payable
+ * in, plus a decision. Six days at the near ring, fourteen at the workshops,
+ * twenty-two out in the far country.
+ *
+ * One round trip and not two, and that is the second thing this slice changed
+ * rather than a softening. Two was written when the colony had one road: a bill
+ * bigger than one load meant two journeys end to end, so the bar had to allow
+ * for both. Two roads walk at once, so a bill of any size is one round trip of
+ * wall clock, and the second trip the old derivation paid for is now slack the
+ * colony spends only when a road goes wrong — which is `one-robbery-does-not-
+ * end-the-tier`'s question, asked and answered next door.
+ *
+ * The test the repo set for any re-derivation, written down when 24 was rejected
+ * for failing it: it must still fail the one-party build this bar was made to
+ * catch. Fourteen at the middle ring against calm/1312's eighteen and
+ * calm/424242's seventeen — it fails them, and it fails them on the shipped
+ * two-party grid too, where both still read eighteen. A bar that turned green
+ * the moment it was re-derived would be a bar chosen to flatter.
+ *
+ * What deliberately does *not* move with it is the instrument. `stalledDays` is
+ * still a total and still a day sample, and the temptation was to make it the
+ * longest single wait in the same breath — which is the better column and would
+ * have made this grid unreadable, because nobody could then say whether a number
+ * moved because the bar moved or because the ruler did. That is the same rule
+ * `unsentDays` was replaced under, one slice ago, and it is owed the same way:
+ * the per-delivery column comes after this bar has been read once.
  */
-const TWO_ROUND_TRIPS = 12;
+function deliveryBar(ring: number): number {
+  // A run that never stalled has no road to be judged against and no wait to
+  // judge; the near ring's own bar is the harmless answer, since nothing can be
+  // over a bar it never approached.
+  return roundTripDays(Math.max(0, ring)) + A_DECISION;
+}
 
 /**
  * How many projects a colony finishes before it meets one that costs goods.
@@ -841,6 +876,95 @@ export const PRINCIPLES: Principle[] = [
     },
   },
   {
+    id: 'the-far-country-is-walked',
+    claim:
+      'The far country is a place, not a permission. A colony that opens that road with a round ' +
+      'trip still on the clock goes out there.',
+    // Written before the thing that is meant to satisfy it, which on this one
+    // cost nothing at all: the columns it needs have shipped for three grids and
+    // the answer was sitting in `.eval/measurements.json` unread. Seven runs below
+    // hard country opened the far road with twenty days left to walk it, and two
+    // of them went — calm/20260729 and settler/99001, two trips each. Broken on
+    // arrival, off the grid that shipped the slice before this one.
+    //
+    // It is `the-long-road-is-walked` one ring out and it exists for the same
+    // reason that one does: its sibling `the-far-ring-is-earned` measures whether
+    // the road opened, and a road that opens and is never used has kept the
+    // letter of that promise while breaking the point of it. The difference is
+    // that the middle ring's traffic problem was permission — the colony had one
+    // party and could not spare it — and this one is not. Ten maps in ten opened
+    // the far road. Nothing was stopping them. There was simply nothing out there
+    // that could not be bought four days nearer, so `pickDestination`, which
+    // divides worth by distance, ranked it last every time, and `shoppingRun`,
+    // which takes the nearest road selling what the bench wants, never had a
+    // reason to look past the workshops.
+    //
+    // Which is why the fix is a trade good and not a bonus. A thumb on the scale
+    // — a far-ring multiplier, a standing order, a shorter first rung — would
+    // make colonies walk out there for things they could get nearer, and that is
+    // a colony being managed by its scoring function. `assemblies` gives the far
+    // country the one thing the middle country does not have, and the trip pays
+    // for itself in the ordinary way: the bench wants it, nowhere else sells it.
+    enforced: false,
+    check: (s) => {
+      // Full clock only, and a full clock is not enough by itself: a colony that
+      // opened the road on day fifty-five never had the twenty days a round trip
+      // costs, and counting it as a refusal would charge the calendar to the
+      // colony. That scope is the whole reason this reads seven runs and not ten.
+      if (s.days < DAY_SIXTY) {
+        return { verdict: 'untested', detail: `${s.days}-day grid cannot see day ${DAY_SIXTY}` };
+      }
+      const trip = roundTripDays(FAR_RING);
+      // Below hard country, exactly as both siblings are scoped and for the
+      // reason they give: hard country reaching day sixty without provisioning a
+      // three-week road is the setting working, and a colony that spent its last
+      // month burying people is not refusing to travel.
+      const able = s.runs.filter((m) => {
+        if (m.difficulty === 'harsh' || m.daysLived < s.days) return false;
+        const opened = m.ringOpenedOn?.[FAR_RING] ?? null;
+        return opened !== null && opened + trip <= s.days;
+      });
+      if (able.length === 0) {
+        return {
+          verdict: 'untested',
+          detail: `no run below hard country opened the far road with ${trip} days left to walk it`,
+        };
+      }
+      const walked = able.filter((m) => (m.tripsByRing?.[FAR_RING] ?? 0) > 0);
+      // Half, and one trip rather than `VOUCH_TRIPS`. Both are looser than the
+      // middle ring's bar on purpose: twenty days of the sixty a run has is a
+      // third of the game spent on one errand, so a colony that walks out there
+      // once has made the far country part of how it plays, and a colony that
+      // walks out twice has done little else. The claim is that the road is used,
+      // not that it is commuted.
+      const seen =
+        `${walked.length} of ${able.length} below hard country that opened the far road with ` +
+        `${trip} days to spare walked it`;
+      return walked.length * 2 >= able.length
+        ? {
+            verdict: 'holds',
+            detail:
+              `${seen}; ` +
+              walked
+                .map((m) => `${m.difficulty}/${m.seed} ${m.tripsByRing?.[FAR_RING] ?? 0}`)
+                .join(', '),
+          }
+        : {
+            verdict: 'broken',
+            detail:
+              `${seen}; stayed home: ` +
+              able
+                .filter((m) => (m.tripsByRing?.[FAR_RING] ?? 0) === 0)
+                .map(
+                  (m) =>
+                    `${m.difficulty}/${m.seed} open from day ${m.ringOpenedOn?.[FAR_RING]} ` +
+                    `on trips ${(m.tripsByRing ?? []).join('/')}`,
+                )
+                .join(', '),
+          };
+    },
+  },
+  {
     id: 'the-tree-is-not-empty-at-day-sixty',
     claim:
       'A colony that plays its whole clock still has a project worth starting. ' +
@@ -1056,19 +1180,21 @@ export const PRINCIPLES: Principle[] = [
     id: 'the-road-keeps-up-with-the-bench',
     claim:
       'The road is a rate, not a permit. A colony that has earned the far country and can spare ' +
-      'the bodies gets its parts inside a fixed number of days — the distance is allowed to cost ' +
-      'days, and it is not allowed to cost the act.',
-    // Open, and the reason is that the number in the claim is wrong rather than
-    // that the colonies are. `TWO_ROUND_TRIPS` was derived off ring zero, which
-    // does not sell components; the middle ring does, and one parts round trip is
-    // ten to twelve days there. Twelve is one trip, not two, so the bar asks for
-    // the parts before the only journey that can fetch them has finished.
+      'the bodies gets its goods inside one round trip to wherever they are sold — the distance ' +
+      'is allowed to cost days, and it is not allowed to cost the act.',
+    // Open, still, and now for the opposite reason to the one it was opened for.
+    // It was opened because the bar was wrong: twelve days was two round trips to
+    // a ring that sells no parts, which is one round trip to the ring that does,
+    // so it asked for the goods home before the only journey that could fetch
+    // them was over. That is fixed — `deliveryBar` asks the map how far away the
+    // answer is — and it stays unenforced for one grid because a bar nobody has
+    // read yet is not a promise anybody can be held to. The grid that reads it
+    // green is the one that gets to enforce it.
     //
-    // The re-derivation belongs to the slice that moves where parts come from,
-    // and until then the check stays wired up and read rather than deleted: the
-    // number is the yardstick the second party was measured against, and the grid
-    // should keep printing it. This repo has deferred a denominator once before,
-    // on `one-robbery-does-not-end-the-tier`, for the same reason.
+    // What it must not be enforced on before then: the shipped grid says two runs
+    // are still over it, and both are ring-1 bills of eighteen days against a bar
+    // of fourteen. Enforcing now would paint the suite red on a fault this slice
+    // did not introduce and does not claim to fix.
     enforced: false,
     check: (s) => {
       // Written before the second party and not after it, which is the only order
@@ -1114,13 +1240,14 @@ export const PRINCIPLES: Principle[] = [
           detail: `no run of ${full.length} reached a project that costs materials`,
         };
       }
-      const slow = reached.filter((m) => (m.stalledDays ?? 0) > TWO_ROUND_TRIPS);
+      const over = (m: RunMeasure) => (m.stalledDays ?? 0) - deliveryBar(m.stallRing ?? -1);
+      const slow = reached.filter((m) => over(m) > 0);
       if (slow.length > 0) {
         return {
           verdict: 'broken',
           detail:
-            `${slow.length} of ${reached.length} runs that reached the third tier waited more ` +
-            `than ${TWO_ROUND_TRIPS} days on deliveries: ` +
+            `${slow.length} of ${reached.length} runs that reached the third tier waited longer ` +
+            `than one round trip to the ring their bill was payable in: ` +
             slow
               // `unsentDays` rides along so a reader can tell the two failures
               // apart without opening the table: a run whose wait is nearly all
@@ -1128,22 +1255,27 @@ export const PRINCIPLES: Principle[] = [
               // is the yard's fault rather than the road's.
               .map(
                 (m) =>
-                  `${m.difficulty}/${m.seed} waited ${m.stalledDays} days ` +
+                  `${m.difficulty}/${m.seed} waited ${m.stalledDays} days on a ring-` +
+                  `${m.stallRing ?? -1} bill against ${deliveryBar(m.stallRing ?? -1)} ` +
                   `(${(m.unsentDays ?? 0).toFixed(2)} of them with a road free), on ` +
                   `${m.tech} projects`,
               )
               .join(', '),
         };
       }
-      const worst = reached.reduce((a, m) => ((m.stalledDays ?? 0) > (a.stalledDays ?? 0) ? m : a));
+      // Worst by how far over its own bar it came, not by raw days: with the bar
+      // moving from ring to ring, the longest wait on the grid is often the one
+      // with the most road behind it and the most slack left.
+      const worst = reached.reduce((a, m) => (over(m) > over(a) ? m : a));
       const mean =
         reached.reduce((a, m) => a + (m.stalledDays ?? 0), 0) / Math.max(1, reached.length);
       return {
         verdict: 'holds',
         detail:
-          `all ${reached.length} runs that reached the third tier got their parts inside ` +
-          `${TWO_ROUND_TRIPS} days; longest wait was ${worst.difficulty}/${worst.seed} at ` +
-          `${worst.stalledDays ?? 0} days, mean ${mean.toFixed(1)}`,
+          `all ${reached.length} runs that reached the third tier got their goods inside one ` +
+          `round trip to the ring that sells them; closest was ${worst.difficulty}/${worst.seed} ` +
+          `at ${worst.stalledDays ?? 0} days against ${deliveryBar(worst.stallRing ?? -1)}, ` +
+          `mean wait ${mean.toFixed(1)}`,
       };
     },
   },
@@ -1209,11 +1341,30 @@ export const PRINCIPLES: Principle[] = [
       // Only the colonies that got far enough to be asked. A run that never
       // reached the third tier has not failed to cross it — it never arrived, and
       // why it did not is `the-escalation-ladder`'s question, not this one.
-      const reached = full.filter((m) => (m.tech ?? 0) >= THIRD_TIER);
+      //
+      // "Far enough to be asked" is two conditions and the second one is the
+      // deferred scoping fix, taken now because this slice moves the tier's goods
+      // and a denominator this loose would carry the old fault into the new
+      // reading. Reaching the tier is not being asked for anything: harsh/7 got
+      // there on day fifty-eight and stood at **nought** waiting days, because it
+      // never once had a finished bench wanting parts. Counting it as a colony
+      // that failed to cross the tier is counting a colony that ran out of
+      // calendar, which is a pacing fact and belongs to a different principle.
+      //
+      // So: it either stood short of goods at some point, or it got through. The
+      // second clause is not slack — dropping it would quietly delete the
+      // colonies that bought their parts before the points ran out, which are
+      // successes, and a denominator that excludes successes is worse than a
+      // loose one. The fix was held back for two grids on purpose so that the
+      // before and the after could be read off one rule; both readings are now in
+      // `ACCEPTANCE.md` and the rule can move.
+      const reached = full.filter(
+        (m) => (m.tech ?? 0) >= THIRD_TIER && ((m.stalledDays ?? 0) > 0 || (m.tech ?? 0) > THIRD_TIER),
+      );
       if (reached.length === 0) {
         return {
           verdict: 'untested',
-          detail: `no run of ${full.length} reached the third tier`,
+          detail: `no run of ${full.length} reached the third tier and was asked for goods`,
         };
       }
       const through = reached.filter((m) => (m.tech ?? 0) > THIRD_TIER);

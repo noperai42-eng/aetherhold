@@ -252,6 +252,14 @@ the first four projects of the game are paid for with your valley, and the last 
 for with the road. A colony that never opened the middle ring has a research tree it can see
 the end of and cannot reach.
 
+And the last two rungs are paid for on a *longer* road. **Instruments** and **Waystations**
+bill **assemblies** — machinery, listed in the strip at the top as *Rigs* — which no middle-ring
+town sells either: the far ring is the only place in the world that has it, nine or ten days
+out. So the tier is two roads rather than one, and each is opened by the trade the ring before
+it paid for. The last rung is the plainest statement of that shape in the game: `Waystations`
+takes nine points off the mishap chance on every road, and it is bought with two trips down
+the longest road there is.
+
 Left to itself the colony works this out. The Steward's trade party normally walks to whoever
 pays best; a town selling something the bench is short of outbids that, and stops outbidding it
 the moment the shortfall is covered. It will not, however, choose a road that is still shut for
@@ -1442,8 +1450,11 @@ the compass, each ring turned a little against the one inside it so the far coun
 being *behind* the near country rather than hidden under it. The near ring is one to three
 days out and sells whatever it is sitting on. The middle ring is five or six days out and is
 where the workshops are: it sells what somebody made rather than what somebody dug up. The
-far ring is nine or ten days out and deals only in steel and medicine, the two things dense
-enough to be worth carrying that far.
+far ring is nine or ten days out and deals in steel, medicine and **machinery** — the things
+dense enough to be worth carrying that far, and the last of them is worth carrying because
+nowhere nearer has any. Every map has at least one works out there, for the same reason every
+map has a parts town: the top of the research tree is billed in machinery, and a colony that
+walked nine days on a vouch it spent a fortnight earning should not find four steel merchants.
 
 `J` opens the road panel: each neighbour, how far, what they are short of, what they pay
 in, and how well they know you. Pick a settler, pick a pack, and they walk to the edge of

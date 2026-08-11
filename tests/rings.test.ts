@@ -42,7 +42,8 @@ import {
   caravanOf,
   caravansOf,
   departCaravan,
-  ensureParts,
+  ensureSold,
+  errandRing,
   packCeiling,
   packLimit,
   packMultiple,
@@ -58,6 +59,8 @@ import {
   relationsPerVisit,
   ringOf,
   ringOpen,
+  roundTripDays,
+  sellingRing,
   settlementById,
   settlementsOf,
   shoppingRun,
@@ -819,7 +822,7 @@ describe('the parts town', () => {
         s.sells = kinds[i]!;
         s.craft = null;
       });
-      ensureParts(ring);
+      ensureSold(ring, 'components');
       return ring.map((s) => s.sells);
     };
 
@@ -900,6 +903,165 @@ describe('the parts town', () => {
     addItem(world, 'components', RESEARCH.foundry.materials!.components!, Math.round(p.x), Math.round(p.y));
     // The steel line was never short — six hundred of it is on the floor — so
     // the crate of parts is the whole of what the bench was waiting for.
+    expect(researchNeeds(world)).toEqual([]);
+    expect(pickDestination(world, 'steel', 600)!.id).toBe(idle!.id);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// the machinery town
+// ---------------------------------------------------------------------------
+
+/**
+ * The same shape one ring further out, and it exists for a measured reason.
+ *
+ * Before this, nothing in the world was sold *only* by the far ring. Everything
+ * out there was also on offer a week nearer, so `pickDestination` — which ranks
+ * a road on what the pack is worth over how far it is — could never put a
+ * nine-day town first, and the far country was a place the grid opened on ten
+ * maps in ten and watched two of them walk. Machinery is the errand that is
+ * only payable out there.
+ *
+ * These tests are the parts town's, one ring out, plus the two that are new:
+ * that the top of the tree actually reads as a far-ring bill, and that a
+ * colony holding one turns its party around and goes.
+ */
+describe('the machinery town', () => {
+  it('exists on every map, in the far ring and nowhere else', () => {
+    // Worse odds than the parts town's, because there are three kinds out here
+    // and four towns: (2/3)⁴ is better than one map in five with nowhere to buy
+    // the last two rungs. Same repair, same reason — a colony that walked nine
+    // days on a vouch it spent a fortnight earning and found four steel
+    // merchants has been shut out of the top of the tree by a coin.
+    for (let seed = 1; seed <= 40; seed++) {
+      const world = colony(seed * 7919);
+      const works = settlementsOf(world).filter((s) => s.sells === 'assemblies');
+      expect(works.length).toBeGreaterThan(0);
+      for (const s of works) {
+        expect(ringOf(s)).toBe(2);
+        expect(KINDS).toContain(s.buys);
+      }
+      // And nothing nearer sells it. The whole point of the good is that the
+      // road to it is long.
+      for (const s of [...inRing(world, 0), ...inRing(world, 1)]) {
+        expect(s.sells).not.toBe('assemblies');
+      }
+    }
+  });
+
+  it('repairs the far ring by converting a doubled town, never the only seller', () => {
+    const ring = inRing(colony(4242), 2);
+    const deal = (kinds: ResourceKind[]): ResourceKind[] => {
+      ring.forEach((s, i) => {
+        s.sells = kinds[i]!;
+        s.craft = null;
+      });
+      ensureSold(ring, 'assemblies');
+      return ring.map((s) => s.sells);
+    };
+
+    // Three kinds over four towns: a far ring with no machinery is doubled up
+    // somewhere by arithmetic, so the repair never has to take away the only
+    // doctor nine days out.
+    expect(deal(['steel', 'medicine', 'steel', 'medicine'])).toEqual([
+      'steel',
+      'medicine',
+      'assemblies',
+      'medicine',
+    ]);
+    // Nothing in the world builds machinery, so a works is a place that assembles
+    // what it is sent rather than a place with a workshop — same as the parts town.
+    expect(ring[2]!.craft).toBeNull();
+
+    // All of one thing loses one of them and no more.
+    expect(deal(['steel', 'steel', 'steel', 'steel'])).toEqual([
+      'steel',
+      'steel',
+      'steel',
+      'assemblies',
+    ]);
+
+    // A ring that drew machinery on its own is left exactly as it fell. Four
+    // maps in five take this branch, which is why the repair is a repair.
+    expect(deal(['assemblies', 'steel', 'medicine', 'steel'])).toEqual([
+      'assemblies',
+      'steel',
+      'medicine',
+      'steel',
+    ]);
+  });
+
+  it('knows which ring each bought good is payable in, and what that road costs', () => {
+    // The two numbers the re-derived delivery bar is built out of. If a good
+    // ever moves ring, the bar moves with it and nobody has to remember to
+    // edit a constant.
+    expect(sellingRing('components')).toBe(1);
+    expect(sellingRing('assemblies')).toBe(2);
+    expect(sellingRing('wood')).toBe(0);
+    expect(roundTripDays(0)).toBe(6);
+    expect(roundTripDays(1)).toBe(12);
+    expect(roundTripDays(2)).toBe(20);
+  });
+
+  it('reports the deepest ring the standing bill points at, and nothing when there is none', () => {
+    const world = colony();
+    expect(errandRing(world)).toBe(-1);
+
+    // A third-tier project bills parts: a middle-ring errand.
+    grantThrough(world, 'plateworks');
+    setProject(world, 'foundry');
+    stock(world, 'steel', 600);
+    expect(errandRing(world)).toBe(1);
+
+    // The top of the tree bills machinery, and the answer walks outward. This
+    // is the column the grid reads — `stalledDays` alone cannot tell a colony
+    // waiting on a six-day road from one waiting on a twenty-day one.
+    stock(world, 'components', RESEARCH.foundry.materials!.components!);
+    grantThrough(world, 'foundry'); // the crates are spent finishing it
+    setProject(world, 'instruments');
+    expect(errandRing(world)).toBe(2);
+
+    // Paid is not the same as unbilled, but it reads the same from here: there
+    // is nowhere the colony needs to go.
+    stock(world, 'assemblies', RESEARCH.instruments.materials!.assemblies!);
+    expect(researchNeeds(world)).toEqual([]);
+    expect(errandRing(world)).toBe(-1);
+  });
+
+  it('turns the party around and walks nine days out when the bench wants machinery', () => {
+    // The behaviour the whole slice exists to buy, and the one that could not
+    // happen before it: a far-ring town winning a ranking it loses on price.
+    const world = colony();
+    grownTo(world, 6); // four left holding the valley is the far road's floor
+    stock(world, 'meal', 900);
+    stock(world, 'steel', 800);
+    stock(world, 'components', RESEARCH.foundry.materials!.components!);
+    grantThrough(world, 'foundry'); // the rung the machinery bill sits on top of
+    for (const s of settlementsOf(world)) s.relations = PASSAGE_RELATIONS;
+    expect(ringOpen(world, 2)).toBe(true);
+
+    // Nothing on the bench: the far country loses, exactly as it always did. A
+    // pack is worth the same out there and the road is three times as long.
+    const idle = pickDestination(world, 'steel', 600);
+    expect(idle).not.toBeNull();
+    expect(ringOf(idle!)).toBeLessThan(2);
+
+    // The top of the tree, and the answer moves nine days out.
+    setProject(world, 'instruments');
+    const errand = pickDestination(world, 'steel', 600);
+    expect(errand!.sells).toBe('assemblies');
+    expect(ringOf(errand!)).toBe(2);
+
+    // And back again once the crates are home — the bonus buys the trips the
+    // bench is short of and not one road more.
+    const p = livingColonists(world)[0]!;
+    addItem(
+      world,
+      'assemblies',
+      RESEARCH.instruments.materials!.assemblies!,
+      Math.round(p.x),
+      Math.round(p.y),
+    );
     expect(researchNeeds(world)).toEqual([]);
     expect(pickDestination(world, 'steel', 600)!.id).toBe(idle!.id);
   });

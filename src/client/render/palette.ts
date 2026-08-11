@@ -240,6 +240,11 @@ export const RESOURCE_COLOR: Record<ResourceKind, number> = {
   // else's workshop from across the yard, or the one pile on the map that cost a
   // fortnight of road looks like the one that cost an afternoon of mining.
   components: 0xb08d3f,
+  // Brass again, but darkened and greened the way finished machinery goes when
+  // it has been crated across nine days of weather. Near enough to components to
+  // read as the same family — they are the same industry, one step apart — and
+  // far enough that a yard holding both does not look like it holds one.
+  assemblies: 0x7d7a4a,
 };
 
 export const SKY_DAY = new THREE.Color(0x7fa6c9);

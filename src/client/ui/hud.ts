@@ -309,6 +309,7 @@ const RESOURCE_ROW: ResourceKind[] = [
   'medicine',
   'hide',
   'components',
+  'assemblies',
 ];
 const RESOURCE_LABEL: Record<ResourceKind, string> = {
   wood: 'Wood',
@@ -318,6 +319,9 @@ const RESOURCE_LABEL: Record<ResourceKind, string> = {
   medicine: 'Meds',
   hide: 'Hides',
   components: 'Parts',
+  // Short, like every other label in this row — the strip is read at a glance
+  // and "Assemblies" is twice the width of anything beside it.
+  assemblies: 'Rigs',
 };
 
 /**

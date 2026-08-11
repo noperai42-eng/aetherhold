@@ -330,7 +330,8 @@ reads as being behind the near country rather than hidden under it. The near rin
 is one to three days out and sells whatever it is sitting on; the middle ring is
 five or six days out and sells what somebody made; the far ring is nine or ten
 days out and deals only in steel and medicine, the two things dense enough to be
-worth carrying that far. `withinRange` is the entire gate, and it refuses in
+worth carrying that far — which is exactly the reason nobody walked out there, and
+`assemblies` joins them in stage 2 below. `withinRange` is the entire gate, and it refuses in
 sentences rather than booleans: somebody one ring in has to vouch for you
 (`PASSAGE_RELATIONS = 18`, which is three near-ring visits or two middle-ring
 ones — standing scales with the length of the road that earned it, `RING_STANDING
@@ -820,6 +821,114 @@ owed to the slice that changes where parts come from. Re-deriving to twenty-four
 now was rejected outright — twenty-four would have been green *before* the second
 party as well, and a bar that passes the code it was written to fail has nothing
 left to say.
+
+*Shipped: `assemblies`, and the top of the tier moves one ring out.* The promise
+first, and this one cost nothing to write, because the columns it reads had been
+shipping for three grids and nobody had asked them the question:
+`the-far-country-is-walked` — a colony below hard country that opens the far road
+with a round trip still on the clock goes out there. Seven runs qualified on the
+grid that shipped the slice before this one. **Two walked** — calm/20260729 and
+settler/99001, two trips each. Broken on arrival, off measurements that were
+already on disk.
+
+It is `the-long-road-is-walked` one ring out, and the difference between them is
+the whole diagnosis. The middle ring's traffic problem was permission: the colony
+had one party and could not spare it. The far ring's is not. Ten maps in ten
+opened that road and nothing was stopping anybody. There was simply **nothing out
+there that could not be bought four days nearer** — `RINGS[2].sells` was steel and
+medicine, both on offer in the middle ring — so `pickDestination`, which divides
+what a pack is worth by how far it has to go, ranked the far country last every
+time it was asked, and `shoppingRun`, which takes the nearest road selling what
+the bench wants, never had a reason to look past the workshops. The far country
+was open, and it was not the answer to any question the colony was asking.
+
+So the fix is a trade good and not a bonus. A far-ring multiplier, a standing
+order, a shorter first rung — each would send colonies out there for things they
+could get nearer, which is a colony being managed by its scoring function rather
+than by its economy. `assemblies` is the one thing the middle country does not
+have. `VALUE.assemblies` is **10**, derived the way `components`' 5.5 was and not
+fitted: a colony at the top of the tier is sitting on two to three hundred steel,
+`spareGoods` ships about a hundred of worth, a quote of roughly 0.8 brings eighty
+home, and eighty buys eight units — the `instruments` bill exactly. One load, one
+rung.
+
+No new projects. Stage 2 above already says the tier costs *"components, then
+assemblies"*, and the literal reading is the surgical one: the top two rungs stop
+asking for parts and start asking for machinery. `instruments` is 200 steel and 8
+assemblies, `waystations` 260 and 12. An invented fourth tier priced in points was
+drafted and thrown away — it would have been unreachable inside sixty days, and a
+feature the grid cannot see is a feature that ships unmeasured.
+
+The far ring gets the parts town's guarantee, one ring out: `ensureParts` is now
+`ensureSold(ring, kind)`, and ring 2 is repaired the same dice-free way ring 1 is
+— convert the *second* seller of whatever the ring has most of. It matters more
+out here, not less: three kinds over four towns leaves (2/3)⁴, better than **one
+map in five**, with nowhere at all to buy the top of the tree. And because
+`settlementsOf` draws the rings outward, ring 2's draw is the seed's last, so
+adding a third good to the far ring moves no die in the near or middle country.
+That is not a convenience; it is the reason the readings above are still
+comparable to the ones below.
+
+One consequence is worth naming rather than discovering: **`waystations` — the
+project that makes long roads safer — is now bought with two trips down a long
+road.** That is the shape of the whole stage and not an accident of this slice,
+but it does mean the last rung is the one a colony is least likely to reach.
+
+This slice also owed the re-derivation the road slice deferred, and it is the same
+mistake twice if it is done carelessly. `TWO_ROUND_TRIPS = 12` is gone; the bar is
+now `deliveryBar(ring) = roundTripDays(ring) + A_DECISION` — **8, 14, 22** days for
+a bill payable in the near, middle and far country. One round trip and a decision,
+not two trips: the colony fields two parties now, so the second attempt does not
+queue behind the first. The test any re-derivation had to pass is the one the
+repo wrote down when it rejected twenty-four — it must still fail the one-party
+build — and it does: calm/1312 waited 18 days and calm/424242 17, both on ring-1
+bills, against a bar of 14. The grid reads the ring off a new column,
+`errandRing`, sampled daily beside `stalled` and folded into `stallRing`; the
+`wait` column now says `18@1` rather than `18`. The *instrument* deliberately does
+not move in the same slice: `stalledDays` is still the day-sampled total, and the
+per-delivery longest stall is owed to the next one. Changing the bar and the ruler
+in the same commit is how the `unsent` overstatement stayed invisible for three
+grids.
+
+And the denominator fix the earlier block left uncorrected on purpose is now in,
+the road answer having landed: `one-robbery-does-not-end-the-tier` counts only the
+colonies that were actually asked for something — harsh/7 reached the top of the
+free tree on day fifty-eight with nowhere to buy and no bill outstanding, and
+scoring that as a colony the tier defeated was always the check blaming the road
+for the calendar.
+
+*What it bought, measured.* A fresh sixty-day grid moved
+`the-far-country-is-walked` from **2 of 7 to 3 of 7** — still short of the half it
+asks for, so the principle stays broken, and the honest thing is to say what the
+extra run cost and what it did not fix. What it bought is a clean causal reading,
+because the three runs that walked are *exactly* the three whose `stallRing` read
+2: calm/20260729 waited twelve days on a machinery bill, calm/7 nine, calm/99001
+eight, and each of the three sent two parties past the middle ring. Every colony
+that was ever billed machinery went. No colony that was not, went. So the road is
+not being refused and the ranking in `pickDestination` is not the problem — what
+is short is the number of colonies that climb far enough to be asked. Three of the
+four that stayed home never cleared the parts rung at all and finished on 15 of 19
+projects; the fourth reached 17 without finishing the study on `instruments`, so
+its bill never came due. The remaining gap is upstream of the road, which is a
+different slice's problem and now a named one.
+
+The re-derivation is worth reporting the same way. It **changed no verdict on this
+grid** — under the old flat bar of 12 the broken set would have been the same two
+runs, calm/1312 and calm/424242 — so its value here is correctness rather than a
+score. What it changed is what a verdict means: the three colonies waiting 12, 9
+and 8 days for machinery are now inside a 22-day bar instead of being counted as
+near-misses against a road they were not walking. A bar that had produced a
+different set of failures would have been a bar that had been wrong for three
+grids; a bar that produces the same set and stops mis-scoring three waits is the
+better outcome to have found.
+
+Two more readings, both predicted. `the-tree-is-not-empty-at-day-sixty` holds with
+new headroom — the furthest anybody got is now **17 of 19** projects where a grid
+ago calm/20260729 finished all nineteen — which is this slice working as intended
+rather than a regression: the top two rungs cost a twenty-day road now. And the
+escalation ladder went back to a peak of rung 3 of 4 after touching 4 last grid on
+a slice that did not go near it, which is the second time that peak has moved on
+seed luck and the reason `ACCEPTANCE.md` predicted it would not repeat.
 
 **3 — The three roads get ladders the player can see.** A visible tally per road,
 built on `objectives.ts` and `alerts.ts`, which already do this kind of work. No

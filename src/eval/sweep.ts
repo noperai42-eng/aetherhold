@@ -115,6 +115,25 @@ export interface RunMeasure {
    */
   stalledDays: number;
   /**
+   * The deepest ring the bench's bill pointed at while it was stalled, or −1 if
+   * it never stalled.
+   *
+   * The unit the wait is judged in. `stalledDays` counts how long the colony
+   * stood there and says nothing about how far away the answer was, so a fixed
+   * bar over it is a claim about one particular map: twelve days was two round
+   * trips to the near ring, which sells no parts, and it stayed twelve while the
+   * only components in the world sat five days out. The top of the tier now
+   * bills machinery from nine days out and a fixed bar would condemn every
+   * colony that reached it for walking the distance the design put there.
+   *
+   * The deepest rather than the last, because a run that waited on parts and
+   * then on machinery should be judged against the longer road it was made to
+   * walk. That makes it generous to a run whose long wait was the near one, and
+   * generous is the right direction for a bar whose failure mode is "the game
+   * stopped" — see `the-road-keeps-up-with-the-bench`.
+   */
+  stallRing: number;
+  /**
    * How much of that wait the colony could have ended and did not — a real
    * number of days, summed a tick at a time rather than counted once a day.
    *
@@ -428,6 +447,7 @@ export function measure(r: EvalReport): RunMeasure {
     // is allowed to leave a project out of its order and the bench is not.
     emptyTreeDays: r.snapshots.filter((s) => s.tech >= TREE_SIZE).length,
     stalledDays: r.snapshots.filter((s) => s.stalled).length,
+    stallRing: r.snapshots.reduce((deepest, s) => (s.stalled ? Math.max(deepest, s.errandRing ?? -1) : deepest), -1),
     unsentDays: r.unsentDays,
     endSteel: last?.steel ?? 0,
     steelDrawdown,
@@ -505,7 +525,11 @@ export function formatSweep(sweep: Sweep): string {
           pad(`${Math.round((m.spareDays / Math.max(1, m.daysLived)) * 100)}%`, 7),
           pad(`${m.tech ?? 0}/${TREE_SIZE}`, 7),
           pad(m.emptyTreeDays ?? 0, 6),
-          pad(m.stalledDays ?? 0, 7),
+          // The ring rides in the same cell as the wait, because the two are one
+          // reading: eighteen days is a fault at ring one and inside the bar at
+          // ring two, and a table that printed them in different columns would
+          // be read as if the number alone meant something.
+          pad(`${m.stalledDays ?? 0}${(m.stallRing ?? -1) >= 0 ? `@${m.stallRing}` : ''}`, 7),
           pad((m.unsentDays ?? 0).toFixed(2), 8),
           pad(m.endSteel ?? 0, 8),
           pad(m.steelDrawdown ?? 0, 7),

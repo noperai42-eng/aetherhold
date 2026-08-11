@@ -149,6 +149,10 @@ const REASONS: Record<ResourceKind, string[]> = {
     'the drive shaft in their shop sheared and there is nothing to cut a new one on',
     'a buyer from further out bought the whole year and left them with the sweepings',
   ],
+  assemblies: [
+    'the machine they run the whole valley off has thrown a gear and nobody nearer can cut one',
+    'their engineer died in the winter and the half-built rig is still standing in the shed',
+  ],
 };
 
 /**
@@ -235,6 +239,7 @@ const COMMISSION_KEEP: Record<ResourceKind, number> = {
   // Unreachable for the same reason as the two dead entries in `REASONS`. Were
   // it ever reached, the honest number would be "all of them".
   components: 0,
+  assemblies: 0,
 };
 
 /**

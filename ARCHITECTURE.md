@@ -940,6 +940,59 @@ Two red principles, two different lessons: **one was the colony's fault and one 
 the only reason it was possible to tell them apart is that the claim was written down before the
 feature and the instrument was cheap enough to audit at tick resolution.
 
+## A road that was open and had nothing on it
+
+The far ring came into range on every map the grid ever ran and was walked on two of them. That is not
+a permission bug — `the-far-ring-is-earned` reads green, the vouches are earned, `withinRange` says
+yes. It is a demand bug, and the cause is one line: `RINGS[2].sells` was `['steel', 'medicine']`, and
+both of those are also on offer five days nearer.
+
+`pickDestination` ranks a road on what a pack is worth divided by how far it has to go, and
+`shoppingRun` takes the *nearest* road selling what the bench is short of. Neither has a tiebreak that
+a nine-day town can win when the same goods sit at a five-day town. The far country was reachable and
+irrelevant, which is a harder failure to see than an unreachable one: every instrument pointed at
+access said the road was fine.
+
+The fix has to be demand, not weighting. A far-ring multiplier or a standing order would make colonies
+walk out there for goods they could buy nearer — the colony obeying its scoring function instead of
+its economy, which is the failure mode the whole grid exists to catch. So `assemblies` is a good sold
+**only** in ring 2, and the top two rungs of the tree bill it. The trip then pays for itself the
+ordinary way: the bench wants it, nowhere else has it, `pickDestination` needs no thumb.
+
+Two properties make that cheap enough to be safe. The parts town's guarantee generalises — `ensureParts`
+is now `ensureSold(ring, kind)`, repairing a ring by converting the second seller of whatever it has
+most of, never a sole seller — and it matters more out here, because three kinds over four towns leave
+better than one map in five with nowhere to buy the top of the tree. And `settlementsOf` draws the
+rings outward, so ring 2 is the seed's last draw: adding a third good to the far ring changes no die in
+the near or middle country. Every reading taken before this slice is still comparable to every reading
+taken after it, which is the only reason a change to the world generator was affordable at all.
+
+## The bar comes back, one ring at a time
+
+`TWO_ROUND_TRIPS` is gone. The bar is `deliveryBar(ring) = roundTripDays(ring) + A_DECISION` — 8, 14 or
+22 days, depending on which ring the outstanding bill is payable in — and `roundTripDays` reads `RINGS`
+rather than restating it, so a good that moves ring moves its own deadline with it. That is the actual
+lesson of the section above this one: twelve was wrong not because twelve was too small but because a
+delivery deadline that does not know how far away the goods are is not measuring anything.
+
+One round trip and a decision, not two trips. The second trip was in the old derivation because a
+colony had one party and a failed attempt had to queue behind it; a colony fields two roads now, so the
+retry walks concurrently with whatever else is out. The re-derivation had to clear the bar the repo set
+when it rejected a flat twenty-four — *it must still fail the build it was written to fail* — and it
+does: calm/1312 at 18 days and calm/424242 at 17, both on middle-ring bills, against 14.
+
+Reading the ring costs a column. `errandRing(world)` returns the deepest ring any outstanding research
+bill is payable in, or −1; it is sampled on the daily snapshot beside `stalled`, folded into
+`stallRing` on `RunMeasure`, and printed in the sweep table as `18@1`. Daily sampling is right here for
+the same reason it was wrong for `unsent`: an unpaid bill lasts as long as the stall does, so any hour
+of the day sees it, whereas permission-to-leave flickered hourly and 07:12 was the one hour it was
+always false.
+
+What deliberately did **not** change in the same slice: `stalledDays` is still the day-sampled total
+rather than the longest single delivery. Moving the bar and the ruler together is exactly how the
+`unsent` overstatement survived three grids unnoticed. The per-delivery instrument is owed to the next
+slice, after this bar has been read once.
+
 ## The only part of the storyteller that looks at the colony
 
 `events.ts` counts beats. The band size is a function of beats fired, the raider stat line is a

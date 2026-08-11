@@ -83,6 +83,7 @@ export const RESERVE: Record<ResourceKind, number> = {
   // and the bench is not something the Steward can outbid.
   hide: 0,
   components: 0,
+  assemblies: 0,
 };
 
 /**

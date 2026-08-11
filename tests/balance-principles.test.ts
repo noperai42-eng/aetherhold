@@ -71,6 +71,11 @@ function run(difficulty: Difficulty, over: Partial<RunMeasure> = {}): RunMeasure
     // colony that fetched what the project cost before the points ran out, which
     // is the behaviour the third tier is built to produce.
     stalledDays: 0,
+    // −1 is "never stood short of anything", which is what a run that did
+    // nothing interesting did. Cases about the road override it with the ring
+    // their bill was payable in, because that is what sets the bar they are
+    // judged against.
+    stallRing: -1,
     // …and so, trivially, nobody standing there with nobody on the road either.
     // The two columns are only interesting when they disagree, which is a thing
     // a case has to ask for: a run stalled for a fortnight with a party out the
@@ -691,7 +696,10 @@ describe('the balance principles, read against grids that are known wrong', () =
         run('calm', { seed: 1, daysLived: 60, tech: THIRD_TIER + 2 }),
         run('calm', { seed: 2, daysLived: 60, tech: THIRD_TIER + 1 }),
         run('calm', { seed: 3, daysLived: 60, tech: THIRD_TIER + 1 }),
-        run('calm', { seed: 4, daysLived: 60, tech: THIRD_TIER }),
+        // The one that stopped. It has waiting days on it because a colony that
+        // failed to cross the tier is a colony that stood at a bench wanting
+        // goods — see the case below for what a bare `tech` reading counts.
+        run('calm', { seed: 4, daysLived: 60, tech: THIRD_TIER, stalledDays: 9 }),
       ],
       60,
       healthyArm(),
@@ -699,6 +707,28 @@ describe('the balance principles, read against grids that are known wrong', () =
     );
     expect(verdictOf(s, 'one-robbery-does-not-end-the-tier')).toBe('holds');
     expect(detailOf(s, 'one-robbery-does-not-end-the-tier')).toContain('3 of 4 runs');
+  });
+
+  it('leaves out the colony that reached the tier and was never asked for anything', () => {
+    // harsh/7 on the shipped grid, in one line: it finished the last free
+    // project on day fifty-eight and stood at **nought** waiting days, because
+    // there was never a moment where a bench wanted goods it did not have. It
+    // did not fail to cross the tier, it ran out of calendar, and for two grids
+    // it sat in this denominator dragging the share down as if it had.
+    //
+    // The pair is the test. Same tech, same clock; one waited and one never got
+    // the chance, and only the first is this principle's business.
+    const s = sweep(
+      [
+        run('calm', { seed: 1, daysLived: 60, tech: THIRD_TIER + 1 }),
+        run('harsh', { seed: 7, daysLived: 60, tech: THIRD_TIER, stalledDays: 0 }),
+      ],
+      60,
+      healthyArm(),
+      true,
+    );
+    expect(verdictOf(s, 'one-robbery-does-not-end-the-tier')).toBe('holds');
+    expect(detailOf(s, 'one-robbery-does-not-end-the-tier')).toContain('1 of 1 runs');
   });
 
   it('says nothing about the road when nobody got as far as the tier', () => {
@@ -749,6 +779,93 @@ describe('the balance principles, read against grids that are known wrong', () =
     );
     expect(verdictOf(s, 'the-surplus-finds-a-buyer')).toBe('untested');
     expect(detailOf(s, 'the-surplus-finds-a-buyer')).toContain('nothing to find a buyer for');
+  });
+
+  it('breaks when the far road opens with time to walk it and nobody goes', () => {
+    // The shape measured off the shipped grid, in miniature: three runs below
+    // hard country with the far road open from the first week and twenty days
+    // of clock to spend on it, and one of them walks. That is a road the
+    // colony was permitted to use and had no reason to.
+    const s = sweep(
+      [
+        run('calm', { seed: 1, daysLived: 60, ringOpenedOn: [0, 5, 9], tripsByRing: [8, 4, 2] }),
+        run('calm', { seed: 2, daysLived: 60, ringOpenedOn: [0, 5, 11], tripsByRing: [9, 5, 0] }),
+        run('settler', { seed: 3, daysLived: 60, ringOpenedOn: [0, 6, 14], tripsByRing: [7, 6, 0] }),
+      ],
+      60,
+      healthyArm(),
+      true,
+    );
+    expect(verdictOf(s, 'the-far-country-is-walked')).toBe('broken');
+    expect(detailOf(s, 'the-far-country-is-walked')).toContain('1 of 3');
+    expect(detailOf(s, 'the-far-country-is-walked')).toContain('calm/2 open from day 11');
+  });
+
+  it('holds at half, because twenty days on one errand is a third of the game', () => {
+    const s = sweep(
+      [
+        run('calm', { seed: 1, daysLived: 60, ringOpenedOn: [0, 5, 9], tripsByRing: [8, 4, 1] }),
+        run('settler', { seed: 2, daysLived: 60, ringOpenedOn: [0, 6, 14], tripsByRing: [7, 6, 0] }),
+      ],
+      60,
+      healthyArm(),
+      true,
+    );
+    expect(verdictOf(s, 'the-far-country-is-walked')).toBe('holds');
+    expect(detailOf(s, 'the-far-country-is-walked')).toContain('1 of 2');
+  });
+
+  it('does not charge the calendar to a colony that got the far road on day fifty-five', () => {
+    // A round trip out there is twenty days. A road that opens with sixteen left
+    // was never an offer, and counting the refusal would be the check marking its
+    // own homework — the same run would fail on a grid that ran one day shorter.
+    const s = sweep(
+      [
+        run('calm', { seed: 1, daysLived: 60, ringOpenedOn: [0, 5, 55], tripsByRing: [8, 4, 0] }),
+        run('harsh', { seed: 2, daysLived: 60, ringOpenedOn: [0, 5, 9], tripsByRing: [8, 4, 0] }),
+      ],
+      60,
+      healthyArm(),
+      true,
+    );
+    expect(verdictOf(s, 'the-far-country-is-walked')).toBe('untested');
+    expect(detailOf(s, 'the-far-country-is-walked')).toContain('20 days left to walk it');
+  });
+
+  it('judges the same wait against the road it was waiting on', () => {
+    // The re-derivation, stated as a test: eighteen days is not a number that
+    // means anything on its own. Waiting eighteen for parts sold six days out is
+    // a colony that never went; waiting eighteen for machinery nine days out is
+    // a colony that went, walked twenty days of road, and came back on time.
+    // The old flat bar called both of them broken and would have called the
+    // second one broken for doing exactly what the tier asks.
+    const near = sweep(
+      [run('calm', { seed: 1, daysLived: 60, tech: THIRD_TIER, stalledDays: 18, stallRing: 1 })],
+      60,
+      healthyArm(),
+      true,
+    );
+    expect(verdictOf(near, 'the-road-keeps-up-with-the-bench')).toBe('broken');
+    expect(detailOf(near, 'the-road-keeps-up-with-the-bench')).toContain('ring-1 bill against 14');
+
+    const far = sweep(
+      [run('calm', { seed: 1, daysLived: 60, tech: THIRD_TIER, stalledDays: 18, stallRing: 2 })],
+      60,
+      healthyArm(),
+      true,
+    );
+    expect(verdictOf(far, 'the-road-keeps-up-with-the-bench')).toBe('holds');
+
+    // And the far bar is a bar, not an exemption: three days past a round trip
+    // to the works is still a bench standing still.
+    const late = sweep(
+      [run('calm', { seed: 1, daysLived: 60, tech: THIRD_TIER, stalledDays: 25, stallRing: 2 })],
+      60,
+      healthyArm(),
+      true,
+    );
+    expect(verdictOf(late, 'the-road-keeps-up-with-the-bench')).toBe('broken');
+    expect(detailOf(late, 'the-road-keeps-up-with-the-bench')).toContain('ring-2 bill against 22');
   });
 });
 
