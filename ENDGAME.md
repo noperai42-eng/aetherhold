@@ -934,6 +934,85 @@ seed luck and the reason `ACCEPTANCE.md` predicted it would not repeat.
 built on `objectives.ts` and `alerts.ts`, which already do this kind of work. No
 new simulation; this is the stage that makes the previous two legible.
 
+*Shipped: three ladders of four rungs, read and never stored.* Two promises
+first, both written against a `roads.ts` that did not exist yet, and both scored
+on the first grid that could see them.
+`the-three-roads-are-three-roads` — for every *pair* of roads the grid holds a
+colony that is ahead on one and behind on the other. `no-road-is-already-finished`
+— a colony that plays its whole sixty days still has road left on all three.
+
+The first of those is the one the stage exists to defend. Three tallies that rise
+together are one measurement wearing three hats, and a choice between three
+endings whose ladders never disagree is a choice between synonyms. Correlation
+would have been the wrong test — colonies that are doing well are doing well at
+several things at once — so the check asks for *inversion*, which nothing but
+genuinely separate accounting can produce.
+
+The rung is what makes the question askable at all. The three roads count
+projects, places and raiders, and no arithmetic across those units means
+anything; the rung number is the only comparable quantity the ladders produce.
+Its boundaries are derived rather than picked — science steps at `NEED_RESEARCH`,
+at the free tree, at the foundry branch, at the whole tree; economy at one place,
+`PER_RING`, two rings, `NEIGHBOUR_COUNT`; warfare at `STANDING_BAND` compounding
+by `CLEAN_PER_STEP`, which is the storyteller's own patience. Four constants had
+to be exported to make that possible, which is the right price: a ladder with
+hand-picked numbers in it is a fourth thing to balance, and it goes stale
+silently the first time the tree or the map grows.
+
+The stage's own rule was **no new simulation**, and it held literally: nothing in
+the tick changed, nothing was added to the world, and nothing went into the save
+envelope. `roads.ts` is two pure functions over state the colony was already
+keeping, so a colony saved before the file existed reads its three rungs
+correctly the first time it is opened. The obvious build — a `roadProgress`
+record the tick advances — was rejected for the reason `alerts.ts` was built the
+same way: a stored copy of a derived number is a number that can drift, and
+nothing on screen will say which of the two is lying.
+
+The panel is the founding's own panel. Once `hasWon`, `syncGoals` puts the three
+roads where the charter checklist was — same rows, same bar, same hint line, with
+the ending each road leads to on the row's hover — so a player who learned to
+read that corner during the first act does not have to learn a second one for the
+second. The warfare road reads raiders put down and nothing else, which is why a
+colony that won its founding without ever being attacked stands at rung 0 on it:
+the road that ends in taking the ground must not be handed to anybody for
+surviving quietly.
+
+*What it bought, measured.* One promise held and one broke on arrival, which is
+the split the sequencing rule is for. `no-road-is-already-finished` **holds**: of
+the fourteen colonies that played a full sixty days, none stood on a top rung and
+the furthest anybody got was **rung 3 of 4** — calm/20260729 on science, harsh/7
+on warfare. It would have failed the grid before this one, when calm/20260729
+emptied the research tree, and it is a promise the next two stages have to keep
+paying.
+
+`the-three-roads-are-three-roads` reads **1 of 3 pairs never disagree across 14
+runs: economy/warfare never inverts (economy only ever behind)**. Science
+disagrees with both of the others and disagrees hard — the per-difficulty means
+are calm **2.6/1.0/1.2**, settler **2.2/1.0/2.0**, harsh **0.8/0.6/2.0**, so
+science falls and warfare rises as the country gets harder and the difficulty
+axis is already sorting colonies onto different roads. The flat pair is the
+economy one, and the number underneath it says why: economy stood on **rung 1 in
+twelve of the fourteen** runs and rung 0 in the two hardest. Its second rung is
+four neighbours at charter standing, the founding asks for exactly one, and
+**nothing in the valley asks for a second**. Warfare, meanwhile, is never behind
+because raiders arrive whether or not the colony wants a war.
+
+So the broken pair is not a ladder wired to the wrong number; it is the ladder
+reporting that one of the three roads does not exist yet. The fix that suggests
+itself — re-derive economy's second rung down to two places, so a founded colony
+climbs it — is the fitted-bar mistake this file has now rejected twice, and it
+would turn a true reading into a green one without a single colony doing anything
+differently. The road is supposed to come from stage 4's held holdings and stage
+5's bought passage, which means this principle is a **standing bill against the
+next two stages** rather than a defect in this one.
+
+Everything else on the grid is unchanged, and that is this slice's other result.
+Fifteen enforced principles hold, the five open failures read exactly the numbers
+they read a grid ago — 6 of 15, rung 3 of 4, 3 of 7, 2 of 11, 6 of 9 — and every
+column that was there before prints the same figure on the same seed. "No new
+simulation" was meant literally, and a grid that moved nothing but the two
+columns added to it is the proof.
+
 **4 — Warfare becomes a road.** Off-map campaigning: a war party sent to a
 hostile holding, resolved, then held. Held holdings feed the colony. Most new
 machinery of anything here, which is why it comes last of the three — it needs
@@ -990,6 +1069,28 @@ that never recorded it. Everything else about that game is that game's problem.
   should get worse on the next grid, and it is the only place in the plan where a
   principle getting worse would be evidence rather than a regression. If it moves,
   check the hands before checking the tier.
+
+  **It moved, and it moved the other way.** The prediction above is written down
+  because a theory that cannot be wrong is not worth writing down, and this one
+  was wrong. Two grids later — with a fourth trade good, a far ring that is now
+  actually walked, and parties out on the road 8.1 days a run — the count went
+  **8 of 15 back to 6 of 15**, and the calm map came off the list entirely: two
+  settler maps (99001 at 0.00 on 19 days of food, 424242 on 18) and four of the
+  five harsh ones. More roads, fewer starvations. The road-hands theory predicted
+  the opposite and is now the *least* likely explanation on the table, so the next
+  slice to look at this should look at hauling priority under raid recovery
+  instead, and not at the caravan.
+
+  What that leaves is a principle whose own claim has stopped being supported by
+  its own evidence. It says the failure "happens on the kind one" — and on this
+  grid it does not happen on calm at all. Six of six are settler or harsh, which
+  is what a difficulty gradient looks like rather than what a feeding bug looks
+  like. The mechanism argument still stands on its own feet — a settler at exactly
+  0.00 beside eighteen days of meals is not a colony that ran out of food — but
+  the *distribution* argument is now spent, and the principle should either be
+  re-written to drop the "on the kind one" clause or be shown a calm map that
+  starves. Recorded here rather than quietly re-scoped: a principle edited to
+  match the grid it failed is a principle that has stopped measuring anything.
   `the-escalation-ladder-is-climbable-to-the-top`
   is settled by the full sixty-day grid, and not in its favour: the highest rung
   reached anywhere was 3 of 4, on one calm map.

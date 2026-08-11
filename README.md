@@ -17,7 +17,7 @@ place. [ARCHITECTURE.md](ARCHITECTURE.md) is how it is built.
 
 **Playing it** — [Run it](#run-it) · [Controls](#controls) · [The screen](#the-screen) ·
 [What to do next](#what-to-do-next) · [The Steward](#the-steward) ·
-[Winning](#winning) · [Pickies](#pickies)
+[Winning](#winning) · [The three roads](#the-three-roads) · [Pickies](#pickies)
 
 **Building and keeping a place** — [Breaking ground](#breaking-ground) ·
 [Laying a floor](#laying-a-floor) · [Warmth](#warmth) · [Power](#power) ·
@@ -1553,6 +1553,39 @@ is `world.gameOver`, a founding is `world.charter.won`, and they are different f
 `tests/victory.test.ts` pins the three things that matter: a colony short of one charter
 never wins however long it is left running, a founding survives a save, and a founded
 colony is still a running colony a fortnight later.
+
+### The three roads
+
+On the founding, the goals panel stops showing the exam you have passed and starts showing
+the three ways out of the valley. Each is a ladder of four rungs, each rung is a thing the
+colony did, and they are read straight off the colony — there is nothing to collect and
+nothing to switch on.
+
+| | The rungs | What it ends in |
+|---|---|---|
+| **Science** | Schooled, Toolmakers, Foundrymen, Machinists | Build the ship, and leave on something you made |
+| **Economy** | Friend, Circuit, Reach, House | Buy the berths — somebody else's ship, your passage, paid for |
+| **Warfare** | Blooded, Defenders, Feared, Warlords | Take the ground; you never leave, you become the ones who launch |
+
+Science counts finished projects and steps at the joints of the tree — the founding's own
+six, the free tree done, the foundry branch, everything. Economy counts *places* that deal
+with you at charter standing rather than standing summed, so walking the same near
+neighbour twenty times gets you one friend and no further: the road asks for breadth, and
+the last rung is every town on the map. Warfare counts raiders put down, in bands, and each
+rung is three of the one below it.
+
+The endings themselves are not built yet — those are the last two stages in
+[ENDGAME.md](ENDGAME.md). What is built is the road, and two of the grid's principles exist
+to keep it honest: the three roads have to *disagree* somewhere across a grid of colonies,
+or they are one number printed three times, and no colony playing its whole clock may stand
+on a top rung, because a road somebody has finished has stopped being somewhere to go.
+
+The second of those holds and the first does not, and it is worth saying which way. Across
+sixty days a colony walks a fair way up science or warfare — the calm valleys go one way and
+the hard ones the other — but economy stops at **Friend** on almost every map, because the
+founding needs one neighbour who takes your calls and nothing in the valley yet asks for a
+second. That is the ladder saying, correctly, that the road it measures is the one the game
+has not built.
 
 ## Who your settlers are
 

@@ -30,6 +30,7 @@ hands-on script, [ACCEPTANCE.md](ACCEPTANCE.md) is what has been checked and by 
 - [A floor is terrain, not a building](#a-floor-is-terrain-not-a-building)
 - [A window and a history are different lists](#a-window-and-a-history-are-different-lists)
 - [One flag cannot mean two endings](#one-flag-cannot-mean-two-endings)
+- [A ladder with nothing behind it](#a-ladder-with-nothing-behind-it)
 - [A cable is not a footpath](#a-cable-is-not-a-footpath)
 - [Save / load](#save--load)
 - [Rendering notes](#rendering-notes)
@@ -112,6 +113,7 @@ src/
     pickies.ts         a question with legs: what you send to ask why nobody goes there
     objectives.ts      what to do next: the sticky curriculum behind the Goals panel
     victory.ts         the exam: five charters, the three days they hold, and no shutdown
+    roads.ts           what comes after the exam: three ladders of four rungs, all derived
     steward.ts         the colony's own foreman: restock, beds, fence, gate, grid, floors, cover
     tick.ts            stepWorld(): the one ordered tick
     save.ts            versioned envelope <-> localStorage
@@ -1201,6 +1203,59 @@ is anything *in* that second half. Played out to sixty days, the founding lands 
 run with nothing left to choose. Across the long runs the tree emptied on days 37, 43, 45 and 56, and
 after that the colony is a going concern with no next thing to want. [ENDGAME.md](ENDGAME.md) is the
 plan for what happens after the founding, and the measurements that say it is needed.
+
+## A ladder with nothing behind it
+
+The second half now has something in it, and the thing worth writing down is what `sim/roads.ts`
+deliberately is not. It holds no state. There is no rung on the world, nothing in the save envelope,
+nothing to migrate, and a colony saved before the file existed reads its three rungs correctly the
+first time it is opened. Every tally is read off world the colony was already keeping — finished
+projects, standing with the neighbours, raiders put down — and the whole module is two pure functions
+over that.
+
+That was not the obvious build. The obvious build is a `roadProgress` record on the world that the
+tick advances, because that is how a progress bar usually works and because reading three tallies
+every frame feels wasteful. It is the same mistake `alerts.ts` avoided and for the same reason: **a
+stored copy of a derived number is a number that can drift, and nothing on screen will say which of
+the two is lying.** A rung that says *Foundrymen* while the research panel shows eleven projects is a
+bug with no natural place to be caught, and it survives a save.
+
+The rung boundaries are derived rather than picked. Science steps at `NEED_RESEARCH`, at the free
+tree finished, at the foundry branch, at the whole tree; economy at one place, `PER_RING`, two rings,
+`NEIGHBOUR_COUNT`; warfare at `STANDING_BAND` compounding by `CLEAN_PER_STEP`, which is the
+storyteller's own patience. Three of those constants had to be exported to make it possible, which is
+a fair price: a ladder with hand-picked numbers in it is a fourth thing to balance, and it goes stale
+silently the first time the tree or the map grows. Grow the map to a fourth ring and the economy road
+lengthens on its own.
+
+The rung exists at all because the three tallies are in different units — projects, places, raiders —
+and no arithmetic across them means anything. The rung is the only comparable quantity the three
+ladders produce, which is what lets the grid ask the question that matters:
+`the-three-roads-are-three-roads` requires that for every *pair* of roads, some colony on the grid is
+ahead on one and behind on the other. Correlation would be the wrong test — colonies that are doing
+well are doing well at several things — but a pair that **never** inverts is the signature of one
+measurement counted twice, and three tallies wired to the same underlying thing is exactly how a
+choice of ending quietly becomes a choice between synonyms. A flat pair's *direction* is the whole
+diagnosis and has to be in the sentence, which the first version of the check got wrong: it asked
+whether either road was ever ahead, printed `always level` when the answer was no, and so reported a
+pair where economy was strictly *behind* warfare on nine runs of fourteen as if the two were the same
+number. Level means one measurement counted twice; leaning means a road nobody is walking. Those are
+different bugs and they want different fixes. Its companion,
+`no-road-is-already-finished`, breaks the day a sixty-day colony stands on a top rung, because a road
+somebody has finished has stopped being somewhere to go. It would have failed a grid ago, when
+calm/20260729 emptied the research tree.
+
+Reading it on the grid costs one column and no new sampling. `runColony` already writes a daily row,
+so `roads: roadRungs(world)` rides along beside the columns that were there, the last row's copy
+lands on `RunMeasure.roadRungs`, and the sweep table prints it as `1/2/0` per run with the
+per-difficulty mean underneath as `1.4/1.0/0.2`. Three integers a day is the cheapest instrument in
+the file, and it is only affordable because the rungs are derived: nothing had to be recorded during
+the run to make the last day's reading true.
+
+The panel is the founding's own panel. Once `hasWon`, `syncGoals` puts the three roads where the
+charter checklist was: same rows, same bar, same hint line, and the ending each road leads to on the
+row's hover. A player who learned to read that corner during the first act does not have to learn a
+second one for the second.
 
 ## A cable is not a footpath
 

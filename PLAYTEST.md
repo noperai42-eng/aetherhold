@@ -65,6 +65,7 @@ run.
 [9k. Send somebody over the ridge](#9k-send-somebody-over-the-ridge-3-minutes) ·
 [9ii. Walk the map open](#9ii-walk-the-map-open-one-ring-at-a-time-10-minutes-mostly-waiting) ·
 [9l. Read the path to a win](#9l-read-the-path-to-a-win-1-minute) ·
+[9jj. Read the roads on the morning you are founded](#9jj-read-the-roads-on-the-morning-you-are-founded-3-minutes-after-a-founding) ·
 [9m. Walk into the haze](#9m-walk-into-the-haze-2-minutes) ·
 [9n. Read the map in the corner](#9n-read-the-map-in-the-corner-2-minutes) ·
 [9aa. Walk to the rim](#9aa-walk-to-the-rim-5-minutes) ·
@@ -1429,6 +1430,36 @@ Two things to try to break it with:
 - **Open the far ring, then eat the pantry down.** The road should shut again with the meals
   sentence, not the vouch sentence — standing is permanent, provisioning is not, and the
   panel should be clear about which one you have lost.
+
+## 9jj. Read the roads on the morning you are founded (~3 minutes, after a founding)
+
+You need a founded colony for this one, so do it at the end of a long run or load a save
+that has one. The moment the founding card goes away, look at the goals panel.
+
+**Expect:** the **The founding** section is gone — you passed that exam — and **The roads**
+is in its place, three rows in the shape the charters had. Science, Economy, Warfare, each
+with the rung you are standing on next to its name, a count in the corner, a bar, and one
+line saying where the work is. Hover a row and it tells you what that road ends in.
+
+Then check the three things that would make it a scoreboard rather than a road:
+
+- **They should not agree.** On a normal founding you will read something like *Science —
+  Schooled*, *Economy — Friend*, and Warfare blank. If all three rows show the same rung
+  every time you look, on every colony, then they are one number printed three times and the
+  choice of ending is a choice between synonyms. (The grid checks exactly this across
+  fifteen colonies, but you can smell it in one.)
+- **Warfare should be blank if you were never attacked.** A quiet valley that won on food
+  and research has not walked the road that ends in taking the ground. If founding alone
+  hands you a rung there, warfare is wired to something the first act gives away.
+- **The bar should measure the leg, not the trip.** Standing on a rung reads as an empty
+  bar, not a nearly-empty one — the count next to it tells you the boundary you are walking
+  toward, and it is the *next* one, not the last.
+
+Now play on and finish a project. **Expect:** the science count moves the same tick the
+research panel does, with no lag and nothing to collect. Then save, reload the tab, and look
+again: identical rungs. Nothing about the roads is written into the save — they are read off
+the colony every frame — so a rung that survives a reload is doing so by being recomputed
+correctly rather than by being remembered.
 
 ## 10. Save it, break it, load it
 

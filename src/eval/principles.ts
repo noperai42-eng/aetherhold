@@ -23,6 +23,7 @@
 
 import { DIFFICULTY_ORDER } from '../sim/difficulty';
 import { RESEARCH, RESEARCH_ORDER } from '../sim/research';
+import { ROAD_IDS, ROAD_RUNGS } from '../sim/roads';
 import { roundTripDays } from '../sim/settlements';
 import { armedShareOf, avg, on, type RunMeasure, type Sweep } from './sweep';
 
@@ -1451,6 +1452,142 @@ export const PRINCIPLES: Principle[] = [
           `thinnest was ${leanest.difficulty}/${leanest.seed} at ${Math.round(spent(leanest) * 100)}% ` +
           `of ${leanest.endSteel}`,
       };
+    },
+  },
+  {
+    id: 'the-three-roads-are-three-roads',
+    claim:
+      'Three roads, not one number printed three times. For every pair of them the grid holds a ' +
+      'colony that is ahead on one and behind on the other.',
+    // Stage 3's own principle, and — like the far country's — written before the
+    // thing meant to satisfy it. What it guards against is the failure a ladder
+    // is most likely to have and least likely to be caught having: three tallies
+    // that all move with the same underlying thing, so that "science 3, economy
+    // 3, warfare 3" is one fact wearing three hats and the player's choice of
+    // road is a choice between synonyms.
+    //
+    // The test is inversion rather than correlation, on purpose. Two roads that
+    // usually rise together are fine and probably true of any working colony —
+    // a colony that is doing well is doing well at several things. What is not
+    // fine is two roads that *never* disagree about which colony is ahead,
+    // because that is the signature of one measurement counted twice. One
+    // inversion each way is a low bar and it is meant to be: this is a floor
+    // under "these are different things", not a claim about how different.
+    //
+    // Rungs rather than tallies, because the tallies are in different units —
+    // projects, places, raiders — and any comparison between them would be
+    // arithmetic on apples. The rung is the only comparable quantity the three
+    // ladders produce, which is most of why `roads.ts` has rungs at all.
+    enforced: false,
+    check: (s) => {
+      const full = s.runs.filter(
+        (m) => m.daysLived >= s.days && (m.roadRungs?.length ?? 0) >= ROAD_IDS.length,
+      );
+      if (full.length < 2) {
+        return {
+          verdict: 'untested',
+          detail: `${full.length} runs played the full clock with a road reading — need two to compare`,
+        };
+      }
+      const flat: string[] = [];
+      const seen: string[] = [];
+      for (let a = 0; a < ROAD_IDS.length; a++) {
+        for (let b = a + 1; b < ROAD_IDS.length; b++) {
+          const ahead = full.some((m) => (m.roadRungs?.[a] ?? 0) > (m.roadRungs?.[b] ?? 0));
+          const behind = full.some((m) => (m.roadRungs?.[a] ?? 0) < (m.roadRungs?.[b] ?? 0));
+          const pair = `${ROAD_IDS[a]}/${ROAD_IDS[b]}`;
+          if (ahead && behind) seen.push(pair);
+          // Which way a flat pair leans is the whole diagnosis, so it has to be
+          // in the sentence: a pair that is always level is one measurement
+          // counted twice, and a pair that leans is a road nothing is walking.
+          else {
+            const way = ahead
+              ? `${ROAD_IDS[a]} only ever ahead`
+              : behind
+                ? `${ROAD_IDS[a]} only ever behind`
+                : 'always level';
+            flat.push(`${pair} never inverts (${way})`);
+          }
+        }
+      }
+      return flat.length === 0
+        ? {
+            verdict: 'holds',
+            detail: `all ${seen.length} pairs disagree somewhere across ${full.length} runs: ${seen.join(', ')}`,
+          }
+        : {
+            verdict: 'broken',
+            detail:
+              `${flat.length} of ${flat.length + seen.length} pairs never disagree across ` +
+              `${full.length} runs: ${flat.join(', ')}`,
+          };
+    },
+  },
+  {
+    id: 'no-road-is-already-finished',
+    claim:
+      'The end game is where the game goes, not where it has been. A colony that plays its whole ' +
+      'clock has road left on all three.',
+    // The other half of stage 3, and the one that will fail first. A ladder is
+    // only a ladder while somebody is still climbing it: the moment a sixty-day
+    // colony stands on the top rung, that road has stopped being somewhere to go
+    // and become a thing that already happened, and the game after the founding
+    // is back to the problem the founding was built to solve.
+    //
+    // This is `the-tree-is-not-empty-at-day-sixty` generalised to all three
+    // roads, and it is deliberately the stricter of the two: the tree principle
+    // asks whether there is a project left to start, and this asks whether there
+    // is a *rung* left, which a colony can run out of while the bench still has
+    // work. It exists because stages 4 and 5 are going to extend these ladders,
+    // and the failure mode of extending a ladder is discovering afterwards that
+    // the old top was reachable all along.
+    //
+    // It should hold on the grid that ships it, and that is not a reason to
+    // skip it. A guard that has never been read is a guard nobody knows the
+    // shape of, and this one has a shape worth knowing: the science road's top
+    // rung is the whole research tree, which one colony on the grid before this
+    // one finished. It would have failed a grid ago.
+    enforced: false,
+    check: (s) => {
+      if (s.days < DAY_SIXTY) {
+        return {
+          verdict: 'untested',
+          detail: `${s.days}-day grid cannot see day ${DAY_SIXTY}`,
+        };
+      }
+      const full = s.runs.filter(
+        (m) => m.daysLived >= s.days && (m.roadRungs?.length ?? 0) >= ROAD_IDS.length,
+      );
+      if (full.length === 0) {
+        return {
+          verdict: 'untested',
+          detail: 'no run played the full clock with a road reading',
+        };
+      }
+      const topped: string[] = [];
+      for (const m of full) {
+        for (let i = 0; i < ROAD_IDS.length; i++) {
+          if ((m.roadRungs?.[i] ?? 0) >= ROAD_RUNGS) {
+            topped.push(`${m.difficulty}/${m.seed} finished ${ROAD_IDS[i]}`);
+          }
+        }
+      }
+      // The furthest anybody got, reported either way. On a holding grid it is
+      // the only number here that says anything — "nobody finished a road" is
+      // true of a grid where nobody started one, and this is what tells them
+      // apart.
+      const deepest = Math.max(...full.map((m) => Math.max(...(m.roadRungs ?? [0]))));
+      return topped.length === 0
+        ? {
+            verdict: 'holds',
+            detail:
+              `no run of ${full.length} stood on a top rung; furthest anybody got was rung ` +
+              `${deepest} of ${ROAD_RUNGS}`,
+          }
+        : {
+            verdict: 'broken',
+            detail: `${topped.length} road${topped.length === 1 ? '' : 's'} finished by day ${s.days}: ${topped.join(', ')}`,
+          };
     },
   },
 ];

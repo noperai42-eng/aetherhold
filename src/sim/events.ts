@@ -61,7 +61,18 @@ export const WARN_LEAD = Math.round(TICKS_PER_DAY * 0.35);
  * harness measures whether a colony can get on its feet, and a difficulty curve
  * that moved inside the window would quietly be measuring the curve instead.
  */
-const CLEAN_PER_STEP = 3;
+export const CLEAN_PER_STEP = 3;
+
+/**
+ * What the Ashbound send when they are not making a point of it.
+ *
+ * A ceiling and not a count: the band that actually arrives is the smaller of
+ * this and what the colony can meet, then scaled by the setting. Named because
+ * `roads.ts` measures the warfare road in bands put down and a band has to mean
+ * the same thing there as it does here — an unnamed six in an expression is a
+ * number two files would each have their own copy of.
+ */
+export const STANDING_BAND = 6;
 
 /** The most the ladder ever adds: ten raiders instead of six, each of them harder. */
 const MAX_ESCALATION = 4;
@@ -449,7 +460,8 @@ export function tickStoryteller(world: World, rng: Rng): void {
   const band = Math.max(
     1,
     Math.round(
-      Math.min(6 + escalation(world), Math.min(colonists + 1, 1 + Math.ceil(n / 2))) * hardness.band,
+      Math.min(STANDING_BAND + escalation(world), Math.min(colonists + 1, 1 + Math.ceil(n / 2))) *
+        hardness.band,
     ),
   );
   // Half the beats are still a raid, because the game is about holding ground.

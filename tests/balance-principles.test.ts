@@ -84,6 +84,13 @@ function run(difficulty: Difficulty, over: Partial<RunMeasure> = {}): RunMeasure
     unsentDays: 0,
     endSteel: 120,
     steelDrawdown: 60,
+    // One rung on each road, which is what the rest of this fixture describes: a
+    // colony nine projects into the tree, ten raiders put down, and on speaking
+    // terms with the near ridge it has walked six times. It is deliberately level
+    // across all three — a baseline that already had one road ahead of another
+    // would hand `the-three-roads-are-three-roads` half its evidence for free,
+    // and a case about the roads should have to say so out loud.
+    roadRungs: [1, 1, 1],
     ...over,
   };
 }
@@ -111,9 +118,17 @@ function sweep(
   };
 }
 
-/** The shape of a valley where every promise is kept, to vary one field at a time. */
+/**
+ * The shape of a valley where every promise is kept, to vary one field at a time.
+ *
+ * Its three colonies went three different ways, and that is one of the promises
+ * rather than decoration: a healthy grid is one where the roads out of the
+ * valley disagree about which colony is ahead. The quiet map studied, the
+ * middling one traded, and the one that was attacked ninety times fought.
+ */
 const healthy = () => [
   run('calm', {
+    roadRungs: [2, 1, 0],
     firstThreatDay: 5,
     threats: 6,
     biggestBand: 2,
@@ -126,6 +141,7 @@ const healthy = () => [
     armedShare: 0.15,
   }),
   run('settler', {
+    roadRungs: [1, 2, 1],
     firstThreatDay: 3,
     threats: 13,
     biggestBand: 6,
@@ -138,6 +154,7 @@ const healthy = () => [
     armedShare: 0.3,
   }),
   run('harsh', {
+    roadRungs: [1, 0, 2],
     firstThreatDay: 2,
     threats: 22,
     biggestBand: 8,
@@ -866,6 +883,108 @@ describe('the balance principles, read against grids that are known wrong', () =
     );
     expect(verdictOf(late, 'the-road-keeps-up-with-the-bench')).toBe('broken');
     expect(detailOf(late, 'the-road-keeps-up-with-the-bench')).toContain('ring-2 bill against 22');
+  });
+
+  it('calls three roads that always agree one road printed three times', () => {
+    // The failure the check exists for, in its purest form: every colony reads
+    // the same rung on all three, so "science 2, economy 2, warfare 2" is one
+    // fact wearing three hats and the player's choice of ending is a choice
+    // between synonyms. Note that the runs *differ* from each other — a grid
+    // where every colony is identical would be a different complaint.
+    const s = sweep(
+      [
+        run('calm', { seed: 1, daysLived: 60, roadRungs: [1, 1, 1] }),
+        run('settler', { seed: 2, daysLived: 60, roadRungs: [2, 2, 2] }),
+        run('harsh', { seed: 3, daysLived: 60, roadRungs: [3, 3, 3] }),
+      ],
+      60,
+      healthyArm(),
+      true,
+    );
+    expect(verdictOf(s, 'the-three-roads-are-three-roads')).toBe('broken');
+    expect(detailOf(s, 'the-three-roads-are-three-roads')).toContain('3 of 3 pairs');
+    expect(detailOf(s, 'the-three-roads-are-three-roads')).toContain('always level');
+  });
+
+  it('is not satisfied by two roads that only ever lead the same way', () => {
+    // The subtler half. Warfare disagrees with both of the others, so two of the
+    // three pairs invert and a check that counted pairs rather than requiring
+    // all of them would call this fine. But science is ahead of economy on every
+    // run and never behind it: whatever those two are measuring, no colony on
+    // this grid has ever had to choose between them.
+    const s = sweep(
+      [
+        run('calm', { seed: 1, daysLived: 60, roadRungs: [3, 1, 0] }),
+        run('settler', { seed: 2, daysLived: 60, roadRungs: [2, 1, 3] }),
+      ],
+      60,
+      healthyArm(),
+      true,
+    );
+    expect(verdictOf(s, 'the-three-roads-are-three-roads')).toBe('broken');
+    expect(detailOf(s, 'the-three-roads-are-three-roads')).toContain('1 of 3 pairs');
+    // Which way it leans has to be in the sentence. A flat pair that is always
+    // level is one measurement counted twice; a flat pair that leans is a road
+    // nobody is walking, and the first grid to read this line got the second
+    // case reported as the first.
+    expect(detailOf(s, 'the-three-roads-are-three-roads')).toContain(
+      'science/economy never inverts (science only ever ahead)',
+    );
+  });
+
+  it('holds when each road leads somewhere on some colony', () => {
+    const s = sweep(
+      [
+        run('calm', { seed: 1, daysLived: 60, roadRungs: [3, 1, 0] }),
+        run('settler', { seed: 2, daysLived: 60, roadRungs: [1, 2, 3] }),
+      ],
+      60,
+      healthyArm(),
+      true,
+    );
+    expect(verdictOf(s, 'the-three-roads-are-three-roads')).toBe('holds');
+    expect(detailOf(s, 'the-three-roads-are-three-roads')).toContain('all 3 pairs');
+  });
+
+  it('will not compare roads across a grid of one colony', () => {
+    // One run can be ahead on one road and behind on another, which looks like
+    // an inversion and is not one: it is a single colony's shape, and three
+    // ladders wired to the same number would produce it just as readily on a
+    // colony that happened to be measured mid-climb. The check needs a grid.
+    const s = sweep([run('calm', { seed: 1, daysLived: 60, roadRungs: [3, 1, 0] })], 60);
+    expect(verdictOf(s, 'the-three-roads-are-three-roads')).toBe('untested');
+    expect(detailOf(s, 'the-three-roads-are-three-roads')).toContain('need two to compare');
+  });
+
+  it('says a road somebody finished in sixty days has stopped being a road', () => {
+    const s = sweep(
+      [
+        run('calm', { seed: 1, daysLived: 60, roadRungs: [2, 4, 1] }),
+        run('harsh', { seed: 2, daysLived: 60, roadRungs: [1, 2, 3] }),
+      ],
+      60,
+      healthyArm(),
+      true,
+    );
+    expect(verdictOf(s, 'no-road-is-already-finished')).toBe('broken');
+    expect(detailOf(s, 'no-road-is-already-finished')).toContain('calm/1 finished economy');
+  });
+
+  it('reports how far the furthest colony got, so a quiet grid is not read as a good one', () => {
+    // "Nobody finished a road" is true of a grid where nobody started one, and
+    // the two want telling apart. The detail line carries the deepest rung for
+    // exactly that reason, and this is the test that keeps it there.
+    const s = sweep(
+      [
+        run('calm', { seed: 1, daysLived: 60, roadRungs: [3, 1, 0] }),
+        run('harsh', { seed: 2, daysLived: 60, roadRungs: [1, 0, 2] }),
+      ],
+      60,
+      healthyArm(),
+      true,
+    );
+    expect(verdictOf(s, 'no-road-is-already-finished')).toBe('holds');
+    expect(detailOf(s, 'no-road-is-already-finished')).toContain('furthest anybody got was rung 3');
   });
 });
 

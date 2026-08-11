@@ -264,7 +264,7 @@ const FAR_NAMES = [
 const KINDS: ResourceKind[] = ['wood', 'steel', 'rawfood', 'meal', 'medicine'];
 
 /** How many places sit in each ring. Four is one per quarter of the compass. */
-const PER_RING = 4;
+export const PER_RING = 4;
 
 /**
  * The world, in rings.
@@ -380,7 +380,7 @@ export function ensureSold(ring: Settlement[], kind: ResourceKind): void {
 }
 
 /** Every settlement on a map, near ring first. */
-const NEIGHBOUR_COUNT = RINGS.length * PER_RING;
+export const NEIGHBOUR_COUNT = RINGS.length * PER_RING;
 
 /**
  * The neighbours of this map.

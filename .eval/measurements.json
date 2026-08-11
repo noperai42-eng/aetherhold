@@ -1,7 +1,7 @@
 {
-  "fingerprint": "08fee14e",
-  "taken": "2026-08-11T15:39:14.369Z",
-  "seconds": 1157.066,
+  "fingerprint": "6f15cf34",
+  "taken": "2026-08-11T17:30:44.348Z",
+  "seconds": 1620.242,
   "steward": false,
   "sweep": {
     "seeds": [
@@ -56,7 +56,12 @@
         "stallRing": 2,
         "unsentDays": 0,
         "endSteel": 471,
-        "steelDrawdown": 611
+        "steelDrawdown": 611,
+        "roadRungs": [
+          3,
+          1,
+          1
+        ]
       },
       {
         "seed": 7,
@@ -95,7 +100,12 @@
         "stallRing": 2,
         "unsentDays": 0.2,
         "endSteel": 589,
-        "steelDrawdown": 290
+        "steelDrawdown": 290,
+        "roadRungs": [
+          3,
+          1,
+          2
+        ]
       },
       {
         "seed": 1312,
@@ -134,7 +144,12 @@
         "stallRing": 1,
         "unsentDays": 0.05,
         "endSteel": 369,
-        "steelDrawdown": 201
+        "steelDrawdown": 201,
+        "roadRungs": [
+          2,
+          1,
+          1
+        ]
       },
       {
         "seed": 99001,
@@ -173,7 +188,12 @@
         "stallRing": 2,
         "unsentDays": 0,
         "endSteel": 341,
-        "steelDrawdown": 684
+        "steelDrawdown": 684,
+        "roadRungs": [
+          3,
+          1,
+          1
+        ]
       },
       {
         "seed": 424242,
@@ -212,7 +232,12 @@
         "stallRing": 1,
         "unsentDays": 0.01,
         "endSteel": 234,
-        "steelDrawdown": 249
+        "steelDrawdown": 249,
+        "roadRungs": [
+          2,
+          1,
+          1
+        ]
       },
       {
         "seed": 20260729,
@@ -251,7 +276,12 @@
         "stallRing": -1,
         "unsentDays": 0,
         "endSteel": 853,
-        "steelDrawdown": 340
+        "steelDrawdown": 340,
+        "roadRungs": [
+          2,
+          1,
+          2
+        ]
       },
       {
         "seed": 7,
@@ -290,7 +320,12 @@
         "stallRing": 1,
         "unsentDays": 0,
         "endSteel": 59,
-        "steelDrawdown": 367
+        "steelDrawdown": 367,
+        "roadRungs": [
+          3,
+          1,
+          2
+        ]
       },
       {
         "seed": 1312,
@@ -329,7 +364,12 @@
         "stallRing": 1,
         "unsentDays": 0.09,
         "endSteel": 357,
-        "steelDrawdown": 388
+        "steelDrawdown": 388,
+        "roadRungs": [
+          2,
+          1,
+          2
+        ]
       },
       {
         "seed": 99001,
@@ -368,7 +408,12 @@
         "stallRing": -1,
         "unsentDays": 0,
         "endSteel": 685,
-        "steelDrawdown": 359
+        "steelDrawdown": 359,
+        "roadRungs": [
+          2,
+          1,
+          2
+        ]
       },
       {
         "seed": 424242,
@@ -407,7 +452,12 @@
         "stallRing": 1,
         "unsentDays": 0.63,
         "endSteel": 365,
-        "steelDrawdown": 289
+        "steelDrawdown": 289,
+        "roadRungs": [
+          2,
+          1,
+          2
+        ]
       },
       {
         "seed": 20260729,
@@ -446,7 +496,12 @@
         "stallRing": -1,
         "unsentDays": 0,
         "endSteel": 66,
-        "steelDrawdown": 201
+        "steelDrawdown": 201,
+        "roadRungs": [
+          0,
+          0,
+          1
+        ]
       },
       {
         "seed": 7,
@@ -485,7 +540,12 @@
         "stallRing": -1,
         "unsentDays": 0,
         "endSteel": 136,
-        "steelDrawdown": 171
+        "steelDrawdown": 171,
+        "roadRungs": [
+          2,
+          0,
+          3
+        ]
       },
       {
         "seed": 1312,
@@ -524,7 +584,12 @@
         "stallRing": -1,
         "unsentDays": 0,
         "endSteel": 231,
-        "steelDrawdown": 134
+        "steelDrawdown": 134,
+        "roadRungs": [
+          1,
+          1,
+          2
+        ]
       },
       {
         "seed": 99001,
@@ -563,7 +628,12 @@
         "stallRing": -1,
         "unsentDays": 0,
         "endSteel": 166,
-        "steelDrawdown": 321
+        "steelDrawdown": 321,
+        "roadRungs": [
+          0,
+          1,
+          2
+        ]
       },
       {
         "seed": 424242,
@@ -602,7 +672,12 @@
         "stallRing": -1,
         "unsentDays": 0,
         "endSteel": 145,
-        "steelDrawdown": 177
+        "steelDrawdown": 177,
+        "roadRungs": [
+          1,
+          1,
+          2
+        ]
       }
     ],
     "arm": [

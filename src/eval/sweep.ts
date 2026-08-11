@@ -173,6 +173,19 @@ export interface RunMeasure {
    */
   endSteel: number;
   steelDrawdown: number;
+  /**
+   * The rung the colony finished on for each of the three end-game roads, in
+   * ladder order — science, economy, warfare. See `src/sim/roads.ts`.
+   *
+   * The *last* rung rather than the peak, on purpose and unlike `peakRung`
+   * beside it. The escalation ladder is the Ashbound's opinion of the colony and
+   * resets when somebody gets hurt, so only its high-water mark says anything; a
+   * road is where the colony got to, and a run that reached a rung and lost it
+   * has not walked that road. The one tally that can fall is the economy's —
+   * places at charter standing — and a colony that let its friends go is exactly
+   * the case this column should report honestly rather than remember fondly.
+   */
+  roadRungs: number[];
 }
 
 export interface SweepOptions {
@@ -451,6 +464,7 @@ export function measure(r: EvalReport): RunMeasure {
     unsentDays: r.unsentDays,
     endSteel: last?.steel ?? 0,
     steelDrawdown,
+    roadRungs: last?.roads ?? [],
   };
 }
 
@@ -496,7 +510,7 @@ export function armedShareOf(rs: RunMeasure[]): number {
 /** A fixed-width grid, because a balance pass is read by eye. */
 export function formatSweep(sweep: Sweep): string {
   const cols =
-    'setting        seed  verdict     days  1st  threats  band  downs  buried  alive  kills  rung  worstFood  fed  upkeep  foodDays  raiders  rifles     trips  spare   tree  idle   wait  unsent   steel  spent';
+    'setting        seed  verdict     days  1st  threats  band  downs  buried  alive  kills  rung  worstFood  fed  upkeep  foodDays  raiders  rifles     trips  spare   tree  idle   wait  unsent   steel  spent        roads';
   const lines: string[] = [`balance grid · ${sweep.days} days · ${sweep.seeds.length} seeds`, cols];
   for (const d of sweep.difficulties) {
     const rs = on(sweep, d);
@@ -533,6 +547,11 @@ export function formatSweep(sweep: Sweep): string {
           pad((m.unsentDays ?? 0).toFixed(2), 8),
           pad(m.endSteel ?? 0, 8),
           pad(m.steelDrawdown ?? 0, 7),
+          // Science/economy/warfare, in one cell for the same reason the trips
+          // column is one cell: three rungs read together are a shape — a colony
+          // deep in the tree and nowhere on the road — and three columns of small
+          // integers would be read as three unrelated numbers.
+          pad((m.roadRungs ?? []).join('/') || '—', 12),
         ].join(''),
       );
     }
@@ -564,6 +583,7 @@ export function formatSweep(sweep: Sweep): string {
         pad(avg(rs, (m) => m.unsentDays ?? 0).toFixed(2), 8),
         pad(avg(rs, (m) => m.endSteel ?? 0).toFixed(0), 8),
         pad(avg(rs, (m) => m.steelDrawdown ?? 0).toFixed(0), 7),
+        pad([0, 1, 2].map((r) => avg(rs, (m) => m.roadRungs?.[r] ?? 0).toFixed(1)).join('/'), 12),
       ].join(''),
       '',
     );

@@ -35,6 +35,7 @@ import {
 } from '../sim/settlements';
 import { escalation } from '../sim/events';
 import { researchStalled } from '../sim/research';
+import { roadRungs } from '../sim/roads';
 import { stewardTick } from './steward';
 
 export interface DaySnapshot {
@@ -131,6 +132,22 @@ export interface DaySnapshot {
    * shopping list rather than a copy — see `errandRing`.
    */
   errandRing: number;
+  /**
+   * Where the colony stands on each of the three end-game roads, in ladder
+   * order — science, economy, warfare. See `roads.ts`.
+   *
+   * Sampled once a day and read off the world rather than accumulated, because
+   * a rung is a threshold on a tally the world already keeps and not a thing
+   * that happens at a moment. Two of the three tallies only ever climb; the
+   * economy one can fall, if a place is lost or standing decays, and the column
+   * is the rung rather than the peak so that it says where the colony *is*.
+   *
+   * A daily sample is the right resolution here for the reason `unsent` was the
+   * wrong one: a rung is a state that lasts days at minimum — the fastest of
+   * them needs six raiders put down — so no rung can appear and vanish between
+   * two looks.
+   */
+  roads: number[];
   /**
    * There is deliberately no `unsent` here any more. It was a day-boundary
    * boolean and that is precisely what was wrong with it — see `unsentDays` on
@@ -527,6 +544,7 @@ function snapshot(
     tech: world.research.done.length,
     stalled: researchStalled(world),
     errandRing: errandRing(world),
+    roads: roadRungs(world),
     breaks: world.stats.moraleBreaks ?? 0,
     trades: world.stats.trades ?? 0,
     captured: world.stats.captured ?? 0,

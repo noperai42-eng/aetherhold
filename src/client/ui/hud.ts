@@ -35,6 +35,7 @@ import { alerts } from '../../sim/alerts';
 import { idleReason } from '../../sim/idle';
 import { nextObjectives, objectiveScore } from '../../sim/objectives';
 import { HOLD_DAYS, charters, foundingLeft, hasWon } from '../../sim/victory';
+import { roads } from '../../sim/roads';
 import { AILMENTS, COLD_BELOW, comfortAt, worstAilment } from '../../sim/health';
 import { currentTrader, ticksLeft } from '../../sim/trade';
 import { TICKS_PER_DAY } from '../../sim/types';
@@ -1946,7 +1947,13 @@ export class Hud {
     // carries on — the tutorial goals are the only guidance on screen, and
     // taking them away as a prize is the same mistake `victory.ts` made.
     const won = hasWon(world);
-    const empty = list.length === 0 && (won || (short.length === 0 && left === null));
+    // …and it trades the exam for the three roads out of the valley, in the same
+    // panel and the same rows. A player who learned to read this corner during
+    // the founding does not have to learn a second one to see where the rest of
+    // the run is going, and the roads are read the same way the charters were:
+    // a title, a count, a bar, and where the work is.
+    const rs = won ? roads(world) : [];
+    const empty = list.length === 0 && !won && short.length === 0 && left === null;
     const hide = empty || (parked && this.inspector.style.display !== 'none');
     this.goalPanel.style.display = hide ? 'none' : 'flex';
     if (empty) return;
@@ -1956,8 +1963,9 @@ export class Hud {
       `|F${cs.length - short.length}|${short.map((c) => `${c.id}:${c.count}`).join('|')}|${days}` +
       // Or the panel keeps the founding section it was showing the tick before
       // the colony was founded, forever: none of the counts above have to move
-      // on the tick that wins.
-      `|${won ? 'W' : ''}`;
+      // on the tick that wins. The rungs carry that flag now — an unfounded
+      // colony has no roads, so the empty string is the "not yet" it used to be.
+      `|${rs.map((r) => `${r.id}${r.rung}:${r.count}`).join('|')}`;
     if (sig === this.goalSig) return;
     this.goalSig = sig;
     this.goalPanel.innerHTML = '';
@@ -1983,8 +1991,27 @@ export class Hud {
     }
     // Nothing left to examine. The card said it, the chronicle keeps it, and a
     // permanent 5/5 row on the one panel the player reads between decisions is
-    // a trophy taking up the space guidance was using.
-    if (won) return;
+    // a trophy taking up the space guidance was using. What goes in its place is
+    // the part of the run that is still ahead.
+    if (won) {
+      const rhead = el('div', 'goalhead');
+      rhead.innerHTML = `<b>The roads</b><span>where this goes</span>`;
+      this.goalPanel.append(rhead);
+      for (const r of rs) {
+        const row = el('div', 'goal');
+        // The ending is the reason to walk the road and it is one sentence too
+        // long for a panel this size, so it lives on the hover. The line itself
+        // answers the two questions a ladder has to: what am I, and what is next.
+        row.title = r.ending;
+        row.innerHTML =
+          `<b>${escapeHtml(r.standing ? `${r.title} — ${r.standing}` : r.title)}</b>` +
+          `<u>${escapeHtml(r.count)}</u>` +
+          `<div class="track"><i style="width:${Math.round(r.progress * 100)}%"></i></div>` +
+          `<span>${escapeHtml(r.next ? `Next: ${r.next}. ${r.hint}` : r.ending)}</span>`;
+        this.goalPanel.append(row);
+      }
+      return;
+    }
     const fhead = el('div', 'goalhead');
     fhead.innerHTML =
       `<b>The founding</b><span>${cs.length - short.length}/${cs.length} charters</span>`;
