@@ -80,6 +80,7 @@ import {
   withinRange,
   roadHead,
   settlementById,
+  shoppingRun,
   spareGoods,
 } from './settlements';
 import { SPOIL_DAYS } from './spoilage';
@@ -1863,13 +1864,80 @@ function tryWorkType(world: World, pawn: Pawn, work: WorkType): boolean {
       // being asked a favour by refusing to trade at all for two weeks has been
       // made poorer by having been asked.
       const at = asked ? settlementById(world, asked.settlementId) : null;
-      const honour = at !== null && withinRange(world, at).ok;
+      // ...and a bench with an unpaid bill outranks the letter in turn.
+      //
+      // This colony has one party. Every day it spends carrying somebody else's
+      // grain is a day the last tier of the tree does not move, and unlike the
+      // pile of wood in the rain an unfinished project is not still there next
+      // week — it is the rest of the game, not waiting for it. The letter runs a
+      // fortnight; the tier runs to the end of the clock.
+      //
+      // It took the sixty-day grid to see this, because it is invisible on any
+      // run that never reaches the third tier: below it `researchNeeds` is empty
+      // on every project and this clause is false on every tick. The runs that
+      // did reach it were standing still for up to twenty-two days each while
+      // the only settler on the road carried meal to a neighbour, and the parts
+      // town five days out went unvisited for the whole of it.
+      //
+      // Asked of the bill and not of the stall, which is the difference between
+      // a colony that finishes the tier and one that watches the clock run out
+      // holding a full bar. `researchNeeds` is answered from the moment the
+      // project is chosen — its own comment says why — and a third-tier project
+      // is three weeks of study, against a round trip of ten or twelve days.
+      // Reading it here means the crates and the last point arrive together;
+      // reading `researchStalled` here instead means the walk starts on the day
+      // the bar fills and the tier costs a fortnight of standing still. The
+      // first cut of this rule made that mistake and calm/1312 duly sent its
+      // party for parts on day fifty-five of sixty.
+      //
+      // Self-cancelling, like the bonuses in `settlements.ts`: the shortfall
+      // goes empty the moment the crates are in the yard, and the letter after
+      // that is answered as normal. It can also fire before the third tier — for
+      // any project that costs materials — which is the same behaviour and not a
+      // special case; there are four such projects and they are all up there.
+      //
+      // Both halves of it are `shoppingRun`'s to answer — whether there is an
+      // open road that ends at the thing the bench is short of, and which one —
+      // for the reasons written over it. A colony whose only parts town is
+      // behind a shut ring gets `null` and goes back to answering letters, which
+      // is right: refusing them there would leave it standing still *and*
+      // trading away the standing that is its one way onto that road.
+      //
+      // Weighed only once there is something to carry. A colony with an empty
+      // barn has no shopping trip to prefer, and turning the letter down on the
+      // strength of a run it cannot make would cost the standing and buy nothing
+      // — the settler stays home either way.
+      //
       // What is spare is found before the road is chosen, so it is measured
       // against the biggest pack anywhere on the board and clamped below to what
       // the road actually chosen will carry.
-      const give = (honour ? asked : null) ?? spareGoods(world, packCeiling(world));
-      if (!give) return false;
-      const dest = honour ? at : pickDestination(world, give.kind, give.amount);
+      //
+      // And when there is no surplus, the pack the letter asked for is what the
+      // party carries — to wherever it is going. `answerable` and `spareGoods`
+      // ask the same question against two different reserves, `COMMISSION_KEEP`
+      // and the much higher `SURPLUS`, so there is a wide and ordinary band of
+      // stores in which a colony can afford to give a neighbour a pack and
+      // cannot afford to spend the same pack on itself. Left that way the
+      // stricter test guards the trip that *helps* this colony, which is exactly
+      // backwards, and calm/424242 spent day forty-two to day fifty-three
+      // walking eight medicine out to a meal town while the bench it could have
+      // been shopping for waited on steel the letter's own neighbour sells.
+      // These are the colony's goods either way; the only question is which
+      // errand they buy.
+      const spare = spareGoods(world, packCeiling(world));
+      const load = spare ?? asked;
+      if (!load) return false;
+      const errand = shoppingRun(world, load.kind);
+      // Split from `honour` so the sentence below can tell "turned a neighbour
+      // down" from "there was no neighbour to turn down". `answerable`
+      // (`commissions.ts`) gates a letter on the due date and on the pantry and
+      // never on range, so `at` can name a town the colony had no way of reaching
+      // — and in the days before that letter lapses, a message keyed on `at`
+      // alone apologises to somebody who was never going to be visited.
+      const couldHonour = at !== null && withinRange(world, at).ok;
+      const honour = couldHonour && errand === null;
+      const give = honour ? (asked ?? load) : load;
+      const dest = honour ? at : (errand ?? pickDestination(world, load.kind, load.amount));
       if (!dest) return false;
       const head = roadHead(world, dest, pawn);
       if (!head) return false;
@@ -1883,7 +1951,18 @@ function tryWorkType(world: World, pawn: Pawn, work: WorkType): boolean {
         world,
         honour
           ? `${pawn.name} loads the ${amount} ${give.kind} ${dest.name} asked for and sets out.`
-          : `${pawn.name} loads ${amount} ${give.kind} and sets out for ${dest.name}.`,
+          : // Named, because from the outside the two look identical — a settler
+            // walking off with a pack — and one of them is the colony deciding to
+            // leave a neighbour waiting. A player who is about to lose standing
+            // at a town is owed the sentence that explains it.
+            errand !== null && couldHonour && at !== null
+            ? // "needs", not "is waiting on": most of the time this trip leaves
+              // while the bench is still studying, which is the whole point of
+              // it, and a sentence that said the work had stopped when it had
+              // not would teach the player to distrust the log.
+              `${pawn.name} loads ${amount} ${give.kind} for ${dest.name}: the bench needs what they sell, ` +
+              `and ${at.name} will have to keep.`
+            : `${pawn.name} loads ${amount} ${give.kind} and sets out for ${dest.name}.`,
         'info',
       );
       return true;

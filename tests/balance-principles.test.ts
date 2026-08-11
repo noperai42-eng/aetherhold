@@ -20,7 +20,16 @@ import { describe, expect, it } from 'vitest';
 import { judgePrinciples } from '../src/eval/principles';
 import { UPKEEP_DIALS, type ArmPoint, type RunMeasure, type Sweep } from '../src/eval/sweep';
 import { DIFFICULTIES, DIFFICULTY_ORDER } from '../src/sim/difficulty';
+import { RESEARCH, RESEARCH_ORDER } from '../src/sim/research';
 import type { Difficulty } from '../src/sim/types';
+
+/**
+ * The last project the tree gives away, derived the same way the check derives
+ * it — a literal here would go stale the day a bill moves onto an earlier
+ * project, and it would go stale silently, which is the worst way for a test
+ * about a threshold to be wrong.
+ */
+const THIRD_TIER = RESEARCH_ORDER.filter((id) => !RESEARCH[id].materials).length;
 
 /** A run that did nothing interesting, overridden field by field per case. */
 function run(difficulty: Difficulty, over: Partial<RunMeasure> = {}): RunMeasure {
@@ -62,6 +71,12 @@ function run(difficulty: Difficulty, over: Partial<RunMeasure> = {}): RunMeasure
     // colony that fetched what the project cost before the points ran out, which
     // is the behaviour the third tier is built to produce.
     stalledDays: 0,
+    // …and so, trivially, nobody standing there with nobody on the road either.
+    // The two columns are only interesting when they disagree, which is a thing
+    // a case has to ask for: a run stalled for a fortnight with a party out the
+    // whole time keeps this at nought, and one that never sent anybody sets it
+    // equal to `stalledDays`.
+    unsentDays: 0,
     endSteel: 120,
     steelDrawdown: 60,
     ...over,
@@ -552,6 +567,145 @@ describe('the balance principles, read against grids that are known wrong', () =
   it('will not judge the tree on a grid that stopped before day sixty', () => {
     const s = sweep([run('calm', { seed: 1, daysLived: 30, tech: 15, emptyTreeDays: 17 })]);
     expect(verdictOf(s, 'the-tree-is-not-empty-at-day-sixty')).toBe('untested');
+  });
+
+  // ── the two halves of a stalled bench ─────────────────────────────────────
+  //
+  // The pair below is the reason `unsentDays` exists. Both runs stand at a
+  // finished bench for seventeen days; they differ only in whether anybody was
+  // walking, and they are opposite verdicts. A single column cannot hold both,
+  // and the first version of this check had only the single column.
+
+  it('does not blame the colony for a road it walked the whole time', () => {
+    // calm/424242, to the day: foundry chosen on the thirty-sixth, party out on
+    // the fortieth, robbed, sent again, project finished on the fifty-seventh.
+    // Seventeen stalled days and a settler on the road for every one of them.
+    // That run kept the promise the claim makes, and the check has to say so.
+    const s = sweep(
+      [
+        run('calm', {
+          seed: 424242,
+          daysLived: 60,
+          tech: THIRD_TIER + 1,
+          stalledDays: 17,
+          unsentDays: 0,
+        }),
+      ],
+      60,
+      healthyArm(),
+      true,
+    );
+    expect(verdictOf(s, 'the-bench-does-not-wait-on-an-errand')).toBe('holds');
+    // And the distance is still reported, because a pass here is not a claim
+    // that seventeen days is fine — only that it was not indecision.
+    expect(detailOf(s, 'the-bench-does-not-wait-on-an-errand')).toContain(
+      'the road itself took 17.0 days a run',
+    );
+  });
+
+  it('still breaks on the same seventeen days when nobody ever set out', () => {
+    const s = sweep(
+      [
+        run('calm', {
+          seed: 424242,
+          daysLived: 60,
+          tech: THIRD_TIER + 1,
+          stalledDays: 17,
+          unsentDays: 17,
+        }),
+      ],
+      60,
+      healthyArm(),
+      true,
+    );
+    expect(verdictOf(s, 'the-bench-does-not-wait-on-an-errand')).toBe('broken');
+    expect(detailOf(s, 'the-bench-does-not-wait-on-an-errand')).toContain(
+      'sent nobody for 17 of 17 waiting days',
+    );
+  });
+
+  it('allows the two days it takes to notice the bench has stopped', () => {
+    // The threshold is a decision, not a journey: a day for the bar to fill and
+    // the job pass to see it, a day for a settler to finish what is in their
+    // hands and come looking for the next thing. Two passes and three does not,
+    // and this pins which side of that line the number sits on so that moving it
+    // has to be deliberate. calm/99001 is the run that lives here — it owes
+    // exactly one day, the twenty-eight hundred ticks of its fifty-seventh with
+    // every gate open and nobody sent.
+    const s = sweep(
+      [
+        run('calm', { seed: 1, daysLived: 60, tech: THIRD_TIER + 1, stalledDays: 12, unsentDays: 2 }),
+        run('calm', { seed: 2, daysLived: 60, tech: THIRD_TIER + 1, stalledDays: 12, unsentDays: 3 }),
+      ],
+      60,
+      healthyArm(),
+      true,
+    );
+    expect(verdictOf(s, 'the-bench-does-not-wait-on-an-errand')).toBe('broken');
+    const detail = detailOf(s, 'the-bench-does-not-wait-on-an-errand');
+    expect(detail).toContain('1 of 2 runs');
+    expect(detail).toContain('calm/2');
+    expect(detail).not.toContain('calm/1');
+  });
+
+  // ── the road the bench principle no longer judges ─────────────────────────
+
+  it('breaks when reaching the third tier is where the run stops', () => {
+    // The measured shape, three of nine: the colony finishes the last project
+    // the tree gives away and never finishes one that costs goods. Two of the
+    // three were robbed on a five-day road and never got a second attempt in.
+    const s = sweep(
+      [
+        run('calm', { seed: 1312, daysLived: 60, tech: THIRD_TIER, stalledDays: 18, unsentDays: 0 }),
+        run('settler', {
+          seed: 1312,
+          daysLived: 60,
+          tech: THIRD_TIER,
+          stalledDays: 13,
+          unsentDays: 0,
+        }),
+        run('calm', { seed: 7, daysLived: 60, tech: THIRD_TIER + 1 }),
+      ],
+      60,
+      healthyArm(),
+      true,
+    );
+    expect(verdictOf(s, 'one-robbery-does-not-end-the-tier')).toBe('broken');
+    const detail = detailOf(s, 'one-robbery-does-not-end-the-tier');
+    expect(detail).toContain('1 of 3 runs');
+    expect(detail).toContain('calm/1312 after 18 waiting days');
+    // The two checks read the same runs and must not read them the same way:
+    // nobody hesitated in this grid, so the bench principle has nothing to say
+    // about it. That separation is the whole point of splitting them.
+    expect(verdictOf(s, 'the-bench-does-not-wait-on-an-errand')).toBe('holds');
+  });
+
+  it('holds once three quarters of the colonies that arrive get through', () => {
+    const s = sweep(
+      [
+        run('calm', { seed: 1, daysLived: 60, tech: THIRD_TIER + 2 }),
+        run('calm', { seed: 2, daysLived: 60, tech: THIRD_TIER + 1 }),
+        run('calm', { seed: 3, daysLived: 60, tech: THIRD_TIER + 1 }),
+        run('calm', { seed: 4, daysLived: 60, tech: THIRD_TIER }),
+      ],
+      60,
+      healthyArm(),
+      true,
+    );
+    expect(verdictOf(s, 'one-robbery-does-not-end-the-tier')).toBe('holds');
+    expect(detailOf(s, 'one-robbery-does-not-end-the-tier')).toContain('3 of 4 runs');
+  });
+
+  it('says nothing about the road when nobody got as far as the tier', () => {
+    // Hard country is mostly this, and scoring it as a pass would let a grid of
+    // colonies that never left the second tier certify a road none of them saw.
+    const s = sweep(
+      [run('harsh', { seed: 1, daysLived: 60, tech: THIRD_TIER - 3 })],
+      60,
+      healthyArm(),
+      true,
+    );
+    expect(verdictOf(s, 'one-robbery-does-not-end-the-tier')).toBe('untested');
   });
 
   it('breaks when a rich colony ends on a pile that never once came down', () => {

@@ -565,16 +565,37 @@ could not fix from inside itself.
 *How the colony finds the parts.* Left alone, the foreman scored a destination on
 `worth / (days + 1)` and nothing else, so an unattended colony would have sold
 steel to the best-paying neighbour forever while the last four projects sat at
-100% and waited. Destination scoring grew a second term: a town selling something
-the bench is short of scores ×3. It is a cliff rather than a curve, keyed on the
-*shortfall* — so it switches itself off the moment the crates land, and it is
-exactly ×1 for every town on every run that never reaches the third tier, which
-is what makes every sixty-day number measured before this change still comparable
-to the ones after it. It is deliberately smaller than the ×5 a town scores for
-opening the next ring, because parts cannot be fetched from behind a gate that is
-still shut. The two combine with `max`, not by multiplying: they are independent
-facts about the same trip, and ×15 would stop being a tiebreak and start being
-the only decision the foreman ever made.
+100% and waited. The first answer was a term in that scoring — a town selling
+something the bench is short of scores ×3 — and the arithmetic will not carry it.
+Scores go as `worth / (days + 1)`, so a five-day parts town needs a bonus of more
+than three just to draw level with a one-day neighbour, and the tie only holds
+while the pack is big: `RING_PACK` doubles what a middle-ring road carries, which
+is how distance is meant to pay for itself, and a pack sized by a letter is under
+the near town's limit too, so the multiplier cancels and the near town wins
+outright.
+
+So the errand is not a trade and is not ranked as one. `shoppingRun` picks its
+own destination — nearest road that ends at what the bench is short of, price
+only as a tiebreak between equals — because a project studied to the last point
+is not a good deal to be weighed against other good deals; it is the rest of the
+game, stopped, and the only thing that restarts it is a crate from a particular
+town. The ×3 survives in `pickDestination` as what it always actually was: a
+tiebreak on ordinary trade runs, keyed on the *shortfall*, switching itself off
+the moment the crates land and sitting at ×1 for every town on every run that
+never reaches the third tier — which is what keeps every sixty-day number
+measured before it comparable to the ones after.
+
+Two rules sit under that one. The colony refuses an open letter to make the trip,
+which costs standing at a neighbour and is the point: the letter will be posted
+again and the tier will not. And the shopping list is the shortfall *minus what
+the colony can make for itself*, because a third-tier bill reads a hundred and
+eighty steel and twelve components and those are not the same kind of number —
+the steel is a week of somebody swinging a pick and the parts are a workshop five
+days out. Before that filter, calm/424242 spent days forty and forty-two on two
+one-day steel runs while its own mine carried it from a hundred and twenty-nine
+steel to four hundred and fifty-five unaided. The filter is a priority and not a
+ban: a colony with no ore under it still buys steel, once parts are no longer
+outstanding.
 
 *What the guarantee cost, before it was made cheap.* A per-town roll leaves
 better than three maps in ten — (3/4)⁴, about 32% — with no parts anywhere on
@@ -616,16 +637,108 @@ let a real fall on the kind settings hide behind a number that was always going
 to be low. It costs nothing to check, it reads a grid that was already being
 measured, and it exists because a promise nothing measures is not a promise.
 
-*Not there yet:* `assemblies` and the far-ring top of the tier. The middle ring
+*The road problem, made legible.* The second slice opened on the failure the
+first one uncovered, and the first thing it had to fix was the instrument. `wait`
+counts the days a finished bench stood short of materials; it cannot tell
+*nobody was sent* from *sent, and robbed*, and the two want opposite fixes. That
+mattered immediately, because `the-bench-does-not-wait-on-an-errand` promises the
+colony **decides** — "standing still is allowed to cost a road; it is not allowed
+to cost a decision nobody made" — and the column it read was charging the road to
+the colony's account. calm/424242 chose the foundry on day thirty-six, had a
+party out on the fortieth, was robbed, sent it again, and finished on the
+fifty-seventh: seventeen stalled days, every one of them somebody walking, and
+the check called that a broken promise.
+
+So the column split. `unsent` counts only the days with nobody on the road,
+answered by a predicate exported from `settlements.ts` beside the rule it mirrors
+so the measure asks the sim rather than reimplementing it, and the bench
+principle now reads that against a two-day threshold — a decision, not a journey.
+`wait` stays beside it and is reported on every verdict, because the two together
+say something neither says alone: a big gap between them is a road problem, and
+no gap at all is a decision problem.
+
+The predicate was wrong the first time and the grid said so within one run. It
+asked whether the party on the road was out *for the bench*, which is the
+question the principle's name suggests and not the one it means. calm/99001
+failed on it — four unsent days of seven waiting — and a per-tick probe said why.
+A day-boundary sample is no good for this: `caravanAllowed` opens and shuts
+several times a day, sleep alone closing it for a third of one, so the probe
+counted every tick and blamed the first gate that tripped. Days fifty-four and
+fifty-five were shut all day and day fifty-six for nine tenths of it, all for the
+same reason — the colony's one spare settler had left on day forty-six for a
+ring-1 town, eight days before the bill existed, carrying thirty meals on an
+errand that was correct when it was chosen. The column was still charging a road
+to the colony's account. It had only stopped charging the bench's.
+
+So the predicate widened to `partyCommitted`: any party the colony has committed,
+wherever it went, and both states of a departure rather than one. `world.caravan`
+holds a party that has left the map, and before that the settler spends the
+better part of an hour walking to the road head with a `caravan` job in hand —
+about a sixth of a day in which a colony that has already decided still reads as
+undecided, and a day-boundary sample can land in it. `caravanAllowed` refuses on
+either for the same reason, which is the argument for the predicate living in
+`settlements.ts` beside it rather than in the eval half-knowing a rule the sim
+owns.
+
+Widening a measure until a red goes green is how a grid gets talked into lying,
+so the case for this one is that the excluded case is provably not the fault
+named. A party that walks past an available parts run to sell somewhere else *is*
+the fault — and that is forbidden in `jobs.ts` and pinned by nine unit tests in
+`tests/rings.test.ts`. What is left, a party sent on a good errand before the
+bill existed, is not the colony ignoring the bench; it is the colony having one
+settler. And the check still fails things: the day calm/99001 was home, free and
+sent nobody is counted and always was, and a colony that sits at home for a week
+still reads seven.
+
+It reads two against a threshold of two. That is a pass with no margin, which is
+worth writing down rather than smoothing over, along with the fact that the
+threshold was not raised to buy room. What the check can no longer say is the
+more interesting cost: a party already out is now *invisible* to it rather than
+slack against it. That is exactly right while a colony can field one party and
+stops being right the moment it can field two — which is the next slice, and the
+wording of the principle changes with it.
+
+What `wait` was really seeing then got its own promise, written open and before
+the feature that will satisfy it, the same way the tree principle was a tier
+early. `one-robbery-does-not-end-the-tier`: a colony that reaches the top of the
+free tree and walks for the parts finishes at least one project that costs it.
+Six of nine on the grid it was written against — calm/1312, settler/1312 and
+harsh/7 all stopped dead on the fifteenth project, the last one the tree gives
+away, and the two that were instrumented were both robbed on the first attempt
+and never got a second in. Neither hesitated. A ring-1 parts town is five days
+out at about one in six, so a colony that could absorb a setback should fail
+perhaps one time in thirty; three in nine is not a calendar edge.
+
+The third of those three is not this claim's failure, and the same probe caught
+it. harsh/7 reached the top of the free tree on day fifty-eight of sixty, and all
+seven of its trips went to the near ring: it never opened a road to a parts town
+at all. It did not lose the tier to a robbery — it arrived with two days left and
+nowhere to buy. Zero waiting days is what that looks like from outside, and it is
+a denominator problem rather than a road one; the claim wants scoping to the
+colonies that could actually have bought something. It is left uncorrected on
+purpose until the road answer lands, so that the before and the after are read
+off the same rule.
+
+*Not there yet:* the answer to that, and then `assemblies` and the far-ring top
+of the tier — in that order, because adding a *longer* road on top of an
+unanswered road problem makes it worse before it makes it better. The middle ring
 sells the parts; the far ring is still selling nothing that only it sells, which
-was the reason stage 1 left the autonomous far-ring walk on the table. That is
-the second slice of this stage, and the need bonus above is the mechanism it will
-reuse rather than a second one written for it. It carries the road problem with
-it: a tier bought one twelve-day round trip at a time is a tier one robbery can
-end, and adding a *longer* road to the top of it makes that worse before it makes
-it better. Whatever answers it — a second party, a standing order, a shorter
-first rung — belongs to that slice, and the `wait` column is already the place it
-will be read.
+was the reason stage 1 left the autonomous far-ring walk on the table, and the
+shopping run above is the mechanism it will reuse rather than a second one
+written for it. Of the three candidates — a second party, a standing order, a
+shorter first rung — the last two undo the thing `components` exists to be, the
+first material whose supply is a road rather than a patch of map. The second
+party is the one that matches the measured failure, which is not "the road is too
+long" but "the tier is bought one round trip at a time".
+
+The probe found one thing that party has to be designed around. `stepCaravan`
+seeds its own generator from the town's identity and its visit count and then
+increments the count, so a town's road luck is a pre-drawn deck and the visit
+number is the index into it. A second party does not buy a second chance at a bad
+card; it buys draws per day. That is the right thing to buy — the measured
+failure is the round-trip rate, not the robbery rate — but nothing about the
+robbery rate improves, and a design that quietly expected it to would be
+disappointed by a grid saying exactly what it says now.
 
 **3 — The three roads get ladders the player can see.** A visible tally per road,
 built on `objectives.ts` and `alerts.ts`, which already do this kind of work. No

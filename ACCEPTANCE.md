@@ -14,10 +14,10 @@ Four sections: [the killer feature](#the-killer-feature),
 and [what still wants a human](#what-still-wants-a-human) — which is the long one, and is
 ordered to match `PLAYTEST.md` rather than by importance.
 
-Last run — 2026-08-10:
+Last run — 2026-08-11:
 
 - `npx tsc --noEmit` clean.
-- `npm test` — **89 of 91 files, 1,643 tests green**, 13 skipped, in 1,112 s. The skips are
+- `npm test` — **89 of 91 files, 1,661 tests green**, 13 skipped, in 849 s. The skips are
   the opt-in gates and nothing else: the 1000-day ecosystem sweep (`ECO`), the survival sweep
   (`SWEEP`), the balance grid (`BALANCE`), the liveness census (`LIVE`) and the eval pool
   (`POOL`). Each is a `describe.runIf` on its environment variable, so a skip is a gate
@@ -32,37 +32,56 @@ Last run — 2026-08-10:
   on a loaded machine is not evidence of anything, in either direction.
 - `npm run eval` — 11 tests green across five seeds, no collapses.
 - `npm run measure -- --days 60 --past-founding` then `npm run balance` — 4 tests green.
-  24 colonies in 2,355 s. All **fourteen** enforced principles hold; the four open ones
-  report without asserting, and one of them (*the valley can still bury somebody*) holds
-  too. The three that do not are the standing findings.
+  24 colonies in 1,154 s. Twenty principles are scored: all **fifteen** enforced ones
+  hold, and of the five open ones — reported without asserting — two hold as well. The
+  three that do not are the standing findings.
   *Nobody starves beside a full pantry* — 7 of 15 runs, each bottoming out at exactly
-  0.00 while the colony held thirteen to twenty-two days of food. That is one fewer than
-  the previous grid, and the run that left was the quiet-valley one, so the seven are now
-  3 Settler and 4 Hard country: the finding is weaker than it was, because it now
-  correlates with difficulty and can no longer be told apart from Hard country being hard
-  by this measurement alone.
+  0.00 while the colony held thirteen to twenty-two days of food. Three Settler maps and
+  four Hard country ones, unchanged across the last two grids. That spread is a weaker
+  position than the older one it replaced, which included a quiet-valley run: the finding
+  now correlates with difficulty and cannot be told apart from Hard country being hard by
+  this measurement alone. The argument that it is still a feeding failure rests on the
+  mechanism — a settler at 0.00 beside three weeks of meals — and not on the spread.
   *The escalation ladder is climbable to the top* — highest rung reached anywhere was
-  3 of 4; the five Hard country maps read 0, 1, 1, 0, 1.
-  *The surplus finds a buyer* — 2 of the 9 runs that ended rich never spent the pile down
-  by a quarter (calm/1312 ended on 986 steel with a largest fall of 196; settler/1312 on
-  757 with 123). It was 4 of 10 before the third research tier landed, and both survivors
-  are the same seed on two settings — the two runs whose caravan never made it home with
-  a delivery at all, which is a road problem rather than a demand problem and is written
-  up as such in `ENDGAME.md`.
-  Its pair, *the tree is not empty at day sixty*, now **holds**: no run of the fourteen
-  that played a full clock stood at an empty bench for a week, the furthest anybody got
-  was calm/99001 at 18 projects of 19, the longest idle stretch was 0 days, and colonies
-  spend 6.6 days a run waiting on a parts delivery — worst 22.
+  2 of 4; the five Hard country maps read 0, 1, 1, 0, 1. The ceiling has come down from a
+  lone calm map that once touched 3, with nothing done to the ladder in between, so the
+  peak is a seed artefact. The floor is the finding.
+  *One robbery does not end the tier* — 6 of the 9 runs that reached the third tier
+  finished a project inside it (67 %, against a 75 % bar). calm/1312 stopped dead after 18
+  waiting days and settler/1312 after 13, both robbed on the road; harsh/7 stopped after
+  **0**, which is a different fault wearing the same number — it reached the tier on day
+  58 of 60 having sent all seven of its trips to the near ring, so it never opened a road
+  to a parts town at all. The denominator wants scoping to colonies that could have
+  bought something, and it is deliberately left alone until the road answer lands so the
+  before and after are read off one rule.
+  Its pair, *the tree is not empty at day sixty*, **holds**: no run of the fourteen that
+  played a full clock stood at an empty bench for a week, the furthest anybody got was
+  calm/20260729 at 19 projects of 19 with a single idle day, and colonies spend 5.9 days a
+  run waiting on a parts delivery — worst 18.
+  *The surplus finds a buyer* has come good and stays open: all 9 runs that ended above
+  300 steel spent at least a quarter of the pile down at some point, the thinnest being
+  settler/99001 at 36 % of 884. A grid ago it was 2 of 9. Nothing was aimed at it — the
+  road work gave the pile somewhere to go — and it stays open because one grid's agreement
+  is a reading rather than a promise.
   Three enforced principles are what stage one of `ENDGAME.md` was for, and the first two
   are a pair on purpose. *The far ring is earned* — shut for all fifteen runs through
   day 7, and 7 of the 10 runs below Hard country had it open by day 42, the earliest on
   day 16. *The long road is walked* — 10 of 10 below Hard country sent two or more trade
-  parties past the near ring, mean trips by ring 4.6/3.0/0.1. That one exists because the
+  parties past the near ring, mean trips by ring 3.6/3.4/0.1. That one exists because the
   first measured only permission and read like traffic. *The first act is finishable* —
-  7 of the 10 below Hard country reached the founding (70%, against a 50% floor); the
-  three that never got there were calm/1312, settler/99001 and settler/424242. It was
-  written after a regression halved the foundings while every other principle on the board
-  still read HOLDS.
+  6 of the 10 below Hard country reached the founding (60 %, against a 50 % floor); the
+  four that never got there were calm/1312, calm/424242, settler/99001 and settler/424242.
+  It was written after a regression halved the foundings while every other principle on
+  the board still read HOLDS.
+  Stage two's own check, *the bench does not wait on an errand*, holds on its second
+  reading: all 9 runs that reached the third tier had a party committed within 2 days,
+  mean 0.6, while the road itself took 9.2 days a run — which is the split the principle
+  exists to make, since a colony is allowed to spend a fortnight walking and is not
+  allowed to spend three days deciding. **The longest gap is calm/99001 at exactly the
+  2-day threshold: a pass with no margin.** The threshold was not raised to buy room, and
+  what it costs is written up in `ARCHITECTURE.md` — a party already out is invisible to
+  this check rather than slack against it, which is right for a colony that can field one
+  party and stops being right the moment it can field two.
 - `npm run build` — 900.07 kB JS (256.51 kB gzip), 23.07 kB CSS (5.04 kB gzip).
 - Dev server on `5063`, play server on `5062` — and on the same port at this machine's
   LAN address, which is deliberately not written down here because it changes with the

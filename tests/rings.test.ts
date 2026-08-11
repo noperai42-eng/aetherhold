@@ -37,10 +37,14 @@ import {
   RELATIONS_MAX,
   RELATIONS_PER_VISIT,
   VALUE,
+  bestTalker,
   caravanOf,
+  departCaravan,
   ensureParts,
+  packCeiling,
   packLimit,
   packMultiple,
+  partyCommitted,
   pickDestination,
   planCaravan,
   quote,
@@ -50,25 +54,34 @@ import {
   ringOpen,
   settlementById,
   settlementsOf,
+  shoppingRun,
+  spareGoods,
   withinRange,
 } from '../src/sim/settlements';
-import { COMMISSION_EVERY, commissionOf, tickCommissions } from '../src/sim/commissions';
+import {
+  COMMISSION_EVERY,
+  answerable,
+  commissionOf,
+  tickCommissions,
+} from '../src/sim/commissions';
+import { assignJob } from '../src/sim/jobs';
 import {
   RESEARCH,
   addResearchPoints,
   hasResearch,
   researchNeeds,
+  researchStalled,
   setProject,
 } from '../src/sim/research';
 import type { ResearchId } from '../src/sim/research';
-import { addItem, livingColonists, removeItem } from '../src/sim/world';
+import { addBuilding, addItem, livingColonists, removeItem } from '../src/sim/world';
 import { Rng } from '../src/sim/rng';
 import { makePawn } from '../src/sim/pawn';
 import { makeStreams, stepWorldN } from '../src/sim/tick';
 import { createWorld } from '../src/sim/worldgen';
 import { deserialize, serialize } from '../src/sim/save';
 import { TICKS_PER_DAY } from '../src/sim/types';
-import type { ResourceKind, Settlement, World } from '../src/sim/types';
+import type { Pawn, ResourceKind, Settlement, World } from '../src/sim/types';
 
 const KINDS: ResourceKind[] = ['wood', 'steel', 'rawfood', 'meal', 'medicine'];
 
@@ -869,5 +882,420 @@ describe('the parts town', () => {
     // the crate of parts is the whole of what the bench was waiting for.
     expect(researchNeeds(world)).toEqual([]);
     expect(pickDestination(world, 'steel', 600)!.id).toBe(idle!.id);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// the bench outranks the errand
+// ---------------------------------------------------------------------------
+
+/**
+ * A colony has one trading party, and everything in this block follows from it.
+ * Whatever that party is doing is the whole of what the colony is doing on the
+ * road, so the choice between an open letter and a shopping trip is not a
+ * preference between two errands — it is a fortnight of the trade economy going
+ * one way or the other.
+ *
+ * The letter used to win outright. On the sixty-day grid that read as a finished
+ * bench standing still for up to twenty-two days while the only settler who could
+ * have fetched its parts carried meal to a neighbour, and the parts town five days
+ * out went unvisited for the whole of it. So the rule bends exactly once: a bench
+ * that has finished studying outranks the letter, *provided* there is somewhere to
+ * shop and something to carry.
+ *
+ * Both provisos get a test of their own, because both exist to stop the same
+ * failure — a colony that refuses the errand and then does not go anywhere either,
+ * which costs the standing and buys nothing. A guard that is never the reason for
+ * an answer is a guard nobody would notice losing.
+ */
+
+/**
+ * A colony on the exact morning this rule is about: parts wanted, a letter open,
+ * and one settler free to answer either.
+ *
+ * Built by hand rather than played into. The state is four coincidences deep and
+ * a real run arrives at it somewhere around day forty of sixty — which is a fine
+ * thing to watch once, and it is watched once at the bottom of this block, but a
+ * terrible thing to spend four tests re-deriving.
+ */
+function atTheCrossroads(seed = 20260805): {
+  world: World;
+  pawn: Pawn;
+  letter: Settlement;
+  parts: Settlement;
+} {
+  const world = colony(seed);
+  grownTo(world, 6);
+  // Standing at both inner rings, which does two things at once: it opens the
+  // middle ring, where the parts are, and it takes the gate bonus off the middle
+  // ring's towns by making the vouch already earned. Without that second half the
+  // parts town would be preferred for the wrong reason — every one of its
+  // neighbours would be carrying a gate bonus of five against its need bonus of
+  // three, and the trip that got picked would be the one that opens the far ring
+  // rather than the one that feeds the bench.
+  vouch(world, 0, PASSAGE_RELATIONS);
+  vouch(world, 1, PASSAGE_RELATIONS);
+  stock(world, 'meal', 900);
+  stock(world, 'steel', 600);
+  const parts = settlementsOf(world).find((s) => s.sells === 'components')!;
+  expect(parts).toBeDefined();
+  expect(withinRange(world, parts).ok).toBe(true);
+
+  // A finished bench with an unpaid bill: every point the project asks for is in,
+  // and the only thing between this colony and the third tier is a crate somebody
+  // has to walk five days for.
+  grantThrough(world, 'plateworks');
+  expect(setProject(world, 'foundry')).toBe(true);
+  world.research.progress = RESEARCH.foundry.cost;
+  expect(researchStalled(world)).toBe(true);
+
+  // The letter, posted by hand at a near-ring town for the reason the stale-letter
+  // block gives: which town writes is `pickRequest`'s business, and what is under
+  // test here is what the foreman does with a letter, not where it came from.
+  const letter = inRing(world, 0)[0]!;
+  world.tick = Math.floor(TICKS_PER_DAY / 2);
+  world.commission = {
+    settlementId: letter.id,
+    kind: 'meal',
+    amount: PACK_SIZES.meal,
+    reason: 'a hard winter',
+    postedTick: world.tick,
+    dueTick: world.tick + TICKS_PER_DAY * 14,
+  };
+  expect(answerable(world)).not.toBeNull();
+
+  // Midday, fed and rested, and trading is the only thing on anybody's board —
+  // so the one decision this colony is in a position to make is the one under
+  // test. `caravanAllowed` asks whether the settler is hungry or tired in exactly
+  // those words, and a colony that answers yes never reaches the rule at all.
+  for (const p of livingColonists(world)) {
+    p.needs.food = 1;
+    p.needs.rest = 1;
+    p.needs.recreation = 1;
+    for (const k of Object.keys(p.priorities) as Array<keyof typeof p.priorities>) {
+      p.priorities[k] = 0;
+    }
+    p.priorities.caravan = 1;
+  }
+  const pawn = bestTalker(world)!;
+  expect(pawn).toBeDefined();
+
+  // The premise the four tests below all lean on, asserted rather than assumed:
+  // *if* a shopping trip is taken, it ends at the parts town. That keeps every
+  // claim here a claim about `jobs.ts` choosing between two trips, and not a
+  // second copy of the ranking test above.
+  const spare = spareGoods(world, packCeiling(world))!;
+  expect(spare).not.toBeNull();
+  expect(shoppingRun(world, spare.kind)?.id).toBe(parts.id);
+
+  return { world, pawn, letter, parts };
+}
+
+/** The caravan job on the board, if the foreman made one this morning. */
+const caravanJob = (world: World) => world.jobs.find((j) => j.kind === 'caravan') ?? null;
+
+describe('the bench outranks the errand', () => {
+  it('sends the only party for parts and lets the letter keep', () => {
+    const { world, pawn, letter, parts } = atTheCrossroads();
+    assignJob(world, pawn);
+
+    const job = caravanJob(world);
+    expect(job).not.toBeNull();
+    expect(job!.settlementId).toBe(parts.id);
+
+    // The letter is not cancelled, not rewritten to somewhere easier, and not
+    // quietly marked answered. It sits there, and the colony will pay for having
+    // left it — that is the trade being made, not a bug in it.
+    expect(commissionOf(world)?.settlementId).toBe(letter.id);
+
+    // And the player is told which neighbour is being kept waiting, by name. From
+    // the outside the two departures look identical — a settler walking off with a
+    // pack — and somebody about to lose standing at a town is owed the sentence
+    // that explains why.
+    const said = world.messages.at(-1)!.text;
+    expect(said).toMatch(/the bench needs what they sell/);
+    expect(said).toContain(letter.name);
+  });
+
+  it('leaves for the parts while the bench is still studying', () => {
+    const { world, pawn, letter, parts } = atTheCrossroads();
+    // One thing changed: the points are not all in yet. The bill is, though, and
+    // the bill is what the foreman reads. A colony that waited for the bar to
+    // fill before it thought about the crates would spend the round trip
+    // standing at a finished bench — which is what the first cut of this rule
+    // did, and it cost calm/1312 the tier by five days on a sixty-day clock.
+    world.research.progress = 0;
+    expect(researchStalled(world)).toBe(false);
+    expect(researchNeeds(world).map((n) => n.kind)).toEqual(['components']);
+
+    assignJob(world, pawn);
+    expect(caravanJob(world)!.settlementId).toBe(parts.id);
+    expect(commissionOf(world)?.settlementId).toBe(letter.id);
+  });
+
+  it('answers the letter as usual once the crates are in the yard', () => {
+    const { world, pawn, letter } = atTheCrossroads();
+    // The self-cancelling half, and the reason this rule needs no off switch:
+    // the bill is paid, so there is nothing for the errand to outrank and the
+    // very next letter is answered like any other. Note the project is still
+    // unfinished and still selected — a settler has to sit at the bench and add
+    // the last point before the crates are spent — so this is genuinely the
+    // shortfall going empty and not the project going away.
+    stock(world, 'components', RESEARCH.foundry.materials!.components!);
+    expect(researchNeeds(world)).toEqual([]);
+    expect(researchStalled(world)).toBe(false);
+    expect(hasResearch(world, 'foundry')).toBe(false);
+
+    assignJob(world, pawn);
+    expect(caravanJob(world)!.settlementId).toBe(letter.id);
+    expect(world.messages.at(-1)!.text).toMatch(/asked for/);
+  });
+
+  it('will not spend the road on a thing the colony digs up for itself', () => {
+    const { world, pawn, parts } = atTheCrossroads();
+    // The whole third-tier bill instead of the half the helper leaves standing:
+    // the foundry wants a hundred and eighty steel as well as the twelve parts,
+    // and with the stockpile under that both are outstanding at once.
+    stock(world, 'steel', 60);
+    expect(
+      researchNeeds(world)
+        .map((n) => n.kind)
+        .sort(),
+    ).toEqual(['components', 'steel']);
+
+    // And there is a nearer road that ends at steel — which is the only reason
+    // this test says anything. A shortfall is not automatically an errand: the
+    // steel is a week of somebody swinging a pick and the colony is already
+    // swinging it, so buying that road costs the one party it has and finishes
+    // nothing. calm/424242 spent days forty and forty-two exactly this way.
+    const steelTown = settlementsOf(world)
+      .filter((s) => s.sells === 'steel' && withinRange(world, s).ok)
+      .sort((a, b) => a.days - b.days)[0]!;
+    expect(steelTown).toBeDefined();
+    expect(steelTown.days).toBeLessThanOrEqual(parts.days);
+
+    const spare = spareGoods(world, packCeiling(world))!;
+    expect(shoppingRun(world, spare.kind)?.id).toBe(parts.id);
+    assignJob(world, pawn);
+    expect(caravanJob(world)!.settlementId).toBe(parts.id);
+  });
+
+  it('buys the steel anyway once the parts are the only thing not outstanding', () => {
+    const { world, parts } = atTheCrossroads();
+    // The other half of the same rule, and the reason it is a priority rather
+    // than a ban. Parts in the yard, steel still short: there is now nothing on
+    // the bill that a road is the only source of, so the road goes back to being
+    // worth walking for whatever is left. In a run this is the sequence rather
+    // than a special case — the long road while the mine works, then the short
+    // one for whatever the mine did not finish.
+    stock(world, 'components', RESEARCH.foundry.materials!.components!);
+    stock(world, 'steel', 60);
+    expect(researchNeeds(world).map((n) => n.kind)).toEqual(['steel']);
+
+    const spare = spareGoods(world, packCeiling(world))!;
+    const bought = shoppingRun(world, spare.kind);
+    expect(bought).not.toBeNull();
+    expect(bought!.sells).toBe('steel');
+    expect(bought!.id).not.toBe(parts.id);
+  });
+
+  // The three cases below are what the balance grid reads through, and they are
+  // here rather than in the eval because the eval must not own this definition.
+  // A measure that reimplemented "has this colony got anybody to send" would be
+  // free to drift away from the rule it is grading, and the day it did, the grid
+  // would go on reporting confidently about a game that had changed underneath
+  // it.
+
+  it('counts a party out for a neighbour, not just one out for the bench', () => {
+    const { world, pawn, letter, parts } = atTheCrossroads();
+    // Nobody out and nothing queued: this is the state the grid is entitled to
+    // charge for, and the only one.
+    expect(researchStalled(world)).toBe(true);
+    expect(partyCommitted(world)).toBe(false);
+
+    const spare = spareGoods(world, packCeiling(world))!;
+    expect(departCaravan(world, pawn, letter, { kind: spare.kind, amount: 10 })).toBe(true);
+    expect(caravanOf(world)!.settlementId).toBe(letter.id);
+
+    // Out for the wrong town, and still committed. This is calm/99001: the party
+    // left for a neighbour on day forty-six, correctly, when the bench was short
+    // of nothing, and the bill appeared on day fifty-four with the settler three
+    // days from home. A colony with one settler cannot recall them, so there is
+    // no decision left to grade — and an earlier cut of this predicate asked
+    // where the party was going and duly charged three such days as indecision.
+    expect(partyCommitted(world)).toBe(true);
+    expect(parts.id).not.toBe(letter.id);
+  });
+
+  it('counts the settler still walking to the road head', () => {
+    const { world, pawn } = atTheCrossroads();
+    assignJob(world, pawn);
+
+    // Decided, loaded, and not yet off the map: the job is on the board and
+    // `world.caravan` is still empty. It is the better part of an hour, which is
+    // nothing to a colony and about a sixth of a day-boundary sample — so a
+    // measure that read only `world.caravan` would charge roughly one departure
+    // in six as a day nobody decided anything.
+    expect(caravanJob(world)).not.toBeNull();
+    expect(caravanOf(world)).toBeNull();
+    expect(partyCommitted(world)).toBe(true);
+  });
+
+  it('goes on counting the walk home, including the one after a robbery', () => {
+    const { world, pawn, parts } = atTheCrossroads();
+    const spare = spareGoods(world, packCeiling(world))!;
+    departCaravan(world, pawn, parts, { kind: spare.kind, amount: 10 });
+    expect(partyCommitted(world)).toBe(true);
+
+    // Robbed: the pack is gone, the party turns for home with nothing. The trip
+    // has failed and the settler is still not available — the claim the grid
+    // reads this for says standing still is *allowed* to cost a road, and a
+    // settler limping back up the valley empty-handed is that road being paid
+    // for at its worst.
+    // Set by hand in exactly the shape `stepCaravan` leaves behind — no deal, a
+    // hurt settler, and the same destination it set out for — rather than rolling
+    // the road dice, so the case is the robbery and not the luck.
+    const out = caravanOf(world)!;
+    out.take = null;
+    out.pawn.hp = Math.max(12, Math.round(out.pawn.maxHp * 0.35));
+    out.phase = 'inbound';
+    expect(partyCommitted(world)).toBe(true);
+
+    // And home again, with the bench still short: nothing queued, nobody out,
+    // and from here on the colony owes an answer.
+    world.caravan = null;
+    expect(researchStalled(world)).toBe(true);
+    expect(partyCommitted(world)).toBe(false);
+  });
+
+  it('keeps answering letters when there is nowhere to buy what the bench wants', () => {
+    const { world, pawn, letter, parts } = atTheCrossroads();
+    // The vouch withdrawn: the middle ring shuts, and with it the only road on
+    // the map that ends at a crate of parts. This is the case the guard exists
+    // for. A colony that refused errands here would stand still *and* lose the
+    // standing that is its one way back onto that road — it would be trading away
+    // the thing it is short of to protest being short of it.
+    vouch(world, 0, 0);
+    expect(withinRange(world, parts).ok).toBe(false);
+    expect(researchStalled(world)).toBe(true);
+    const spare = spareGoods(world, packCeiling(world))!;
+    expect(shoppingRun(world, spare.kind)).toBeNull();
+
+    assignJob(world, pawn);
+    expect(caravanJob(world)!.settlementId).toBe(letter.id);
+  });
+
+  it("spends the letter's own pack on the bench when there is no surplus", () => {
+    const { world, pawn, letter, parts } = atTheCrossroads();
+    // A pantry that can answer the letter and cannot fill a pack of its own:
+    // `answerable` measures against `COMMISSION_KEEP` and `spareGoods` against
+    // the much higher `SURPLUS`, so the two disagree across a wide and perfectly
+    // ordinary range of stores. Every other line cleared to put the colony
+    // squarely inside it.
+    for (const kind of KINDS) stock(world, kind, 0);
+    // Meal for the road and none of it spare; steel enough that the bench is
+    // short of the crate and nothing else, and still under the surplus line.
+    stock(world, 'meal', 120);
+    stock(world, 'steel', 200);
+    expect(answerable(world)).not.toBeNull();
+    expect(spareGoods(world, packCeiling(world))).toBeNull();
+    expect(researchStalled(world)).toBe(true);
+    expect(researchNeeds(world).map((n) => n.kind)).toEqual(['components']);
+    // The road to the parts town is still open — 120 meals is far more than the
+    // forty that road eats there and back — so a wrong answer below cannot be
+    // blamed on the pantry having shut it.
+    expect(withinRange(world, parts).ok).toBe(true);
+    expect(shoppingRun(world, 'meal')?.id).toBe(parts.id);
+    // And a pack of meal is the *worst* case for the rule, which is why it is
+    // the one left here: the parts town is five days out and does not deal in
+    // food, so `pickDestination` would send this pack up the valley to the
+    // neighbour who does. Nothing but the stalled bench sends it the other way.
+    expect(pickDestination(world, 'meal', PACK_SIZES.meal)!.id).not.toBe(parts.id);
+
+    // The first version of this rule read the surplus alone here, and this state
+    // is where that fell over: the colony could afford to *give* the pack away
+    // and could not afford to *spend* it, which is not a coherent position for
+    // anyone to hold about their own barn. On the sixty-day grid it cost
+    // calm/424242 eleven days — day forty-two to day fifty-three, eight medicine
+    // walked out to a meal town, while the bench waited on steel that the
+    // letter's own neighbour sells.
+    assignJob(world, pawn);
+    const job = caravanJob(world);
+    expect(job).not.toBeNull();
+    expect(job!.settlementId).toBe(parts.id);
+    expect(job!.resource).toBe('meal');
+    expect(commissionOf(world)?.settlementId).toBe(letter.id);
+  });
+
+  it('stays home when there is nothing to carry at all', () => {
+    const { world, pawn, parts } = atTheCrossroads();
+    // No surplus and no letter: the two things that could have filled a pack,
+    // both gone. A stalled bench is not a reason to send somebody down the road
+    // with an empty sack, and the guard that makes the letter's pack available
+    // above must not turn into one that invents a pack here.
+    for (const kind of KINDS) stock(world, kind, 0);
+    stock(world, 'meal', 120);
+    world.commission = null;
+    expect(answerable(world)).toBeNull();
+    expect(spareGoods(world, packCeiling(world))).toBeNull();
+    expect(researchStalled(world)).toBe(true);
+    // Stated so the null below can only be read one way: the road to the parts
+    // is open and the bench is waiting, and the party still does not leave.
+    expect(withinRange(world, parts).ok).toBe(true);
+
+    assignJob(world, pawn);
+    expect(caravanJob(world)).toBeNull();
+  });
+
+  it('plays it forward: a colony nobody is steering finishes a project that costs parts', () => {
+    // The experience half. Everything above stops at the decision; this one lets
+    // the decision be walked, and the walk is the part that was actually broken —
+    // a foreman that picks the parts town and a colony that gets the parts are
+    // separated by ten days of open road, a haggle, and the walk home.
+    const { world, parts } = atTheCrossroads();
+    const streams = makeStreams(world);
+    expect(hasResearch(world, 'foundry')).toBe(false);
+
+    // Somebody has to be willing to work the bench, which the crossroads colony
+    // above is not — it was narrowed to one decision on purpose. It matters more
+    // than it looks: the bill is paid from inside `addResearchPoints`, so a
+    // project standing at full progress with the crates already in the yard does
+    // not finish itself. A settler has to sit down at it and add the next point.
+    // Without this line the parts arrive on day thirteen, `researchNeeds` goes
+    // empty, and the tier still never lands.
+    //
+    // A bench to sit at, too. A colony does not start with one and this one is
+    // not building anything, so it is put up already finished — the subject here
+    // is the road, and a test that also has to play out a construction queue is
+    // testing two things and diagnosing neither.
+    const home = livingColonists(world)[0]!;
+    addBuilding(world, 'lab', Math.round(home.x) + 2, Math.round(home.y), true);
+    for (const p of livingColonists(world)) p.priorities.research = 1;
+
+    // Three weeks, which is a ten-day round trip and change: enough that a party
+    // set upon on the way out can limp home and a second one leave. Fed as it
+    // goes, for the reason the stale-letter test gives — the subject is the road,
+    // not the settlers' stomachs.
+    const deadline = world.tick + TICKS_PER_DAY * 21;
+    let went: number | null = null;
+    while (!hasResearch(world, 'foundry') && world.tick < deadline) {
+      stepWorldN(world, streams, 60);
+      const out = caravanOf(world);
+      if (out && went === null) went = out.settlementId;
+      for (const p of livingColonists(world)) {
+        p.needs.food = 1;
+        p.needs.rest = 1;
+      }
+    }
+
+    // Where the first party went, which is the decision under test having survived
+    // contact with the sim rather than having been asserted at the moment it was
+    // made.
+    expect(went).toBe(parts.id);
+    // And the tier moved. Not "components arrived" — the bill is paid the tick the
+    // crates land and the pile goes back to nothing, so the honest evidence that
+    // the road worked is the project on the other side of it.
+    expect(hasResearch(world, 'foundry')).toBe(true);
+    expect(researchStalled(world)).toBe(false);
   });
 });

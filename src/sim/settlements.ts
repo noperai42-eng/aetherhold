@@ -154,6 +154,29 @@ const MADE_GOODS: ReadonlySet<ResourceKind> = new Set(
 );
 
 /**
+ * Everything the colony can put in its own stockpile without a road.
+ *
+ * Half of it is the recipe book, so a new bench recipe lands here for free. The
+ * other half is the four things that come out of the ground or off an animal and
+ * so have no recipe to be read from: `jobs.ts` mines steel and fells wood, and
+ * raw food arrives from a field, a forage or a butchered carcass, which is also
+ * where hide comes from.
+ *
+ * Written as what the colony *can* make rather than as what it cannot, because
+ * the list of things it cannot make is one item long today and the whole design
+ * of the tier is that the list grows: `components` is the first material whose
+ * supply is a road rather than a patch of map, and it will not be the last. The
+ * complement is the interesting set and it should be derived, not maintained.
+ */
+const HOMEGROWN: ReadonlySet<ResourceKind> = new Set<ResourceKind>([
+  ...MADE_GOODS,
+  'wood',
+  'steel',
+  'rawfood',
+  'hide',
+]);
+
+/**
  * Standing gained by walking a pack to somebody's door, by ring.
  *
  * A longer road is a bigger commitment and the people at the far end of it know
@@ -1130,6 +1153,110 @@ const GATE_BONUS = 5;
  * so far — it is 1 for every town on the map and this changes nothing.
  */
 const NEED_BONUS = 3;
+
+/**
+ * What the bench is short of that a road is the only way to get.
+ *
+ * A shortfall is not automatically an errand. A third-tier bill reads something
+ * like a hundred and eighty steel and twelve components, and those two numbers
+ * are not the same kind of number: the steel is a week of somebody swinging a
+ * pick, and the components are a workshop five days out. A colony that treats
+ * them alike sends its one party up the valley for a crate of the thing it is
+ * already digging out of the hillside, which is how calm/424242 spent days forty
+ * and forty-two on two one-day steel runs while sitting on a mine that carried it
+ * from a hundred and twenty-nine steel to four hundred and fifty-five unaided.
+ * Five days of the only party the colony has, bought with a road, for a thing the
+ * road was not needed for.
+ *
+ * So the list is the shortfall minus everything the colony can put in its own
+ * stockpile — and only if something survives that. The fallback is not a
+ * safety net, it is the other half of the rule: a colony with no ore under it and
+ * no cook is a colony for which steel *is* a road, and it should buy steel. What
+ * the filter says is only that parts come first while parts are outstanding, and
+ * that is also the right order in sequence — the long road while the mine works,
+ * then the short one for whatever the mine did not finish.
+ */
+function shoppingList(world: World): Set<ResourceKind> {
+  const short = researchNeeds(world).map((n) => n.kind);
+  const road = short.filter((k) => !HOMEGROWN.has(k));
+  return new Set(road.length > 0 ? road : short);
+}
+
+/**
+ * The nearest open road that ends at what the bench is waiting on, or null.
+ *
+ * A different question from `pickDestination` and deliberately not asked through
+ * it. That one ranks *profit* — what comes home, discounted by the walk — and
+ * `NEED_BONUS` is a thumb on its scale. This one is not a trade at all. A third-
+ * tier project that has been studied to the last point and wants twelve
+ * components is not a good deal to be weighed against other good deals; it is
+ * the rest of the game, stopped, and the only thing that restarts it is a crate
+ * from a particular town. So the shopping run picks its own destination and the
+ * ranking is not consulted.
+ *
+ * The first cut of this rule did ask the ranking — refuse the letter, then let
+ * `pickDestination` choose — and the arithmetic will not carry it. Scores go as
+ * `worth / (days + 1) * bonus`, so a five-day parts town needs `NEED_BONUS` to
+ * beat a factor of three just to draw level with a one-day neighbour, and three
+ * is exactly what it is. Worse, the tie only holds while the pack is big:
+ * `RING_PACK` doubles what a middle-ring road carries, which is how distance is
+ * meant to pay for itself, and a pack sized by the *letter* — thirty meal, fifty
+ * steel — is under the near town's limit too, so the multiplier cancels and the
+ * near town wins outright. A colony that turned a neighbour down and then walked
+ * its pack one day up the valley to a town with no crates would have paid the
+ * standing for nothing. One decision, made once, in one place.
+ *
+ * Nearest, then whoever pays best for what is being carried: the whole cost of
+ * this trip is the days the bench spends idle, so it buys the shortest road, and
+ * only sorts on price when two roads are the same length.
+ */
+export function shoppingRun(world: World, give: ResourceKind): Settlement | null {
+  const wanted = shoppingList(world);
+  if (wanted.size === 0) return null;
+  let best: Settlement | null = null;
+  for (const s of settlementsOf(world)) {
+    if (!wanted.has(s.sells) || !withinRange(world, s).ok) continue;
+    if (
+      best === null ||
+      s.days < best.days ||
+      (s.days === best.days && rateOf(s, 0, give) > rateOf(best, 0, give))
+    ) {
+      best = s;
+    }
+  }
+  return best;
+}
+
+/**
+ * Is the colony's party already spoken for?
+ *
+ * The measure needs this and the sim is the only place that can answer it
+ * honestly. A colony standing at a finished bench is either standing still or
+ * already walking, and from the outside those look identical: the research bar
+ * is full and the bill is unpaid either way. The difference is whether there was
+ * anybody left to send, and the claim the bench principle makes turns entirely
+ * on it — standing still is *allowed* to cost a road, and a colony whose one
+ * settler is nine days into somebody else's road has no decision left to make.
+ *
+ * Both states, because a departure has two. `world.caravan` holds a party that
+ * has left the map; before that the settler spends the better part of an hour
+ * walking to the road head with a `caravan` job in hand, and a colony in that
+ * hour has decided. `caravanAllowed` above refuses on either for the same
+ * reason, and a measure that read only the first would charge a day of
+ * indecision to a colony that was already loading the pack — about one day in
+ * six, since that is the share of a day the walk-up takes.
+ *
+ * Deliberately silent on *where* the party went. The first cut of this asked
+ * whether the trip was for the bench, and it was too narrow by exactly the case
+ * that matters: a party sent on a good errand before the bill existed is not the
+ * colony ignoring the bench, it is the colony having one settler. Where a
+ * committed party is going is a question for the road, which is a different
+ * fault with a different fix.
+ */
+export function partyCommitted(world: World): boolean {
+  if (world.caravan) return true;
+  return world.jobs.some((j) => j.kind === 'caravan');
+}
 
 /**
  * Where an unasked trade run would go, or null if none is worth making.

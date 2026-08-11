@@ -22,6 +22,7 @@
  */
 
 import { DIFFICULTY_ORDER } from '../sim/difficulty';
+import { RESEARCH, RESEARCH_ORDER } from '../sim/research';
 import { armedShareOf, avg, on, type RunMeasure, type Sweep } from './sweep';
 
 export type PrincipleVerdict = 'holds' | 'broken' | 'untested';
@@ -111,6 +112,65 @@ const IDLE_WEEK = 7;
  */
 const A_PILE = 300;
 const SPENT_SHARE = 0.25;
+
+/**
+ * Days a finished bench may stand with nobody on the road before it is a fault.
+ *
+ * Two, and it is a decision rather than a journey. The first cut of this
+ * threshold was ten — a round trip, five days out to the parts town and five
+ * back — on the reasoning that ten days is the wait a colony cannot avoid and
+ * the eleventh is one it did not set out for. The reasoning was sound and the
+ * column it was written against could not carry it: `stalledDays` counts the
+ * walk as well as the wait, so a party that left on the first morning and was
+ * robbed on the fourth day spent seventeen days stalled while doing everything
+ * the claim asks. calm/424242 is that run, and it *finished the tier*.
+ *
+ * So the threshold moved to the column that means what the claim says.
+ * `unsentDays` counts only the days the colony had a party free and did not send
+ * it, and against that a round trip is not the unit — the unit is how long a
+ * colony may take to notice. Two days: one for the bench to finish and the job
+ * pass to see it, one for a settler to put down what is in their hands and come
+ * looking for the next thing. Three is a colony that had somebody spare, knew
+ * what it needed, and stayed home.
+ *
+ * Note what the two do *not* cover, because it is the thin part: a party already
+ * out when the bar fills is not slack against this threshold, it is invisible to
+ * it — `unsentDays` does not count those days at all. That is right while a
+ * colony can field one party and it stops being right the moment it can field
+ * two, at which point this number is measuring something looser than it says.
+ *
+ * Sixty-day figure, and unlike its predecessor this one does not depend on where
+ * the map put the parts town.
+ */
+const A_DECISION = 2;
+
+/**
+ * How many projects a colony finishes before it meets one that costs goods.
+ *
+ * Counted off the tree rather than written down, so that adding a fourth tier —
+ * or moving a bill onto an earlier project — moves this with it instead of
+ * leaving a principle quietly scoped to the wrong half of the game.
+ */
+const THIRD_TIER = RESEARCH_ORDER.filter((id) => !RESEARCH[id].materials).length;
+
+/**
+ * How much of the grid that reaches the third tier has to get through it.
+ *
+ * Three quarters, and the number comes off the road rather than off a wish. A
+ * ring-1 parts town is five days out and `mishapChance` puts a party on that
+ * road at about one in six, so a colony that reaches the tier with two round
+ * trips of calendar left and can absorb a setback should fail perhaps one time
+ * in thirty. Three quarters is far looser than that on purpose: it leaves room
+ * for the colony that reaches the tier on day fifty with no time to walk
+ * anywhere, which is a pacing fact and not a broken promise.
+ *
+ * What it does not leave room for is the measured shape — three of nine stopped
+ * dead on the last free project — because that is not a calendar edge. Two of
+ * those three were robbed on the first attempt and never got a second, which is
+ * the whole claim: the tier is bought one twelve-day round trip at a time, and a
+ * tier bought that way is a tier one robbery ends.
+ */
+const THE_TIER_CONVERTS = 0.75;
 
 /**
  * How much of the grid below hard country has to reach the founding.
@@ -775,6 +835,226 @@ export const PRINCIPLES: Principle[] = [
           `no run of ${full.length} stood at an empty bench for ${IDLE_WEEK} days; ` +
           `furthest anybody got was ${richest.difficulty}/${richest.seed} at ${tree(richest)}, ` +
           `longest idle was ${closest.emptyTreeDays ?? 0} days; ${stall(full)}`,
+      };
+    },
+  },
+  {
+    id: 'the-bench-does-not-wait-on-an-errand',
+    claim:
+      'A colony with one settler to spare and a bench that has finished studying spends that ' +
+      'settler on what the bench is short of. Standing still is allowed to cost a road; it is ' +
+      'not allowed to cost a decision nobody made.',
+    enforced: true,
+    check: (s) => {
+      // Written for the fix in the same commit and not after it, which is the
+      // only order that makes the number mean anything. Before the fix this
+      // reads broken on five of fifteen — calm/424242 twenty-two days, calm/1312
+      // eighteen, settler/1312 and calm/7 thirteen, calm/20260729 twelve.
+      //
+      // Instrumenting those runs found three causes and not the one the fix was
+      // first written for. `jobs.ts` honouring an open letter ahead of a shopping
+      // run is real and is the largest. Under it sat a reserve mismatch —
+      // `answerable` measures a pack against `COMMISSION_KEEP` and `spareGoods`
+      // against the much higher `SURPLUS`, so a colony could afford to give a
+      // pack away and not to spend it, and the stricter test was guarding the
+      // trip that helps. Under *that* sat the ranking itself: `pickDestination`
+      // scores worth over days, and a bonus of three against a five-day road is
+      // not enough to move a pack the size of a letter. All three had to go, and
+      // the reason one commit fixed three bugs is that only the last of them is
+      // visible once the first two stop firing.
+      //
+      // The sixty-day grid is the first thing that could see any of it: below the
+      // third tier `researchNeeds` is empty on every project, so the clause that
+      // now yields never had anything to yield to.
+      //
+      // Then the fix landed and this still read broken — four of nine, calm/1312
+      // eighteen days, calm/424242 seventeen, calm/7 and settler/1312 thirteen —
+      // and the fourth cause turned out to be this check. calm/424242 chose the
+      // foundry on day thirty-six, sent its party, was robbed, sent it again, and
+      // *finished the project* on day fifty-seven. Seventeen stalled days, every
+      // one of them somebody walking. The claim says standing still is allowed to
+      // cost a road; `stalledDays` was charging the road to the colony's account.
+      // So the check moved to `unsentDays`, which counts only the days with
+      // nobody out, and `A_ROUND_TRIP` retired with the reasoning that named it.
+      //
+      // What the old column was seeing is real and is not this principle's to
+      // judge: a five-day road at a seventeen-per-cent mishap rate is a tier one
+      // robbery can end, and two of those three seeds it did end. That reading
+      // moved out into `one-robbery-does-not-end-the-tier` — same evidence, the
+      // promise it actually breaks.
+      //
+      // That left one run, and it took a second narrowing — which deserves
+      // saying plainly, because narrowing a column until a principle passes is
+      // what tuning to pass looks like from the outside. calm/99001 read four
+      // unsent days of seven on eighteen projects. Its party left on day
+      // forty-six for a meal town, when `waystations` had not been chosen and
+      // the bench was short of nothing; the bill appeared on day fifty-four with
+      // the settler three days from home; it walked in on fifty-six, ate and
+      // slept, and set out for the parts on fifty-eight. Days fifty-four to
+      // fifty-six were charged to a colony that had nobody to charge — one
+      // party, already committed, on an errand it was right to take. So `unsent`
+      // stopped asking where the party was going and started asking whether
+      // there was a party at all.
+      //
+      // The test that this is a correction and not a fit: it still fails things.
+      // Day fifty-seven is counted and always was — twenty-eight hundred ticks
+      // with every gate open and nobody sent — and a colony that sat at home for
+      // a week would read seven. What it stopped counting is a road, which is
+      // the same mistake as the first narrowing, one step further out. It leaves
+      // the margin thin: calm/99001 now reads one day against a threshold of
+      // two, and the honest reading of that is that the one-party colony is at
+      // the edge of what this principle can excuse. The next slice gives it a
+      // second party, and then "committed" and "nothing to spare" stop being the
+      // same sentence and this column has to be re-read.
+      if (s.days < DAY_SIXTY) {
+        return { verdict: 'untested', detail: `${s.days}-day grid cannot see day ${DAY_SIXTY}` };
+      }
+      // Full runs only, and the same reason as its two siblings: a colony that
+      // was wiped on day nine has a bench that waited nought days because it
+      // never got one, and counting that as a pass would let a grid full of
+      // corpses satisfy a principle about trade.
+      const full = s.runs.filter((m) => m.daysLived >= s.days);
+      if (full.length === 0) {
+        return { verdict: 'untested', detail: `no run reached day ${s.days}` };
+      }
+      // Only the colonies that got deep enough for the question to exist. A run
+      // that never reached a project with a material bill has a bench that never
+      // waited on a delivery, and it is evidence of nothing either way — hard
+      // country is mostly these, which is exactly why this must not be scored as
+      // a pass there.
+      const reached = full.filter((m) => (m.stalledDays ?? 0) > 0 || (m.tech ?? 0) >= THIRD_TIER);
+      if (reached.length === 0) {
+        return {
+          verdict: 'untested',
+          detail: `no run of ${full.length} reached a project that costs materials`,
+        };
+      }
+      const waited = reached.filter((m) => (m.unsentDays ?? 0) > A_DECISION);
+      if (waited.length > 0) {
+        return {
+          verdict: 'broken',
+          detail:
+            `${waited.length} of ${reached.length} runs that reached the third tier stood at a ` +
+            `finished bench with a party free and nobody sent for more than ${A_DECISION} days: ` +
+            waited
+              .map(
+                (m) =>
+                  `${m.difficulty}/${m.seed} sent nobody for ${m.unsentDays} of ${m.stalledDays} ` +
+                  `waiting days, on ${m.tech} projects`,
+              )
+              .join(', '),
+        };
+      }
+      const worst = reached.reduce((a, m) => ((m.unsentDays ?? 0) > (a.unsentDays ?? 0) ? m : a));
+      const mean =
+        reached.reduce((a, m) => a + (m.unsentDays ?? 0), 0) / Math.max(1, reached.length);
+      // The road figure travels with the verdict on purpose. This principle
+      // passing says the colony decided; it says nothing about how long the
+      // deciding cost, and the two are easy to confuse precisely because one
+      // column used to be asked both questions. `one-robbery-does-not-end-the-tier`
+      // is where the distance is judged — this line is only so a reader of the
+      // pass can see what the walking came to.
+      const walked =
+        reached.reduce((a, m) => a + (m.stalledDays ?? 0), 0) / Math.max(1, reached.length);
+      return {
+        verdict: 'holds',
+        detail:
+          `all ${reached.length} runs that reached the third tier had a party committed within ` +
+          `${A_DECISION} days; longest gap was ${worst.difficulty}/${worst.seed} at ` +
+          `${worst.unsentDays ?? 0} days, mean ${mean.toFixed(1)}; ` +
+          `the road itself took ${walked.toFixed(1)} days a run`,
+      };
+    },
+  },
+  {
+    id: 'one-robbery-does-not-end-the-tier',
+    claim:
+      'A colony that reaches the top of the free tree and walks for the parts finishes at least ' +
+      'one project that costs them. A robbery on the road is a setback the colony absorbs; it is ' +
+      'not allowed to be the end of the tier.',
+    enforced: false,
+    check: (s) => {
+      // Open on purpose and written before the thing that would satisfy it, the
+      // same way `the-tree-is-not-empty-at-day-sixty` was written a tier early.
+      // The grid it is written against reads six of nine — calm/1312, settler/1312
+      // and harsh/7 all stopped dead on the fifteenth project, the last one the
+      // tree gives away. Two of those three were instrumented: calm/1312 chose the
+      // foundry on day forty, had a party on the road by day forty-two, was robbed
+      // on the forty-seventh, limped home on the fifty-second, set out again on
+      // the fifty-third and was robbed again on the fifty-eighth. settler/1312 was
+      // robbed on day fifty-one and ran out of calendar on the second attempt.
+      // Neither hesitated. Both did what `the-bench-does-not-wait-on-an-errand`
+      // asks and neither got the parts.
+      //
+      // That is why the two principles are separate checks over the same runs.
+      // One asks whether the colony decided; this one asks whether deciding was
+      // enough. Splitting them is what makes either number mean anything — a
+      // single column that fails on both cannot say which fix to write, and the
+      // first one written against it sent the work after the wrong bug.
+      //
+      // The answer this is waiting for is a road that survives a bad day: a second
+      // party, so the tier is not bought one twelve-day round trip at a time. Not
+      // a shorter road and not a standing order — `components` exists to be the
+      // first material whose supply is a road, and both of those undo it.
+      //
+      // A caution for whoever reads the number after that lands: the third of the
+      // three, harsh/7, does not belong in it. Instrumented, it reached the tier
+      // on day fifty-eight of sixty and every one of its seven trips all game was
+      // to the near ring — it never opened a road to a parts town at all. It
+      // reads nought waiting days because it never once stood at a finished bench
+      // wanting parts, which is not this claim's failure; it is a colony arriving
+      // as the clock runs out, and hard country is where that is supposed to be
+      // possible. The denominator wants scoping to runs that had a bill and a
+      // road to answer it with.
+      //
+      // Left uncorrected here on purpose. Re-deriving the denominator and the bar
+      // in the same commit as the feature they grade would leave nothing to
+      // compare: the before and the after have to be read off the same rule, and
+      // this rule is the "before". Scope it when the second party lands, and
+      // report both numbers on the honest denominator.
+      //
+      // The second-party fix also buys something narrower than it looks, and the
+      // comment should not overstate it. `stepCaravan` seeds its roll on
+      // `(seed, settlement, visits)`, so a town's luck is a pre-drawn deck indexed
+      // by visit — two parties to the same town draw the same two cards a lone
+      // party would have drawn on consecutive trips. What a second party buys is
+      // draws per day, not a second chance at one draw. calm/1312 burned two bad
+      // cards over twenty days; two parties would have burned the same two by day
+      // fifty-two and been on the third and fourth by sixty-three.
+      if (s.days < DAY_SIXTY) {
+        return { verdict: 'untested', detail: `${s.days}-day grid cannot see day ${DAY_SIXTY}` };
+      }
+      const full = s.runs.filter((m) => m.daysLived >= s.days);
+      // Only the colonies that got far enough to be asked. A run that never
+      // reached the third tier has not failed to cross it — it never arrived, and
+      // why it did not is `the-escalation-ladder`'s question, not this one.
+      const reached = full.filter((m) => (m.tech ?? 0) >= THIRD_TIER);
+      if (reached.length === 0) {
+        return {
+          verdict: 'untested',
+          detail: `no run of ${full.length} reached the third tier`,
+        };
+      }
+      const through = reached.filter((m) => (m.tech ?? 0) > THIRD_TIER);
+      const share = through.length / reached.length;
+      const stuck = reached.filter((m) => (m.tech ?? 0) <= THIRD_TIER);
+      if (share < THE_TIER_CONVERTS) {
+        return {
+          verdict: 'broken',
+          detail:
+            `only ${through.length} of ${reached.length} runs that reached the third tier ` +
+            `finished a project in it (${Math.round(share * 100)}%, wanted ` +
+            `${Math.round(THE_TIER_CONVERTS * 100)}%); stopped dead on the last free project: ` +
+            stuck
+              .map((m) => `${m.difficulty}/${m.seed} after ${m.stalledDays ?? 0} waiting days`)
+              .join(', '),
+        };
+      }
+      return {
+        verdict: 'holds',
+        detail:
+          `${through.length} of ${reached.length} runs that reached the third tier finished a ` +
+          `project in it (${Math.round(share * 100)}%)`,
       };
     },
   },

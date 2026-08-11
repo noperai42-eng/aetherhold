@@ -1,7 +1,7 @@
 {
-  "fingerprint": "5026d2fd",
-  "taken": "2026-08-10T22:32:22.808Z",
-  "seconds": 2355.249,
+  "fingerprint": "383deeb5",
+  "taken": "2026-08-11T05:04:56.148Z",
+  "seconds": 1154.223,
   "steward": false,
   "sweep": {
     "seeds": [
@@ -26,18 +26,18 @@
         "daysLived": 60,
         "firstThreatDay": 5,
         "threats": 14,
-        "biggestBand": 5,
-        "downs": 0,
+        "biggestBand": 4,
+        "downs": 1,
         "buried": 0,
-        "survivors": 15,
+        "survivors": 13,
         "raidersKilled": 11,
-        "peakRung": 3,
-        "worstFood": 0.08,
-        "meanFood": 0.605166666666667,
-        "upkeepShare": 0.296,
-        "endFoodDays": 25.53,
-        "raidersSeen": 24,
-        "armedShare": 0.3333333333333333,
+        "peakRung": 2,
+        "worstFood": 0.09,
+        "meanFood": 0.6338333333333334,
+        "upkeepShare": 0.294,
+        "endFoodDays": 20.82,
+        "raidersSeen": 23,
+        "armedShare": 0.34782608695652173,
         "foundedOn": 27,
         "ringOpenedOn": [
           0,
@@ -45,16 +45,17 @@
           16
         ],
         "tripsByRing": [
-          6,
           3,
+          4,
           0
         ],
         "spareDays": 40,
-        "tech": 17,
-        "emptyTreeDays": 0,
-        "stalledDays": 12,
-        "endSteel": 738,
-        "steelDrawdown": 390
+        "tech": 19,
+        "emptyTreeDays": 1,
+        "stalledDays": 7,
+        "unsentDays": 0,
+        "endSteel": 800,
+        "steelDrawdown": 408
       },
       {
         "seed": 7,
@@ -67,14 +68,14 @@
         "downs": 3,
         "buried": 0,
         "survivors": 14,
-        "raidersKilled": 19,
+        "raidersKilled": 18,
         "peakRung": 1,
         "worstFood": 0.15,
-        "meanFood": 0.6131666666666667,
-        "upkeepShare": 0.301,
-        "endFoodDays": 27.87,
-        "raidersSeen": 30,
-        "armedShare": 0.23333333333333334,
+        "meanFood": 0.6211666666666669,
+        "upkeepShare": 0.298,
+        "endFoodDays": 23.66,
+        "raidersSeen": 22,
+        "armedShare": 0.3181818181818182,
         "foundedOn": 49,
         "ringOpenedOn": [
           0,
@@ -82,16 +83,17 @@
           36
         ],
         "tripsByRing": [
-          8,
-          2,
+          4,
+          4,
           0
         ],
         "spareDays": 38,
         "tech": 16,
         "emptyTreeDays": 0,
         "stalledDays": 13,
-        "endSteel": 1064,
-        "steelDrawdown": 436
+        "unsentDays": 0,
+        "endSteel": 581,
+        "steelDrawdown": 415
       },
       {
         "seed": 1312,
@@ -101,17 +103,17 @@
         "firstThreatDay": 5,
         "threats": 15,
         "biggestBand": 4,
-        "downs": 4,
+        "downs": 5,
         "buried": 0,
-        "survivors": 16,
-        "raidersKilled": 18,
+        "survivors": 15,
+        "raidersKilled": 22,
         "peakRung": 1,
-        "worstFood": 0.17,
-        "meanFood": 0.6184999999999998,
-        "upkeepShare": 0.294,
-        "endFoodDays": 15.67,
-        "raidersSeen": 24,
-        "armedShare": 0.20833333333333334,
+        "worstFood": 0.12,
+        "meanFood": 0.6149999999999999,
+        "upkeepShare": 0.291,
+        "endFoodDays": 14.53,
+        "raidersSeen": 28,
+        "armedShare": 0.35714285714285715,
         "foundedOn": null,
         "ringOpenedOn": [
           0,
@@ -127,8 +129,9 @@
         "tech": 15,
         "emptyTreeDays": 0,
         "stalledDays": 18,
-        "endSteel": 986,
-        "steelDrawdown": 196
+        "unsentDays": 1,
+        "endSteel": 752,
+        "steelDrawdown": 405
       },
       {
         "seed": 99001,
@@ -164,6 +167,7 @@
         "tech": 18,
         "emptyTreeDays": 0,
         "stalledDays": 7,
+        "unsentDays": 2,
         "endSteel": 468,
         "steelDrawdown": 359
       },
@@ -178,31 +182,32 @@
         "downs": 2,
         "buried": 0,
         "survivors": 12,
-        "raidersKilled": 11,
+        "raidersKilled": 7,
         "peakRung": 2,
         "worstFood": 0.08,
-        "meanFood": 0.6154999999999998,
-        "upkeepShare": 0.298,
-        "endFoodDays": 27.09,
+        "meanFood": 0.6155,
+        "upkeepShare": 0.299,
+        "endFoodDays": 21.03,
         "raidersSeen": 23,
-        "armedShare": 0.43478260869565216,
-        "foundedOn": 51,
+        "armedShare": 0.30434782608695654,
+        "foundedOn": null,
         "ringOpenedOn": [
           0,
           6,
-          48
+          null
         ],
         "tripsByRing": [
-          3,
+          2,
           4,
           0
         ],
-        "spareDays": 42,
-        "tech": 15,
+        "spareDays": 43,
+        "tech": 16,
         "emptyTreeDays": 0,
-        "stalledDays": 22,
-        "endSteel": 590,
-        "steelDrawdown": 312
+        "stalledDays": 17,
+        "unsentDays": 1,
+        "endSteel": 647,
+        "steelDrawdown": 286
       },
       {
         "seed": 20260729,
@@ -215,12 +220,12 @@
         "downs": 14,
         "buried": 0,
         "survivors": 12,
-        "raidersKilled": 38,
+        "raidersKilled": 36,
         "peakRung": 1,
         "worstFood": 0.07,
-        "meanFood": 0.5819999999999997,
+        "meanFood": 0.5825,
         "upkeepShare": 0.328,
-        "endFoodDays": 23.87,
+        "endFoodDays": 24.55,
         "raidersSeen": 97,
         "armedShare": 0.6082474226804123,
         "foundedOn": 26,
@@ -238,8 +243,9 @@
         "tech": 17,
         "emptyTreeDays": 0,
         "stalledDays": 5,
-        "endSteel": 512,
-        "steelDrawdown": 479
+        "unsentDays": 1,
+        "endSteel": 361,
+        "steelDrawdown": 492
       },
       {
         "seed": 7,
@@ -275,6 +281,7 @@
         "tech": 16,
         "emptyTreeDays": 0,
         "stalledDays": 3,
+        "unsentDays": 0,
         "endSteel": 199,
         "steelDrawdown": 297
       },
@@ -292,9 +299,9 @@
         "raidersKilled": 39,
         "peakRung": 2,
         "worstFood": 0.13,
-        "meanFood": 0.5916666666666666,
-        "upkeepShare": 0.34,
-        "endFoodDays": 22.25,
+        "meanFood": 0.5923333333333332,
+        "upkeepShare": 0.339,
+        "endFoodDays": 24.04,
         "raidersSeen": 73,
         "armedShare": 0.6027397260273972,
         "foundedOn": 26,
@@ -304,16 +311,17 @@
           17
         ],
         "tripsByRing": [
-          6,
-          3,
+          4,
+          4,
           0
         ],
         "spareDays": 38,
         "tech": 15,
         "emptyTreeDays": 0,
         "stalledDays": 13,
-        "endSteel": 757,
-        "steelDrawdown": 123
+        "unsentDays": 0,
+        "endSteel": 457,
+        "steelDrawdown": 300
       },
       {
         "seed": 99001,
@@ -349,6 +357,7 @@
         "tech": 14,
         "emptyTreeDays": 0,
         "stalledDays": 0,
+        "unsentDays": 0,
         "endSteel": 884,
         "steelDrawdown": 321
       },
@@ -386,6 +395,7 @@
         "tech": 14,
         "emptyTreeDays": 0,
         "stalledDays": 0,
+        "unsentDays": 0,
         "endSteel": 192,
         "steelDrawdown": 261
       },
@@ -423,6 +433,7 @@
         "tech": 2,
         "emptyTreeDays": 0,
         "stalledDays": 0,
+        "unsentDays": 0,
         "endSteel": 66,
         "steelDrawdown": 201
       },
@@ -460,6 +471,7 @@
         "tech": 15,
         "emptyTreeDays": 0,
         "stalledDays": 0,
+        "unsentDays": 0,
         "endSteel": 180,
         "steelDrawdown": 276
       },
@@ -497,6 +509,7 @@
         "tech": 12,
         "emptyTreeDays": 0,
         "stalledDays": 0,
+        "unsentDays": 0,
         "endSteel": 492,
         "steelDrawdown": 196
       },
@@ -534,6 +547,7 @@
         "tech": 2,
         "emptyTreeDays": 0,
         "stalledDays": 0,
+        "unsentDays": 0,
         "endSteel": 166,
         "steelDrawdown": 321
       },
@@ -571,6 +585,7 @@
         "tech": 9,
         "emptyTreeDays": 0,
         "stalledDays": 0,
+        "unsentDays": 0,
         "endSteel": 145,
         "steelDrawdown": 177
       }

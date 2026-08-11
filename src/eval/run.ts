@@ -24,6 +24,7 @@ import {
 import { hasWon } from '../sim/victory';
 import {
   PACK_CEILING,
+  partyCommitted,
   ringOf,
   ringOpen,
   settlementById,
@@ -111,6 +112,41 @@ export interface DaySnapshot {
    * every colony on it was standing still for a different reason.
    */
   stalled: boolean;
+  /**
+   * Was it stalled on a day the colony had somebody it could have sent?
+   *
+   * `stalled` alone cannot answer the question the bench principle actually asks.
+   * It says the bar is full and the bill unpaid; it does not say why, and the two
+   * reasons want opposite fixes. A colony that sent its party the day the project
+   * was chosen and is nine days into a twelve-day round trip reads stalled for
+   * every one of those days — and it did the right thing on the first day it
+   * could. A colony that never sent anybody reads exactly the same. The first
+   * needs a shorter road or a second party; the second needs a decision, and a
+   * measure that charges the first for the second's fault will send the balance
+   * pass after a bug that is not there.
+   *
+   * calm/424242 is the case that made this column: it chose the foundry on day
+   * thirty-six, walked, was robbed, walked again, and finished on day fifty-seven
+   * — seventeen days of `stalled`, seven over the ten-day threshold, for a road
+   * it paid for in full. That run kept the promise. The column said it broke it.
+   *
+   * The first cut of this column asked whether the party was out *for the bench*,
+   * and that was still too narrow. calm/99001 caught it: the party left on day
+   * forty-six for a meal town, correctly — `waystations` had not been chosen and
+   * the bench was short of nothing. The bill appeared on day fifty-four with the
+   * settler three days from home, and the column charged the colony for days
+   * fifty-four, fifty-five and fifty-six as though it had decided to stay put.
+   * There was no decision to make: this colony has one party and it was on a road
+   * it was right to be on. So the question is whether anybody *could* have gone,
+   * which is `partyCommitted`'s to answer. It went on day fifty-eight; day
+   * fifty-seven is the only day of the four it owes, and one day of a settler
+   * finishing what was in their hands is what `A_DECISION` allows.
+   *
+   * This will need saying differently when a colony can field two parties, which
+   * is the next slice: "the party is committed" and "there is no party to spare"
+   * are the same sentence only while the answer is one.
+   */
+  unsent: boolean;
   /**
    * Morale breaks started so far. `avgMood` alone cannot tell a colony that
    * never faltered from one that broke on day three and recovered by day five —
@@ -429,6 +465,7 @@ function snapshot(
     ripe: cells.filter((c) => (world.crops[c] ?? CROP_NONE) >= 1).length,
     tech: world.research.done.length,
     stalled: researchStalled(world),
+    unsent: researchStalled(world) && !partyCommitted(world),
     breaks: world.stats.moraleBreaks ?? 0,
     trades: world.stats.trades ?? 0,
     captured: world.stats.captured ?? 0,

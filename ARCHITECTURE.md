@@ -640,52 +640,57 @@ machine, produced the same numbers row for row.
 ### What the grid found
 
 Sixty days, five seeds, three settings, seven multipliers, every run played past its founding.
-Eighteen principles are scored; fourteen of them are enforced and hold on measured evidence —
-trouble comes sooner (day 5.0 → 3.0 → 2.0), more often (15.0 → 29.2 → 42.2 threats), in bigger bands
-(4.2 → 6.8 → 8.8), better armed (28 % → 61 % → 84 % of raiders carrying a rifle), hitting harder
-(2.0 → 36.6 → 104.6 trips to a sick bed), nobody is wiped on the quiet valley, Hard country costs a
-colony ×2.8 what Settler does, the far country is shut in week one and open by week six on seven
-maps in ten below Hard, the roads past the near ring are actually walked (10 of 10 below Hard, mean
-trips by ring 4.6/3.0/0.1), and the founding is no longer where the run stops: eight of the fifteen
-colonies closed their charter, the earliest on day 23, and every one of them played out the rest of
-its sixty days.
+Twenty principles are scored; fifteen of them are enforced and all fifteen hold on measured
+evidence — trouble comes sooner (day 5.0 → 3.0 → 2.0), more often (15.0 → 29.2 → 42.2 threats), in
+bigger bands (4.0 → 6.8 → 8.8), better armed (31 % → 61 % → 84 % of raiders carrying a rifle),
+hitting harder (2.4 → 36.6 → 104.6 trips to a sick bed), nobody is wiped on the quiet valley,
+Hard country costs a colony ×2.8 what Settler does (41.6 → 115.6),
+the far country is shut in week one and open by week six on seven maps in ten below
+Hard, the roads past the near ring are actually walked (10 of 10 below Hard, mean trips by ring
+3.6/3.4/0.1), and the founding is no longer where the run stops: seven of the fifteen colonies
+closed their charter, the earliest on day 23, and every one of them played out the rest of its
+sixty days.
 
-Two of the fourteen are new since the third tier shipped. **No colony that played its whole clock
+Two of the fifteen are new since the third tier shipped. **No colony that played its whole clock
 stood at an empty bench** — where before the tier eleven of fourteen finished the entire tree and
-nine of those had a fortnight or more still to play. The furthest anybody now gets is 18 projects
-of 19, with 6.6 days a run spent worked-out and waiting on a delivery. The other is **the first act
-is finishable**, and it is a guard rather than a discovery: seven of the ten runs below Hard country
+nine of those had a fortnight or more still to play. One colony does now clear all 19 projects,
+calm/20260729, and it stands idle for exactly one day at the end of them; across the grid a run
+spends 5.9 days worked-out and waiting on a delivery, worst 18. The other is **the first act is
+finishable**, and it is a guard rather than a discovery: six of the ten runs below Hard country
 close their charter. Guaranteeing the middle ring a parts town by dealing it a fixed card once
 halved the foundings from eight to four, and every principle on the board still read HOLDS, because
 the founding check asks only whether the colonies that founded played on afterwards and never
 whether anybody founds.
 
-The other four are open — findings the grid prints without asserting, because the fix is a design
-decision rather than a number. One of those four holds anyway: four of the five Hard maps buried
-somebody, which is the check that a colony sim where nobody ever dies is a screensaver. Of the
-remaining three, one was written for the same feature as the tree check and did not close with it.
-*The surplus finds a buyer* is down from four rich runs in ten to two in nine — calm/1312 ending on
-986 steel having never given back more than 196 of it, and settler/1312 on 757 against 123. Both are
-the same seed, and both are runs whose caravan never got a parts delivery home inside sixty days;
-the maps that did get one spent their piles, calm/99001 going from 204 returned of 1,006 to 359 of
-468, and settler/7 spending 433 down to 199 — far enough that it no longer counts as a run that
-ended rich at all. It stays open until the far ring has something to sell. The last two are below.
+Five are open — findings the grid prints without asserting, because the fix is a design decision
+rather than a number. Two of the five hold anyway. Four of the five Hard maps buried somebody, which
+is the check that a colony sim where nobody ever dies is a screensaver. And *the surplus finds a
+buyer* has come good: all nine runs that ended above 300 steel spent at least a quarter of the pile
+down at some point, the thinnest being settler/99001 at 36 % of 884. That one is worth a note,
+because it was written for the same feature as the tree check and did not close with it — a grid ago
+it read two rich runs in nine, calm/1312 sitting on 986 steel having never given back more than 196
+of it, and both of the runs that failed it were runs whose caravan never got a parts delivery home
+inside sixty days. Nothing was done to it directly. What closed it was the road work giving the pile
+somewhere to go, which is the argument for having written the principle before the demand existed.
+It stays open because a claim about demand that has held on one grid is a reading, not yet a
+promise. The last three are below.
+
 Four things the grid found are worth writing down, because none of them was designed:
 
 **Difficulty reaches the pantry, and it gets there mostly through labour.** All three settings start
-on stores the genesis check has already pinned, and after sixty days calm ends with 23.2 days of
+on stores the genesis check has already pinned, and after sixty days calm ends with 20.0 days of
 food where harsh has 14.0. Only part of that is the `larder` dial handing harsh less; the rest is
 that a settler who is shooting or on the floor is not farming. The enforced check is therefore a
 ratio rather than a floor: threat multiplies ×2.81 across the settings while food in store moves
-×1.66, and the promise is that the second number stays under the first. Watch the gap rather than
+×1.43, and the promise is that the second number stays under the first. Watch the gap rather than
 either number — before the direct `larder` dial existed the same comparison read ×3.3 against ×1.5,
 and it is the *distance* between the two that says difficulty is still a valley rather than a
 handicap.
 
 **The upkeep axis is real, and the grid column measuring it is not the axis.** A free settler's day
-runs 29.8 % → 33.5 % → 35.5 % across the grid; held alone in the controlled arm, with threat and
+runs 29.7 % → 33.5 % → 35.5 % across the grid; held alone in the controlled arm, with threat and
 stores and seeds all pinned, the same three dials read 31.0 % → 35.1 % → 36.7 %. Both are monotone
-and the two disagree about where the *step* is — the grid puts 3.7 points between calm and settler
+and the two disagree about where the *step* is — the grid puts 3.8 points between calm and settler
 where the arm puts 4.1, and 2.0 points between settler and hard where the arm puts 1.6. That is
 `larder` and `band` writing the same column from the other side, and on the thirty-day grid the
 discrepancy pointed the other way, which is the whole argument for not enforcing on the column. The
@@ -711,33 +716,47 @@ to seven, which is a lead and not a diagnosis — a colony with a settler away o
 one fewer pair of hands to carry a meal, and nobody has yet tested whether that is what happened.
 
 **The top of the escalation ladder is content nobody has ever been shown.** The highest rung reached
-anywhere on the grid is 3 of 4, on one calm map, and Hard country never gets past rung **1** — its
-five maps read 0, 1, 1, 0, 1 — on the setting whose entire promise is escalation. The ladder is fed by
-`unbloodied`, a streak of fights that end with nobody on the grass, and Hard country cannot hold
-that streak for a moment: it is knocked back to zero by the very casualties that make it hard. So
-the rungs are reachable in principle and, exactly where they are supposed to matter, unreachable in
-practice. Doubling the grid to sixty days made this *worse*, not better, which is the useful part —
-more time is not the missing ingredient. This is open rather than enforced because the fix is a
-design choice — shorten the ladder, or feed it something other than a streak the hard setting is
-built to break — and the grid's job was to find it, not to make it.
+anywhere on the grid is 2 of 4 — three calm maps and two Settler ones — and Hard country never gets
+past rung **1**: its five maps read 0, 1, 1, 0, 1, on the setting whose entire promise is
+escalation. That ceiling has come *down* since this was written, from a lone calm map that once
+touched 3, and nothing was done to the ladder in between; the peak is a single map's luckiest
+streak, so it moves with the seed and is not worth a diagnosis. The floor is the finding.
+
+The ladder is fed by `unbloodied`, a streak of fights that end with nobody on the grass, and Hard
+country cannot hold that streak for a moment: it is knocked back to zero by the very casualties that
+make it hard. So the rungs are reachable in principle and, exactly where they are supposed to
+matter, unreachable in practice. Doubling the grid to sixty days made this *worse*, not better,
+which is the useful part — more time is not the missing ingredient. This is open rather than
+enforced because the fix is a design choice — shorten the ladder, or feed it something other than a
+streak the hard setting is built to break — and the grid's job was to find it, not to make it.
 
 ## A cost is scaled by the cost in front of it
 
-The grid found a fivefold steel pile on the quiet valley and a shortage on Hard country — a factor
-of twenty between the poorest sixty-day run and the richest — and the third research tier wanted to
-charge materials. A flat bill priced for one of those settings is a pleasant sink on the first and
-an impassable wall on the second, and there is no single number that is both.
+The grid that motivated the third research tier found a fivefold steel pile on the quiet valley and
+a shortage on Hard country — a factor of twenty between the poorest sixty-day run and the richest —
+and the tier wanted to charge materials. A flat bill priced for one of those settings is a pleasant
+sink on the first and an impassable wall on the second, and there is no single number that is both.
 
 The resolution is that **a cost only ever presented to those who have already paid a larger one is
 scaled by that larger one, whatever its own units say.** `research.ts` bills the four third-tier
 projects in flat steel — 180, 220, 200, 260 — and the flatness is safe because no colony is shown
 that bill until it has spent the 249,000 points clearing the two tiers beneath. That predicate is
-not a sample of the three settings; on the sixty-day grid it selects *precisely* the eleven colonies
-that ran out of tree, which is precisely the ones ending rich. Hard country never meets the steel
-gate because it is still stopped at the points gate, and that is the difficulty axis doing its own
-job rather than this one borrowing it. Look for the gate in front of your gate before inventing a
-formula: the cheapest way to make a constant setting-aware is to put it behind something that
-already is.
+not a sample of the three settings; it selects the colonies that ran out of tree, and on the current
+grid that is nine runs — all five calm maps, three Settler ones, and Hard country exactly once in
+five. Hard country mostly never meets the steel gate because it is still stopped at the points gate,
+and that is the difficulty axis doing its own job rather than this one borrowing it. Look for the
+gate in front of your gate before inventing a formula: the cheapest way to make a constant
+setting-aware is to put it behind something that already is.
+
+That predicate used to pick out the runs ending rich as well, and it no longer does — the richest
+run on the grid, settler/99001 on 884 steel, never reaches the tier, and the one Hard map that does
+ends on 180. The reason is worth keeping, because it is the feature working rather than the argument
+failing: end-of-run steel now measures spending as much as earning. A colony that reaches the tier
+buys parts with the pile, so it ends poorer than one that stood still, and settler/99001 ends
+richest precisely because it never opened a road to spend anything on. **A quantity stops being a
+proxy for wealth the moment you give wealth somewhere to go.** The gate is still doing its job — the
+bill is never shown to a colony that could not pay it — but the evidence for that is now the points
+gate itself, not the steel column that used to agree with it.
 
 The second half of each bill is a different trick and worth naming separately. Components have no
 patch, no recipe and no bench — the only supply anywhere is the middle ring. **A price
@@ -752,6 +771,35 @@ the sweep table grew a `wait` column, reported in the detail line of
 `the-tree-is-not-empty-at-day-sixty` and asserted on by nothing — a few stalled days is a colony
 organising a road trip, which is the tier working. **When a feature can fail two ways, an instrument
 that cannot tell them apart will certify the wrong one.**
+
+That column has since been split twice, and the second split is the more instructive of the two.
+`the-bench-does-not-wait-on-an-errand` promises the colony *decides* — standing still is allowed to
+cost a road, it is not allowed to cost a decision nobody made — so `unsent` was added beside `wait`
+to count only the days nobody was on the road. The first predicate behind it asked whether the party
+out there was out *for the bench*, which is the question the principle's name suggests and not the
+one it means, and one run in nine went red on it. A per-tick probe — necessary, because
+`caravanAllowed` opens and shuts several times a day and a day-boundary read reports whichever side
+of it dawn fell on — found calm/99001's single spare settler had left on day forty-six for a ring-1
+town carrying thirty meals, eight days *before* the bench had a bill at all. The errand was correct
+when it was chosen and the colony had nobody to recall. The measure was still charging it for a
+road; it had only stopped charging it for the bench's road.
+
+So the predicate is `partyCommitted(world)`: any committed party, wherever bound, and both states of
+a departure rather than one — the party that has left the map, and the sixth of a day the settler
+spends walking to the road head with a `caravan` job in hand, which a day-boundary sample can land
+in and read as indecision from a colony that had already decided. The reason it lives in
+`settlements.ts` and not in the eval is that `caravanAllowed` refuses on both for the same reason,
+and a measure that reimplements half of a rule the sim owns will eventually disagree with it.
+
+Widening a measure until a red goes green is how a grid gets talked into lying, so the argument has
+to be that the excluded case is not the fault named — and here it is checkable. A party that walks
+past an available parts run to sell somewhere else *is* the fault, and that is forbidden in
+`jobs.ts` and pinned by nine unit tests. What the widening excludes is a colony with one settler and
+an errand that predates the bill. The check still fails things: the one day calm/99001 was home,
+free and sent nobody is counted, and a colony that sits at home for a week still reads seven. It now
+reads **2 against a threshold of 2** — a pass with no margin, worth stating rather than smoothing,
+and the threshold was not raised to buy room. **A measure that has been narrowed twice should be
+read as owing an argument, not as having been improved.**
 
 The same reasoning runs through `settlements.ts`. Destination scoring was `worth / (days + 1)` and
 nothing else, so an unattended colony would have sold steel to the best payer forever while the last
