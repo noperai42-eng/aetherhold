@@ -619,8 +619,13 @@ describe('the balance principles, read against grids that are known wrong', () =
       true,
     );
     expect(verdictOf(s, 'the-bench-does-not-wait-on-an-errand')).toBe('broken');
+    // Two decimal places, and the assertion says so rather than matching loosely.
+    // `unsentDays` is summed a tick at a time now — the day sample it replaced was
+    // taken at 07:12 every time and read about thirty times the truth — so a whole
+    // number here is a real seventeen days rather than seventeen samples, and the
+    // detail line is where a reader finds that out.
     expect(detailOf(s, 'the-bench-does-not-wait-on-an-errand')).toContain(
-      'sent nobody for 17 of 17 waiting days',
+      'sent nobody for 17.00 of 17 waiting days',
     );
   });
 

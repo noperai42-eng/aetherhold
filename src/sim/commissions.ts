@@ -35,6 +35,7 @@ import {
   RATE_CAP,
   RELATIONS_MAX,
   VALUE,
+  caravansOf,
   legTicks,
   rateOf,
   settlementById,
@@ -344,8 +345,20 @@ function settleOrLapse(world: World, com: Commission): void {
     return;
   }
 
-  const c = world.caravan ?? null;
-  if (c && c.dealtTick === world.tick && satisfies(com, c.settlementId, c.give) && c.take) {
+  // Every party, not the first one. Two can be dealing on the same tick, and a
+  // letter answered by the second while the first is halfway to somewhere else
+  // would otherwise lapse with the goods sitting on the right counter.
+  //
+  // Two searches rather than one, because the two uses below are different
+  // questions about different parties. The first cut folded the settle test into
+  // a single `find` and then asked the survivor whether it was still outbound —
+  // which no party that has just dealt can be, so the clock-stop never fired and
+  // a letter ran out under the settler carrying it. One party could answer both
+  // questions because there was only one; two cannot.
+  const c = caravansOf(world).find(
+    (p) => p.dealtTick === world.tick && satisfies(com, p.settlementId, p.give) && p.take,
+  );
+  if (c && c.take) {
     const bonus = commissionBonus(s, c.pawn.skills?.social ?? 0, c.give);
     c.take.amount += bonus;
     s.relations = Math.min(RELATIONS_MAX, s.relations + RELATIONS_PER_COMMISSION);
@@ -366,8 +379,12 @@ function settleOrLapse(world: World, com: Commission): void {
   if (world.tick <= com.dueTick) return;
   // Somebody is on the road with the right pack: the clock stops when they can
   // see them coming over the ridge. Anything else is a colony punished for the
-  // length of a walk it was told to make.
-  if (c && c.phase === 'outbound' && satisfies(com, c.settlementId, c.give)) return;
+  // length of a walk it was told to make. Any party, again — the one carrying
+  // the answer is not necessarily the one that left first.
+  const walking = caravansOf(world).some(
+    (p) => p.phase === 'outbound' && satisfies(com, p.settlementId, p.give),
+  );
+  if (walking) return;
 
   s.relations = Math.max(-100, s.relations - RELATIONS_PER_LAPSE);
   world.commission = null;

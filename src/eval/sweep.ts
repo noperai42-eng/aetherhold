@@ -115,7 +115,8 @@ export interface RunMeasure {
    */
   stalledDays: number;
   /**
-   * The subset of those days the colony had a party free and did not send it.
+   * How much of that wait the colony could have ended and did not — a real
+   * number of days, summed a tick at a time rather than counted once a day.
    *
    * `stalledDays` is honest about how long the tier took and dishonest about
    * whose fault that was, because it counts the walk as if it were the wait. This
@@ -123,17 +124,17 @@ export interface RunMeasure {
    * promises the colony *decides* promptly, not that the map is small, so it
    * reads this and lets `stalledDays` report the distance beside it.
    *
-   * The two are worth reading together. A run with a big gap between them walked
-   * a long way; a run where they are equal never set out. The first is a road
-   * problem and the second is a decision problem, and they are fixed at opposite
-   * ends of the codebase.
+   * The two are worth reading together. A big gap between them means the colony
+   * walked a long way; a run where they are close never set out. The first is a
+   * road problem and the second is a decision problem, and they are fixed at
+   * opposite ends of the codebase.
    *
-   * The gap also swallows a road the colony walked for somebody else. A party
-   * committed to a good errand before the bench had a bill is a party that cannot
-   * be recalled, and while it is out this column is silent — correctly, because
-   * with one party there is nothing left to decide. That silence is exactly how
-   * loudly the one-party problem shows up here, which is to say not at all: it is
-   * `stalledDays` and the road principle that carry it.
+   * It reads in fractions and it is meant to. Permission to leave flickers on
+   * and off inside an hour — a settler is hungry at seven and gone by eight —
+   * and the day sample this column used to be always landed in that one gap,
+   * reporting roughly thirty times the idleness that was there. Column widths
+   * assume two decimal places; a run that shows a whole day here has genuinely
+   * stood still for one.
    */
   unsentDays: number;
   /**
@@ -427,7 +428,7 @@ export function measure(r: EvalReport): RunMeasure {
     // is allowed to leave a project out of its order and the bench is not.
     emptyTreeDays: r.snapshots.filter((s) => s.tech >= TREE_SIZE).length,
     stalledDays: r.snapshots.filter((s) => s.stalled).length,
-    unsentDays: r.snapshots.filter((s) => s.unsent).length,
+    unsentDays: r.unsentDays,
     endSteel: last?.steel ?? 0,
     steelDrawdown,
   };
@@ -505,7 +506,7 @@ export function formatSweep(sweep: Sweep): string {
           pad(`${m.tech ?? 0}/${TREE_SIZE}`, 7),
           pad(m.emptyTreeDays ?? 0, 6),
           pad(m.stalledDays ?? 0, 7),
-          pad(m.unsentDays ?? 0, 8),
+          pad((m.unsentDays ?? 0).toFixed(2), 8),
           pad(m.endSteel ?? 0, 8),
           pad(m.steelDrawdown ?? 0, 7),
         ].join(''),
@@ -536,7 +537,7 @@ export function formatSweep(sweep: Sweep): string {
         pad(`${avg(rs, (m) => m.tech ?? 0).toFixed(1)}/${TREE_SIZE}`, 7),
         pad(avg(rs, (m) => m.emptyTreeDays ?? 0).toFixed(1), 6),
         pad(avg(rs, (m) => m.stalledDays ?? 0).toFixed(1), 7),
-        pad(avg(rs, (m) => m.unsentDays ?? 0).toFixed(1), 8),
+        pad(avg(rs, (m) => m.unsentDays ?? 0).toFixed(2), 8),
         pad(avg(rs, (m) => m.endSteel ?? 0).toFixed(0), 8),
         pad(avg(rs, (m) => m.steelDrawdown ?? 0).toFixed(0), 7),
       ].join(''),

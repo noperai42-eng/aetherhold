@@ -17,7 +17,7 @@ ordered to match `PLAYTEST.md` rather than by importance.
 Last run — 2026-08-11:
 
 - `npx tsc --noEmit` clean.
-- `npm test` — **89 of 91 files, 1,661 tests green**, 13 skipped, in 849 s. The skips are
+- `npm test` — **89 of 91 files, 1,668 tests green**, 13 skipped, in 932 s. The skips are
   the opt-in gates and nothing else: the 1000-day ecosystem sweep (`ECO`), the survival sweep
   (`SWEEP`), the balance grid (`BALANCE`), the liveness census (`LIVE`) and the eval pool
   (`POOL`). Each is a `describe.runIf` on its environment variable, so a skip is a gate
@@ -30,59 +30,77 @@ Last run — 2026-08-11:
   standalone and it passed here, so it is the load flake that ceiling comment already
   describes rather than a regression; but the margin is thin enough that a suite result taken
   on a loaded machine is not evidence of anything, in either direction.
-- `npm run eval` — 11 tests green across five seeds, no collapses.
+  The run immediately before this one failed on one test, and it is worth the line: a
+  principle's detail string now prints `unsentDays` to two decimal places and
+  `balance-principles.test.ts` asserted on the old whole number. The verdict was right and
+  only the rendering had moved — which is the correct way round for a suite to break when a
+  column changes units.
+- `npm run eval` — the same `tests/colony-eval.test.ts` the suite above already ran, not
+  re-run separately. It is the one file both entry points share, so a second run is a second
+  reading of a number already recorded rather than a second piece of evidence.
 - `npm run measure -- --days 60 --past-founding` then `npm run balance` — 4 tests green.
-  24 colonies in 1,154 s. Twenty principles are scored: all **fifteen** enforced ones
-  hold, and of the five open ones — reported without asserting — two hold as well. The
+  15 colonies in 1,169 s. Twenty-one principles are scored: all **fifteen** enforced ones
+  hold, and of the six open ones — reported without asserting — three hold as well. The
   three that do not are the standing findings.
-  *Nobody starves beside a full pantry* — 7 of 15 runs, each bottoming out at exactly
-  0.00 while the colony held thirteen to twenty-two days of food. Three Settler maps and
-  four Hard country ones, unchanged across the last two grids. That spread is a weaker
-  position than the older one it replaced, which included a quiet-valley run: the finding
-  now correlates with difficulty and cannot be told apart from Hard country being hard by
-  this measurement alone. The argument that it is still a feeding failure rests on the
+  *Nobody starves beside a full pantry* — 6 of 15 runs, each bottoming out at exactly
+  0.00 while the colony held eleven to twenty-two days of food. Two Settler maps and four
+  Hard country ones, and the spread has not changed shape across the last three grids: the
+  finding correlates with difficulty and cannot be told apart from Hard country being hard
+  by this measurement alone. The argument that it is still a feeding failure rests on the
   mechanism — a settler at 0.00 beside three weeks of meals — and not on the spread.
-  *The escalation ladder is climbable to the top* — highest rung reached anywhere was
-  2 of 4; the five Hard country maps read 0, 1, 1, 0, 1. The ceiling has come down from a
-  lone calm map that once touched 3, with nothing done to the ladder in between, so the
-  peak is a seed artefact. The floor is the finding.
-  *One robbery does not end the tier* — 6 of the 9 runs that reached the third tier
-  finished a project inside it (67 %, against a 75 % bar). calm/1312 stopped dead after 18
-  waiting days and settler/1312 after 13, both robbed on the road; harsh/7 stopped after
-  **0**, which is a different fault wearing the same number — it reached the tier on day
-  58 of 60 having sent all seven of its trips to the near ring, so it never opened a road
-  to a parts town at all. The denominator wants scoping to colonies that could have
-  bought something, and it is deliberately left alone until the road answer lands so the
-  before and after are read off one rule.
+  *The road keeps up with the bench* — 2 of the 10 runs that reached the third tier waited
+  more than 12 days, calm/1312 and calm/424242 at 18 each. **This one is the ruler's fault,
+  and it is now open rather than enforced.** Twelve was derived as two ring-0 round trips,
+  and ring 0 does not sell components; the middle ring is the only place in the world that
+  does and it is five or six days out, so a parts round trip is ten to twelve days and the
+  bar was asking for the goods home before the only journey that can fetch them was over.
+  The two failing runs are the proof rather than the exception: each had a road standing
+  free for **0.05 and 0.01 days** out of sixty, meaning both parties were walking almost
+  continuously. The number is kept as a yardstick and the re-derivation is owed to the slice
+  that moves where parts are sold. Re-deriving it to 24 here was rejected because 24 would
+  have passed the one-party build this bar was written to fail.
+  *One robbery does not end the tier* — 6 of the 10 runs that reached the third tier
+  finished a project inside it (60 %, against a 75 % bar). The denominator problem got
+  *worse* rather than better, which is what progress looks like on this one: more colonies
+  reach the tier now, so more of them arrive too late to buy anything. harsh/7 still stops
+  after **0** waiting days and settler/424242 after 3 — neither lost the tier to a robbery,
+  they ran out of clock. The scoping fix stays deferred on purpose, so that the before and
+  the after are read off one rule.
   Its pair, *the tree is not empty at day sixty*, **holds**: no run of the fourteen that
   played a full clock stood at an empty bench for a week, the furthest anybody got was
-  calm/20260729 at 19 projects of 19 with a single idle day, and colonies spend 5.9 days a
+  calm/20260729 at 19 projects of 19 with a single idle day, and colonies spend 5.7 days a
   run waiting on a parts delivery — worst 18.
-  *The surplus finds a buyer* has come good and stays open: all 9 runs that ended above
+  *The surplus finds a buyer* holds for a second grid running: all 7 runs that ended above
   300 steel spent at least a quarter of the pile down at some point, the thinnest being
-  settler/99001 at 36 % of 884. A grid ago it was 2 of 9. Nothing was aimed at it — the
-  road work gave the pile somewhere to go — and it stays open because one grid's agreement
-  is a reading rather than a promise.
+  settler/99001 at 32 % of 978. It stays open because two grids agreeing is a reading rather
+  than a promise.
+  *The escalation ladder is climbable to the top* **has come good** — the grid reached rung
+  4, the top one, on calm/20260729. Nothing in this slice touched the ladder, and the peak on
+  this measure has moved on seed luck before: a lone calm map once touched 3 and the next
+  grid could not repeat it. So this is recorded as a reading, and the principle stays open
+  until a second grid repeats it.
   Three enforced principles are what stage one of `ENDGAME.md` was for, and the first two
   are a pair on purpose. *The far ring is earned* — shut for all fifteen runs through
   day 7, and 7 of the 10 runs below Hard country had it open by day 42, the earliest on
   day 16. *The long road is walked* — 10 of 10 below Hard country sent two or more trade
-  parties past the near ring, mean trips by ring 3.6/3.4/0.1. That one exists because the
-  first measured only permission and read like traffic. *The first act is finishable* —
-  6 of the 10 below Hard country reached the founding (60 %, against a 50 % floor); the
-  four that never got there were calm/1312, calm/424242, settler/99001 and settler/424242.
-  It was written after a regression halved the foundings while every other principle on
-  the board still read HOLDS.
-  Stage two's own check, *the bench does not wait on an errand*, holds on its second
-  reading: all 9 runs that reached the third tier had a party committed within 2 days,
-  mean 0.6, while the road itself took 9.2 days a run — which is the split the principle
-  exists to make, since a colony is allowed to spend a fortnight walking and is not
-  allowed to spend three days deciding. **The longest gap is calm/99001 at exactly the
-  2-day threshold: a pass with no margin.** The threshold was not raised to buy room, and
-  what it costs is written up in `ARCHITECTURE.md` — a party already out is invisible to
-  this check rather than slack against it, which is right for a colony that can field one
-  party and stops being right the moment it can field two.
-- `npm run build` — 900.07 kB JS (256.51 kB gzip), 23.07 kB CSS (5.04 kB gzip).
+  parties past the near ring, mean trips by ring **5.9/4.5/0.4** against 3.6/3.4/0.1 one grid
+  ago, before the colony could field a second party. That one exists because the first
+  measured only permission and read like traffic. *The first act is finishable* — **9 of
+  the 10** below Hard country reached the founding (90 %, against a 50 % floor, and 60 % one
+  grid ago); the only one that never got there was settler/99001.
+  Stage two's own check, *the bench does not wait on an errand*, holds — and the number
+  under it is a different number than it was, because the column was rebuilt. All 10 runs
+  that reached the third tier had a party committed within 2 days, **longest gap 0.63 days
+  on settler/424242, mean 0.09**, while the road itself took 8.0 days a run. A grid ago the
+  same principle read a longest gap of 3 days against the same threshold of 2. Nothing about
+  the colonies explains that difference: `unsent` was sampled once a game day at the day
+  boundary, a world starts its clock at **07:12**, and 07:12 is the one gap in a settler's
+  day — awake, not yet fed, not yet departed. It counts ticks now and asks `caravanAllowed`
+  rather than a proxy that never asked whether the talker had eaten. The threshold was
+  deliberately left at 2 while the instrument beneath it was replaced, which is why the size
+  of the old error can be read straight off this line; what that costs is that the principle
+  is now a regression guard rather than a live constraint, and `ARCHITECTURE.md` says so.
+- `npm run build` — 901.24 kB JS (256.89 kB gzip), 23.07 kB CSS (5.04 kB gzip).
 - Dev server on `5063`, play server on `5062` — and on the same port at this machine's
   LAN address, which is deliberately not written down here because it changes with the
   network and a stale IP in a document is worse than no IP.

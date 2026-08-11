@@ -38,7 +38,7 @@
  */
 
 import { CRAFT_DEFS, RECIPE_ORDER, bestCrafter, colonyCanCraft, gateWords, pawnQualified } from './crafting';
-import { caravanOf } from './settlements';
+import { caravansOf } from './settlements';
 import { msg, livingColonists } from './world';
 import type { CraftRecipe, World } from './types';
 import { remember } from './lifelog';
@@ -82,8 +82,11 @@ export function knowhowNow(world: World): {
  */
 export function tickKnowhow(world: World): void {
   if (world.tick % KNOWHOW_INTERVAL !== 0) return;
-  // Somebody is on the road with a pack. Hold still; see the header.
-  if (caravanOf(world)) return;
+  // Somebody is on the road with a pack. Hold still; see the header. Any party
+  // at all, not the first one — the reason to wait is that goods in transit are
+  // goods the colony does not have yet, and a second pack is more of that, not
+  // less.
+  if (caravansOf(world).length > 0) return;
 
   const now = knowhowNow(world);
   const prev = world.knowhow;

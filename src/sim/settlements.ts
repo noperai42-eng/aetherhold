@@ -729,9 +729,17 @@ export function planCaravan(
 ): CaravanPlan {
   const s = settlementById(world, settlementId);
   if (!s) return { ok: false, text: 'There is nowhere by that name.' };
-  if (world.caravan) return { ok: false, text: 'There is already a party on the road.' };
-  if (world.jobs.some((j) => j.kind === 'caravan')) {
-    return { ok: false, text: 'Somebody is already loading up.' };
+  // Counted together, because a party still loading their pack is a party the
+  // colony has already committed. Checking the road alone would let a player
+  // queue three departures in one afternoon and discover the cap only as each
+  // one reached the edge of the map.
+  if (partiesCommitted(world) >= CARAVAN_PARTIES_MAX) {
+    // Which sentence depends on where they are, because "already loading up" and
+    // "already on the road" are different amounts of bad news: one of them the
+    // player can undo by cancelling the job, and the other one is a week away.
+    return world.jobs.some((j) => j.kind === 'caravan')
+      ? { ok: false, text: 'Somebody is already loading up.' }
+      : { ok: false, text: 'There is already a party on every road out.' };
   }
   if (pawn.dead || pawn.downed) return { ok: false, text: `${pawn.name} is in no state to walk it.` };
   if (pawn.playerControlled) {
@@ -780,6 +788,7 @@ export function departCaravan(
   }
   const pack = { kind: give.kind, amount: paid };
   const caravan: Caravan = {
+    id: nextCaravanId(world),
     settlementId: s.id,
     pawn,
     give: pack,
@@ -795,23 +804,135 @@ export function departCaravan(
   // down the road, and nobody left in the valley could touch it.
   for (const j of world.jobs.slice()) if (j.pawnId === pawn.id) cancelJob(world, j.id);
   world.pawns = world.pawns.filter((p) => p.id !== pawn.id);
-  world.caravan = caravan;
+  caravansOf(world).push(caravan);
   msg(world, `${pawn.name} walks out of the valley towards ${s.name}. ${s.days * 2} days there and back.`, 'info');
   return true;
 }
 
-/** The party on the road, if there is one. */
+/**
+ * How many parties may be out at once.
+ *
+ * Two. The grid's finding was a rate — a bench waiting eighteen days on a bill
+ * the town next door could fill in six — and two roads open is the smallest
+ * change that answers a rate. It is not a dial to grow with the colony: a
+ * fifteen-person colony sending six people walking is a map with nobody on it,
+ * and the cost of being short-handed is the thing that makes the decision worth
+ * making. If a later stage wants more roads it should have to argue for them
+ * against a principle, the same as this one did.
+ *
+ * Note what the number does *not* do. `tickCaravan` seeds each trip's luck off
+ * the settlement and its visit count, so a town's mishaps are a deck dealt in
+ * order: a second party sent to the same town draws the next card, not a fresh
+ * copy of the same one. Two parties buy trips per day. They buy nothing at all
+ * against being robbed.
+ */
+export const CARAVAN_PARTIES_MAX = 2;
+
+/**
+ * Bodies a road costs, in settlers the colony has to be able to do without.
+ *
+ * Four, and the prose in `caravanAllowed` is the argument: three left behind is
+ * a colony that can still hold a wall, two is not.
+ *
+ * It is charged *per road* against the whole colony rather than per departure
+ * against the people still at home, and the difference is not a detail. Charged
+ * per departure it reads "four at home to send one", which a colony of five
+ * satisfies twice: send one and four remain, send another and three do. Seed
+ * 20260729 did exactly that on day one and a half of an ordinary week — two
+ * parties out of five settlers, three left holding the valley — and the colony
+ * that came out of it was hunting to stay fed. A five-person colony behaving
+ * like a three-person one is not the second road being earned; it is the second
+ * road being taken out of the same four people twice.
+ *
+ * So `roadsAllowed` divides instead: one road per four settlers, counting the
+ * ones already walking, because a body on the road is a body the colony is
+ * doing without and the arithmetic should say so. Four fields one road. Eight
+ * fields two. Five fields one, however long the bench waits — which is the same
+ * answer the per-departure rule gave for the *first* road, so nothing about a
+ * colony's first trip changes and every grid reading taken before this still
+ * describes the same behaviour.
+ */
+export const CAN_SPARE_ONE = 4;
+
+/**
+ * The parties on the road. Always an array — lazily created, like `settlements`,
+ * so a save written before there was more than one road loads without a fuss.
+ */
+export function caravansOf(world: World): Caravan[] {
+  if (!world.caravans) world.caravans = [];
+  return world.caravans;
+}
+
+/**
+ * The first party on the road, if there is one.
+ *
+ * Kept for the callers that only want to know whether anybody is out at all, and
+ * deliberately *not* used by anything that acts on a particular traveller — with
+ * two on the road, "the caravan" is a question with two right answers and
+ * silently picking the older one is how a second party's goods go missing.
+ */
 export function caravanOf(world: World): Caravan | null {
-  return world.caravan ?? null;
+  return caravansOf(world)[0] ?? null;
+}
+
+/**
+ * Parties the colony has already spent, walking or still loading their pack.
+ *
+ * The gate `planCaravan` and `caravanAllowed` both count against, so that a job
+ * on the board weighs the same as a settler on the road. They do: the colonist
+ * is committed either way.
+ */
+export function partiesCommitted(world: World): number {
+  return caravansOf(world).length + world.jobs.filter((j) => j.kind === 'caravan').length;
+}
+
+/**
+ * Everybody the colony has, walking or at home.
+ *
+ * `livingColonists` is the people on the map, and a traveller is deliberately
+ * not one of them — `departCaravan` lifts them out of `world.pawns` so nothing
+ * can path to them, feed them or shoot them. That is right for every question
+ * about the yard and wrong for every question about the colony, and "how many
+ * of us are there" is the second kind. The founding charter counts the same way
+ * and for the same reason.
+ */
+export function colonySize(world: World): number {
+  return livingColonists(world).length + caravansOf(world).filter((c) => !c.pawn.dead).length;
+}
+
+/**
+ * How many roads this colony may have open at once.
+ *
+ * One per `CAN_SPARE_ONE` settlers, never more than `CARAVAN_PARTIES_MAX` — the
+ * cap is the design and this is the price of reaching it. A colony does not get
+ * the second road for being one settler over the first road's floor; it gets it
+ * for being twice the colony that earned the first one.
+ *
+ * This is one rule where there were two, and that is the point rather than a
+ * tidy-up. A cap checked separately from a headcount is two gates that can each
+ * be true while the pair of them says something nobody meant — which is what
+ * happened, and it took an unrelated hunting test to notice.
+ */
+export function roadsAllowed(world: World): number {
+  return Math.min(CARAVAN_PARTIES_MAX, Math.floor(colonySize(world) / CAN_SPARE_ONE));
+}
+
+/** The next free party number. Monotone within a run, and never reused. */
+function nextCaravanId(world: World): number {
+  const highest = caravansOf(world).reduce((a, c) => Math.max(a, c.id ?? 0), 0);
+  return Math.max(highest, world.stats.caravans ?? 0) + 1;
 }
 
 /**
  * Days left before they are home, for the panel. Counts the whole round trip
  * while they are still outbound, because that is the number the player is
  * actually waiting on.
+ *
+ * Takes the party rather than finding it. With two out, a function that went
+ * looking would have to guess which one the caller meant, and the panel already
+ * knows — it is drawing a row per party.
  */
-export function caravanDaysLeft(world: World): number {
-  const c = world.caravan;
+export function caravanDaysLeft(world: World, c: Caravan | null = caravanOf(world)): number {
   if (!c) return 0;
   const s = settlementById(world, c.settlementId);
   const legs = c.phase === 'outbound' && s ? legTicks(s) : 0;
@@ -826,14 +947,21 @@ export function caravanDaysLeft(world: World): number {
  * a body that is not there.
  */
 export function tickCaravan(world: World): void {
-  const c = world.caravan;
-  if (!c) return;
-  if (world.tick < c.dueTick) return;
+  const out = caravansOf(world);
+  if (out.length === 0) return;
+  // Over a copy, because a party that walks in this tick leaves the array while
+  // the one behind it still has to be stepped. Removal is by identity rather
+  // than index for the same reason.
+  const done: Caravan[] = [];
+  for (const c of out.slice()) if (stepOneCaravan(world, c)) done.push(c);
+  if (done.length > 0) world.caravans = out.filter((c) => !done.includes(c));
+}
+
+/** One tick of one party's road. True when they are home and off the books. */
+function stepOneCaravan(world: World, c: Caravan): boolean {
+  if (world.tick < c.dueTick) return false;
   const s = settlementById(world, c.settlementId);
-  if (!s) {
-    world.caravan = null;
-    return;
-  }
+  if (!s) return true;
 
   if (c.phase === 'outbound') {
     // Its own dice, seeded off the map and the visit, so the same colony taking
@@ -865,7 +993,7 @@ export function tickCaravan(world: World): void {
     }
     c.phase = 'inbound';
     c.dueTick = world.tick + legTicks(s);
-    return;
+    return false;
   }
 
   // Home. Put them back where they left, drop the goods at their feet, and let
@@ -887,7 +1015,6 @@ export function tickCaravan(world: World): void {
   pawn.needs.rest = Math.min(pawn.needs.rest, 0.3);
   gainSkill(world, pawn, 'social', SOCIAL_PER_TRIP);
   world.pawns.push(pawn);
-  world.caravan = null;
 
   if (c.take) {
     if (c.take.kind === 'rawfood') {
@@ -899,6 +1026,7 @@ export function tickCaravan(world: World): void {
   } else {
     msg(world, `${pawn.name} limps back in from the ${s.name} road with nothing.`, 'bad');
   }
+  return true;
 }
 
 /**
@@ -1060,15 +1188,14 @@ const ROAD_REST = TIRED + 0.06;
  */
 export function caravanAllowed(world: World, pawn: Pawn): boolean {
   if (world.gameOver) return false;
-  if (world.caravan) return false;
-  if (world.jobs.some((j) => j.kind === 'caravan')) return false;
+  // One question, not two. A colony of three that sends one away is a colony of
+  // two, and two people cannot hold a wall; four is the first number where this
+  // is a decision rather than a gamble, and eight is the first number where it
+  // is a decision the colony gets to make twice.
+  if (partiesCommitted(world) >= roadsAllowed(world)) return false;
   if (isSleepHours(world)) return false;
   if (world.storyteller.raidActive || hostiles(world).length > 0) return false;
   if (world.fires.length > 0) return false;
-  // A colony of three that sends one away is a colony of two, and two people
-  // cannot hold a wall. Four is the first number where this is a decision rather
-  // than a gamble.
-  if (livingColonists(world).length < 4) return false;
   if (pawn.needs.food <= ROAD_FOOD || pawn.needs.rest <= ROAD_REST) return false;
   // Whoever talks best goes. Anyone else walking it is the colony throwing away
   // the only thing that makes the price good.
@@ -1238,13 +1365,13 @@ export function shoppingRun(world: World, give: ResourceKind): Settlement | null
  * on it — standing still is *allowed* to cost a road, and a colony whose one
  * settler is nine days into somebody else's road has no decision left to make.
  *
- * Both states, because a departure has two. `world.caravan` holds a party that
- * has left the map; before that the settler spends the better part of an hour
- * walking to the road head with a `caravan` job in hand, and a colony in that
- * hour has decided. `caravanAllowed` above refuses on either for the same
- * reason, and a measure that read only the first would charge a day of
- * indecision to a colony that was already loading the pack — about one day in
- * six, since that is the share of a day the walk-up takes.
+ * Both states, because a departure has two. A party on the road has left the
+ * map; before that the settler spends the better part of an hour walking to the
+ * road head with a `caravan` job in hand, and a colony in that hour has decided.
+ * `caravanAllowed` above refuses on either for the same reason, and a measure
+ * that read only the first would charge a day of indecision to a colony that was
+ * already loading the pack — about one day in six, since that is the share of a
+ * day the walk-up takes.
  *
  * Deliberately silent on *where* the party went. The first cut of this asked
  * whether the trip was for the bench, and it was too narrow by exactly the case
@@ -1252,10 +1379,31 @@ export function shoppingRun(world: World, give: ResourceKind): Settlement | null
  * colony ignoring the bench, it is the colony having one settler. Where a
  * committed party is going is a question for the road, which is a different
  * fault with a different fix.
+ *
+ * It used to be called `partyCommitted` and to mean "somebody is out". That was
+ * the same sentence as "there is nobody to send" for exactly as long as the
+ * colony had one road, and the comment on `A_DECISION` said so in advance: the
+ * moment there are two, a party already walking is slack rather than an excuse,
+ * and a colony with one out and four at home has a decision it is making badly.
+ * So the question moved from "is anybody out" to "is there anybody left to
+ * send", which is what the bench principle always meant to ask. The rename is
+ * the point — a silent redefinition under the old name would have left every
+ * call site reading true and meaning something else.
+ *
+ * Both halves of "nobody left" count, and the second is the one that is easy to
+ * forget: a colony of five cannot open a second road however long the bench
+ * waits, because `roadsAllowed` will not let it, and charging it for a road it
+ * was never allowed to walk is the same error this measure has now been
+ * corrected for twice.
+ *
+ * It asks `caravanAllowed`'s own question rather than a copy of it, which is the
+ * whole reason this lives here and not in the eval. When that gate stopped being
+ * a cap plus a headcount and became one division, this followed for free — and a
+ * measure that had reimplemented the pair would have gone on reporting the old
+ * rule with no test able to tell.
  */
-export function partyCommitted(world: World): boolean {
-  if (world.caravan) return true;
-  return world.jobs.some((j) => j.kind === 'caravan');
+export function everyPartySpent(world: World): boolean {
+  return partiesCommitted(world) >= roadsAllowed(world);
 }
 
 /**

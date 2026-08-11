@@ -17,6 +17,7 @@ import {
 } from './encounters';
 import { afflict } from './health';
 import { Rng } from './rng';
+import { caravansOf } from './settlements';
 import type { Pawn, SkillName, World } from './types';
 import { TICKS_PER_DAY, packCell, terrainAt } from './types';
 import { tickScoutItch } from './scout';
@@ -503,12 +504,13 @@ export function forceThreat(
 /** True when every colonist is dead. */
 export function checkGameOver(world: World): void {
   if (world.gameOver) return;
-  // A traveller is off `world.pawns` entirely while they are on the road
+  // Travellers are off `world.pawns` entirely while they are on the road
   // (`settlements.ts` lifts them out of the map so nothing can path to, shoot at
-  // or feed a body that is not here). Without this, a colony whose last settler
-  // is four days out reads as wiped and the run ends while somebody is walking
-  // home to it.
-  const away = world.caravan && !world.caravan.pawn.dead ? 1 : 0;
+  // or feed a body that is not here). Without this, a colony whose last settlers
+  // are four days out reads as wiped and the run ends while somebody is walking
+  // home to it — and with two roads open that is a colony of two, which is
+  // exactly the size that gets itself killed at home.
+  const away = caravansOf(world).filter((c) => !c.pawn.dead).length;
   const alive = world.pawns.filter((p) => p.faction === 'colony' && !p.dead);
   if (alive.length + away === 0) {
     world.gameOver = true;

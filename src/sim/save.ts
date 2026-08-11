@@ -136,19 +136,36 @@ export function deserialize(text: string): LoadResult {
     if (!p.priorities) continue;
     for (const t of WORK_TYPES) if (typeof p.priorities[t] !== 'number') p.priorities[t] = 3;
   }
-  // And the one settler who is not in that list: a traveller on the road is held
-  // inside `world.caravan` rather than in `world.pawns` (see `settlements.ts`),
-  // so every backfill above would step straight over them and they would walk
-  // back onto the map with no social skill and no priority for whatever work
-  // type this build added while they were away.
-  const away = (w as World).caravan?.pawn;
-  if (away) {
+  // The colony used to have one road and held its traveller in `world.caravan`.
+  // It has two now, so fold the old field into the list and clear it — a save
+  // that kept both would have a settler who exists twice, and the first tick that
+  // walked one of them home would put a second copy of the same person on the
+  // map. This is the only reader of the legacy field anywhere; see `types.ts`.
+  const world = w as World;
+  if (!world.caravans) world.caravans = [];
+  if (world.caravan) {
+    world.caravans.push(world.caravan);
+    delete world.caravan;
+  }
+  // And the settlers who are not in the list above: a traveller on the road is
+  // held inside `world.caravans` rather than in `world.pawns` (see
+  // `settlements.ts`), so every backfill would step straight over them and they
+  // would walk back onto the map with no social skill and no priority for
+  // whatever work type this build added while they were away.
+  world.caravans.forEach((c, i) => {
+    // Party numbers only started being written down when there could be two, so
+    // an older save's traveller has none. Hand them one off their position
+    // rather than leaving it undefined, because the eval counts round trips by
+    // identity and every id-less party would otherwise read as the same trip.
+    if (c.id === undefined) c.id = i + 1;
+    const away = c.pawn;
+    if (!away) return;
     backfillTraits(away);
     backfillSkills(away);
     if (away.priorities) {
       for (const t of WORK_TYPES) if (typeof away.priorities[t] !== 'number') away.priorities[t] = 3;
     }
-  }
+  });
   // Suspicion does not survive a reload. `stranded.ts` cancels a plan only after
   // two sweeps agree nobody can reach it, and the whole value of the second look
   // is that it is a fresh one — a colony reopened after a fortnight should not

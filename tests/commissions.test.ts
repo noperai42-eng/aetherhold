@@ -51,6 +51,7 @@ import {
   VALUE,
 
   caravanOf,
+  caravansOf,
   legTicks,
   quote,
   settlementById,
@@ -299,7 +300,7 @@ describe('when the clock runs out', () => {
     s.relations = 50;
     const com = letter(world);
     const walker = livingColonists(world)[0]!;
-    world.caravan = {
+    world.caravans = [{
       settlementId: com.settlementId,
       pawn: walker,
       give: { kind: com.kind, amount: com.amount },
@@ -308,7 +309,7 @@ describe('when the clock runs out', () => {
       y: 40,
       dueTick: com.dueTick + 200,
       phase: 'outbound',
-    } as Caravan;
+    } as Caravan];
 
     world.tick = com.dueTick + 1;
     tickCommissions(world);
@@ -325,7 +326,7 @@ describe('when the clock runs out', () => {
     s.relations = 50;
     const com = letter(world);
     const walker = livingColonists(world)[0]!;
-    world.caravan = {
+    world.caravans = [{
       settlementId: com.settlementId,
       pawn: walker,
       give: { kind: com.kind, amount: com.amount - 1 },
@@ -334,7 +335,7 @@ describe('when the clock runs out', () => {
       y: 40,
       dueTick: com.dueTick + 200,
       phase: 'outbound',
-    } as Caravan;
+    } as Caravan];
 
     world.tick = com.dueTick + 1;
     tickCommissions(world);
@@ -532,9 +533,15 @@ describe('a colony left to itself', () => {
 
     // And they come home. The traveller is a settler again, not a number on a
     // panel that quietly never returned.
-    const walkerId = caravanOf(world)!.pawn.id;
+    //
+    // Followed by name rather than by "is anybody out". This colony can field a
+    // second road now, and the foreman will cheerfully have somebody on it when
+    // this one walks back in — so an empty road is no longer evidence that a
+    // particular settler returned, and demanding one would be asking the colony
+    // to stop trading in order to prove it.
+    const walkerId = out!.pawn.id;
     stepWorldN(world, streams, legTicks(place) + 200);
-    expect(caravanOf(world)).toBeNull();
+    expect(caravansOf(world).some((c) => c.pawn.id === walkerId)).toBe(false);
     expect(livingColonists(world).some((p) => p.id === walkerId)).toBe(true);
     expect(countResource(world, place.sells)).toBeGreaterThan(0);
   });

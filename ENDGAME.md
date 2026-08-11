@@ -719,8 +719,8 @@ colonies that could actually have bought something. It is left uncorrected on
 purpose until the road answer lands, so that the before and the after are read
 off the same rule.
 
-*Not there yet:* the answer to that, and then `assemblies` and the far-ring top
-of the tier — in that order, because adding a *longer* road on top of an
+*The answer to that came next, and `assemblies` and the far-ring top of the tier
+come after it* — in that order, because adding a *longer* road on top of an
 unanswered road problem makes it worse before it makes it better. The middle ring
 sells the parts; the far ring is still selling nothing that only it sells, which
 was the reason stage 1 left the autonomous far-ring walk on the table, and the
@@ -739,6 +739,87 @@ card; it buys draws per day. That is the right thing to buy — the measured
 failure is the round-trip rate, not the robbery rate — but nothing about the
 robbery rate improves, and a design that quietly expected it to would be
 disappointed by a grid saying exactly what it says now.
+
+*Shipped.* The promise first, as the sequencing rule requires:
+`the-road-keeps-up-with-the-bench` — no colony that reaches the third tier stands
+at a stalled bench for more than **twelve days**. Twelve is two worst-case
+near-ring round trips at six days each: one trip that went wrong and one that
+went right. It is derived from `RINGS[0].days` rather than fitted to the runs it
+would be scored against, and it read **BROKEN on arrival** off the grid that
+shipped the slice before it — calm/1312 at 18 stalled days, calm/424242 at 17,
+calm/7 at 13, settler/1312 at 13 — which is the whole point of writing the bar
+before the feature. A promise that first appears in the same commit as the code
+that satisfies it has not been tested by anything.
+
+The colony can field two parties now, on one rule: a road per four settlers,
+counting the ones already walking, capped at two. That last clause is not a dial
+to grow with the colony — the deck finding above says extra parties buy trips per
+day and nothing against robbery, so a third road would be more of a thing that
+already works rather than an answer to anything measured.
+
+The rule got there the hard way, and it is the most useful thing this slice
+produced. The first cut kept the old shape — a cap of two, plus a headcount floor
+charged *per departure* against the people still at home — and both halves looked
+obviously safe. `tests/hunting.test.ts` disagreed. Nothing in that file is about
+trade; it went red because a colony of five satisfied "four others at home" twice
+in a row, on the way from five to four and again from four to three. A per-tick
+probe on seed 20260729 confirmed it: two parties on the road by day seven with
+three settlers holding the valley, and a colony that spent the following week
+hunting to stay fed. The doc comment beside the original rule had predicted that
+exact state and called it acceptable. It was not, and no amount of reading the
+comment would have found it — an unrelated test did, because the grid measures
+day sixty and this fault lived on day one and a half.
+
+The repair is one division where there were two gates
+(`min(CARAVAN_PARTIES_MAX, floor(colonySize / CAN_SPARE_ONE))`), and it is
+provably identical to the old rule for a colony's *first* road, so nothing about
+the readings above stops being comparable. Two costs are owed rather than
+claimed: `unsent` gets stricter in the same commit that makes the road faster, so
+a rise in it is not evidence the road got worse; and
+`the-bench-does-not-wait-on-an-errand` passed its last grid at exactly its
+threshold with no margin, on a rule that has now moved underneath it. Both were
+written down before the grid ran.
+
+What the road bought, measured: mean trips by ring went from 3.6/3.4/0.1 to
+**5.9/4.5/0.4**, `the-first-act-is-finishable` from 6 of 10 foundings to **9 of
+10**, and calm/7's stalled wait from 13 days to 7.
+
+*Both owed costs came due on the next grid, and neither in the shape it was
+written down.* Two enforced principles went red, and the useful part is that they
+went red for opposite reasons — one was the colony's fault and one was the
+ruler's.
+
+`the-bench-does-not-wait-on-an-errand` was the ruler. `unsent` was a field on the
+daily snapshot, the snapshot fires at the day boundary, and a world starts its
+clock at **07:12** — so every reading that column has produced in the history of
+this repo was taken at 07:12, which is the one gap in a settler's day: awake, not
+yet fed, not yet departed. Attributing settler/1312's twelve samples: nine had
+every road already walking, two had a best talker too hungry for `caravanAllowed`
+to let out the gate, one was a genuinely idle morning. Permission runs flat zero
+from eight to six, because by eight the party has gone. Three days charged where
+sixty days of ticks say **0.09** — a thirty-fold overstatement in the same
+direction on every seed, which is the signature of a broken instrument rather
+than of noise. It now counts ticks and asks `caravanAllowed` itself rather than a
+proxy that never asked about food. `A_DECISION` stays at two on purpose: leaving
+the threshold still while the instrument under it is replaced is the only honest
+way to learn what the old one was worth, and it leaves the principle a regression
+guard rather than a live constraint. What the still threshold bought: the same
+grid that read up to three days now reads a longest gap of **0.63 days** on
+settler/424242 and a mean of **0.09** across the ten runs that reached the tier.
+That is the size of the error, read off the principle rather than off a probe.
+
+`the-road-keeps-up-with-the-bench` was the ruler's fault too, and worse, because
+the number is in the promise. Twelve days was derived as two ring-0 round trips —
+but **ring 0 does not sell components**; the middle ring is the only place in the
+world that does, and it is five or six days out, so a parts round trip is ten to
+twelve days. Twelve is one trip, not two. The two runs that stayed red spent sixty
+days with a road free for 0.05 and 0.01 days respectively: both roads full,
+continuously. They were walking, not deciding. So the principle goes
+`enforced: false` with the number kept as a yardstick, and the re-derivation is
+owed to the slice that changes where parts come from. Re-deriving to twenty-four
+now was rejected outright — twenty-four would have been green *before* the second
+party as well, and a bar that passes the code it was written to fail has nothing
+left to say.
 
 **3 — The three roads get ladders the player can see.** A visible tally per road,
 built on `objectives.ts` and `alerts.ts`, which already do this kind of work. No

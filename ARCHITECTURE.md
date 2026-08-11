@@ -99,7 +99,7 @@ src/
     pets.ts            the animal a settler keeps, rather than the one the colony eats
     crafting.ts        the recipe book: two gates, one on the colony and one on the person
     trade.ts           the pedlar who walks in, stands half a day, and swaps
-    settlements.ts     the twelve neighbours off the map in three rings, and the caravan that walks to one
+    settlements.ts     the twelve neighbours off the map in three rings, and the two parties that walk to them
     commissions.ts     the neighbours ask for something back: one pack, on a clock
     prison.ts          what happens to a raider who goes down and does not die
     research.ts        the one axis that only goes forward: nineteen projects, 421,000 points
@@ -810,6 +810,135 @@ property is the one that mattered for the grid: **a new term that is the identit
 measurements were taken leaves them comparable.** It combines with the ×5 for opening a ring by
 `max`, not by multiplying — independent facts about one trip, and ×15 would stop being a tiebreak and
 start being the only decision the foreman ever made.
+
+## Two roads, and the gate that had to become one question
+
+The third tier bills a colony four times over — 12, 18, 22 and 28 components, 180 to 260 steel — and
+one road cannot carry that inside sixty days. Worst case on the near ring is a six-day round trip, so
+two errands is twelve days of walking done strictly one after the other, and the colony spends the
+back half of the tier watching a bench it has already paid for. So there are two parties now. The
+principle written before the feature is `the-road-keeps-up-with-the-bench`: no colony that reaches
+the third tier waits more than **twelve stalled days**, which is two worst-case round trips — one
+trip that went wrong and one that went right — rather than a number picked to be passable.
+
+The thing a second party is *not* is insurance. `tickCaravan` seeds its own `Rng` on
+`(world.seed ^ ((s.id * 733 + s.visits + 1) * 0x9e3779b9))` and then increments `s.visits`, so a
+town's road luck is a pre-drawn deck indexed by visit number: the second party does not get a
+re-draw against the card that robbed the first, it gets the *next* card, which is the one the first
+party would have drawn tomorrow anyway. What the second road buys is draws per day. That is worth
+saying out loud, because "send two so one gets through" is the intuition, and it is wrong here.
+
+The interesting part is what the suite did to the gate. The first cut charged the headcount floor
+per departure against the people still at home — `CAN_SPARE_ONE = 4` others left behind, checked
+again at each departure — and paired it with a cap of two. Both halves read as obviously safe, and
+the doc comment written beside them said so: *a colony of five can just field two parties and is
+down to three at home while they walk.* Then `tests/hunting.test.ts` went red. Nothing in that file
+is about trade. A per-tick probe on seed 20260729 said it plainly: **two parties on the road by day
+seven, three settlers left holding the valley**, out of five. A colony of five behaving like a colony
+of three, in week one, long before the third tier the second road exists for. The colony that came
+out of it was hunting to stay fed.
+
+The fault was the pairing, not either half. A cap checked separately from a headcount is two gates
+that can each be true while the pair of them says something nobody meant — five satisfies "four
+others at home" on the way from five to four, and satisfies it again on the way from four to three.
+So the two became one division:
+
+```ts
+export function roadsAllowed(world: World): number {
+  return Math.min(CARAVAN_PARTIES_MAX, Math.floor(colonySize(world) / CAN_SPARE_ONE));
+}
+```
+
+One road per four settlers, counting the ones already walking. Four fields one road, eight fields
+two, five fields one however long the bench waits. Three properties make this defensible rather than
+fitted: it is derived from a constant that already existed, it is monotone in colony size, and it is
+**identical to the old rule for the first road** — so every grid reading taken before this still
+describes the same behaviour, and the before-and-after can be read off one number.
+
+`everyPartySpent` then asks `caravanAllowed`'s own question instead of a copy of it, which is why
+the eval half of the change cost nothing. A measure that had reimplemented the cap-plus-headcount
+pair would have gone on reporting the old rule after the sim stopped following it, with no test able
+to tell — the same failure as the destination scoring above, one layer over.
+
+Two things are owed here rather than claimed. The `unsent` column got **stricter** in the same
+commit that made the road faster, since one committed party no longer excuses a colony that could
+have sent a second, so a rise in `unsent` is not by itself evidence the road got worse. And
+`the-bench-does-not-wait-on-an-errand` passed its last grid at exactly its 2-day threshold with no
+margin, on a rule that has now changed underneath it; it was put on record as likely to move before
+any numbers landed, because a prediction made after the reading is not a prediction.
+
+**A design fault this cheap to state was found by a test about wildlife.** The grid measures day
+sixty; this lived on day one and a half. That is the argument for running the whole suite before the
+grid rather than after it.
+
+## The instrument was sampling breakfast
+
+Both of those owed items came due on the next grid, and neither came due the way it was written down.
+
+`the-bench-does-not-wait-on-an-errand` went red, and the prediction that it might was correct for the
+wrong reason. `unsent` was a field on `DaySnapshot`, and `DaySnapshot` is taken once a game day at the
+day boundary — and a world starts its clock at **07:12**, not midnight. `timeOfDay` is
+`world.tick % TICKS_PER_DAY` over `TICKS_PER_DAY`, the first tick is tick one, and so every reading
+this column has ever produced, on every seed, in every grid in the repo's history, was taken at 07:12.
+
+That is the one gap in a settler's day. Awake, so no sleep-hours refusal. Not yet fed, so the best
+talker is often under `ROAD_FOOD` and `caravanAllowed` says no. Not yet departed, because the party
+that is going to leave leaves at about eight. Attributing settler/1312's twelve samples by hand: nine
+had every road already walking, two had a hungry talker, **one** was a colony that was free to go and
+stayed home. The hour-by-hour permission profile is non-zero at 6, 7, 18 and 19 and flat zero from
+eight in the morning to six at night, because by eight the question has been answered by leaving.
+
+The column read three days. The same sixty days counted a tick at a time read **0.09**. A thirty-fold
+overstatement, in the same direction, on every seed — which is the shape of an instrument fault, not
+of noise. Worse, `everyPartySpent` never asks about food, so what the measure was charging the colony
+for was in part *a road nobody was permitted to walk*: the third time this codebase has caught itself
+measuring a proxy for a rule instead of the rule.
+
+The fix is the cadence and the question, and deliberately nothing else. Ask every tick; ask
+`caravanAllowed` itself. Only the best talker can ever lead a party, so asking `bestTalker` once is
+exactly "was anybody permitted" at a thirteenth of the cost:
+
+```ts
+if (researchStalled(world)) {
+  const talker = bestTalker(world);
+  if (talker && caravanAllowed(world, talker)) idleTicks++;
+}
+```
+
+`stalled` stayed a day sample and the same objection does not apply to it — a stalled bench is a state
+that lasts days, and at tick resolution it reads 11.76 against the sample's 12. A quantity that
+flickers inside an hour is a different kind of thing, and it was the only one that had to move.
+
+**The threshold did not move with it.** `A_DECISION` stays at two days, which at the new cadence makes
+the principle a regression guard rather than a live constraint. That is on purpose: a threshold left
+alone while the instrument beneath it is replaced is the one honest way to find out what the old
+instrument was worth. Moving both at once produces a grid nobody can read.
+
+## A bar derived off the wrong ring
+
+The other red was `the-road-keeps-up-with-the-bench`, and the second party did not fix it because the
+bar was never reachable. `TWO_ROUND_TRIPS = 12` was derived as two round trips of ring zero — three
+days out, six there and back, one trip that goes wrong and one that goes right.
+
+Ring zero does not sell components. `RINGS` says so in its own comment: the **middle** ring is the
+only place in the world that does, and it is five or six days out. A parts round trip is ten to twelve
+days. Twelve is therefore *one* trip, not two — the principle was asking colonies to have the parts
+home before the only journey that could fetch them had finished.
+
+The two failing runs prove it rather than merely being excused by it. calm/1312 and calm/424242 spent
+sixty days with a road free for a total of 0.05 and 0.01 days: both roads full, essentially
+continuously. They were not deciding badly. They were walking.
+
+So the principle is now `enforced: false`, and the number stays. Re-deriving it to twenty-four here
+was considered and rejected, because twenty-four would have been green *before* the second party too —
+the pre-slice waits were 18, 17, 13, 13 — and a bar that passes the code it was written to fail has no
+evidentiary value left. The re-derivation is owed to the slice that changes where parts come from,
+which is the slice that will know what the honest distance is. The repo has deferred a denominator on
+these grounds once before, on `one-robbery-does-not-end-the-tier`.
+
+Two red principles, two different lessons: **one was the colony's fault and one was the ruler's**, and
+the only reason it was possible to tell them apart is that the claim was written down before the
+feature and the instrument was cheap enough to audit at tick resolution.
 
 ## The only part of the storyteller that looks at the colony
 

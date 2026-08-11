@@ -134,16 +134,18 @@ describe('a colony keeping track of what it can make', () => {
     // Exactly what `departCaravan` does to the colony: the traveller leaves
     // `world.pawns` for the round trip and comes back at the end of it.
     world.pawns = world.pawns.filter((p) => p.id !== only.id);
-    world.caravan = {
-      settlementId: settlementsOf(world)[0]!.id,
-      pawn: only,
-      give: { kind: 'wood', amount: 40 },
-      take: null,
-      x: Math.round(only.x),
-      y: Math.round(only.y),
-      dueTick: world.tick + TICKS_PER_DAY,
-      phase: 'outbound',
-    };
+    world.caravans = [
+      {
+        settlementId: settlementsOf(world)[0]!.id,
+        pawn: only,
+        give: { kind: 'wood', amount: 40 },
+        take: null,
+        x: Math.round(only.x),
+        y: Math.round(only.y),
+        dueTick: world.tick + TICKS_PER_DAY,
+        phase: 'outbound',
+      },
+    ];
     expect(colonyCanCraft(world, 'balm')).toBe(false);
 
     watch(world);
@@ -151,7 +153,7 @@ describe('a colony keeping track of what it can make', () => {
     expect(said(world, /balm/)).toHaveLength(0);
 
     // And when they walk back in, nothing has been forgotten and nothing is news.
-    world.caravan = null;
+    world.caravans = [];
     world.pawns.push(only);
     watch(world);
     expect(said(world, /balm/)).toHaveLength(0);

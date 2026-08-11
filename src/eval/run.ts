@@ -24,7 +24,9 @@ import {
 import { hasWon } from '../sim/victory';
 import {
   PACK_CEILING,
-  partyCommitted,
+  bestTalker,
+  caravanAllowed,
+  caravansOf,
   ringOf,
   ringOpen,
   settlementById,
@@ -113,40 +115,17 @@ export interface DaySnapshot {
    */
   stalled: boolean;
   /**
-   * Was it stalled on a day the colony had somebody it could have sent?
+   * There is deliberately no `unsent` here any more. It was a day-boundary
+   * boolean and that is precisely what was wrong with it — see `unsentDays` on
+   * the report, which counts the same thing at tick resolution and explains why
+   * the difference is a factor of thirty rather than a rounding.
    *
-   * `stalled` alone cannot answer the question the bench principle actually asks.
-   * It says the bar is full and the bill unpaid; it does not say why, and the two
-   * reasons want opposite fixes. A colony that sent its party the day the project
-   * was chosen and is nine days into a twelve-day round trip reads stalled for
-   * every one of those days — and it did the right thing on the first day it
-   * could. A colony that never sent anybody reads exactly the same. The first
-   * needs a shorter road or a second party; the second needs a decision, and a
-   * measure that charges the first for the second's fault will send the balance
-   * pass after a bug that is not there.
-   *
-   * calm/424242 is the case that made this column: it chose the foundry on day
-   * thirty-six, walked, was robbed, walked again, and finished on day fifty-seven
-   * — seventeen days of `stalled`, seven over the ten-day threshold, for a road
-   * it paid for in full. That run kept the promise. The column said it broke it.
-   *
-   * The first cut of this column asked whether the party was out *for the bench*,
-   * and that was still too narrow. calm/99001 caught it: the party left on day
-   * forty-six for a meal town, correctly — `waystations` had not been chosen and
-   * the bench was short of nothing. The bill appeared on day fifty-four with the
-   * settler three days from home, and the column charged the colony for days
-   * fifty-four, fifty-five and fifty-six as though it had decided to stay put.
-   * There was no decision to make: this colony has one party and it was on a road
-   * it was right to be on. So the question is whether anybody *could* have gone,
-   * which is `partyCommitted`'s to answer. It went on day fifty-eight; day
-   * fifty-seven is the only day of the four it owes, and one day of a settler
-   * finishing what was in their hands is what `A_DECISION` allows.
-   *
-   * This will need saying differently when a colony can field two parties, which
-   * is the next slice: "the party is committed" and "there is no party to spare"
-   * are the same sentence only while the answer is one.
+   * `stalled` stays a day sample, and the same objection does not apply to it: a
+   * stalled bench is a state that lasts days, so one look a day loses almost
+   * nothing. Measured on settler/1312 it reads 12 days against 11.76 at tick
+   * resolution. A permission that flickers on and off inside an hour is a
+   * different kind of quantity, and it is the only one that had to move.
    */
-  unsent: boolean;
   /**
    * Morale breaks started so far. `avgMood` alone cannot tell a colony that
    * never faltered from one that broke on day three and recovered by day five —
@@ -240,6 +219,27 @@ export interface EvalReport {
    * and only the first of those is a problem with the economy.
    */
   spareDays: number;
+  /**
+   * Days' worth of ticks the bench was waiting on parts and the colony could
+   * have sent somebody and did not — a real number, not a count of days.
+   *
+   * Every other column here is a day sample and this one is not, because it is
+   * the only quantity in the report that turns on and off inside an hour. The
+   * settler who is permitted at 07:12 and walking by 08:00 is the ordinary case
+   * rather than the exception, so a once-a-day look does not sample this
+   * quantity, it samples *breakfast*. Measured against the tick truth the old
+   * boolean overstated by roughly thirty to one, in the same direction, on every
+   * seed — which is the shape of an instrument fault and not of noise.
+   *
+   * "Could have sent somebody" is `caravanAllowed` itself, asked of the best
+   * talker. Only the best talker is ever permitted to lead a party, so that one
+   * question is exactly "was anybody permitted" at a thirteenth of the cost, and
+   * it is the sim's own rule rather than a second copy of it that could drift.
+   * What it excludes are the ticks the sim refuses — asleep, unfed, under
+   * attack, on fire, every road already walking — and none of those is a
+   * decision the colony declined to make.
+   */
+  unsentDays: number;
 }
 
 export interface EvalOptions {
@@ -316,10 +316,53 @@ export function runColony(opts: EvalOptions = {}): EvalReport {
   // `ringOpenedOn` says the road was walkable; it does not say anybody walked
   // it, and those turned out to be very different claims. Latched on the tick a
   // party leaves rather than counted at the end, because a caravan is only in
-  // `world.caravan` while it is out and a near-ring round trip can be over
+  // `world.caravans` while it is out and a near-ring round trip can be over
   // inside two days.
+  //
+  // By party number rather than by a was-anybody-out flag, which is the change
+  // the second road forces. An edge on "the list stopped being empty" counts one
+  // trip when two parties leave on consecutive days and never counts the second
+  // at all, so the column that measures the fix would have been blind to half of
+  // it. A set of ids seen is exact and cheap; ids are never reused within a run.
   const tripsByRing = [0, 0, 0];
-  let onTheRoad = false;
+  const seenTrips = new Set<number>();
+  /**
+   * Ticks the colony was stalled, permitted to send somebody, and did not.
+   *
+   * This used to be a boolean on the day snapshot, and the cadence was the bug.
+   * `snapshot()` runs after the 4 800th tick of a game day, and a world starts at
+   * 07:12 — so every `unsent` reading the grid has ever taken was taken at 07:12,
+   * an hour after the valley wakes and before anybody has eaten or gone anywhere.
+   *
+   * That is not a neutral instant, and a probe on settler/1312 said how far from
+   * neutral. Of the twelve stalled samples it charged three as days nobody was
+   * sent; attributing each one by hand gives nine with every road already filled,
+   * **two where the best talker was simply hungry** — `caravanAllowed` refuses a
+   * settler below `ROAD_FOOD` and at 07:12 nobody has had breakfast — and one that
+   * was genuinely free and idle. Permission by hour over the same run is nonzero
+   * only at hours 6, 7, 18 and 19 and is a flat zero from eight in the morning to
+   * five in the afternoon, because by eight the party has left. The sample landed
+   * in the one gap in the day: awake, unfed, not yet departed.
+   *
+   * So the column read three days where the truth was 0.09. Not noise — a
+   * thirty-fold overstatement, structural, in the same direction every single day.
+   *
+   * The fix is the cadence and the question, and nothing else: ask every tick, and
+   * ask `caravanAllowed` rather than a proxy for it. Only the best talker can lead
+   * a caravan, so asking the best talker is the whole of `some(caravanAllowed)`
+   * and costs one call instead of one per colonist. What this stops charging for
+   * is time the sim itself refuses — asleep, hungry, under attack, on fire, or
+   * every road already full — and none of those is a decision nobody made. What
+   * it still charges for is unchanged in kind: free, permitted, stalled, idle.
+   *
+   * The threshold does not move with it. `A_DECISION` stays at two days, and the
+   * corrected instrument will almost certainly read well under that everywhere,
+   * which makes the principle a regression guard rather than a live constraint —
+   * worth saying plainly, because a threshold left alone while the instrument
+   * under it is replaced is the one honest way to find out what the instrument
+   * was worth. Moving both at once would have made the grid unreadable.
+   */
+  let idleTicks = 0;
   // Days the colony had a pack it could spare, which is the other half of the
   // question: a colony that never trades is either too busy or too poor, and
   // only one of those is fixed by making the road cheaper.
@@ -334,15 +377,15 @@ export function runColony(opts: EvalOptions = {}): EvalReport {
       if (useSteward) stewardTick(world, world.tick);
       // Edge, not level: a party that is out stays out for days, and counting
       // the level would count one trip once per tick of the road.
-      const out = world.caravan;
-      if (out !== null && out !== undefined) {
-        if (!onTheRoad) {
-          onTheRoad = true;
-          const to = settlementById(world, out.settlementId);
-          if (to) tripsByRing[ringOf(to)]!++;
-        }
-      } else {
-        onTheRoad = false;
+      for (const out of caravansOf(world)) {
+        if (out.id === undefined || seenTrips.has(out.id)) continue;
+        seenTrips.add(out.id);
+        const to = settlementById(world, out.settlementId);
+        if (to) tripsByRing[ringOf(to)]!++;
+      }
+      if (researchStalled(world)) {
+        const talker = bestTalker(world);
+        if (talker && caravanAllowed(world, talker)) idleTicks++;
       }
       // One pass for all of it, because this runs 4 800 times a game day and the
       // sweep runs it across fifteen colonies.
@@ -408,6 +451,7 @@ export function runColony(opts: EvalOptions = {}): EvalReport {
     ringOpenedOn,
     tripsByRing,
     spareDays,
+    unsentDays: round(idleTicks / TICKS_PER_DAY),
     ...judge(world, snapshots, foundedOn, playPastFounding),
   };
 }
@@ -465,7 +509,6 @@ function snapshot(
     ripe: cells.filter((c) => (world.crops[c] ?? CROP_NONE) >= 1).length,
     tech: world.research.done.length,
     stalled: researchStalled(world),
-    unsent: researchStalled(world) && !partyCommitted(world),
     breaks: world.stats.moraleBreaks ?? 0,
     trades: world.stats.trades ?? 0,
     captured: world.stats.captured ?? 0,

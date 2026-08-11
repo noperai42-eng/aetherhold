@@ -117,16 +117,18 @@ describe('the charters', () => {
     const rng = new Rng(7);
     const traveller = makePawn(world, rng, 'colony', 30, 30);
     world.pawns = world.pawns.filter((p) => p.id !== traveller.id);
-    world.caravan = {
-      pawn: traveller,
-      settlementId: settlementsOf(world)[0].id,
-      give: { kind: 'wood', amount: 40 },
-      take: null,
-      phase: 'outbound',
-      dueTick: world.tick + 100,
-      x: 0,
-      y: 0,
-    };
+    world.caravans = [
+      {
+        pawn: traveller,
+        settlementId: settlementsOf(world)[0].id,
+        give: { kind: 'wood', amount: 40 },
+        take: null,
+        phase: 'outbound',
+        dueTick: world.tick + 100,
+        x: 0,
+        y: 0,
+      },
+    ];
     // Somebody four days out buying medicine is still one of yours. A founding
     // that fell over because of it would read as a bug rather than a rule.
     expect(charters(world).find((c) => c.id === 'hearth')!.at).toBe(before + 1);

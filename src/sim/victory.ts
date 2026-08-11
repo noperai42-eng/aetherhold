@@ -32,7 +32,7 @@
  */
 
 import { foodDays } from './alerts';
-import { settlementsOf } from './settlements';
+import { caravansOf, settlementsOf } from './settlements';
 import { TICKS_PER_DAY, type World } from './types';
 import { livingColonists, msg } from './world';
 
@@ -121,12 +121,14 @@ export function bestStanding(world: World): number {
  * Where the colony stands against every charter. Pure — safe to call from the
  * HUD every frame.
  *
- * A settler on the road counts toward the head count: they are alive and they are
+ * Settlers on the road count toward the head count: they are alive and they are
  * yours, and a founding that fell over because somebody was four days out buying
- * medicine would read as a bug rather than a rule.
+ * medicine would read as a bug rather than a rule. Plural since the colony can
+ * field two — a charter that came apart because the *second* party was out would
+ * be the same bug, found later and by a player.
  */
 export function charters(world: World): Charter[] {
-  const away = world.caravan && !world.caravan.pawn.dead ? 1 : 0;
+  const away = caravansOf(world).filter((c) => !c.pawn.dead).length;
   const people = livingColonists(world).length + away;
   const days = foodDays(world);
   const turrets = builtCount(world, 'turret');

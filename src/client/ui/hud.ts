@@ -55,8 +55,10 @@ import { stewardOn } from '../../sim/steward';
 import {
   PACK_SIZES,
   bestTalker,
+  CARAVAN_PARTIES_MAX,
   caravanDaysLeft,
-  caravanOf,
+  caravansOf,
+  partiesCommitted,
   packMultiple,
   quote,
   rateReasons,
@@ -1607,7 +1609,12 @@ export class Hud {
     if (!this.roadOpen) return;
 
     const places = settlementsOf(s.world);
-    const out = caravanOf(s.world);
+    const out = caravansOf(s.world);
+    // At the cap the panel stops offering roads; below it, a party already
+    // walking is news rather than a wall, and the towns stay listed because
+    // sending the second one is the decision this tab now exists to put in front
+    // of the player.
+    const capped = partiesCommitted(s.world) >= CARAVAN_PARTIES_MAX;
     const talker = bestTalker(s.world);
     const com = commissionOf(s.world);
     // The open letter is part of both signatures — the clock on it runs whether
@@ -1618,10 +1625,17 @@ export class Hud {
       : 'none';
     // Quarter-days and quarter-levels: fine enough that the panel visibly moves,
     // coarse enough that it is not rebuilt twenty times a second.
-    const sig = out
-      ? `out|${out.settlementId}|${out.phase}|${Math.round(caravanDaysLeft(s.world) * 4)}|${comSig}`
+    // Every party is in the signature, not just the first: with two out, a panel
+    // keyed on one of them would freeze the other's clock at whatever it read
+    // when the first left.
+    const outSig = out
+      .map((c) => `${c.id ?? 0}:${c.settlementId}:${c.phase}:${Math.round(caravanDaysLeft(s.world, c) * 4)}`)
+      .join(';');
+    const sig = capped
+      ? `out|${outSig}|${comSig}`
       : [
           'in',
+          outSig,
           talker ? `${talker.id}:${Math.round(socialOf(talker) * 4)}` : 'none',
           PACK_KINDS.map((k) => countResource(s.world, k)).join(','),
           // Headcount rides along because it is the one thing range turns on
@@ -1654,25 +1668,31 @@ export class Hud {
       this.roadtab.append(card);
     }
 
-    if (out) {
-      const dest = settlementById(s.world, out.settlementId);
-      const days = caravanDaysLeft(s.world);
+    // A line each. Two parties out is two settlers the colony is doing without,
+    // and the panel saying so twice is the cost being visible rather than
+    // inferred from a headcount the player is not watching.
+    for (const c of out) {
+      const dest = settlementById(s.world, c.settlementId);
+      const days = caravanDaysLeft(s.world, c);
       const carrying =
-        out.phase === 'outbound'
-          ? `carrying ${out.give.amount} ${out.give.kind}`
-          : out.take
-            ? `bringing back ${out.take.amount} ${out.take.kind}`
+        c.phase === 'outbound'
+          ? `carrying ${c.give.amount} ${c.give.kind}`
+          : c.take
+            ? `bringing back ${c.take.amount} ${c.take.kind}`
             : 'walking home with nothing — they were robbed';
       this.roadtab.append(
         el(
           'div',
           'hint',
           {},
-          `${out.pawn.name} is on the ${dest?.name ?? 'far'} road, ${carrying}. Home in about ${days.toFixed(1)} days. Nobody can do their work until they are back.`,
+          `${c.pawn.name} is on the ${dest?.name ?? 'far'} road, ${carrying}. Home in about ${days.toFixed(1)} days. Nobody can do their work until they are back.`,
         ),
       );
-      return;
     }
+    // Only the cap closes the panel. One party out and bodies to spare is a
+    // colony that may still send another, and hiding the towns would be the old
+    // one-road rule surviving in the interface after it left the simulation.
+    if (capped) return;
 
     this.roadtab.append(
       el(

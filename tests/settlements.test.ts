@@ -38,11 +38,16 @@ import {
   RELATIONS_PER_VISIT,
   SOCIAL_PER_TRIP,
   VALUE,
+  CARAVAN_PARTIES_MAX,
   bestTalker,
   caravanAllowed,
   caravanDaysLeft,
   caravanOf,
+  caravansOf,
+  departCaravan,
   legTicks,
+  partiesCommitted,
+  planCaravan,
   mishapChance,
   pickDestination,
   quote,
@@ -57,6 +62,7 @@ import {
 import { WALK_SPEED } from '../src/sim/movement';
 import { HUNGRY, TIRED } from '../src/sim/needs';
 import { DEALS } from '../src/sim/trade';
+import { commissionOf, tickCommissions } from '../src/sim/commissions';
 import { makeStreams, stepWorldN } from '../src/sim/tick';
 import { deserialize, serialize } from '../src/sim/save';
 import { addItem, countResource, livingColonists, removeItem } from '../src/sim/world';
@@ -91,9 +97,15 @@ function colony(seed = 20260730): World {
  * the lake, and stop the moment they leave so the callers below can still time
  * the legs of the trip from the departure.
  */
-function walkToTheEdge(world: World, streams: ReturnType<typeof makeStreams>): void {
+function walkToTheEdge(
+  world: World,
+  streams: ReturnType<typeof makeStreams>,
+  out = 1,
+): void {
   const ceiling = Math.round((world.width * 1.5) / WALK_SPEED);
-  for (let t = 0; t < ceiling && world.caravan == null; t += 20) stepWorldN(world, streams, 20);
+  for (let t = 0; t < ceiling && caravansOf(world).length < out; t += 20) {
+    stepWorldN(world, streams, 20);
+  }
 }
 
 /** Enough of `kind` loose on the ground, well clear of the cabin. */
@@ -429,6 +441,156 @@ describe('a settler on the road', () => {
     expect(countResource(world, gotKind)).toBeGreaterThan(hadOfIt);
   });
 
+  // ---------------------------------------------------------------------------
+  // the second road
+  //
+  // The sixty-day grid's finding was a rate: benches at the top of the free tree
+  // waiting up to eighteen days for a bill the town next door could have filled
+  // three times over, because one road was open and everything queued behind it.
+  // See `the-road-keeps-up-with-the-bench`. What follows is the road as a player
+  // walks it, then the edges.
+  // ---------------------------------------------------------------------------
+
+  it('walks two parties at once and brings both of them home with the goods', () => {
+    const world = colony(4041);
+    const streams = makeStreams(world);
+    world.tick = Math.round(TICKS_PER_DAY * 0.5);
+    while (livingColonists(world).length < 6) {
+      makePawn(world, new Rng(900 + world.pawns.length), 'colony', 40, 44);
+    }
+    for (const p of livingColonists(world)) {
+      p.needs.food = 1;
+      p.needs.rest = 1;
+      p.skills.shooting = 20;
+    }
+    stock(world, 'wood', 600);
+    const near = settlementsOf(world).sort((a, b) => a.days - b.days);
+    const first = near[0]!;
+    const second = near[1]!;
+    // Allied, for the same reason as the quiet-road test above: the dice are real
+    // and this test is about two roads working, not about surviving them.
+    first.relations = 100;
+    second.relations = 100;
+    const home = livingColonists(world);
+    const before = home.length;
+
+    expect(orderCaravan(world, home[0]!, first.id, { kind: 'wood', amount: 80 }).ok).toBe(true);
+    walkToTheEdge(world, streams);
+    expect(caravansOf(world)).toHaveLength(1);
+
+    // The second order goes in while the first party is already off the map,
+    // which is the whole point — under the old rule this returned "there is
+    // already a party on the road" and the colony stood still.
+    expect(orderCaravan(world, home[1]!, second.id, { kind: 'wood', amount: 80 }).ok).toBe(true);
+    // The same clock as the first departure, and for the same reason: the walk
+    // to the road head is half the map wide. Two hundred ticks was a guess, and
+    // it timed out three quarters of the way across the valley and reported it
+    // as the second road never opening.
+    walkToTheEdge(world, streams, 2);
+    expect(caravansOf(world)).toHaveLength(2);
+
+    // Two settlers the colony is doing without, and they are different people on
+    // different roads. Both of those matter: one party counted twice would pass
+    // a length check and deliver once.
+    const [a, b] = caravansOf(world);
+    expect(a!.pawn.id).not.toBe(b!.pawn.id);
+    expect(a!.settlementId).not.toBe(b!.settlementId);
+    expect(a!.id).not.toBe(b!.id);
+    expect(livingColonists(world).length).toBe(before - 2);
+
+    // Long enough for the further of the two round trips, plus the walk in.
+    stepWorldN(world, streams, legTicks(second) * 2 + 600);
+    expect(caravansOf(world)).toHaveLength(0);
+    // Both back on their feet and counted again, and both trips banked. `stats`
+    // counting two is the assertion that matters: a loop that removed the first
+    // party before stepping the second would leave the second walking for ever,
+    // and an arrival that overwrote rather than appended would bank one.
+    expect(livingColonists(world).length).toBeGreaterThanOrEqual(before);
+    expect(livingColonists(world).some((p) => p.id === a!.pawn.id)).toBe(true);
+    expect(livingColonists(world).some((p) => p.id === b!.pawn.id)).toBe(true);
+    expect(world.stats.caravans).toBe(2);
+    expect(first.visits).toBe(1);
+    expect(second.visits).toBe(1);
+  });
+
+  it('refuses a third party and says which kind of no it is', () => {
+    const world = colony(4042);
+    world.tick = Math.round(TICKS_PER_DAY * 0.5);
+    while (livingColonists(world).length < 8) {
+      makePawn(world, new Rng(950 + world.pawns.length), 'colony', 40, 44);
+    }
+    stock(world, 'wood', 600);
+    const place = settlementsOf(world).sort((a, b) => a.days - b.days)[0]!;
+    const crew = livingColonists(world);
+    const pack = { kind: 'wood' as const, amount: 40 };
+
+    expect(departCaravan(world, crew[0]!, place, pack)).toBe(true);
+    expect(departCaravan(world, crew[1]!, place, pack)).toBe(true);
+    expect(caravansOf(world)).toHaveLength(CARAVAN_PARTIES_MAX);
+
+    // Eight settlers, goods in the yard, a road they have walked twice, and the
+    // answer is still no — because the cap is about bodies away from home, not
+    // about whether the colony can afford the pack.
+    const third = planCaravan(world, crew[2]!, place.id, pack);
+    expect(third.ok).toBe(false);
+    expect(third.ok ? '' : third.text).toBe('There is already a party on every road out.');
+  });
+
+  it('counts a party still loading against the cap', () => {
+    const world = colony(4043);
+    world.tick = Math.round(TICKS_PER_DAY * 0.5);
+    while (livingColonists(world).length < 8) {
+      makePawn(world, new Rng(970 + world.pawns.length), 'colony', 40, 44);
+    }
+    stock(world, 'wood', 600);
+    const place = settlementsOf(world).sort((a, b) => a.days - b.days)[0]!;
+    const crew = livingColonists(world);
+    const pack = { kind: 'wood' as const, amount: 40 };
+
+    expect(departCaravan(world, crew[0]!, place, pack)).toBe(true);
+    expect(orderCaravan(world, crew[1]!, place.id, pack).ok).toBe(true);
+    // One walking, one still crossing the yard with the job in hand. That is the
+    // cap: without counting the job, a player could queue three departures in an
+    // afternoon and find out only as each reached the edge of the map.
+    expect(caravansOf(world)).toHaveLength(1);
+    expect(partiesCommitted(world)).toBe(CARAVAN_PARTIES_MAX);
+    const third = planCaravan(world, crew[2]!, place.id, pack);
+    expect(third.ok).toBe(false);
+    expect(third.ok ? '' : third.text).toBe('Somebody is already loading up.');
+  });
+
+  it('settles a letter answered by the second party, not just the first', () => {
+    const world = colony(4044);
+    world.tick = Math.round(TICKS_PER_DAY * 0.5);
+    while (livingColonists(world).length < 8) {
+      makePawn(world, new Rng(990 + world.pawns.length), 'colony', 40, 44);
+    }
+    stock(world, 'wood', 600);
+    const places = settlementsOf(world).sort((a, b) => a.days - b.days);
+    const crew = livingColonists(world);
+    expect(departCaravan(world, crew[0]!, places[0]!, { kind: 'wood', amount: 40 })).toBe(true);
+    expect(departCaravan(world, crew[1]!, places[1]!, { kind: 'wood', amount: 40 })).toBe(true);
+
+    // The letter is from the town the *second* party is walking to. A settle-up
+    // that looked at `caravansOf(world)[0]` would find the wrong pack pointed at
+    // the wrong town and let the request lapse with the goods on the right
+    // counter.
+    const [, later] = caravansOf(world);
+    later!.dealtTick = world.tick;
+    later!.take = { kind: 'steel', amount: 20 };
+    world.commission = {
+      settlementId: later!.settlementId,
+      kind: 'wood',
+      amount: 40,
+      reason: 'a hard winter',
+      postedTick: 0,
+      dueTick: world.tick + TICKS_PER_DAY * 14,
+    };
+    tickCommissions(world);
+    expect(commissionOf(world)).toBeNull();
+    expect(world.stats.commissions).toBe(1);
+  });
+
   it('does not read as a wiped colony while the last settler is walking home', () => {
     const world = colony();
     const streams = makeStreams(world);
@@ -466,10 +628,17 @@ describe('a settler on the road', () => {
     walker.playerControlled = true;
     expect(orderCaravan(world, walker, place.id, { kind: 'wood', amount: 80 }).ok).toBe(false);
     walker.playerControlled = false;
-    // One party at a time.
+    // Two parties at a time, and the second one is allowed — this line said
+    // `false` when there was one road, and it would have gone on passing as a
+    // green assertion about a rule that no longer exists if the cap had been
+    // raised without coming back here to read it.
     expect(orderCaravan(world, walker, place.id, { kind: 'wood', amount: 80 }).ok).toBe(true);
-    const second = livingColonists(world).find((p) => p.id !== walker.id)!;
-    expect(orderCaravan(world, second, place.id, { kind: 'wood', amount: 80 }).ok).toBe(false);
+    const others = livingColonists(world).filter((p) => p.id !== walker.id);
+    expect(orderCaravan(world, others[0]!, place.id, { kind: 'wood', amount: 80 }).ok).toBe(true);
+    // The third is not. The player floor in `planCaravan` is two living settlers
+    // rather than `CAN_SPARE_ONE`, so what stops this one is the cap and nothing
+    // else — which is the refusal this test is here to pin.
+    expect(orderCaravan(world, others[1]!, place.id, { kind: 'wood', amount: 80 }).ok).toBe(false);
   });
 
   it('survives being saved and loaded while off the map', () => {
@@ -512,6 +681,57 @@ describe('a settler on the road', () => {
     stepWorldN(back, loaded, legTicks(place) * 2 + 400);
     expect(caravanOf(back)).toBeNull();
     expect(back.pawns.some((p) => p.id === walker.id)).toBe(true);
+  });
+
+  it('loads a colony saved when there was only one road, without cloning the traveller', () => {
+    const world = colony();
+    const streams = makeStreams(world);
+    stock(world, 'wood', 300);
+    const walker = bestTalker(world)!;
+    const place = settlementsOf(world)[0]!;
+    orderCaravan(world, walker, place.id, { kind: 'wood', amount: 80 });
+    walkToTheEdge(world, streams);
+    const away = caravanOf(world)!;
+
+    // Exactly the shape on disk before this slice: one traveller in `caravan`,
+    // no `caravans` at all, and no id on them because there was nothing to tell
+    // them apart from.
+    world.caravan = { ...away };
+    delete world.caravan!.id;
+    delete world.caravans;
+
+    const round = deserialize(
+      serialize(
+        world,
+        {
+          mode: 'manager',
+          possessedId: null,
+          camera: { targetX: 0, targetY: 0, distance: 20, yaw: 0, pitch: 1 },
+        },
+        1,
+        0,
+      ),
+    );
+    expect(round.ok).toBe(true);
+    if (!round.ok) return;
+    const back = round.save.world;
+
+    // One traveller, not two. The migration reads the old field and the new list
+    // is empty, so the failure this guards against is the one where both are
+    // kept: a colony that loads with its only settler on two roads at once,
+    // walking home twice and being paid twice for the same pack.
+    expect(caravansOf(back)).toHaveLength(1);
+    expect(caravansOf(back)[0]!.pawn.id).toBe(walker.id);
+    expect(back.pawns.some((p) => p.id === walker.id)).toBe(false);
+    // Named, so the trip counter and everything else that works by identity has
+    // something to hold. An unnumbered party is one the eval counts every day.
+    expect(caravansOf(back)[0]!.id).toBe(1);
+    // And the old field is gone rather than left lying next to the new one,
+    // because the next save would write it out again and the load after that
+    // would have two of the same person.
+    expect(back.caravan).toBeUndefined();
+    // Still one road committed, so the colony may open exactly one more.
+    expect(partiesCommitted(back)).toBe(1);
   });
 });
 

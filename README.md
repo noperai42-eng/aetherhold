@@ -1489,7 +1489,9 @@ Five rules make it a decision rather than a button:
   out of steel. `tests/rings.test.ts` re-runs the same search over all twelve.
 
 The Steward will send caravans on its own once the colony can spare somebody — four
-settlers alive, nobody hungry, no raid, daylight, and the best talker free — but it always
+settlers alive, nobody hungry, no raid, daylight, and the best talker free — and a second
+party once there are eight, because the colony earns one road per four bodies and the ones
+already walking still count as yours. Two is the ceiling. It always
 takes the trip from the surplus, never from the reserve. Left to plain worth-over-distance
 it would walk to the nearest gate forever — a one-day road turns a pack around five times
 while a nine-day road turns it once — and since standing is only bought by showing up, a

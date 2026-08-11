@@ -141,8 +141,76 @@ const SPENT_SHARE = 0.25;
  *
  * Sixty-day figure, and unlike its predecessor this one does not depend on where
  * the map put the parts town.
+ *
+ * The number has not moved since; the instrument under it has, and that is worth
+ * knowing before reading a verdict against it. `unsentDays` was a day sample and
+ * a world starts its clock at 07:12, so every reading this threshold was ever
+ * shown was taken at 07:12 — awake, not yet fed, not yet departed. On
+ * settler/1312 twelve such samples attributed nine to every road already
+ * walking, two to a best talker under `ROAD_FOOD`, and one to a colony that was
+ * genuinely free and stayed home; permission ran flat zero from eight in the
+ * morning to six at night, because by eight the party had gone. Three days
+ * charged where the truth was 0.09.
+ *
+ * It counts ticks now, and asks `caravanAllowed` rather than a proxy for it. Two
+ * stays deliberately: a threshold left alone while the instrument beneath it is
+ * replaced is the one honest way to find out what the old instrument was worth,
+ * and moving both at once would have made the grid unreadable. What it buys at
+ * this cadence is a regression guard rather than a live constraint — nothing on
+ * the shipped grid comes near two days of genuine idleness — and a guard is the
+ * correct thing for a promise the colony is currently keeping easily.
  */
 const A_DECISION = 2;
+
+/**
+ * Days a finished bench may stand waiting on deliveries — walking included —
+ * before the road itself is the fault.
+ *
+ * This is the threshold `A_DECISION` used to be asked for and could not carry.
+ * `unsentDays` judges whether the colony decided; nothing judged whether the
+ * deciding got the parts here in time, and "the road is allowed to cost days"
+ * was doing duty as an excuse with no ceiling on it.
+ *
+ * Twelve, and it was read off the map rather than off the grid — off the wrong
+ * part of the map, as the grid then demonstrated. Every third-tier project bills
+ * components, and the derivation went: ring zero sells every kind there is, the
+ * longest road in that ring is three days out, six there and back, and two of
+ * those is the bar — one trip that went wrong and one that went right.
+ *
+ * Ring zero does not sell components. The middle ring is the only place in the
+ * world that does, `RINGS` says so in its own comment, and it is five or six days
+ * out: a parts round trip is ten to twelve days. So twelve is not two round trips
+ * with a mistake in them, it is *one* — the bar asks a colony to have the parts
+ * home before the only trip that can fetch them is over. Nothing can pass that on
+ * purpose, and the runs that failed it failed it by walking.
+ *
+ * The number stays anyway, unenforced, because it is the yardstick the two-party
+ * work was measured against and re-deriving it now would erase that reading. The
+ * re-derivation is owed to the slice that changes where parts come from, which is
+ * the slice that will know what the honest distance is.
+ *
+ * Deliberately `stalledDays` and not `unsentDays`, which is the reverse of the
+ * move slice two made. That move was right there and is right here for the same
+ * reason: the bench principle asks who decided and must not be charged for a
+ * walk, this one asks how long the walking took and must not be *credited* for
+ * one. The player waits the whole number either way, and the two columns exist
+ * so that a run can be told which half it failed.
+ *
+ * It is scoped by that ceiling to what the road can answer for. A colony with
+ * nothing worth trading waits here too and is counted, because a bench at the top
+ * of the free tree with an empty yard is also a broken promise — a different one,
+ * and this check is blind to which. If it ever fails on that cause the detail
+ * line will say so, since `unsentDays` travels beside the verdict.
+ *
+ * Before-reading, off the shipped grid at 4903917 and one party: four of the
+ * runs that reached the tier are over it — calm/1312 eighteen days, calm/424242
+ * seventeen, calm/7 and settler/1312 thirteen. After the second party, calm/7
+ * fell to seven and the two calm outliers did not move, which is what sent
+ * somebody to look at where components are actually sold. Both of those colonies
+ * had a road free for one hour in sixty days: they were not deciding badly, they
+ * were walking.
+ */
+const TWO_ROUND_TRIPS = 12;
 
 /**
  * How many projects a colony finishes before it meets one that costs goods.
@@ -906,6 +974,23 @@ export const PRINCIPLES: Principle[] = [
       // the edge of what this principle can excuse. The next slice gives it a
       // second party, and then "committed" and "nothing to spare" stop being the
       // same sentence and this column has to be re-read.
+      //
+      // Re-read, and the column was worse than thin — it was reading the wrong
+      // instant. Every sample it ever took was taken at 07:12, because a world
+      // starts its clock there and this was a day-boundary boolean, and 07:12 is
+      // the one gap in a settler's day: awake, not yet fed, not yet gone. Of
+      // twelve such samples on settler/1312, nine had every road already walking
+      // and two had a best talker too hungry for `caravanAllowed` to let out the
+      // gate. One was a real idle morning. The column said three days; the ticks
+      // said 0.09.
+      //
+      // It counts ticks now and asks `caravanAllowed` itself. What that costs is
+      // this principle's teeth: at tick resolution no shipped run is anywhere
+      // near two days, so what stands here is a guard against a colony learning
+      // to sit still rather than a live constraint on one. That is a fair trade
+      // for a column that was overstating by thirty to one in the same direction
+      // on every seed — a threshold is only worth what the instrument under it
+      // is, and this one was buying its margin from breakfast.
       if (s.days < DAY_SIXTY) {
         return { verdict: 'untested', detail: `${s.days}-day grid cannot see day ${DAY_SIXTY}` };
       }
@@ -939,8 +1024,9 @@ export const PRINCIPLES: Principle[] = [
             waited
               .map(
                 (m) =>
-                  `${m.difficulty}/${m.seed} sent nobody for ${m.unsentDays} of ${m.stalledDays} ` +
-                  `waiting days, on ${m.tech} projects`,
+                  `${m.difficulty}/${m.seed} sent nobody for ` +
+                  `${(m.unsentDays ?? 0).toFixed(2)} of ${m.stalledDays} waiting days, on ` +
+                  `${m.tech} projects`,
               )
               .join(', '),
         };
@@ -961,8 +1047,103 @@ export const PRINCIPLES: Principle[] = [
         detail:
           `all ${reached.length} runs that reached the third tier had a party committed within ` +
           `${A_DECISION} days; longest gap was ${worst.difficulty}/${worst.seed} at ` +
-          `${worst.unsentDays ?? 0} days, mean ${mean.toFixed(1)}; ` +
+          `${(worst.unsentDays ?? 0).toFixed(2)} days, mean ${mean.toFixed(2)}; ` +
           `the road itself took ${walked.toFixed(1)} days a run`,
+      };
+    },
+  },
+  {
+    id: 'the-road-keeps-up-with-the-bench',
+    claim:
+      'The road is a rate, not a permit. A colony that has earned the far country and can spare ' +
+      'the bodies gets its parts inside a fixed number of days — the distance is allowed to cost ' +
+      'days, and it is not allowed to cost the act.',
+    // Open, and the reason is that the number in the claim is wrong rather than
+    // that the colonies are. `TWO_ROUND_TRIPS` was derived off ring zero, which
+    // does not sell components; the middle ring does, and one parts round trip is
+    // ten to twelve days there. Twelve is one trip, not two, so the bar asks for
+    // the parts before the only journey that can fetch them has finished.
+    //
+    // The re-derivation belongs to the slice that moves where parts come from,
+    // and until then the check stays wired up and read rather than deleted: the
+    // number is the yardstick the second party was measured against, and the grid
+    // should keep printing it. This repo has deferred a denominator once before,
+    // on `one-robbery-does-not-end-the-tier`, for the same reason.
+    enforced: false,
+    check: (s) => {
+      // Written before the second party and not after it, which is the only order
+      // that makes the number mean anything — and unusually, the before-reading
+      // did not cost a grid. The column already existed and the shipped run at
+      // 4903917 already published it: `wait` reads 7/13/18/7/17 on the quiet
+      // valley and 5/3/13/0/0 on settler, so four of the runs that reached the
+      // tier are over twelve and this is broken on arrival.
+      //
+      // The second party is still the right fix for what it was aimed at, and the
+      // same grid says why. calm/1312 sat eighteen days without closing a twelve
+      // component bill; `caravanAllowed` refuses while a raid is up, while
+      // anything is burning, through sleep hours, and — the binding one — while
+      // anybody at all is already walking. A colony of fifteen had one road and
+      // used it like a colony of four. Afterwards calm/7 fell from thirteen days
+      // to seven and mean trips to the middle ring went from 3.4 to 4.5.
+      //
+      // What it did not fix is the pair that stayed at eighteen and seventeen,
+      // and those are the runs that unmasked the bar. Both spent sixty days with
+      // a road free for about an hour: at that point the wait is the length of
+      // the road and no permission rule can shorten it.
+      //
+      // The thing this must not be read as promising: robberies do not get rarer.
+      // `tickCaravan` seeds its dice off the settlement and its visit count, so a
+      // town's luck is a deck dealt in order and a second party draws the next
+      // card rather than a second copy of the same one. What two parties buy is
+      // draws per day. That is the failure this principle names, and it is the
+      // whole of what it claims.
+      if (s.days < DAY_SIXTY) {
+        return { verdict: 'untested', detail: `${s.days}-day grid cannot see day ${DAY_SIXTY}` };
+      }
+      const full = s.runs.filter((m) => m.daysLived >= s.days);
+      if (full.length === 0) {
+        return { verdict: 'untested', detail: `no run reached day ${s.days}` };
+      }
+      // Same gate as its sibling and for the same reason: hard country is mostly
+      // colonies that never reached a project with a bill, and scoring their nought
+      // waiting days as a pass would let a grid of corpses certify the road.
+      const reached = full.filter((m) => (m.stalledDays ?? 0) > 0 || (m.tech ?? 0) >= THIRD_TIER);
+      if (reached.length === 0) {
+        return {
+          verdict: 'untested',
+          detail: `no run of ${full.length} reached a project that costs materials`,
+        };
+      }
+      const slow = reached.filter((m) => (m.stalledDays ?? 0) > TWO_ROUND_TRIPS);
+      if (slow.length > 0) {
+        return {
+          verdict: 'broken',
+          detail:
+            `${slow.length} of ${reached.length} runs that reached the third tier waited more ` +
+            `than ${TWO_ROUND_TRIPS} days on deliveries: ` +
+            slow
+              // `unsentDays` rides along so a reader can tell the two failures
+              // apart without opening the table: a run whose wait is nearly all
+              // unsent had nobody to send or nothing to send them with, and that
+              // is the yard's fault rather than the road's.
+              .map(
+                (m) =>
+                  `${m.difficulty}/${m.seed} waited ${m.stalledDays} days ` +
+                  `(${(m.unsentDays ?? 0).toFixed(2)} of them with a road free), on ` +
+                  `${m.tech} projects`,
+              )
+              .join(', '),
+        };
+      }
+      const worst = reached.reduce((a, m) => ((m.stalledDays ?? 0) > (a.stalledDays ?? 0) ? m : a));
+      const mean =
+        reached.reduce((a, m) => a + (m.stalledDays ?? 0), 0) / Math.max(1, reached.length);
+      return {
+        verdict: 'holds',
+        detail:
+          `all ${reached.length} runs that reached the third tier got their parts inside ` +
+          `${TWO_ROUND_TRIPS} days; longest wait was ${worst.difficulty}/${worst.seed} at ` +
+          `${worst.stalledDays ?? 0} days, mean ${mean.toFixed(1)}`,
       };
     },
   },

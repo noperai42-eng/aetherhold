@@ -461,6 +461,15 @@ export interface Settlement {
  * body standing in the yard with a flag on it.
  */
 export interface Caravan {
+  /**
+   * Which party this is. Only meaningful while a colony can field more than one,
+   * which is the whole reason it exists: with two on the road at once, "is there
+   * a caravan" stops being enough to tell one trip from the next, and anything
+   * counting round trips by watching the world would fold two overlapping
+   * journeys into one. Optional because a save written when there was only ever
+   * one party has no id to restore; `save.ts` hands those a number on load.
+   */
+  id?: number;
   settlementId: number;
   /** The traveller, lifted off the map for the duration. Plain data, so it saves. */
   pawn: Pawn;
@@ -1686,11 +1695,28 @@ export interface World {
    */
   settlements?: Settlement[];
   /**
-   * The one trade party currently on the road, or null.
+   * The trade parties currently on the road. Empty most of the time.
    *
-   * One at a time on purpose. Two parties out is two settlers the colony is doing
-   * without, and the interesting version of this decision is "can we spare
-   * *anyone* for a week", not "how many can we spare".
+   * It was one at a time, on the reasoning that the interesting version of the
+   * decision is "can we spare *anyone* for a week" rather than "how many". That
+   * is the right question for a colony of four and the wrong one for a colony of
+   * fifteen, and the sixty-day grid said so: benches at the top of the free tree
+   * waited up to eighteen days for a bill a near town could have filled three
+   * times over, because one road was open and everything queued behind it. See
+   * `the-road-keeps-up-with-the-bench`.
+   *
+   * The cap is small and stays small — `CARAVAN_PARTIES_MAX` in `settlements.ts`
+   * — because the cost being interesting is the point. Two settlers away is a
+   * colony visibly short-handed; twelve is an empty map.
+   */
+  caravans?: Caravan[];
+  /**
+   * The single party a save written before the cap existed was carrying.
+   *
+   * Load-bearing for exactly one function: `save.ts` folds it into `caravans` and
+   * clears it. Nothing else may read it — a settler who is four days from home
+   * when the player upgrades should walk in as though nothing happened, and the
+   * only way that stays true is if the migration is the sole reader.
    */
   caravan?: Caravan | null;
   /**

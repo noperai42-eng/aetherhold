@@ -37,14 +37,20 @@ import {
   RELATIONS_MAX,
   RELATIONS_PER_VISIT,
   VALUE,
+  CARAVAN_PARTIES_MAX,
   bestTalker,
   caravanOf,
+  caravansOf,
   departCaravan,
   ensureParts,
   packCeiling,
   packLimit,
   packMultiple,
-  partyCommitted,
+  CAN_SPARE_ONE,
+  colonySize,
+  everyPartySpent,
+  partiesCommitted,
+  roadsAllowed,
   pickDestination,
   planCaravan,
   quote,
@@ -81,7 +87,7 @@ import { makeStreams, stepWorldN } from '../src/sim/tick';
 import { createWorld } from '../src/sim/worldgen';
 import { deserialize, serialize } from '../src/sim/save';
 import { TICKS_PER_DAY } from '../src/sim/types';
-import type { Pawn, ResourceKind, Settlement, World } from '../src/sim/types';
+import type { Caravan, Pawn, ResourceKind, Settlement, World } from '../src/sim/types';
 
 const KINDS: ResourceKind[] = ['wood', 'steel', 'rawfood', 'meal', 'medicine'];
 
@@ -150,6 +156,20 @@ function grownTo(world: World, headcount: number): void {
     makePawn(world, rng, 'colony', x, 10, { name: `Settler ${x}` });
     x++;
   }
+}
+
+/**
+ * A party home off the books, headcount and all.
+ *
+ * The two lines `tickCaravan` runs when a settler reaches the valley again, and
+ * only those two: back into `world.pawns`, off `world.caravans`. No goods, no
+ * standing, no skill — the tests that call this are asking who the colony has,
+ * not what the trip was worth, and a fuller stand-in would be a second
+ * implementation of the road for them to disagree with.
+ */
+function walksBackIn(world: World, c: Caravan): void {
+  world.pawns.push(c.pawn);
+  world.caravans = caravansOf(world).filter((p) => p !== c);
 }
 
 const inRing = (world: World, ring: number): Settlement[] =>
@@ -925,7 +945,12 @@ function atTheCrossroads(seed = 20260805): {
   parts: Settlement;
 } {
   const world = colony(seed);
-  grownTo(world, 6);
+  // Eight, and the number is load-bearing rather than roomy. `roadsAllowed`
+  // gives a colony one road per `CAN_SPARE_ONE` settlers, so eight is the first
+  // headcount that can have two parties out at once — and three of the tests
+  // below are about the difference between one road filled and every road
+  // filled, which a colony of six cannot tell you because it only ever has one.
+  grownTo(world, 8);
   // Standing at both inner rings, which does two things at once: it opens the
   // middle ring, where the parts are, and it takes the gate bonus off the middle
   // ring's towns by making the vouch already earned. Without that second half the
@@ -1106,66 +1131,120 @@ describe('the bench outranks the errand', () => {
   // would go on reporting confidently about a game that had changed underneath
   // it.
 
-  it('counts a party out for a neighbour, not just one out for the bench', () => {
+  it('does not count one party out while the colony can still send another', () => {
     const { world, pawn, letter, parts } = atTheCrossroads();
     // Nobody out and nothing queued: this is the state the grid is entitled to
-    // charge for, and the only one.
+    // charge for.
     expect(researchStalled(world)).toBe(true);
-    expect(partyCommitted(world)).toBe(false);
+    expect(everyPartySpent(world)).toBe(false);
 
     const spare = spareGoods(world, packCeiling(world))!;
     expect(departCaravan(world, pawn, letter, { kind: spare.kind, amount: 10 })).toBe(true);
     expect(caravanOf(world)!.settlementId).toBe(letter.id);
-
-    // Out for the wrong town, and still committed. This is calm/99001: the party
-    // left for a neighbour on day forty-six, correctly, when the bench was short
-    // of nothing, and the bill appeared on day fifty-four with the settler three
-    // days from home. A colony with one settler cannot recall them, so there is
-    // no decision left to grade — and an earlier cut of this predicate asked
-    // where the party was going and duly charged three such days as indecision.
-    expect(partyCommitted(world)).toBe(true);
     expect(parts.id).not.toBe(letter.id);
+
+    // This is the case that changed when the second road opened, and it is the
+    // reason the predicate was renamed rather than quietly re-pointed. It used to
+    // read true here on the reasoning that calm/99001 could not recall a settler
+    // who left for a neighbour on day forty-six when the bill appeared on day
+    // fifty-four. That reasoning was sound for a colony with one road and is
+    // false for this one: eight settlers, seven still at home, and a second party
+    // is exactly what the colony owes the bench. It is still not charged for the
+    // *first* one being on the wrong road — nothing here asks where anybody went.
+    expect(everyPartySpent(world)).toBe(false);
+  });
+
+  it('counts the colony spent once both roads are walking', () => {
+    const { world, pawn, letter, parts } = atTheCrossroads();
+    const spare = spareGoods(world, packCeiling(world))!;
+    expect(departCaravan(world, pawn, letter, { kind: spare.kind, amount: 10 })).toBe(true);
+
+    const second = livingColonists(world).find((p) => p.id !== pawn.id)!;
+    expect(departCaravan(world, second, parts, { kind: spare.kind, amount: 10 })).toBe(true);
+    expect(caravansOf(world)).toHaveLength(CARAVAN_PARTIES_MAX);
+
+    // Both roads open and nobody left to send down a third. From here the colony
+    // has no decision left to make, which is the only state this predicate is
+    // meant to excuse.
+    expect(everyPartySpent(world)).toBe(true);
+  });
+
+  it('counts a colony too small to open a second road as spent', () => {
+    const { world, pawn, letter } = atTheCrossroads();
+    const spare = spareGoods(world, packCeiling(world))!;
+    expect(departCaravan(world, pawn, letter, { kind: spare.kind, amount: 10 })).toBe(true);
+    expect(everyPartySpent(world)).toBe(false);
+
+    // Down to four all told — three at home and the one already walking.
+    // `roadsAllowed` gives a colony that size one road and it is already using
+    // it, so there is no second party to send however long the bench waits, and
+    // charging this colony for a road it is forbidden to walk is precisely the
+    // error the column has now been corrected for twice.
+    const home = livingColonists(world);
+    for (const p of home.slice(3)) p.dead = true;
+    expect(colonySize(world)).toBeLessThan(CAN_SPARE_ONE * 2);
+    expect(roadsAllowed(world)).toBe(1);
+    expect(everyPartySpent(world)).toBe(true);
   });
 
   it('counts the settler still walking to the road head', () => {
     const { world, pawn } = atTheCrossroads();
     assignJob(world, pawn);
 
-    // Decided, loaded, and not yet off the map: the job is on the board and
-    // `world.caravan` is still empty. It is the better part of an hour, which is
-    // nothing to a colony and about a sixth of a day-boundary sample — so a
-    // measure that read only `world.caravan` would charge roughly one departure
-    // in six as a day nobody decided anything.
+    // Decided, loaded, and not yet off the map: the job is on the board and the
+    // road is still empty. It is the better part of an hour, which is nothing to
+    // a colony and about a sixth of a day-boundary sample — so a measure that
+    // read only the road would charge roughly one departure in six as a day
+    // nobody decided anything. A loading party fills a road as surely as a
+    // walking one, which is why `partiesCommitted` counts both.
     expect(caravanJob(world)).not.toBeNull();
     expect(caravanOf(world)).toBeNull();
-    expect(partyCommitted(world)).toBe(true);
+    expect(partiesCommitted(world)).toBe(1);
+    // One road filled of two, so the colony is not yet spent.
+    expect(everyPartySpent(world)).toBe(false);
   });
 
   it('goes on counting the walk home, including the one after a robbery', () => {
-    const { world, pawn, parts } = atTheCrossroads();
+    const { world, pawn, letter, parts } = atTheCrossroads();
     const spare = spareGoods(world, packCeiling(world))!;
     departCaravan(world, pawn, parts, { kind: spare.kind, amount: 10 });
-    expect(partyCommitted(world)).toBe(true);
+    const second = livingColonists(world).find((p) => p.id !== pawn.id)!;
+    departCaravan(world, second, letter, { kind: spare.kind, amount: 10 });
+    expect(everyPartySpent(world)).toBe(true);
 
     // Robbed: the pack is gone, the party turns for home with nothing. The trip
     // has failed and the settler is still not available — the claim the grid
     // reads this for says standing still is *allowed* to cost a road, and a
     // settler limping back up the valley empty-handed is that road being paid
     // for at its worst.
-    // Set by hand in exactly the shape `stepCaravan` leaves behind — no deal, a
+    // Set by hand in exactly the shape `tickCaravan` leaves behind — no deal, a
     // hurt settler, and the same destination it set out for — rather than rolling
     // the road dice, so the case is the robbery and not the luck.
-    const out = caravanOf(world)!;
+    const out = caravansOf(world)[0]!;
     out.take = null;
     out.pawn.hp = Math.max(12, Math.round(out.pawn.maxHp * 0.35));
     out.phase = 'inbound';
-    expect(partyCommitted(world)).toBe(true);
+    expect(everyPartySpent(world)).toBe(true);
 
-    // And home again, with the bench still short: nothing queued, nobody out,
-    // and from here on the colony owes an answer.
-    world.caravan = null;
+    // One home and one still walking: a road has come free, and with seven at
+    // home the colony owes the bench a decision again from here.
+    //
+    // Walked back in rather than deleted. Dropping the party off `world.caravans`
+    // on its own does not bring anybody home — `departCaravan` lifts a traveller
+    // out of `world.pawns`, so a party removed without being put back is a
+    // colonist who stopped existing, and this colony of eight would quietly be a
+    // colony of seven. `roadsAllowed` counts bodies, so that is the difference
+    // between two roads and one, and the first draft of this test failed here
+    // for exactly that reason while claiming to be about the walk home.
+    walksBackIn(world, caravansOf(world)[0]!);
+    expect(colonySize(world)).toBe(8);
     expect(researchStalled(world)).toBe(true);
-    expect(partyCommitted(world)).toBe(false);
+    expect(everyPartySpent(world)).toBe(false);
+
+    // And both home, with the bench still short.
+    walksBackIn(world, caravansOf(world)[0]!);
+    expect(caravansOf(world)).toHaveLength(0);
+    expect(everyPartySpent(world)).toBe(false);
   });
 
   it('keeps answering letters when there is nowhere to buy what the bench wants', () => {
