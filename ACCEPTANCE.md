@@ -14,14 +14,38 @@ Four sections: [the killer feature](#the-killer-feature),
 and [what still wants a human](#what-still-wants-a-human) — which is the long one, and is
 ordered to match `PLAYTEST.md` rather than by importance.
 
-Last run — 2026-08-12. The suite and the build are the manifest round's, taken after the ending
-card learned to say who was there and not only how many. The grid is the overlay round's and has
-not been re-run: nothing this round touched is measurable by it, because a manifest is written on
-the tick a run ends and every figure the grid reads is taken before that.
+Last run — 2026-08-12. The suite is the principles round's and the build is the manifest round's
+before it — byte-identical, which is the point: a round that only added tests must not move the
+bundle, and this one did not, down to the content hash in the filename. The grid is the overlay
+round's and has not been re-run: neither round touched anything it measures.
 
 - `npx tsc --noEmit` clean.
-- `npm test` — **95 of 97 files, 1,811 tests green**, 13 skipped, in 818.31 s. **Twenty-one** of
-  those tests are new and they are the whole of stage 5c, split by what each half can be held to.
+- `npm test` — **95 of 97 files, 1,822 tests green**, 13 skipped, in 911.01 s. **Eleven** of those
+  are the newest and they are all instrument rather than game: the two stage-5 promises about the
+  far end, `every-ending-is-reachable` and `no-ending-is-free`, which had no cases until now for a
+  reason worth writing down. Both are `enforced: false`, and on every grid ever run they report
+  `broken` or `untested` — the honest state of a game whose sixty days reach one ending of three.
+  So **their `holds` branches had never executed anywhere**, nor the detail line that says which
+  roads came up short and by how much. A check that has only ever printed one verdict is
+  half-unwritten, and the day it prints the other one is a day nobody is standing over the report.
+  Six build the grids the sim has not produced: a short grid is `untested` and not `broken`, or the
+  promise would be describing the clock and calling it the game; a full-length grid whose colonies
+  all died first is `untested` too, which is the failure that looks most like the real one; the
+  three endings **spread across three colonies** is the only shape this promise can be kept in,
+  since committing to one ending shuts the other two; the failure names each unreached road with
+  the best rung anybody got to, because *rung 3 of 4* and *rung 1 of 4* are two different problems
+  in the same sentence; a commitment still being paid when the clock stopped is not an arrival; and
+  it reads the played family and not the grid. Five are the other promise, and the load-bearing one
+  is the boundary: **exactly `ENDING_DAYS` holds**, because a floor is a floor and a `<=` would
+  call the best possible run the breach. The last of them pins a *silence* — a landing whose
+  commitment day was never written down is skipped rather than scored from day nought, since
+  treating the missing day as zero reads as a pass on exactly the records that lost data.
+  These eleven were checked by mutation rather than trusted: `<` to `<=` on the floor fails three
+  of five, and `s.war` to `s.runs` on the reachability check fails four of six. `principles.ts` was
+  restored to `HEAD` after each and verified with `git diff --stat`, so the source fingerprint
+  `.eval/measurements.json` is keyed on never moved.
+  **Twenty-one** more arrived one round ago and they are the whole of stage 5c, split by what each
+  half can be held to.
   **Ten** are `tests/endings.test.ts`, on the roll as the sim writes it: that it holds everybody
   the colony still had a body for and drops the prisoners, who are not the colony; that the ship
   and the moor file their people under different fates; that a partner who is *buried* is still

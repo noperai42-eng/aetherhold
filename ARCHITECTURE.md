@@ -1499,6 +1499,17 @@ colony that ran out of days; the berths are on **rung 1 of 4** with five of the 
 there, which is a road nobody walks. A longer grid fixes one of those and buys a tick on the other.
 The whole cost of the distinction was carrying a number into a failure message.
 
+The first two of the three are now unit-tested against grids the sim has not managed to produce,
+which is a different thing from the others in this file and worth saying why. Every grid ever run
+has read them as `broken` or `untested` — that is the honest state of the game — so **their
+`holds` branches had never executed anywhere.** A check that has only ever printed one verdict is
+half-unwritten, and the day it prints the other one is a day nobody is standing over the report.
+`tests/balance-principles.test.ts` builds the three-endings-across-three-colonies grid that is the
+only shape `every-ending-is-reachable` can hold on, and the exactly-`ENDING_DAYS` landing that
+`no-ending-is-free` must call clean rather than call the breach. Both were mutated to check the
+cases are load-bearing: `<` to `<=` on the floor kills three of five, and `s.war` to `s.runs` on
+the reachability check kills four of six.
+
 ## Three bodies in a place nothing expects one
 
 The trade road already taught this lesson once: a traveller is *genuinely gone* — out of `world.pawns`

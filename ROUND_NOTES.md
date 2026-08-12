@@ -4,6 +4,86 @@ One round, one measured gap, one fix. Newest first.
 
 ---
 
+## 2026-08-12 — Two promises that had only ever printed one verdict
+
+**Track A.** Tests only; no behaviour changed and none was meant to.
+
+### The gap
+
+Three round notes in a row have closed with the same line: `every-ending-is-reachable` and
+`no-ending-is-free` have no unit tests. Both are `enforced: false`, and on every grid ever run
+they report `broken` or `untested` — which is the honest state of the game rather than a fault
+in either check. Sixty days reaches one ending of three, and until one lands there is nothing
+for the second promise to read.
+
+That is exactly what made them worth testing and easy to keep not testing. **A check that has
+only ever printed one verdict has never had its other branch executed.** The `holds` branch of
+both, the detail line that names which roads came up short, the floor that separates a colony
+which never fell out of the running from one that skipped the whole commitment — none of it had
+ever run, anywhere, once. The day the grid's clock grows or a road gets faster is the day both
+are read for the first time, in a report nobody is standing over.
+
+### The fix
+
+Eleven cases in `tests/balance-principles.test.ts`, building the grids the sim has not managed
+to produce yet.
+
+- **Every road going somewhere** (6) — a thirty-day grid is `untested` and not `broken`, because
+  a promise that reported three unreached endings there would be describing the clock and calling
+  it the game; a full-length grid whose colonies all died first is `untested` too, and that is
+  the failure that looks most like the real one; the three endings **spread across three
+  colonies** hold, which is the only shape that can keep this promise, since committing to one
+  ending shuts the other two; the broken detail names the unreached roads with the rung anybody
+  got furthest to, because *best rung 3 of 4* and *best rung 1 of 4* are two different problems
+  wearing the same sentence; a commitment still paying when the clock stopped is not an arrival;
+  and it reads `sweep.war` and not `sweep.runs`.
+- **An ending costing what it says** (5) — `untested` on a grid with no landing; the slowest
+  printed rather than the average, because the interesting colony is the one that lost days in
+  the middle; **exactly `ENDING_DAYS` holds**, since a floor is a floor and a `<=` would call the
+  best possible run the breach; a landing on the commitment day breaks and is named down to the
+  colony; and a landing whose commitment day was never written down is skipped rather than scored
+  from day nought — pinned because it is a *silence*, and treating the missing day as zero would
+  read as a pass on exactly the records that lost data.
+
+The last point is the one worth arguing with later. Skipping means a promise about endings goes
+quiet on a damaged record. The alternative reads worse: the comfortable default is the one that
+passes.
+
+### Before / after
+
+Both checks were mutated to prove the cases are load-bearing rather than agreeable:
+
+- `<` → `<=` on the ending's floor — **3 of the 5 fail**, including the boundary case written
+  for it.
+- `s.war` → `s.runs` on the reachability check — **4 of the 6 fail**, including the one whose
+  whole subject is which family gets read.
+
+`src/eval/principles.ts` was restored to `HEAD` after each and verified with `git diff --stat`;
+the fingerprint the grid reads is untouched, so `.eval/measurements.json` is still valid.
+
+### Verified
+
+- `npx tsc --noEmit` — clean. Two errors on the way there, both mine and both caught by it
+  rather than by the suite: `EndingId` lives in `sim/endings.ts` and not `sim/types.ts`, and the
+  eval `Verdict` for a dead colony is `collapsed`, not `wiped`.
+- `tests/balance-principles.test.ts` — **75 passed** (was 64).
+- `npm test` — **95 of 97 files, 1,822 passed, 13 skipped**, 911.01 s.
+- `npm run build` — exit 0, and **byte-identical** to the last round: 919.45 kB JS, 23.76 kB CSS,
+  down to the content hash in the filename. That is the result this round wanted. A tests-only
+  round that moved the bundle would mean something had been changed that was not meant to be.
+- Dual-view honesty: nothing outside `tests/` changed.
+
+### Next target
+
+- **Track B, and it is overdue: L5 Motion.** It is the widest gap between the two cameras and it
+  has been named as next in three round notes without being picked up. A settler crossing the
+  yard reads fine from above and reads as a slide from eye level.
+- The grid clock is still the open product question — sixty days reaches one ending of three.
+  Growing it to ~120 is the user's call, and the two promises above are now instrumented well
+  enough that the day it changes, the report says so on its own.
+
+---
+
 ## 2026-08-12 — The card knew how many, and not who
 
 **Track A.** Stage 5c, the last piece of the endgame plan.

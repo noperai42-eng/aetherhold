@@ -20,8 +20,10 @@ import { describe, expect, it } from 'vitest';
 import { judgePrinciples } from '../src/eval/principles';
 import { UPKEEP_DIALS, type ArmPoint, type RunMeasure, type Sweep } from '../src/eval/sweep';
 import { DIFFICULTIES, DIFFICULTY_ORDER } from '../src/sim/difficulty';
+import { ENDING_DAYS, ENDING_IDS, type EndingId } from '../src/sim/endings';
 import { WAR_PARTY } from '../src/sim/holdings';
 import { RESEARCH, RESEARCH_ORDER } from '../src/sim/research';
+import { ROAD_RUNGS } from '../src/sim/roads';
 import { CAN_SPARE_ONE, roundTripDays } from '../src/sim/settlements';
 import type { Difficulty } from '../src/sim/types';
 
@@ -1219,6 +1221,212 @@ describe('an ending that has to survive being written down', () => {
     expect(detailOf(s, 'an-ending-is-the-last-word')).toContain(
       'settler/2 landed on day 61 of a 60-day run',
     );
+  });
+});
+
+/**
+ * Stage 5's two promises about the far end, and the reason they are the last two
+ * in this file to get a case each.
+ *
+ * Both are `enforced: false` and both report `broken` or `untested` on every grid
+ * that has ever been run, which is the honest state of the game rather than a
+ * fault in either check: sixty days reaches one ending of three, and until one
+ * lands there is nothing for the second promise to read. That is exactly why they
+ * need cases. A check that has only ever printed one verdict has never had the
+ * *other* branch executed, and the day the grid grows — or a road gets faster —
+ * is the day both of them are read for the first time, in a report nobody is
+ * standing over. These build the grids the sim has not produced yet and make each
+ * branch answer for itself now, while the answer is cheap to check.
+ *
+ * `ENDING_IDS` is index-aligned with `roadRungs`: a fixture that hard-coded which
+ * ending sits at the end of which road would keep passing after somebody
+ * reordered `TERMINALS`, and it would be pinning the wrong roads.
+ */
+describe('the far end, on grids the sim has not managed to produce yet', () => {
+  const [SHIP, BERTHS, DOMINION] = ENDING_IDS;
+
+  /** A played colony that walked one road to its end and went through the door. */
+  const lands = (
+    difficulty: Difficulty,
+    seed: number,
+    endingId: EndingId,
+    rungs: number[],
+    over: Partial<RunMeasure> = {},
+  ): RunMeasure =>
+    run(difficulty, {
+      seed,
+      daysLived: 60,
+      roadRungs: rungs,
+      endingId,
+      endingCommittedOn: 20,
+      endingLandedOn: 20 + ENDING_DAYS,
+      verdict: 'landed',
+      ...over,
+    });
+
+  /** A sixty-day played grid, since neither promise looks at a shorter one. */
+  const grid = (...war: RunMeasure[]): Sweep =>
+    sweep(healthy(), 60, healthyArm(), true, war);
+
+  describe('every road going somewhere', () => {
+    it('will not look at a grid too short to reach an ending', () => {
+      // Not `broken`. Thirty days is the default and it cannot reach a top rung,
+      // let alone the twelve days behind one — a promise that reported three
+      // unreached endings there would be describing the clock and calling it the
+      // game.
+      expect(verdictOf(sweep(healthy()), 'every-ending-is-reachable')).toBe('untested');
+      expect(detailOf(sweep(healthy()), 'every-ending-is-reachable')).toContain('30-day grid');
+    });
+
+    it('says untested rather than broken when every played colony died first', () => {
+      // A grid whose colonies were all wiped on day forty has not tested whether
+      // the endings are reachable in sixty days; it has tested something else.
+      // The difference matters because this is the failure that looks most like
+      // the real one — nobody landed anything, on a full-length grid.
+      const s = grid(
+        lands('calm', 1, SHIP!, [4, 1, 1], {
+          daysLived: 40,
+          endingLandedOn: null,
+          verdict: 'collapsed',
+        }),
+      );
+      expect(verdictOf(s, 'every-ending-is-reachable')).toBe('untested');
+      expect(detailOf(s, 'every-ending-is-reachable')).toContain('no played run finished');
+    });
+
+    it('holds when the three endings are spread across three colonies', () => {
+      // One colony cannot land three endings — committing to one shuts the other
+      // two — so the promise is about the *grid*, and this is the only shape that
+      // can keep it. A version that asked it of each run would be unkeepable.
+      const s = grid(
+        lands('calm', 1, SHIP!, [4, 1, 1]),
+        lands('settler', 2, BERTHS!, [1, 4, 2]),
+        lands('harsh', 3, DOMINION!, [1, 2, 4]),
+      );
+      expect(verdictOf(s, 'every-ending-is-reachable')).toBe('holds');
+      expect(detailOf(s, 'every-ending-is-reachable')).toContain(
+        `all ${ENDING_IDS.length} endings reached`,
+      );
+    });
+
+    it('names the roads nobody finished and how far up them anybody got', () => {
+      // The grid's actual answer today, and the reason this check earns its keep
+      // while broken: *two unreached* is a sentence about the clock, and "best
+      // rung 3 of 4" and "best rung 1 of 4" are two different problems wearing
+      // it. One road is a day short and the other has not started.
+      const s = grid(
+        lands('calm', 1, DOMINION!, [3, 1, 4]),
+        run('settler', { seed: 2, daysLived: 60, roadRungs: [2, 1, 2] }),
+      );
+      expect(verdictOf(s, 'every-ending-is-reachable')).toBe('broken');
+      const detail = detailOf(s, 'every-ending-is-reachable');
+      expect(detail).toContain(`1 of ${ENDING_IDS.length} endings reached`);
+      expect(detail).toContain(`${SHIP} (best rung 3 of ${ROAD_RUNGS})`);
+      expect(detail).toContain(`${BERTHS} (best rung 1 of ${ROAD_RUNGS})`);
+      expect(detail).not.toContain(`${DOMINION} (best rung`);
+    });
+
+    it('does not accept a commitment as an ending reached', () => {
+      // The same trap `no-road-is-already-finished` sets one promise up: a colony
+      // that committed on day fifty-five and was still paying when the clock
+      // stopped went somewhere, and did not arrive. If this ever counted, the
+      // promise would go green on a grid where the far end has never once been
+      // seen — which is the precise thing it exists to notice.
+      const s = grid(
+        lands('calm', 1, SHIP!, [4, 1, 1]),
+        lands('settler', 2, BERTHS!, [1, 4, 1]),
+        lands('harsh', 3, DOMINION!, [1, 1, 4], { endingCommittedOn: 55, endingLandedOn: null }),
+      );
+      expect(verdictOf(s, 'every-ending-is-reachable')).toBe('broken');
+      expect(detailOf(s, 'every-ending-is-reachable')).toContain(`${DOMINION} (best rung 4`);
+    });
+
+    it('reads the played family, not the unmanaged grid', () => {
+      // The bug that cost the two war promises a whole grid, asked again here for
+      // the same reason: an ending is the far end of a road and nothing walks a
+      // road with nobody at the wheel. A version reading `sweep.runs` would report
+      // three unreached endings on every grid forever and be describing the
+      // harness.
+      const landedGrid = [
+        lands('calm', 1, SHIP!, [4, 1, 1]),
+        lands('settler', 2, BERTHS!, [1, 4, 2]),
+        lands('harsh', 3, DOMINION!, [1, 2, 4]),
+      ];
+      // All three endings in `runs` and none in `war`, with both families playing
+      // the full clock so the only thing separating them is which one is read. A
+      // check on the wrong family would call this grid perfect.
+      const s = sweep(landedGrid, 60, healthyArm(), true, [
+        run('calm', { seed: 1, daysLived: 60, roadRungs: [3, 1, 1] }),
+        run('settler', { seed: 2, daysLived: 60, roadRungs: [1, 2, 2] }),
+      ]);
+      expect(verdictOf(s, 'every-ending-is-reachable')).toBe('broken');
+      expect(detailOf(s, 'every-ending-is-reachable')).toContain(
+        `0 of ${ENDING_IDS.length} endings reached`,
+      );
+    });
+  });
+
+  describe('an ending costing what it says it costs', () => {
+    it('says nothing about a grid where nobody landed one', () => {
+      // Not `holds`, and the distinction is the whole reason this promise is not
+      // enforced yet: it has never been read against a real ending, and a guard
+      // promoted on the strength of never having been tested fails the first time
+      // it matters.
+      expect(verdictOf(sweep(healthy()), 'no-ending-is-free')).toBe('untested');
+      expect(detailOf(sweep(healthy()), 'no-ending-is-free')).toContain('no played run landed');
+    });
+
+    it('holds when every ending was paid for, and says how long the longest took', () => {
+      // The slowest is printed rather than the average, because the interesting
+      // colony is the one that lost days in the middle — a stalled hull, a
+      // holding taken back — and an average buries it under the ones that ran
+      // clean.
+      const s = grid(
+        lands('calm', 1, SHIP!, [4, 1, 1]),
+        lands('settler', 2, BERTHS!, [1, 4, 1], { endingCommittedOn: 10, endingLandedOn: 40 }),
+      );
+      expect(verdictOf(s, 'no-ending-is-free')).toBe('holds');
+      expect(detailOf(s, 'no-ending-is-free')).toContain('the longest took 30');
+    });
+
+    it('treats the twelve days as a floor and not a window', () => {
+      // Exactly `ENDING_DAYS` is a colony that never once fell out of the running,
+      // which is the mechanism working perfectly rather than a colony cheating.
+      // A `<=` here would call the best possible run the breach.
+      const s = grid(
+        lands('calm', 1, SHIP!, [4, 1, 1], { endingCommittedOn: 12, endingLandedOn: 12 + ENDING_DAYS }),
+      );
+      expect(verdictOf(s, 'no-ending-is-free')).toBe('holds');
+    });
+
+    it('breaks on the day an ending fires because a number ticked over', () => {
+      // The failure this promise is written against, and it is not hypothetical:
+      // `victory.ts` made it once already. A win that lands the tick a rung
+      // increments turns the three roads into three progress bars with a cutscene
+      // on the end. Named down to the colony, because the report is read by
+      // somebody deciding whether to look.
+      const s = grid(
+        lands('calm', 1, SHIP!, [4, 1, 1]),
+        lands('harsh', 3, DOMINION!, [1, 1, 4], { endingCommittedOn: 44, endingLandedOn: 44 }),
+      );
+      expect(verdictOf(s, 'no-ending-is-free')).toBe('broken');
+      expect(detailOf(s, 'no-ending-is-free')).toContain(`1 of 2 landed in under ${ENDING_DAYS}`);
+      expect(detailOf(s, 'no-ending-is-free')).toContain(`harsh/3 ${DOMINION} in 0`);
+    });
+
+    it('leaves out a landing whose commitment day was never written down', () => {
+      // Pinned because it is a silence, and silences are what a refactor removes
+      // by accident. A record with a landing and no commitment cannot be scored —
+      // treating the missing day as nought would read every such run as an ending
+      // that took its whole run to land, which is a *pass*, and the guard would go
+      // quiet on exactly the records that lost data. Skipping is the right answer
+      // and the wrong one is the comfortable one, so it is asserted rather than
+      // assumed.
+      const s = grid(
+        lands('calm', 1, SHIP!, [4, 1, 1], { endingCommittedOn: null, endingLandedOn: 5 }),
+      );
+      expect(verdictOf(s, 'no-ending-is-free')).toBe('untested');
+    });
   });
 });
 
