@@ -1008,7 +1008,10 @@ climbs it — is the fitted-bar mistake this file has now rejected twice, and it
 would turn a true reading into a green one without a single colony doing anything
 differently. The road is supposed to come from stage 4's held holdings and stage
 5's bought passage, which means this principle is a **standing bill against the
-next two stages** rather than a defect in this one.
+next two stages** rather than a defect in this one. (Stage 4 part-paid it and moved
+both road promises onto a family that can actually climb warfare, so the figures in
+this entry are the unmanaged grid's last word on the roads rather than the current
+reading. The end of stage 4 has the new one, and it is worse.)
 
 Everything else on the grid is unchanged, and that is this slice's other result.
 Fifteen enforced principles hold, the five open failures read exactly the numbers
@@ -1143,11 +1146,32 @@ before it is anyone's.
 
 One more thing the ladder rewiring did, and it is the same fault wearing different
 clothes. Warfare now reads ground, so on the unmanaged grid it is **rung 1 on all
-fifteen runs** — the standing band put down at home, and never anything else, by
-construction. `the-three-roads-are-three-roads` is still read off that grid, so the
-pair it reports as flat, economy against warfare, is two pinned numbers rather than
-one. Its verdict is not wrong; its diagnosis is now half a road short, and the road
-it is short of is the one this stage built.
+fourteen** full-clock runs — the standing band put down at home, and never anything
+else, because a colony with nobody at the wheel never marches. Both road promises
+were being read off that grid. `the-three-roads-are-three-roads` was scoring two of
+its three pairs against a constant, and `no-road-is-already-finished` was answering
+**holds** for the reason a pinned ladder always answers holds: rung 1 of 4 has three
+rungs left in it for ever.
+
+Both now read the played family, and the answer there is worse and truer.
+`the-three-roads-are-three-roads` reads **3 of 3 pairs never disagree across 15
+runs**: the order is warfare ≥ science ≥ economy on every one of the fifteen, so
+nothing inverts anywhere. And `no-road-is-already-finished` **breaks** — calm/1312
+and settler/1312 stand on warfare **rung 4 of 4**, three holdings apiece, the road
+walked to its end inside sixty days, which is exactly the failure that promise
+exists to catch and could not see from the floor. Economy, at the other end, never
+climbs past rung 1 and on five of the fifteen never reaches it.
+
+What the war family cannot say is whether that flatness belongs to the game or to
+the steward: fifteen colonies played by one deterministic policy make a flat pair
+evidence and an inverting pair only the absence of it. Both promises stay
+`enforced: false`, and both now bill stage 5 rather than the grid — a road that can
+be finished in sixty days needs an ending at the top of it, and a road that never
+leaves its first rung needs something in the valley to ask for its second. The
+general lesson
+is cheaper than either: when a stage changes what a column counts, re-ask which
+family every promise reading that column is denominated in. The second of these two
+was found that way rather than by being bitten.
 
 **5 — The three endings.** Ship, passage, dominion. Each is a long and expensive
 terminal that reads one road's tally, and each writes a real ending.
@@ -1175,8 +1199,12 @@ that never recorded it. Everything else about that game is that game's problem.
   The speed came only from playing the same ticks at once; nothing about the sim
   was made cheaper, because a faster grid that measures a different game is not
   a grid. The one new failure mode — judging old numbers against new code — is
-  closed by a fingerprint over `src/sim` and `src/eval` taken before the first
-  colony and re-checked after the last, refused rather than saved on a mismatch.
+  closed by a fingerprint over `src/sim` and the half of `src/eval` that plays
+  colonies, taken before the first colony and re-checked after the last, refused
+  rather than saved on a mismatch. The judge itself is deliberately outside it —
+  it was inside for four stages, which meant moving one bar cost a fresh grid
+  before you could see whether the move was right, and that is the very loop the
+  split exists to abolish.
   See `ARCHITECTURE.md` → "Measured once, judged in milliseconds".
 - **Four known-broken principles are still open**, and two of them are stage 2's
   own, described where the stage is. `nobody-starves-beside-a-full-pantry`

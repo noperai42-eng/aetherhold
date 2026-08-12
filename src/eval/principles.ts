@@ -1479,15 +1479,33 @@ export const PRINCIPLES: Principle[] = [
     // projects, places, raiders — and any comparison between them would be
     // arithmetic on apples. The rung is the only comparable quantity the three
     // ladders produce, which is most of why `roads.ts` has rungs at all.
+    //
+    // Read off `sweep.war`, the family with a player at the wheel, and this is
+    // the second promise to have moved there. Stage 4 rewired the warfare ladder
+    // to count ground held, and ground is only taken on the far side of a
+    // decision the unmanaged grid never makes: on `sweep.runs` every colony
+    // reads warfare rung 1 — the standing band it put down at home — on all
+    // fifteen. Two of the three pairs there were therefore comparing a moving
+    // number against a constant, and the one inversion they found was science
+    // dipping under that constant on one hard map. A pair cannot be shown to
+    // disagree with a road nobody walks.
+    //
+    // What the played family cannot do is prove the *opposite*, and the reason
+    // is the same one `the-war-is-a-choice` gives: one policy, fifteen colonies,
+    // so every colony walks whichever road that policy favours and pairs may
+    // lean for that reason alone. So a flat pair here is evidence and an
+    // inverting pair here is only the absence of it. That asymmetry is the price
+    // of having any reading at all, and it is cheap next to the alternative,
+    // which is a reading of the instrument.
     enforced: false,
     check: (s) => {
-      const full = s.runs.filter(
+      const full = (s.war ?? []).filter(
         (m) => m.daysLived >= s.days && (m.roadRungs?.length ?? 0) >= ROAD_IDS.length,
       );
       if (full.length < 2) {
         return {
           verdict: 'untested',
-          detail: `${full.length} runs played the full clock with a road reading — need two to compare`,
+          detail: `${full.length} played runs finished the clock with a road reading — need two to compare`,
         };
       }
       const flat: string[] = [];
@@ -1548,6 +1566,11 @@ export const PRINCIPLES: Principle[] = [
     // shape of, and this one has a shape worth knowing: the science road's top
     // rung is the whole research tree, which one colony on the grid before this
     // one finished. It would have failed a grid ago.
+    //
+    // `sweep.war` for the reason the principle above it gives at length: a road
+    // nobody walks cannot be found already finished, and warfare is a road the
+    // unmanaged grid cannot walk at all. Asking whether a colony has road left
+    // is a question about a colony that went somewhere.
     enforced: false,
     check: (s) => {
       if (s.days < DAY_SIXTY) {
@@ -1556,13 +1579,13 @@ export const PRINCIPLES: Principle[] = [
           detail: `${s.days}-day grid cannot see day ${DAY_SIXTY}`,
         };
       }
-      const full = s.runs.filter(
+      const full = (s.war ?? []).filter(
         (m) => m.daysLived >= s.days && (m.roadRungs?.length ?? 0) >= ROAD_IDS.length,
       );
       if (full.length === 0) {
         return {
           verdict: 'untested',
-          detail: 'no run played the full clock with a road reading',
+          detail: 'no played run finished the clock with a road reading',
         };
       }
       const topped: string[] = [];

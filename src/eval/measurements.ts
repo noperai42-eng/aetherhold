@@ -23,14 +23,33 @@ import type { Sweep } from './sweep';
 export const MEASUREMENTS_PATH = '.eval/measurements.json';
 
 /**
- * Eval files that move colonies around without changing what a colony does.
+ * Files under `src/eval` that do not decide what a colony does: the ones that
+ * move colonies around, and the one that reads the numbers afterwards.
  *
  * Everything else under `src/sim` and `src/eval` is fingerprinted, including
  * files that do not exist yet — the list is what to *skip*, not what to include,
  * so a new system added to the sim invalidates old measurements by default
  * rather than by somebody remembering to add it here.
+ *
+ * `principles.ts` is on the list because it is the judge, and fingerprinting the
+ * judge undoes the reason the grid was split in two. The whole point of writing
+ * `Sweep` to a file is that scoring it costs nine milliseconds — but while a
+ * changed check counted as a changed sim, moving one bar cost a fresh thirty-six
+ * minutes before you could see whether the move was right, which is the feedback
+ * loop the split exists to abolish. It judges: nothing in `src/sim` imports it,
+ * it plays no colony, and a `Sweep` measured yesterday is exactly as true today
+ * whatever the checks now ask of it. What it *does* import is sim constants, and
+ * those live in files that are fingerprinted — so a bar that moves because the
+ * sim moved still invalidates the grid, through the sim file that moved.
  */
-const TRANSPORT = new Set(['measure.ts', 'pool.ts', 'worker.ts', 'measurements.ts', 'node.d.ts']);
+const NOT_THE_SIM = new Set([
+  'measure.ts',
+  'pool.ts',
+  'worker.ts',
+  'measurements.ts',
+  'node.d.ts',
+  'principles.ts',
+]);
 
 export interface Measurements {
   /** Of the sim and eval sources that decide what a colony does. */
@@ -48,7 +67,7 @@ function walk(dir: string, out: string[]): void {
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
     const path = join(dir, entry.name);
     if (entry.isDirectory()) walk(path, out);
-    else if (entry.name.endsWith('.ts') && !TRANSPORT.has(entry.name)) out.push(path);
+    else if (entry.name.endsWith('.ts') && !NOT_THE_SIM.has(entry.name)) out.push(path);
   }
 }
 

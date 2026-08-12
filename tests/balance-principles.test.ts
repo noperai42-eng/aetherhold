@@ -134,21 +134,31 @@ const healthyArm = (): ArmPoint[] => [
  * Their disagreement is the promise rather than decoration: all three had the
  * hands, two went out and one stayed home. `run`'s default `peakHands: 8` clears
  * `CAN_SPARE_ONE + WAR_PARTY`, so all three are in the denominator.
+ *
+ * The two road promises moved onto this family too, so the rungs are part of the
+ * fixture now and every pair of roads has to invert somewhere across the three —
+ * that is what a healthy grid looks like to `the-three-roads-are-three-roads`,
+ * and a baseline that failed it would make every case built on this one read
+ * `broken` for a reason the case never asked about. The warfare rung is not a
+ * free hand either: it is the standing band at home plus the ground held, so
+ * each run's third rung is `1 + holdingsTaken` and cannot be picked
+ * independently of the columns above it.
  */
 const healthyWar = (): RunMeasure[] => [
-  // Able and stayed home — without this one the war stops being a choice.
-  run('calm'),
+  // Able and stayed home — without this one the war stops being a choice. Took
+  // nothing, so warfare is the band it put down in its own valley and no more.
+  run('calm', { roadRungs: [3, 2, 1] }),
   // One party out to the near ring and home again is `WAR_PARTY *
   // roundTripDays(0)` = 18 pawn-days, the cheapest legal war in the game — so
   // this run sits exactly *on* the floor `no-holding-falls-for-free` sets rather
   // than comfortably above it. A fixture whose healthiest war is also its
   // thinnest is the honest one: if that check ever starts reading its own
   // boundary as a breach, this catches it.
-  run('settler', { campaigns: 1, holdingsTaken: 1, warPawnDays: 18 }),
+  run('settler', { campaigns: 1, holdingsTaken: 1, warPawnDays: 18, roadRungs: [1, 2, 2] }),
   // Three wars, two holdings: the one that lost a party and walked home empty
   // still paid for the walk. Reads well above the floor and is not in breach,
   // because the floor is a floor and not a window.
-  run('harsh', { campaigns: 3, holdingsTaken: 2, warPawnDays: 62 }),
+  run('harsh', { campaigns: 3, holdingsTaken: 2, warPawnDays: 62, roadRungs: [1, 0, 3] }),
 ];
 
 function sweep(
@@ -172,10 +182,12 @@ function sweep(
 /**
  * The shape of a valley where every promise is kept, to vary one field at a time.
  *
- * Its three colonies went three different ways, and that is one of the promises
- * rather than decoration: a healthy grid is one where the roads out of the
- * valley disagree about which colony is ahead. The quiet map studied, the
- * middling one traded, and the one that was attacked ninety times fought.
+ * Its three colonies went three different ways: the quiet map studied, the
+ * middling one traded, and the one that was attacked ninety times fought. The
+ * rungs stay varied even though no promise reads them here any more — both road
+ * questions moved to `healthyWar`, because warfare cannot move on a grid with
+ * nobody at the wheel — so that a check which wandered back onto this family
+ * would be answered by a shape nobody wrote for it.
  */
 const healthy = () => [
   run('calm', {
@@ -220,6 +232,35 @@ const healthy = () => [
     peakRung: 4,
   }),
 ];
+
+/**
+ * A sixty-day grid that differs from the healthy one only in the rungs the
+ * played colonies ended on, one array a colony.
+ *
+ * The road cases all want the same thing — some rungs, on the family the road
+ * promises read — and it is worth a helper because *which* family that is is the
+ * whole point of these cases. `sweep.runs` is left healthy and untouched, so a
+ * case that reads a road verdict off the unmanaged grid by mistake gets the
+ * baseline's answer rather than the one it wrote, and the test fails loudly
+ * instead of agreeing with itself.
+ *
+ * Difficulty and seed run `calm/1`, `settler/2`, `harsh/3` so a detail line that
+ * names a colony has something to name.
+ */
+const roads = (...rungs: number[][]): Sweep =>
+  sweep(
+    healthy(),
+    60,
+    healthyArm(),
+    true,
+    rungs.map((roadRungs, i) =>
+      run((['calm', 'settler', 'harsh'] as const)[i % 3]!, {
+        seed: i + 1,
+        daysLived: 60,
+        roadRungs,
+      }),
+    ),
+  );
 
 const verdictOf = (s: Sweep, id: string) => judgePrinciples(s).find((p) => p.id === id)?.verdict;
 const detailOf = (s: Sweep, id: string) => judgePrinciples(s).find((p) => p.id === id)?.detail ?? '';
@@ -942,16 +983,7 @@ describe('the balance principles, read against grids that are known wrong', () =
     // fact wearing three hats and the player's choice of ending is a choice
     // between synonyms. Note that the runs *differ* from each other — a grid
     // where every colony is identical would be a different complaint.
-    const s = sweep(
-      [
-        run('calm', { seed: 1, daysLived: 60, roadRungs: [1, 1, 1] }),
-        run('settler', { seed: 2, daysLived: 60, roadRungs: [2, 2, 2] }),
-        run('harsh', { seed: 3, daysLived: 60, roadRungs: [3, 3, 3] }),
-      ],
-      60,
-      healthyArm(),
-      true,
-    );
+    const s = roads([1, 1, 1], [2, 2, 2], [3, 3, 3]);
     expect(verdictOf(s, 'the-three-roads-are-three-roads')).toBe('broken');
     expect(detailOf(s, 'the-three-roads-are-three-roads')).toContain('3 of 3 pairs');
     expect(detailOf(s, 'the-three-roads-are-three-roads')).toContain('always level');
@@ -963,15 +995,7 @@ describe('the balance principles, read against grids that are known wrong', () =
     // all of them would call this fine. But science is ahead of economy on every
     // run and never behind it: whatever those two are measuring, no colony on
     // this grid has ever had to choose between them.
-    const s = sweep(
-      [
-        run('calm', { seed: 1, daysLived: 60, roadRungs: [3, 1, 0] }),
-        run('settler', { seed: 2, daysLived: 60, roadRungs: [2, 1, 3] }),
-      ],
-      60,
-      healthyArm(),
-      true,
-    );
+    const s = roads([3, 1, 0], [2, 1, 3]);
     expect(verdictOf(s, 'the-three-roads-are-three-roads')).toBe('broken');
     expect(detailOf(s, 'the-three-roads-are-three-roads')).toContain('1 of 3 pairs');
     // Which way it leans has to be in the sentence. A flat pair that is always
@@ -984,15 +1008,7 @@ describe('the balance principles, read against grids that are known wrong', () =
   });
 
   it('holds when each road leads somewhere on some colony', () => {
-    const s = sweep(
-      [
-        run('calm', { seed: 1, daysLived: 60, roadRungs: [3, 1, 0] }),
-        run('settler', { seed: 2, daysLived: 60, roadRungs: [1, 2, 3] }),
-      ],
-      60,
-      healthyArm(),
-      true,
-    );
+    const s = roads([3, 1, 0], [1, 2, 3]);
     expect(verdictOf(s, 'the-three-roads-are-three-roads')).toBe('holds');
     expect(detailOf(s, 'the-three-roads-are-three-roads')).toContain('all 3 pairs');
   });
@@ -1002,21 +1018,38 @@ describe('the balance principles, read against grids that are known wrong', () =
     // an inversion and is not one: it is a single colony's shape, and three
     // ladders wired to the same number would produce it just as readily on a
     // colony that happened to be measured mid-climb. The check needs a grid.
-    const s = sweep([run('calm', { seed: 1, daysLived: 60, roadRungs: [3, 1, 0] })], 60);
+    const s = roads([3, 1, 0]);
     expect(verdictOf(s, 'the-three-roads-are-three-roads')).toBe('untested');
     expect(detailOf(s, 'the-three-roads-are-three-roads')).toContain('need two to compare');
   });
 
-  it('says a road somebody finished in sixty days has stopped being a road', () => {
+  it('reads the roads off the colonies that walked them, not off the unmanaged grid', () => {
+    // The bug this is written against is the one stage 4 already paid for once.
+    // Warfare counts ground held, ground is only taken when a player orders it,
+    // and `sweep.runs` has no player — so on that family the third rung is a
+    // constant and two of the three pairs are comparing a moving number against
+    // it. Here the unmanaged grid is handed three colonies that agree on
+    // everything, which is the purest form of the failure the check exists for,
+    // and the played family disagrees properly. A check reading the wrong family
+    // calls this broken; the right one calls it fine.
     const s = sweep(
       [
-        run('calm', { seed: 1, daysLived: 60, roadRungs: [2, 4, 1] }),
-        run('harsh', { seed: 2, daysLived: 60, roadRungs: [1, 2, 3] }),
+        run('calm', { seed: 1, daysLived: 60, roadRungs: [2, 2, 2] }),
+        run('settler', { seed: 2, daysLived: 60, roadRungs: [2, 2, 2] }),
       ],
       60,
       healthyArm(),
       true,
+      [
+        run('calm', { seed: 1, daysLived: 60, roadRungs: [3, 1, 0] }),
+        run('settler', { seed: 2, daysLived: 60, roadRungs: [1, 2, 3] }),
+      ],
     );
+    expect(verdictOf(s, 'the-three-roads-are-three-roads')).toBe('holds');
+  });
+
+  it('says a road somebody finished in sixty days has stopped being a road', () => {
+    const s = roads([2, 4, 1], [1, 2, 3]);
     expect(verdictOf(s, 'no-road-is-already-finished')).toBe('broken');
     expect(detailOf(s, 'no-road-is-already-finished')).toContain('calm/1 finished economy');
   });
@@ -1025,17 +1058,26 @@ describe('the balance principles, read against grids that are known wrong', () =
     // "Nobody finished a road" is true of a grid where nobody started one, and
     // the two want telling apart. The detail line carries the deepest rung for
     // exactly that reason, and this is the test that keeps it there.
+    const s = roads([3, 1, 0], [1, 0, 2]);
+    expect(verdictOf(s, 'no-road-is-already-finished')).toBe('holds');
+    expect(detailOf(s, 'no-road-is-already-finished')).toContain('furthest anybody got was rung 3');
+  });
+
+  it('will not call a road unfinished on the strength of colonies that never walked it', () => {
+    // The other side of the same fault, and the one that reads green while being
+    // wrong. A played colony finished warfare; the unmanaged grid, which cannot
+    // take ground at all, has road left on every one of the three. Reading the
+    // grid here would report `holds` — a guard against a road running out,
+    // satisfied by colonies that never set foot on it.
     const s = sweep(
-      [
-        run('calm', { seed: 1, daysLived: 60, roadRungs: [3, 1, 0] }),
-        run('harsh', { seed: 2, daysLived: 60, roadRungs: [1, 0, 2] }),
-      ],
+      [run('calm', { seed: 1, daysLived: 60, roadRungs: [2, 1, 1] })],
       60,
       healthyArm(),
       true,
+      [run('settler', { seed: 2, daysLived: 60, roadRungs: [2, 1, 4] })],
     );
-    expect(verdictOf(s, 'no-road-is-already-finished')).toBe('holds');
-    expect(detailOf(s, 'no-road-is-already-finished')).toContain('furthest anybody got was rung 3');
+    expect(verdictOf(s, 'no-road-is-already-finished')).toBe('broken');
+    expect(detailOf(s, 'no-road-is-already-finished')).toContain('settler/2 finished warfare');
   });
 });
 

@@ -36,12 +36,18 @@ declare module 'node:worker_threads' {
 
 declare module 'node:os' {
   export function availableParallelism(): number;
+  export function tmpdir(): string;
 }
 
+// `mkdtempSync`/`rmSync` are here for one caller — the test that reads the
+// staleness guard, which needs a throwaway source tree to fingerprint and has
+// to leave nothing behind. Nothing the game ships touches either.
 declare module 'node:fs' {
   export function readFileSync(path: string, encoding: 'utf8'): string;
   export function writeFileSync(path: string, data: string): void;
   export function mkdirSync(path: string, options?: { recursive?: boolean }): void;
+  export function mkdtempSync(prefix: string): string;
+  export function rmSync(path: string, options?: { recursive?: boolean; force?: boolean }): void;
   export function existsSync(path: string | URL): boolean;
   export function readdirSync(
     path: string,

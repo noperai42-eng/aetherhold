@@ -585,10 +585,26 @@ are calibrated against the unmanaged floor and would have started quietly measur
 instead, with nothing on screen to say the baseline had moved. `sweepSpecs` now emits a second
 family, `kind: 'war'`: the same fifteen seed-and-setting colonies on the same clock, played with a
 Steward at the wheel, collected into `Sweep.war`, and read by those two promises and nothing else.
+(Two more joined them later in the same slice — the road promises below — so the split now runs
+twenty-two against the floor and four against the played family. The principle is the same one:
+a promise is read off the family that can make its number move, and moving a promise across is a
+deliberate act with a paragraph attached, not a default.)
 The transferable half: **when a measurement comes back at exactly zero on every run, ask what would
 have had to happen for it to be non-zero, and check that the harness does that thing.** Fifteen
 colonies agreeing exactly is not a finding, it is a constant, and a constant is usually the
 instrument.
+
+**Two more promises had the same fault, and were found by looking rather than by being bitten.**
+Stage 4 rewired the warfare ladder to count ground held, and both stage-3 road promises —
+`the-three-roads-are-three-roads` and `no-road-is-already-finished` — read `roadRungs` off the
+unmanaged grid, where every colony stands on warfare rung 1 and no colony has ever stood anywhere
+else. Neither had reported anything alarming, which is the point: one was scoring two of its three
+pairs against a constant and calling one of them an inversion, and the other was reporting that
+every road had somewhere left to go on the strength of colonies that had never set foot on one of
+them. Both moved to `Sweep.war` for the same reason the war promises did. The rule that generalises
+is narrower and more useful than "check your zeroes": **when a stage changes what a column counts,
+re-ask which family every promise reading that column is denominated in** — the promises that break
+loudly get looked at anyway, and the ones that quietly keep holding are the ones that need finding.
 
 ### Measured once, judged in milliseconds
 
@@ -634,8 +650,25 @@ counting, which fails in the direction that looks like everything is fine. And t
 source text rather than meaning, so it fires on changes that cannot possibly move a number. The
 first thing it ever caught was a dead-code deletion; the second was a batch of comment edits made
 while writing this document. That is the conservative direction and the correct one: the cost of a
-false alarm is ten minutes of re-measuring, and the cost of a missed one is a balance decision made
-against a game nobody played.
+false alarm is thirty-six minutes of re-measuring, and the cost of a missed one is a balance
+decision made against a game nobody played.
+
+**The judge is not on that list, and for a while it was.** `principles.ts` was hashed along with
+everything else under `src/eval`, which meant moving a single bar cost a fresh grid before anybody
+could see whether the move was right — the exact loop this section opens by abolishing, rebuilt at
+the other end of the same file. It is not a false alarm of the useful kind, because there is no
+version of the story where it catches something: the judge plays no colony, nothing in `src/sim`
+imports it, and a `Sweep` measured yesterday is exactly as true today whatever the checks now ask of
+it. The constants it reads — `WAR_PARTY`, `ROAD_RUNGS`, `roundTripDays` — live in sim files that
+*are* hashed, so a bar that moved because the sim moved still stales the grid, through the file that
+moved. So the judge joins the pool, the CLI and the on-disk format on the exclusion list, and the
+guard now says what it always meant: *these numbers came out of a sim that has since changed*, not
+*somebody edited something*.
+
+The same argument does not yet reach `sweep.ts`, which holds the harness and the tables in one file
+— so adding a column to a printed grid still costs a re-measure. That is a real cost and the fix is
+obvious (the formatters do not decide anything either), but splitting a file to change a hash is a
+change worth making on its own rather than in passing.
 
 Deleting that dead code was itself the point. `runSweep` and `runUpkeepArm` had no callers left once
 the grid was described by `sweepSpecs`, played by `runSpec` and folded by `assembleSweep`, and the
@@ -1284,7 +1317,10 @@ number. Level means one measurement counted twice; leaning means a road nobody i
 different bugs and they want different fixes. Its companion,
 `no-road-is-already-finished`, breaks the day a sixty-day colony stands on a top rung, because a road
 somebody has finished has stopped being somewhere to go. It would have failed a grid ago, when
-calm/20260729 emptied the research tree.
+calm/20260729 emptied the research tree, and since stage 4 read both of these off `Sweep.war` it
+fails now: calm/1312 and settler/1312 hold three holdings each and stand on warfare rung 4 of 4.
+Both promises are `enforced: false` for that reason — they are bills against the stage that puts an
+ending at the top of each road, not defects in the ladder that measured them.
 
 Reading it on the grid costs one column and no new sampling. `runColony` already writes a daily row,
 so `roads: roadRungs(world)` rides along beside the columns that were there, the last row's copy

@@ -699,7 +699,7 @@ function formatWar(sweep: Sweep): string[] {
   if (rs.length === 0) return [];
   const lines = [
     `the war road · ${rs.length} of the same colonies, played by the Steward`,
-    'setting            seed  verdict   alive  hands           war',
+    'setting            seed  verdict   alive  hands           war        roads',
   ];
   for (const d of sweep.difficulties) {
     for (const m of rs.filter((r) => r.difficulty === d)) {
@@ -725,6 +725,12 @@ function formatWar(sweep: Sweep): string[] {
               : '—',
             14,
           ),
+          // Both road promises read this family and not the grid, because
+          // warfare only moves on the far side of an order nothing unmanaged
+          // gives. The column belongs beside the campaigns that moved it: the
+          // third rung here should be one more than the ground kept, and a
+          // reader who wants to check that has both numbers on one line.
+          pad((m.roadRungs ?? []).join('/') || '—', 13),
         ].join(''),
       );
     }

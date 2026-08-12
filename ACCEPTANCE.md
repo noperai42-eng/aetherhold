@@ -14,11 +14,11 @@ Four sections: [the killer feature](#the-killer-feature),
 and [what still wants a human](#what-still-wants-a-human) — which is the long one, and is
 ordered to match `PLAYTEST.md` rather than by importance.
 
-Last run — 2026-08-11, the grid that shipped the war road, and the instrument that could not
-see it:
+Last run — 2026-08-11, the grid that shipped the war road, the instrument that could not see
+it, and the second pass that took the judge out of the instrument:
 
 - `npx tsc --noEmit` clean.
-- `npm test` — **91 of 93 files, 1,736 tests green**, 13 skipped, in 869.78 s. Forty-one of
+- `npm test` — **92 of 94 files, 1,746 tests green**, 13 skipped, in 893.05 s. Forty-one of
   those tests are new and twenty-seven are on `sim/holdings.ts`, which is the whole of the
   stage. That every number in the file is bought from one that already existed — one holding
   behind each ring, one fewer marcher than the colony must keep at home, a garrison rolled out
@@ -41,14 +41,30 @@ see it:
   `1 + HOLDING_COUNT` rungs, which is the rewiring that made warfare read ground instead of
   kills. The 13 skips are the opt-in gates and nothing else — `ECO`, `SWEEP`, `BALANCE`,
   `LIVE`, `POOL` — and two files (`tests/liveness.test.ts`, `tests/survival-sweep.test.ts`)
-  hold nothing but a gated describe, which is why the file count reads 91 and not 93.
+  hold nothing but a gated describe, which is why the file count reads 92 and not 94.
+  **Ten** of the tests are newer than that stage and belong to the instrument rather than the
+  game. Eight are `tests/measurements.test.ts`, which is the first thing ever to read the
+  staleness guard — the guard that decides whether yesterday's grid may be scored today, which
+  the whole split-the-grid arrangement rests on, which had never been read, and whose failure
+  mode is quietly saying yes. It pins the three answers that matter: a sim that moved must
+  invalidate, a *judge* that moved must not, and an empty walk must throw rather than hash
+  nothing, because a constant fingerprint marks every stale grid as fresh for ever. The other
+  two hold the road promises to the family they are now denominated in, one in each direction —
+  that a road is read off the colonies that walked it, and that a road is not called unfinished
+  on the strength of colonies that never set foot on one.
 - `npm run eval` — the same `tests/colony-eval.test.ts` the suite above already ran, not
   re-run separately. It is the one file both entry points share, so a second run is a second
   reading of a number already recorded rather than a second piece of evidence.
 - `npm run measure -- --days 60 --past-founding` then `npm run balance` — 4 tests green.
-  **39 colonies in 2,176 s**, up from 24, and the fifteen extra colonies are the story of this
+  **39 colonies in 2,139 s**, up from 24, and the fifteen extra colonies are the story of this
   run. **Twenty-six** principles are scored, two more than last time: all **fifteen** enforced
-  ones hold, and of the eleven open ones — reported without asserting — four do.
+  ones hold, and of the eleven open ones — reported without asserting — three do.
+  This grid was played twice. The second pass bought nothing but a fingerprint: the judge left
+  the hash, so the hashed file *set* changed, so the stored grid would not be scored — and
+  every sim-derived row of all thirty-nine colonies came back **byte-identical**, across three
+  families, down to the last decimal. Re-measuring rather than hand-stamping the JSON is what
+  makes that sentence worth writing; the thirty-six minutes bought the right to say the slice
+  did not touch the game, instead of assuming it.
   **The grid could not see the war, and reported that in the most convincing way available.**
   The first sixty-day grid after stage 4 shipped read `campaigns 0` on all fifteen colonies,
   on every setting, to four decimal places. That is what a road nobody can afford looks like,
@@ -85,19 +101,21 @@ see it:
   Until there is a price for a war that fails, the promise has nothing to catch. That is a
   standing bill against stage 5, and moving the bar here would be the fitted-bar mistake
   `ENDGAME.md` rejects by name.
-  *The three roads are three roads* — still broken, still **1 of 3 pairs never disagree:
-  economy/warfare never inverts (economy only ever behind)**, and this grid the sentence is
-  half a road short of the diagnosis. Stage 4 rewired warfare to read ground, so on a grid
-  that can never take ground it stands at **rung 1 on all fifteen runs** — the standing band
-  put down at home, and nothing else, by construction. The flat pair is now two pinned numbers
-  rather than one. Per-difficulty road means read calm **2.6/1.0/1.0**, settler
-  **2.2/1.0/1.0**, harsh **0.8/0.6/1.0**: science is the only one of the three the unmanaged
-  grid moves at all. A grid ago warfare read 1.2 on calm and 2.0 on both of the others, off
-  kill counts — it was measuring how hard the valley attacked the colony, which is exactly why
-  it was rewired, and the honest consequence is that this promise is now read off an
-  instrument with the same blind spot the war promises had until this slice. Naming which
-  family a road is
-  denominated in is the next thing to settle, and it is a judge-only change.
+  *The three roads are three roads* — **broken, and worse than it was read a pass ago, which
+  is the point.** It read **1 of 3 pairs never disagree** while it was denominated in the
+  unmanaged grid, and that number was an artefact: stage 4 rewired warfare to count ground, so
+  on a grid where nobody ever marches it stands at **rung 1 on all fourteen** full-clock runs,
+  and two of the three pairs were being scored against a constant. The one inversion it did
+  report was science dipping under that constant on the hard maps. Moved onto the played
+  family it reads **3 of 3 pairs never disagree across 15 runs: science/economy never inverts
+  (science only ever ahead), science/warfare never inverts (science only ever behind),
+  economy/warfare never inverts (economy only ever behind)** — the order is warfare ≥ science ≥
+  economy on all fifteen and nothing crosses anywhere. That is the honest reading and it is a
+  harder bill: warfare is the cheapest ending on the board and economy never climbs past its
+  first rung, five of the fifteen never reaching it. The caveat belongs in the same breath —
+  fifteen colonies played by one deterministic policy make a *flat* pair evidence and an
+  *inverting* pair only the absence of it, so this family can convict and cannot acquit.
+  Neither road promise is enforced, and both are now bills against stage 5.
   *Nobody starves beside a full pantry* — 6 of 15 runs, each bottoming out at exactly 0.00
   while the colony held eleven to twenty-two days of food: two Settler maps and four Hard
   country ones. Unchanged for a sixth grid, down to the seeds and the day counts, and the
@@ -124,7 +142,14 @@ see it:
   idle 0 days, 6.4 days a run waiting on a delivery and 18 at worst. *The surplus finds a
   buyer* holds for a fifth grid: all 8 runs that ended above 300 steel spent at least a
   quarter of the pile down, the thinnest settler/20260729 at 40 % of 853. *No road is already
-  finished* holds: no run of the fourteen stood on a top rung, furthest rung 3 of 4.
+  finished* — **broken this pass, and it was broken last pass too; nobody could see it.** It
+  had the same fault as its companion and was found by looking rather than by being bitten: a
+  road pinned at rung 1 of 4 always has road left, so reading it off the unmanaged grid could
+  only ever return *holds*. Off the played family it reads **2 roads finished by day 60:
+  calm/1312 finished warfare, settler/1312 finished warfare** — three holdings apiece and
+  warfare **rung 4 of 4**, which is precisely the thing the promise exists to catch. A road
+  somebody can walk to its end in sixty days has stopped being somewhere to go, and it needs
+  an ending standing at the top of it.
   The enforced set is unchanged. *The far ring is earned* — shut for all 15 runs through day 7,
   7 of the 10 below Hard country had it open by day 42, earliest day 16. *The long road is
   walked* — 10 of 10 below Hard country sent two or more parties past the near ring, mean trips
