@@ -22,6 +22,7 @@
  */
 
 import { DIFFICULTY_ORDER } from '../sim/difficulty';
+import { ENDING_DAYS, ENDING_IDS } from '../sim/endings';
 import { WAR_PARTY } from '../sim/holdings';
 import { RESEARCH, RESEARCH_ORDER } from '../sim/research';
 import { ROAD_IDS, ROAD_RUNGS } from '../sim/roads';
@@ -1611,6 +1612,124 @@ export const PRINCIPLES: Principle[] = [
         : {
             verdict: 'broken',
             detail: `${topped.length} road${topped.length === 1 ? '' : 's'} finished by day ${s.days}: ${topped.join(', ')}`,
+          };
+    },
+  },
+  {
+    id: 'every-ending-is-reachable',
+    claim:
+      'All three roads go somewhere. Each of the three endings is reached by somebody on the grid, ' +
+      'inside the clock the grid runs.',
+    // Stage 5's first promise, and it is written *knowing it fails*. That is the
+    // point of it rather than an embarrassment about it.
+    //
+    // `ENDGAME.md` names the one thing stage 5 could not settle on its own: the
+    // played sixty-day grid reaches warfare rung 4 twice, science rung 3 at
+    // best, and economy rung 1 — so read against gates that are the top rung of
+    // each road, exactly one of the three endings is reachable inside sixty
+    // days, and two are not. Either the grid's clock grows, or two roads have
+    // top rungs the game as it stands cannot deliver. Both answers are
+    // defensible and they cost different things, so neither is taken in
+    // passing.
+    //
+    // What this principle does is stop the question being a paragraph nobody
+    // re-reads. Every grid from here on prints how many of the three anybody
+    // reached and how close the other two came, so the day the answer changes —
+    // because the clock grew, or because something upstream made a road faster
+    // — the instrument says so without anybody remembering to look.
+    //
+    // `sweep.war` for the reason the two road promises above it give at length:
+    // an ending is the far end of a road, and the unmanaged family does not walk
+    // roads. Asking whether an ending was reached on a grid where nobody left
+    // the valley is asking a question about the harness.
+    enforced: false,
+    check: (s) => {
+      if (s.days < DAY_SIXTY) {
+        return { verdict: 'untested', detail: `${s.days}-day grid cannot see day ${DAY_SIXTY}` };
+      }
+      const full = (s.war ?? []).filter((m) => m.daysLived >= s.days);
+      if (full.length === 0) {
+        return { verdict: 'untested', detail: 'no played run finished the clock' };
+      }
+      const landed = ENDING_IDS.filter((id) =>
+        full.some((m) => m.endingId === id && m.endingLandedOn !== null),
+      );
+      // How close the ones nobody reached came, in the unit that would have to
+      // move for them to be reached: the rung of their own road. "Nobody built
+      // the ship" is true of a grid that finished the tree and ran out of days
+      // and of one that never opened a foundry, and this is what tells them
+      // apart.
+      const missed = ENDING_IDS.map((id, i) => {
+        const best = Math.max(0, ...full.map((m) => m.roadRungs?.[i] ?? 0));
+        return `${id} (best rung ${best} of ${ROAD_RUNGS})`;
+      }).filter((_, i) => !landed.includes(ENDING_IDS[i]!));
+      return landed.length === ENDING_IDS.length
+        ? {
+            verdict: 'holds',
+            detail: `all ${ENDING_IDS.length} endings reached across ${full.length} played runs`,
+          }
+        : {
+            verdict: 'broken',
+            detail:
+              `${landed.length} of ${ENDING_IDS.length} endings reached in ${s.days} days` +
+              ` — unreached: ${missed.join(', ')}`,
+          };
+    },
+  },
+  {
+    id: 'no-ending-is-free',
+    claim:
+      'An ending is a commitment, not a threshold. Every ending that landed was committed to first ' +
+      'and then survived, and the colony had to still be a colony the whole way.',
+    // The other half of stage 5, and the one that guards the mistake
+    // `victory.ts` already made once and documented: a win that lands on the
+    // tick a number ticks over. A rung is a number. If an ending ever fires the
+    // moment a road tops out, the most dramatic moment in the run becomes a
+    // tally incrementing, and the three roads become three progress bars with a
+    // cutscene on the end.
+    //
+    // What it reads is the gap between the day a colony committed and the day
+    // its ending landed. `ENDING_DAYS` is the floor, and it is a floor rather
+    // than an equality on purpose: a terminal that took exactly its days is a
+    // colony that never once fell out of the running, and a longer one paid for
+    // the days it lost — a stalled hull, a holding taken back, a charter dropped
+    // in the middle of it. Both are the mechanism working. Anything *shorter*
+    // is the mechanism gone.
+    //
+    // Deliberately not enforced yet, for the plainest reason there is: nothing
+    // on the grid has landed an ending, so this has never been read against a
+    // real one. A guard promoted on the strength of never having been tested is
+    // a guard that fails the first time it matters, and `every-ending-is-
+    // reachable` above is the principle whose job it is to change that.
+    enforced: false,
+    check: (s) => {
+      const landed = (s.war ?? []).filter(
+        (m) => m.endingLandedOn !== null && m.endingCommittedOn !== null,
+      );
+      if (landed.length === 0) {
+        return { verdict: 'untested', detail: 'no played run landed an ending' };
+      }
+      const quick = landed.filter(
+        (m) => m.endingLandedOn! - m.endingCommittedOn! < ENDING_DAYS,
+      );
+      const slowest = Math.max(...landed.map((m) => m.endingLandedOn! - m.endingCommittedOn!));
+      return quick.length === 0
+        ? {
+            verdict: 'holds',
+            detail:
+              `${landed.length} ending${landed.length === 1 ? '' : 's'} landed, none in under ` +
+              `${ENDING_DAYS} days; the longest took ${slowest}`,
+          }
+        : {
+            verdict: 'broken',
+            detail:
+              `${quick.length} of ${landed.length} landed in under ${ENDING_DAYS} days: ` +
+              quick
+                .map(
+                  (m) =>
+                    `${m.difficulty}/${m.seed} ${m.endingId} in ${m.endingLandedOn! - m.endingCommittedOn!}`,
+                )
+                .join(', '),
           };
     },
   },

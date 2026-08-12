@@ -116,6 +116,7 @@ src/
     victory.ts         the exam: five charters, the three days they hold, and no shutdown
     roads.ts           what comes after the exam: three ladders of four rungs, all derived
     holdings.ts        the ground the Ashbound hold, and the three settlers sent to take it
+    endings.ts         the far end of the three roads: commit, pay for twelve days, land
     steward.ts         the colony's own foreman: restock, beds, fence, gate, grid, floors, cover
     tick.ts            stepWorld(): the one ordered tick
     save.ts            versioned envelope <-> localStorage
@@ -1333,6 +1334,73 @@ The panel is the founding's own panel. Once `hasWon`, `syncGoals` puts the three
 charter checklist was: same rows, same bar, same hint line, and the ending each road leads to on the
 row's hover. A player who learned to read that corner during the first act does not have to learn a
 second one for the second.
+
+## An ending is a commitment, not a threshold
+
+`sim/endings.ts` is what the three ladders lead to, and the shape of it was decided by a mistake this
+codebase has already made once. `victory.ts` rejected by name the founding that fires the moment a
+counter crosses a line — *"the most dramatic moment in the run is a number quietly ticking over"* —
+and replaced it with five charters held together for three days. An ending that landed on the tick a
+top rung was reached would be that same mistake one act later and three times over. So a terminal is
+something the colony **commits to, pays for, and then has to survive**: `ENDING_DAYS` of holding
+together while a bill comes due. Nothing lands on its own, and `commitEnding` is the only way in.
+
+The gate is the top rung of its own road and nothing else. Not a fourth set of conditions —
+`roads.ts` is already derived from the founding's bars, the shape of the tree and the size of the
+map, so a fourth research tier or a fourth ring of neighbours moves these gates without anybody
+opening this file. It is read **live** rather than latched, which is the whole reason dominion has a
+bill at all: a colony that took the moor and then lost a piece of it is not holding the moor, and an
+ending gated on a latch would let it leave anyway.
+
+Three bills in three different units, for the same reason there are three ladders. Three endings
+that all cost steel would be one ending printed three times.
+
+- The **ship** is *built*, so it is paid in goods off the yard, one instalment a day as a hull is.
+  Its bill is `SHIP_BILL` — the sum of every materials line in the research tree, the whole foundry's
+  output made once more. No multiplier was chosen and no number typed: grow the tree and the ship
+  grows with it.
+- The **berths** are *bought*, so they are paid in worth handed out through the caravans, and the
+  tally is of the whole run rather than of the terminal. Somebody else built that ship; what the
+  colony spent is the road it walked to afford it. `BERTHS_WORTH` is `worthOf(SHIP_BILL)` at the
+  `VALUE` yardstick every quote in the game is already priced against — the same ship, in the other
+  currency, and two endings that cannot drift apart because there is only one number under them.
+- The **dominion** buys nothing. Its unit is ground, and ground is kept rather than spent: the bill
+  is that every holding is still yours on the last day.
+
+The days are shared and the bills are not. Three day counts would be a fourth thing to balance and
+would say nothing three different bills do not already say better, so there is one:
+`HOLD_DAYS * ROAD_RUNGS`, which is the first act's own hold asked once per rung the colony climbed.
+
+Falling out costs the days and never the goods. `stalledBy` has exactly two ways to stop the clock,
+and both are conditions the game already had words for — the road has slipped below its gate, or one
+of the founding's five charters is unmet. There is deliberately no sixth bar: a bar invented here
+would be a bar to balance, and *still a colony* is a thing `victory.ts` already knows how to say. A
+stall resets `since` to null and the count starts again from twelve; what is in the hull stays in the
+hull, and so does what `abandonEnding` throws away.
+
+Two cadences meet in `tickEndings` and getting them confused is the bug this stage was one line from
+shipping. The terminal is checked on the same once-a-second beat as the exam — every twentieth tick —
+and the hull's bill is quoted **per day**, so a naive `work()` call inside that check bought fifty
+day's worth of steel every afternoon. `lastWorked` fixes it by holding the day number the terminal
+last paid on, counted off the world clock and not off `since`, because `since` resets on a stumble
+and a hull that stopped being added to until the clock caught back up would be paying twice for one
+bad afternoon.
+
+What this file does not touch is `world.gameOver`. It means *nobody is left*, nine passes read it
+that way, and the slice where a founding set it — and the prize for winning was that the foreman
+switched off — is written up two sections below. An ending is its own optional field on the world,
+which also means no save migration: a colony saved before this file existed loads with `ending`
+undefined, and undefined is exactly *has not committed*.
+
+Two new promises read it on the grid, and both are `enforced: false` on the day they were written.
+`no-ending-is-free` breaks if any ending landed in fewer than `ENDING_DAYS` days between commitment
+and landing — a floor rather than an equality, because the bill is the other half and a colony that
+cannot pay serves the days twice. `every-ending-is-reachable` requires that each of the three is
+reached by somebody, and it is written knowing it fails: its job is to put the clock question — is
+sixty days enough to walk a road to its end and then hold it for twelve? — where the instrument
+reports it every run, instead of in a paragraph nobody re-reads. When an ending goes unreached it
+prints the best road rung anybody managed, so *finished the tree and ran out of days* is
+distinguishable from *never opened a foundry*.
 
 ## Three bodies in a place nothing expects one
 

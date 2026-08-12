@@ -17,6 +17,7 @@
 
 import { runColony, type EvalReport, type Verdict } from './run';
 import { DIFFICULTIES, DIFFICULTY_ORDER } from '../sim/difficulty';
+import { ENDING_IDS } from '../sim/endings';
 import { WAR_PARTY } from '../sim/holdings';
 import { RESEARCH } from '../sim/research';
 import { CAN_SPARE_ONE } from '../sim/settlements';
@@ -208,6 +209,26 @@ export interface RunMeasure {
   campaigns: number;
   holdingsTaken: number;
   warPawnDays: number;
+  /**
+   * The ending, in three numbers and a name: which one the colony committed to,
+   * the day it did, and the day it landed. All null on a run that never stood at
+   * the top of a road, which on the grid that ships this file is all of them.
+   *
+   * `endingLandedOn` is separate from `endingCommittedOn` rather than derived
+   * from it by adding the terminal's length, and the gap between them is the
+   * whole of what `no-ending-is-free` reads: a terminal that took exactly its
+   * days is a colony that never once fell out of the running, and one that took
+   * longer paid for the days it lost. A single "landed" flag would say neither.
+   */
+  endingId: string | null;
+  endingCommittedOn: number | null;
+  endingLandedOn: number | null;
+  /**
+   * Worth handed over to the neighbours across the whole run. The berths' bill,
+   * and the answer to what a road that never opened would have been able to pay
+   * if it had.
+   */
+  tradedWorth: number;
 }
 
 export interface SweepOptions {
@@ -547,6 +568,10 @@ export function measure(r: EvalReport): RunMeasure {
     campaigns: last?.campaigns ?? 0,
     holdingsTaken: last?.holdingsTaken ?? 0,
     warPawnDays: last?.warPawnDays ?? 0,
+    endingId: r.endingId,
+    endingCommittedOn: r.endingCommittedOn,
+    endingLandedOn: r.endingLandedOn,
+    tradedWorth: last?.tradedWorth ?? 0,
   };
 }
 
@@ -699,7 +724,7 @@ function formatWar(sweep: Sweep): string[] {
   if (rs.length === 0) return [];
   const lines = [
     `the war road · ${rs.length} of the same colonies, played by the Steward`,
-    'setting            seed  verdict   alive  hands           war        roads',
+    'setting            seed  verdict   alive  hands           war        roads          ending',
   ];
   for (const d of sweep.difficulties) {
     for (const m of rs.filter((r) => r.difficulty === d)) {
@@ -731,6 +756,14 @@ function formatWar(sweep: Sweep): string[] {
           // third rung here should be one more than the ground kept, and a
           // reader who wants to check that has both numbers on one line.
           pad((m.roadRungs ?? []).join('/') || '—', 13),
+          // Which ending, and the two days that bracket it. Written as
+          // commit→land because the gap between them is the whole of
+          // `no-ending-is-free`: a run reading `ship 31→43` paid the twelve
+          // days, and one reading `ship 31…` is still paying. It sits last
+          // because it is only legible beside the roads column — the rung is
+          // the gate, so an empty cell next to a road that never reached its
+          // top rung is a colony that was never offered the choice.
+          pad(endingCell(m), 16),
         ].join(''),
       );
     }
@@ -741,9 +774,28 @@ function formatWar(sweep: Sweep): string[] {
     '',
     `  ${went.length} of ${able.length} colonies that had the hands went out; ` +
       `${rs.reduce((a, m) => a + (m.holdingsTaken ?? 0), 0)} holdings taken across ${rs.length} runs`,
+  );
+  // The same count `every-ending-is-reachable` makes, printed where a reader
+  // will see it without running the balance suite. Committed and landed are
+  // two different failures: nobody committing means no road reached its top
+  // rung, and everybody committing and nobody landing means the grid's clock
+  // runs out before the twelve days do.
+  const committed = rs.filter((m) => m.endingId !== null);
+  const landed = committed.filter((m) => m.endingLandedOn !== null);
+  const reached = ENDING_IDS.filter((id) => landed.some((m) => m.endingId === id));
+  lines.push(
+    `  ${committed.length} committed to an ending, ${landed.length} landed one; ` +
+      `reached ${reached.length} of ${ENDING_IDS.length}${reached.length > 0 ? ` (${reached.join(', ')})` : ''}`,
     '',
   );
   return lines;
+}
+
+/** `—` unoffered or unwanted · `ship 31…` still paying · `ship 31→43` landed. */
+function endingCell(m: RunMeasure): string {
+  if (m.endingId === null) return '—';
+  const from = m.endingCommittedOn ?? 0;
+  return m.endingLandedOn === null ? `${m.endingId} ${from}…` : `${m.endingId} ${from}→${m.endingLandedOn}`;
 }
 
 /** Negative width left-aligns, which the setting column needs and the numbers do not. */

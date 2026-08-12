@@ -1390,6 +1390,45 @@ body {
   color: var(--good);
 }
 
+/*
+ * The far end of the road. Beats `.asked` the way `.asked` beats `.locked`, and
+ * for the same reason one step up: a letter is a fortnight's opportunity and
+ * this is the run ending. Still a card in the same column as everything else —
+ * a banner would be telling the player to look somewhere new on the tab they
+ * have been reading all game.
+ */
+#roadtab .deal.terminal {
+  border-color: var(--edge-strong);
+  background: rgba(214, 168, 92, 0.14);
+  opacity: 1;
+}
+
+#roadtab .deal.terminal .cost {
+  color: var(--ink);
+}
+
+/* Stopped, not lost. The days are gone and the goods are not. */
+#roadtab .deal.terminal.stalled .gain {
+  color: var(--bad);
+}
+
+/*
+ * Giving it up, quiet and on the right — the same shape and the same argument
+ * as the tutorial's own way out: a player who is reading the clock should not
+ * have their eye pulled to the link that stops it.
+ */
+#roadtab .deal a.off {
+  cursor: pointer;
+  pointer-events: auto;
+  font-size: 11px;
+  color: var(--dim);
+  text-decoration: underline;
+}
+
+#roadtab .deal a.off:hover {
+  color: var(--bad);
+}
+
 #tradetab .deal .ttl, #roadtab .deal .ttl {
   display: flex;
   align-items: baseline;

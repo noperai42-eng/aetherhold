@@ -15,6 +15,7 @@
 import { CABIN, GARDEN } from '../sim/worldgen';
 import { canSow, canTill, growingCells } from '../sim/farming';
 import { buildingAt, dist, isWalkable } from '../sim/grid';
+import { commitEnding, endingsOpen } from '../sim/endings';
 import { holdingsOf, planCampaign } from '../sim/holdings';
 import { missingResource, orderCampaign } from '../sim/jobs';
 import { PEN_CELLS_PER_HEAD, livestock, penCapacity, penCells } from '../sim/livestock';
@@ -97,6 +98,7 @@ export function stewardTick(world: World, tick: number): void {
   keepResearchGoing(world, colonists);
   dealWithCaravans(world, colonists.length);
   marchOnAHolding(world);
+  commitToAnEnding(world);
 }
 
 // ---------------------------------------------------------------------------
@@ -149,6 +151,45 @@ function marchOnAHolding(world: World): void {
     orderCampaign(world, h.id);
     return;
   }
+}
+
+// ---------------------------------------------------------------------------
+// The far end of the road
+// ---------------------------------------------------------------------------
+
+/**
+ * Commit to an ending the moment one is open, and never let it go.
+ *
+ * The same argument `marchOnAHolding` makes above, one stage later: nothing in
+ * the sim commits to a terminal on its own — it is a decision, and a decision is
+ * the one thing a colony cannot make for itself — so without these lines no
+ * colony on the grid would ever reach one, `every-ending-is-reachable` would
+ * read `broken` for a reason that had nothing to do with the endings, and
+ * `no-ending-is-free` would read `untested` for ever. A road nothing walks to
+ * the end of is a road nothing measures.
+ *
+ * There is no *afford it* clause here, unlike the campaign, and that is a
+ * property of the mechanism rather than an oversight: a terminal that cannot pay
+ * its instalment stalls on the bill and costs nothing but time, and the days it
+ * asks for run alongside the colony rather than instead of it. Committing early
+ * is what a player who had walked a road to its top rung would do, and waiting
+ * for a fat yard would be the Steward second-guessing the one decision the grid
+ * is here to measure.
+ *
+ * First open in road order, which in practice means the only open one — the
+ * three gates are the three top rungs, and no colony on any grid so far has
+ * stood on two of them. The day one does, "the ship before the berths before the
+ * moor" is a policy the grid is measuring, and it will need saying out loud in a
+ * way this line does not yet have to.
+ *
+ * It never abandons. `abandonEnding` exists for the player, and a Steward that
+ * changed its mind would put a hole in `no-ending-is-free`'s denominator that
+ * nothing in the report could see.
+ */
+function commitToAnEnding(world: World): void {
+  if (world.ending) return;
+  const open = endingsOpen(world);
+  if (open.length > 0) commitEnding(world, open[0]!);
 }
 
 // ---------------------------------------------------------------------------

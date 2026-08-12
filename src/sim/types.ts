@@ -9,6 +9,7 @@
 // Type-only, and mutual: `research.ts` needs `World` to read state off it and
 // this file needs the shape of that state. Both sides are `import type`, so the
 // cycle is erased at compile time and nothing circular reaches the bundle.
+import type { EndingId } from './endings';
 import type { ResearchState } from './research';
 import type { TraitName } from './traits';
 
@@ -548,6 +549,28 @@ export interface WarParty {
   /** Set at the walls, read on the way in: what the colony gets told when they arrive. */
   won?: boolean;
   killed?: number;
+}
+
+/**
+ * The far end of one of the three roads, once the colony has committed to it.
+ *
+ * At most one, ever, and it is deliberately not a latch on the way in: the gate
+ * is the top rung of its road and that rung is read live, so a colony that lets
+ * a road slip out from under it stops the clock. See `endings.ts` for the whole
+ * of the mechanism and for why none of this touches `gameOver`.
+ */
+export interface EndingState {
+  id: EndingId;
+  /** Tick the colony committed. Kept for the record even after it lands. */
+  committed: number;
+  /** Tick the current stretch began, or null while the colony is out of the running. */
+  since: number | null;
+  /** What has gone into the hull so far. The ship's ledger; empty for the other two. */
+  paid: Partial<Record<ResourceKind, number>>;
+  /** Day the hull last took a bite, so it takes one a day rather than one a tick. */
+  lastWorked: number | null;
+  /** Tick it landed, or null. */
+  landed: number | null;
 }
 
 /**
@@ -1641,6 +1664,17 @@ export interface World {
     rawGathered?: number;
     /** Trade parties that walked out to a neighbour and came home. Optional, as above. */
     caravans?: number;
+    /**
+     * Worth handed over to the neighbours, at the `VALUE` yardstick, across every
+     * deal the colony has ever struck out on the road.
+     *
+     * Booked at the settlement rather than at the gate: a pack that was robbed on
+     * the way out cost the colony exactly as much and bought it nothing, and this
+     * is the tally of what the road *earned*, not of what left the yard. It is the
+     * berths' whole bill — see `endings.ts` — and it is the only cumulative
+     * counter in this list that is denominated in worth rather than in things.
+     */
+    tradedWorth?: number;
     /** War parties sent. Counted at the muster, because that is when the colony committed to it. */
     campaigns?: number;
     /** Holdings taken and kept. Optional, as above. */
@@ -1816,6 +1850,14 @@ export interface World {
   holdings?: Holding[];
   /** The war party in the field, or none. At most one, ever. */
   war?: WarParty | null;
+  /**
+   * The ending this colony has committed to, or none.
+   *
+   * Optional, and no migration for it beyond that: a colony saved before there
+   * were endings loads with none in progress, which is the truth about it. See
+   * `endings.ts`.
+   */
+  ending?: EndingState;
   /**
    * The Pickies currently out on an errand. See `pickies.ts`.
    *

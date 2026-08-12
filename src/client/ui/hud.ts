@@ -80,6 +80,14 @@ import {
   warDaysLeft,
   warPartyOf,
 } from '../../sim/holdings';
+import {
+  ENDING_DAYS,
+  type EndingId,
+  type EndingProgress,
+  endingOffer,
+  endingProgress,
+  endingsOpen,
+} from '../../sim/endings';
 import { commissionDaysLeft, commissionOf, satisfies } from '../../sim/commissions';
 import { CRAFT_DEFS, RECIPE_ORDER, bestCrafter, canCraft, craftBlocker, pawnQualified, unlockedBy } from '../../sim/crafting';
 import { PASSION_LABEL, SKILL_TITLE, passionOf } from '../../sim/skills';
@@ -144,6 +152,15 @@ export interface HudHooks {
    * a way to send the three it can most afford to lose. See `sim/holdings.ts`.
    */
   sendWarParty(holdingId: number): void;
+  /**
+   * Commit the colony to how this run ends, or give up the one it committed to.
+   * No confirmation dialog on either: the commitment is refusable for twelve
+   * days and the abandonment is a link the size of the one that hides the
+   * tutorial, which is the same weight the rest of this HUD gives a decision
+   * you can walk back. See `sim/endings.ts`.
+   */
+  commitEnding(id: EndingId): void;
+  abandonEnding(): void;
   cancelBuilding(buildingId: number): void;
   switchView(): void;
   loadAutosave(): void;
@@ -1667,9 +1684,23 @@ export class Hud {
       String(livingColonists(s.world).filter((p) => !p.downed).length),
       s.world.storyteller.raidActive ? 'raid' : 'quiet',
     ].join('|');
+    // The terminal is in both branches of the signature below, because it is the
+    // one section of this tab that is on screen whether or not the colony can
+    // send anybody anywhere — a capped colony watching its hull fill up still
+    // needs the number to move.
+    const end = endingProgress(s.world);
+    const endSig = end
+      ? `${end.id}:${Math.round(end.daysLeft * 4)}:${end.bill.at}:${end.stalled ?? ''}:${end.landed}`
+      : // The offers carry their bills, and two of the three are already partly
+        // paid — a signature keyed on which endings are open would freeze the
+        // fare at whatever it read on the day the road reached its top rung.
+        endingsOpen(s.world)
+          .map((id) => `${id}:${endingOffer(s.world, id).bill.at}`)
+          .join(',') || 'none';
     const sig = capped
-      ? `out|${outSig}|${comSig}|${warSig}`
+      ? `out|${outSig}|${comSig}|${warSig}|${endSig}`
       : [
+          endSig,
           'in',
           outSig,
           warSig,
@@ -1686,6 +1717,7 @@ export class Hud {
     this.roadSig = sig;
 
     this.roadtab.innerHTML = '';
+    this.appendTerminal(s, end);
     this.roadtab.append(el('h3', '', {}, 'The road'));
 
     // Above everything, including a party already walking: an open letter is the
@@ -1867,6 +1899,75 @@ export class Hud {
         `${h.attempts > 0 ? `Thrown back ${h.attempts === 1 ? 'once' : `${h.attempts} times`} already. ` : ''}` +
         `${plan.ok ? `${WAR_PARTY} march: ${escapeHtml(plan.party.map((p) => p.name).join(', '))}.` : escapeHtml(plan.text)}</div>`;
       if (plan.ok) row.onclick = () => this.hooks.sendWarParty(h.id);
+      list.append(row);
+    }
+    this.roadtab.append(list);
+  }
+
+  /**
+   * How this run ends, once a road is long enough to end it.
+   *
+   * Above the letters and the towns, which is a promotion the commission card's
+   * own comment argues for and then loses: the letter is the one thing on this
+   * panel with a clock on it right up until this appears, and then it is the
+   * second. Nothing at all is appended before a road reaches its top rung, so
+   * for most of a run the tab is exactly what it was.
+   *
+   * Committed and offered are drawn as the same card on purpose. The player is
+   * being asked to pick one of three and then watch the one they picked, and a
+   * choice that redraws itself into a different-looking thing the moment it is
+   * made is a choice the player has to re-learn at the worst possible moment.
+   */
+  private appendTerminal(s: HudState, end: EndingProgress | null): void {
+    const open = end ? [] : endingsOpen(s.world);
+    if (!end && open.length === 0) return;
+    this.roadtab.append(el('h3', '', {}, 'The far end'));
+
+    if (end) {
+      const card = el('div', `deal terminal${end.landed ? ' done' : end.stalled ? ' stalled' : ''}`);
+      // The days are the headline whichever way it is going: running, they are
+      // what is left; stopped, the whole count is what it will cost to start
+      // again, and the card says so rather than showing twelve as if it were
+      // progress.
+      const gain = end.landed
+        ? 'done'
+        : end.stalled
+          ? `stopped · ${ENDING_DAYS} days`
+          : `${end.daysLeft.toFixed(1)} days left`;
+      card.innerHTML =
+        `<div class="ttl"><span class="cost">${escapeHtml(end.title)}</span>` +
+        `<span class="arrow">·</span><span class="gain">${escapeHtml(gain)}</span>` +
+        (end.landed ? '' : `<a class="off" title="Give it up. What went into it is gone.">give it up</a>`) +
+        `</div>` +
+        `<div class="blurb">${escapeHtml(end.bill.count)}. ` +
+        escapeHtml(
+          end.landed
+            ? end.blurb
+            : end.stalled
+              ? `The count is stopped — ${end.stalled}. It starts again from ${ENDING_DAYS} days when that is fixed, and what is already paid stays paid.`
+              : end.hint,
+        ) +
+        `</div>`;
+      card
+        .querySelector('a.off')
+        ?.addEventListener('click', () => this.hooks.abandonEnding());
+      this.roadtab.append(card);
+      return;
+    }
+
+    const list = el('div', 'deals');
+    for (const id of open) {
+      const o = endingOffer(s.world, id);
+      const row = el('div', 'deal terminal clickable');
+      // The bill is quoted before the commitment and two of the three are
+      // already partly paid, which is the honest number and not a discount: the
+      // fare and the moor were bought on the way here.
+      row.innerHTML =
+        `<div class="ttl"><span class="cost">${escapeHtml(o.title)}</span>` +
+        `<span class="arrow">·</span><span class="gain">${ENDING_DAYS} days</span></div>` +
+        `<div class="blurb">${escapeHtml(o.blurb)} ${escapeHtml(o.bill.count)}, and the colony has to ` +
+        `hold together the whole time. ${escapeHtml(o.hint)}</div>`;
+      row.onclick = () => this.hooks.commitEnding(id);
       list.append(row);
     }
     this.roadtab.append(list);

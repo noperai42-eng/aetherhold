@@ -109,6 +109,18 @@ function run(difficulty: Difficulty, over: Partial<RunMeasure> = {}): RunMeasure
     campaigns: 0,
     holdingsTaken: 0,
     warPawnDays: 0,
+    // …and having walked no road to its end, it committed to no ending. Null on
+    // all three for the same reason `campaigns` is nought: the baseline is the
+    // colony that did nothing interesting, and an ending is the most interesting
+    // thing a colony can do. A case about an ending has to say so out loud.
+    endingId: null,
+    endingCommittedOn: null,
+    endingLandedOn: null,
+    // Six near-ring trips' worth of worth handed over, which is what
+    // `tripsByRing` above already says this colony did. Far short of the berths'
+    // bill, and deliberately: a baseline that could already afford passage would
+    // hand `every-ending-is-reachable` half its evidence for free.
+    tradedWorth: 400,
     ...over,
   };
 }

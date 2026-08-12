@@ -26,6 +26,7 @@ import { daylight, timeOfDay } from '../sim/clock';
 import { cloudiness, rainfall, windStrength } from '../sim/weather';
 import { findPawn, livingColonists, msg } from '../sim/world';
 import { orderCampaign, orderCaravan } from '../sim/jobs';
+import { abandonEnding, commitEnding } from '../sim/endings';
 import { indoors } from '../sim/rooms';
 import { installDevtools } from './devtools';
 import { interact } from '../sim/interact';
@@ -146,6 +147,12 @@ export class App {
         const r = orderCampaign(this.world, holdingId);
         msg(this.world, r.text, r.ok ? 'good' : 'bad');
       },
+      // Both are silent on refusal, unlike the two above, because neither can be
+      // refused from a panel that is drawing itself off the same two functions:
+      // the offer rows only exist for open endings, and the link only exists
+      // while one is running. A sentence in the log would be for a bug.
+      commitEnding: (id) => commitEnding(this.world, id),
+      abandonEnding: () => abandonEnding(this.world),
       cancelBuilding: (id) => this.cancelBuilding(id),
       switchView: () => this.toggleView(),
       loadAutosave: () => this.load('auto'),

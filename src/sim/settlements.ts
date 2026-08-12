@@ -1061,6 +1061,11 @@ function stepOneCaravan(world: World, c: Caravan): boolean {
       // file having to know that commissions exist. See the note at the top of
       // that one: the import runs one way and this is the whole of the seam.
       c.dealtTick = world.tick;
+      // What the road earned, at the yardstick. Booked here rather than at the
+      // gate on purpose: the branch above this one is a pack that never reached
+      // anybody, and a robbery is a cost the colony paid for nothing rather than
+      // a deal it struck. `endings.ts` reads this and nothing else writes it.
+      world.stats.tradedWorth = (world.stats.tradedWorth ?? 0) + VALUE[c.give.kind] * c.give.amount;
       s.relations = Math.min(RELATIONS_MAX, s.relations + relationsPerVisit(s));
       msg(
         world,

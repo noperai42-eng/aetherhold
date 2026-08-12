@@ -225,6 +225,14 @@ export interface DaySnapshot {
   campaigns: number;
   holdingsTaken: number;
   warPawnDays: number;
+  /**
+   * Worth handed over to the neighbours across every deal so far — the berths'
+   * whole bill, and the one column in this list denominated in worth rather than
+   * in things. Sampled even on runs that never open the economy road's top rung,
+   * because "nobody could afford it" and "nobody was ever allowed to try" are the
+   * two answers `every-ending-is-reachable` has to tell apart.
+   */
+  tradedWorth: number;
 }
 
 export type Verdict = 'thriving' | 'holding' | 'collapsed';
@@ -294,6 +302,21 @@ export interface EvalReport {
    * decision the colony declined to make.
    */
   unsentDays: number;
+  /**
+   * The ending this colony committed to, the day it committed, and the day it
+   * landed — all three null on a run that never reached the top of a road.
+   *
+   * Read off the world at the end rather than latched per day, because unlike
+   * `ringOpenedOn` there is nothing here a colony can pass through and lose:
+   * `world.ending` is written once at the commitment and once at the landing and
+   * is cleared only by a player abandoning it, which the Steward never does. A
+   * run that abandoned one would read as never having committed, and that is a
+   * gap worth naming rather than hiding — it opens the day anything on the grid
+   * can abandon, and nothing can today.
+   */
+  endingId: string | null;
+  endingCommittedOn: number | null;
+  endingLandedOn: number | null;
 }
 
 export interface EvalOptions {
@@ -506,6 +529,9 @@ export function runColony(opts: EvalOptions = {}): EvalReport {
     tripsByRing,
     spareDays,
     unsentDays: round(idleTicks / TICKS_PER_DAY),
+    endingId: world.ending?.id ?? null,
+    endingCommittedOn: dayOf(world.ending?.committed),
+    endingLandedOn: dayOf(world.ending?.landed ?? undefined),
     ...judge(world, snapshots, foundedOn, playPastFounding),
   };
 }
@@ -578,6 +604,7 @@ function snapshot(
     campaigns: world.stats.campaigns ?? 0,
     holdingsTaken: world.stats.holdingsTaken ?? 0,
     warPawnDays: round(world.stats.warPawnDays ?? 0),
+    tradedWorth: round(world.stats.tradedWorth ?? 0),
   };
 }
 
@@ -638,6 +665,14 @@ function judge(
 }
 
 const round = (v: number) => Math.round(v * 100) / 100;
+
+/**
+ * A world tick as the day number the rest of this report counts in — one-based,
+ * because the loop above is, and a colony that committed on the first afternoon
+ * committed on day 1 rather than day 0.
+ */
+const dayOf = (tick: number | null | undefined): number | null =>
+  tick === null || tick === undefined ? null : Math.floor(tick / TICKS_PER_DAY) + 1;
 /** The upkeep share separates the settings in the third decimal, not the second. */
 const round3 = (v: number) => Math.round(v * 1000) / 1000;
 

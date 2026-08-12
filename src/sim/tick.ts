@@ -51,6 +51,7 @@ import { SEASON_NEWS, seasonOf, seasonTurned } from './seasons';
 import { tickTemperature } from './temperature';
 import { tickTrade } from './trade';
 import { tickVictory } from './victory';
+import { tickEndings } from './endings';
 import { tickCaravan } from './settlements';
 import { tickWar } from './holdings';
 import { tickCommissions } from './commissions';
@@ -355,6 +356,11 @@ export function stepWorld(world: World, streams: Streams): void {
   // The exam after the curriculum, and before the wipe check for the same reason
   // the milestones are: a colony that just lost its last settler is not founded.
   tickVictory(world);
+  // And the terminal after the exam, because the exam is half of what keeps a
+  // terminal running — an ending stalls the moment the colony stops being a
+  // colony, and it should read the charters as this tick left them rather than
+  // as they stood a tick ago.
+  tickEndings(world);
   checkGameOver(world);
   storeStreams(world, streams);
 }
