@@ -1320,8 +1320,20 @@ different bugs and they want different fixes. Its companion,
 somebody has finished has stopped being somewhere to go. It would have failed a grid ago, when
 calm/20260729 emptied the research tree, and since stage 4 read both of these off `Sweep.war` it
 fails now: calm/1312 and settler/1312 hold three holdings each and stand on warfare rung 4 of 4.
-Both promises are `enforced: false` for that reason — they are bills against the stage that puts an
+Both promises are `enforced: false` for that reason — they were bills against the stage that puts an
 ending at the top of each road, not defects in the ladder that measured them.
+
+That stage has since shipped, and it settled one of the two bills and voided the other. *The three
+roads are three roads* still reads 3 of 3 pairs never disagreeing, and with a terminal at the top of
+each road that sentence has got worse rather than better: it is no longer an ordering of ladders, it
+is an ordering of endings. But *no road is already finished* has **outlived its own claim**. Its
+words are *a colony that plays its whole clock has road left on all three*, and they were written
+when a top rung was a dead end. Calm/1312 and settler/1312 still trip it, and what they did next was
+commit to the dominion and land it — so a road it calls finished is a road with twelve days left on
+it that this check cannot see. The honest version reads *road left, or a terminal not yet landed*,
+and it needs the field the ending's verdict adds; until then the promise is left as it is rather than
+loosened, because a check that has stopped meaning what it says is easier to spot open and broken
+than quietly re-worded.
 
 Reading it on the grid costs one column and no new sampling. `runColony` already writes a daily row,
 so `roads: roadRungs(world)` rides along beside the columns that were there, the last row's copy
@@ -1404,6 +1416,15 @@ sixty days enough to walk a road to its end and then hold it for twelve? — whe
 reports it every run, instead of in a paragraph nobody re-reads. When an ending goes unreached it
 prints the best road rung anybody managed, so *finished the tree and ran out of days* is
 distinguishable from *never opened a foundry*.
+
+That last sentence earned its keep on the first grid. Two colonies of fifteen reached an ending and
+both reached the dominion — calm/1312 on days 37→49, settler/1312 on 47→59 — so the promise reads
+**1 of 3, unreached: ship (best rung 3 of 4), berths (best rung 1 of 4)**. Without the rung, that is
+one failure with one answer, and the answer would be *grow the clock*. With it, it is two failures
+with two: the ship is three rungs up with the tree at 17 of 19 and the bench never idle, which is a
+colony that ran out of days; the berths are on **rung 1 of 4** with five of the fifteen not even
+there, which is a road nobody walks. A longer grid fixes one of those and buys a tick on the other.
+The whole cost of the distinction was carrying a number into a failure message.
 
 ## Three bodies in a place nothing expects one
 

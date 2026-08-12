@@ -1,11 +1,14 @@
 # The end game
 
-> Status: **stages 0 to 4 shipped; stage 5 is still a plan.** Written 2026-08-06
-> against the measurements in [ARCHITECTURE.md](ARCHITECTURE.md) § *What the grid
-> found*, and revised 2026-08-08 against the sixty-day grid it asked for. What is
+> Status: **stages 0 to 4 shipped, and 5a with them; 5b and 5c are still a plan.**
+> Written 2026-08-06 against the measurements in [ARCHITECTURE.md](ARCHITECTURE.md)
+> § *What the grid found*, revised 2026-08-08 against the sixty-day grid it asked
+> for, and again 2026-08-12 against the grid that first reached an ending. What is
 > in `src/` is the harness, the far country in rings, the third tier of the tree,
-> the three visible roads, and the war road out to the holdings. Stage 5 — the
-> three endings themselves — is not built.
+> the three visible roads, the war road out to the holdings, and the terminal at
+> the top of each road — commit, pay, land. What is not built is the *ending
+> itself*: the record it writes, the card it shows, and the fourth verdict the
+> instrument reads it by.
 >
 > Numbers below come from two different grids and are labelled where they differ.
 > The forty-five-day and thirty-day figures are kept where they are the reason a
@@ -1204,7 +1207,7 @@ one layer up:
 
 | Ending | What it costs | Why that unit |
 | --- | --- | --- |
-| **Ship** | Assemblies and steel, a large multiple of the third tier's own bill | The science road's currency is the top of the crafting chain. You leave on something you made, so you have to have made it. |
+| **Ship** | Every materials line in the research tree, summed — the whole foundry's output made once more *(shipped as `SHIP_BILL`; the plan said "a large multiple of the third tier's own bill", and deriving it from the tree instead means growing the tree grows the ship with no number typed)* | The science road's currency is the top of the crafting chain. You leave on something you made, so you have to have made it. |
 | **Berths** | A very large sum handed *out* through the caravans, over many trips, priced at the `VALUE` table the quotes already use | The economy road's currency is trade, and the point of this ending is that somebody else built the ship. Paid, not built. There is no money in `ResourceKind` and this ending does not add one: `settlements.ts` already prices every good in one table, and the bill is a running total of what was given away at that price. |
 | **Dominion** | Nothing bought — every holding still yours after a long stretch of days | The warfare road's currency is ground, and ground is kept rather than spent. The bill is that nobody takes any of it back. |
 
@@ -1218,7 +1221,8 @@ cost different things: a hundred-and-twenty-day grid is twice 2,139 s every time
 anything under `src/sim` moves, and shortening a ladder to fit a clock is the
 fitted-bar mistake this file keeps rejecting by name. It is named here rather
 than settled in passing, because settling it in passing is how a balance document
-becomes a balance opinion.
+becomes a balance opinion. *It was answered by the grid that shipped 5a, and the answer
+was that it is two questions — see the shipped note under 5a below.*
 
 Three slices, in this order:
 
@@ -1229,6 +1233,28 @@ Three slices, in this order:
   reached by somebody on the grid, which on the day it is written will be **broken**,
   and that is the point of writing it: it is the clock question above, in a form the
   instrument reports every run instead of a paragraph nobody re-reads.
+
+  *Shipped: `endings.ts`, the far end panel, and the first two colonies ever to reach an
+  ending.* Both promises read on the sixty-day grid of 2026-08-12. *No ending is free*
+  **holds** — 2 landed, neither in under 12 days — with the caveat that the one ending
+  anybody reached is the one that buys nothing, so it cannot yet tell *paid for* from
+  *waited out*. *Every ending is reachable* is **broken at 1 of 3**, as written, and the
+  first thing it did was **split the clock question this file posed as one**:
+
+  > 1 of 3 endings reached in 60 days — unreached: ship (best rung 3 of 4), berths (best
+  > rung 1 of 4)
+
+  **The ship is a clock question and the berths are not.** Rung 3 of 4 with the tree at 17
+  of 19 and the bench never idle is a colony walking at the right pace and running out of
+  days; a longer grid settles it, and costs twice 2,003 s every time anything under
+  `src/sim` moves. Rung **1 of 4** is not that. The economy ladder's top rung is every
+  neighbour at standing, five of the fifteen never reach even the first, and *the far
+  country is walked* reads 3 of 7 — the road is not too long, it is not being walked.
+  Sixty more days buys a reachability tick and teaches nothing about why the road is
+  empty. So the question this file refused to settle in passing has one answer and one
+  refusal, and neither of them is a number to move: **the grid's clock is a live option
+  for the ship alone, and the berths are a stage-6 question about why nobody walks the
+  economy road.** That is a bill, and it is not stage 5's.
 - **5b — the ending itself.** The record, the card, and the run's verdict. `gameOver`
   is *not* the field this writes to — it means "nobody is left" and nine passes read
   it that way, which is the bug `victory.ts` documents at length. An ending is its

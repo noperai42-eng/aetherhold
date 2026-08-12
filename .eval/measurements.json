@@ -1,7 +1,7 @@
 {
-  "fingerprint": "f4839bfd",
-  "taken": "2026-08-12T01:21:31.324Z",
-  "seconds": 2138.825,
+  "fingerprint": "ce03a113",
+  "taken": "2026-08-12T03:21:12.585Z",
+  "seconds": 2003.393,
   "steward": false,
   "sweep": {
     "seeds": [
@@ -65,7 +65,11 @@
         "peakHands": 13,
         "campaigns": 0,
         "holdingsTaken": 0,
-        "warPawnDays": 0
+        "warPawnDays": 0,
+        "endingId": null,
+        "endingCommittedOn": null,
+        "endingLandedOn": null,
+        "tradedWorth": 3505.8
       },
       {
         "seed": 7,
@@ -113,7 +117,11 @@
         "peakHands": 15,
         "campaigns": 0,
         "holdingsTaken": 0,
-        "warPawnDays": 0
+        "warPawnDays": 0,
+        "endingId": null,
+        "endingCommittedOn": null,
+        "endingLandedOn": null,
+        "tradedWorth": 808.2
       },
       {
         "seed": 1312,
@@ -161,7 +169,11 @@
         "peakHands": 16,
         "campaigns": 0,
         "holdingsTaken": 0,
-        "warPawnDays": 0
+        "warPawnDays": 0,
+        "endingId": null,
+        "endingCommittedOn": null,
+        "endingLandedOn": null,
+        "tradedWorth": 1516.95
       },
       {
         "seed": 99001,
@@ -209,7 +221,11 @@
         "peakHands": 14,
         "campaigns": 0,
         "holdingsTaken": 0,
-        "warPawnDays": 0
+        "warPawnDays": 0,
+        "endingId": null,
+        "endingCommittedOn": null,
+        "endingLandedOn": null,
+        "tradedWorth": 1380.3
       },
       {
         "seed": 424242,
@@ -257,7 +273,11 @@
         "peakHands": 13,
         "campaigns": 0,
         "holdingsTaken": 0,
-        "warPawnDays": 0
+        "warPawnDays": 0,
+        "endingId": null,
+        "endingCommittedOn": null,
+        "endingLandedOn": null,
+        "tradedWorth": 1164.05
       },
       {
         "seed": 20260729,
@@ -305,7 +325,11 @@
         "peakHands": 9,
         "campaigns": 0,
         "holdingsTaken": 0,
-        "warPawnDays": 0
+        "warPawnDays": 0,
+        "endingId": null,
+        "endingCommittedOn": null,
+        "endingLandedOn": null,
+        "tradedWorth": 1076.1
       },
       {
         "seed": 7,
@@ -353,7 +377,11 @@
         "peakHands": 13,
         "campaigns": 0,
         "holdingsTaken": 0,
-        "warPawnDays": 0
+        "warPawnDays": 0,
+        "endingId": null,
+        "endingCommittedOn": null,
+        "endingLandedOn": null,
+        "tradedWorth": 757.05
       },
       {
         "seed": 1312,
@@ -401,7 +429,11 @@
         "peakHands": 12,
         "campaigns": 0,
         "holdingsTaken": 0,
-        "warPawnDays": 0
+        "warPawnDays": 0,
+        "endingId": null,
+        "endingCommittedOn": null,
+        "endingLandedOn": null,
+        "tradedWorth": 1339.9
       },
       {
         "seed": 99001,
@@ -449,7 +481,11 @@
         "peakHands": 11,
         "campaigns": 0,
         "holdingsTaken": 0,
-        "warPawnDays": 0
+        "warPawnDays": 0,
+        "endingId": null,
+        "endingCommittedOn": null,
+        "endingLandedOn": null,
+        "tradedWorth": 1185.8
       },
       {
         "seed": 424242,
@@ -497,7 +533,11 @@
         "peakHands": 12,
         "campaigns": 0,
         "holdingsTaken": 0,
-        "warPawnDays": 0
+        "warPawnDays": 0,
+        "endingId": null,
+        "endingCommittedOn": null,
+        "endingLandedOn": null,
+        "tradedWorth": 634.2
       },
       {
         "seed": 20260729,
@@ -545,7 +585,11 @@
         "peakHands": 5,
         "campaigns": 0,
         "holdingsTaken": 0,
-        "warPawnDays": 0
+        "warPawnDays": 0,
+        "endingId": null,
+        "endingCommittedOn": null,
+        "endingLandedOn": null,
+        "tradedWorth": 94.5
       },
       {
         "seed": 7,
@@ -593,7 +637,11 @@
         "peakHands": 10,
         "campaigns": 0,
         "holdingsTaken": 0,
-        "warPawnDays": 0
+        "warPawnDays": 0,
+        "endingId": null,
+        "endingCommittedOn": null,
+        "endingLandedOn": null,
+        "tradedWorth": 507
       },
       {
         "seed": 1312,
@@ -641,7 +689,11 @@
         "peakHands": 10,
         "campaigns": 0,
         "holdingsTaken": 0,
-        "warPawnDays": 0
+        "warPawnDays": 0,
+        "endingId": null,
+        "endingCommittedOn": null,
+        "endingLandedOn": null,
+        "tradedWorth": 364.5
       },
       {
         "seed": 99001,
@@ -689,7 +741,11 @@
         "peakHands": 7,
         "campaigns": 0,
         "holdingsTaken": 0,
-        "warPawnDays": 0
+        "warPawnDays": 0,
+        "endingId": null,
+        "endingCommittedOn": null,
+        "endingLandedOn": null,
+        "tradedWorth": 288.8
       },
       {
         "seed": 424242,
@@ -737,7 +793,11 @@
         "peakHands": 7,
         "campaigns": 0,
         "holdingsTaken": 0,
-        "warPawnDays": 0
+        "warPawnDays": 0,
+        "endingId": null,
+        "endingCommittedOn": null,
+        "endingLandedOn": null,
+        "tradedWorth": 254.5
       }
     ],
     "arm": [
@@ -801,7 +861,11 @@
         "peakHands": 12,
         "campaigns": 3,
         "holdingsTaken": 2,
-        "warPawnDays": 114
+        "warPawnDays": 114,
+        "endingId": null,
+        "endingCommittedOn": null,
+        "endingLandedOn": null,
+        "tradedWorth": 2134.5
       },
       {
         "seed": 7,
@@ -849,7 +913,11 @@
         "peakHands": 15,
         "campaigns": 4,
         "holdingsTaken": 2,
-        "warPawnDays": 174
+        "warPawnDays": 174,
+        "endingId": null,
+        "endingCommittedOn": null,
+        "endingLandedOn": null,
+        "tradedWorth": 1181.8
       },
       {
         "seed": 1312,
@@ -897,7 +965,11 @@
         "peakHands": 17,
         "campaigns": 4,
         "holdingsTaken": 3,
-        "warPawnDays": 150
+        "warPawnDays": 150,
+        "endingId": "dominion",
+        "endingCommittedOn": 37,
+        "endingLandedOn": 49,
+        "tradedWorth": 912.2
       },
       {
         "seed": 99001,
@@ -945,7 +1017,11 @@
         "peakHands": 14,
         "campaigns": 5,
         "holdingsTaken": 2,
-        "warPawnDays": 210
+        "warPawnDays": 210,
+        "endingId": null,
+        "endingCommittedOn": null,
+        "endingLandedOn": null,
+        "tradedWorth": 2000.2
       },
       {
         "seed": 424242,
@@ -993,7 +1069,11 @@
         "peakHands": 13,
         "campaigns": 3,
         "holdingsTaken": 2,
-        "warPawnDays": 114
+        "warPawnDays": 114,
+        "endingId": null,
+        "endingCommittedOn": null,
+        "endingLandedOn": null,
+        "tradedWorth": 781.5
       },
       {
         "seed": 20260729,
@@ -1041,7 +1121,11 @@
         "peakHands": 9,
         "campaigns": 4,
         "holdingsTaken": 1,
-        "warPawnDays": 126
+        "warPawnDays": 126,
+        "endingId": null,
+        "endingCommittedOn": null,
+        "endingLandedOn": null,
+        "tradedWorth": 594.4
       },
       {
         "seed": 7,
@@ -1089,7 +1173,11 @@
         "peakHands": 15,
         "campaigns": 6,
         "holdingsTaken": 1,
-        "warPawnDays": 180
+        "warPawnDays": 180,
+        "endingId": null,
+        "endingCommittedOn": null,
+        "endingLandedOn": null,
+        "tradedWorth": 937.05
       },
       {
         "seed": 1312,
@@ -1137,7 +1225,11 @@
         "peakHands": 17,
         "campaigns": 3,
         "holdingsTaken": 3,
-        "warPawnDays": 114
+        "warPawnDays": 114,
+        "endingId": "dominion",
+        "endingCommittedOn": 47,
+        "endingLandedOn": 59,
+        "tradedWorth": 488
       },
       {
         "seed": 99001,
@@ -1185,7 +1277,11 @@
         "peakHands": 16,
         "campaigns": 4,
         "holdingsTaken": 2,
-        "warPawnDays": 174
+        "warPawnDays": 174,
+        "endingId": null,
+        "endingCommittedOn": null,
+        "endingLandedOn": null,
+        "tradedWorth": 1219.8
       },
       {
         "seed": 424242,
@@ -1233,7 +1329,11 @@
         "peakHands": 12,
         "campaigns": 6,
         "holdingsTaken": 1,
-        "warPawnDays": 198
+        "warPawnDays": 198,
+        "endingId": null,
+        "endingCommittedOn": null,
+        "endingLandedOn": null,
+        "tradedWorth": 602.1
       },
       {
         "seed": 20260729,
@@ -1281,7 +1381,11 @@
         "peakHands": 11,
         "campaigns": 4,
         "holdingsTaken": 1,
-        "warPawnDays": 126
+        "warPawnDays": 126,
+        "endingId": null,
+        "endingCommittedOn": null,
+        "endingLandedOn": null,
+        "tradedWorth": 429.5
       },
       {
         "seed": 7,
@@ -1329,7 +1433,11 @@
         "peakHands": 9,
         "campaigns": 4,
         "holdingsTaken": 1,
-        "warPawnDays": 126
+        "warPawnDays": 126,
+        "endingId": null,
+        "endingCommittedOn": null,
+        "endingLandedOn": null,
+        "tradedWorth": 255.5
       },
       {
         "seed": 1312,
@@ -1377,7 +1485,11 @@
         "peakHands": 16,
         "campaigns": 2,
         "holdingsTaken": 1,
-        "warPawnDays": 54
+        "warPawnDays": 54,
+        "endingId": null,
+        "endingCommittedOn": null,
+        "endingLandedOn": null,
+        "tradedWorth": 317.65
       },
       {
         "seed": 99001,
@@ -1425,7 +1537,11 @@
         "peakHands": 12,
         "campaigns": 10,
         "holdingsTaken": 0,
-        "warPawnDays": 180
+        "warPawnDays": 180,
+        "endingId": null,
+        "endingCommittedOn": null,
+        "endingLandedOn": null,
+        "tradedWorth": 373.5
       },
       {
         "seed": 424242,
@@ -1473,7 +1589,11 @@
         "peakHands": 12,
         "campaigns": 10,
         "holdingsTaken": 1,
-        "warPawnDays": 234
+        "warPawnDays": 234,
+        "endingId": null,
+        "endingCommittedOn": null,
+        "endingLandedOn": null,
+        "tradedWorth": 551.55
       }
     ]
   }

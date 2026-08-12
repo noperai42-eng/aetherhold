@@ -17,7 +17,8 @@ place. [ARCHITECTURE.md](ARCHITECTURE.md) is how it is built.
 
 **Playing it** — [Run it](#run-it) · [Controls](#controls) · [The screen](#the-screen) ·
 [What to do next](#what-to-do-next) · [The Steward](#the-steward) ·
-[Winning](#winning) · [The three roads](#the-three-roads) · [Pickies](#pickies)
+[Winning](#winning) · [The three roads](#the-three-roads) · [The far end](#the-far-end) ·
+[Pickies](#pickies)
 
 **Building and keeping a place** — [Breaking ground](#breaking-ground) ·
 [Laying a floor](#laying-a-floor) · [Warmth](#warmth) · [Power](#power) ·
@@ -1577,18 +1578,47 @@ holding out on the moor that your people went and took. A colony can fight raide
 yard for sixty days and stand on **Blooded** for all sixty — the road that ends in taking
 the world is walked by taking some of it.
 
-The endings themselves are not built yet — those are the last two stages in
-[ENDGAME.md](ENDGAME.md). What is built is the road, and two of the grid's principles exist
-to keep it honest: the three roads have to *disagree* somewhere across a grid of colonies,
-or they are one number printed three times, and no colony playing its whole clock may stand
-on a top rung, because a road somebody has finished has stopped being somewhere to go.
+### The far end
 
-The second of those holds and the first does not, and it is worth saying which way. Across
-sixty days a colony walks a fair way up science or warfare — the calm valleys go one way and
-the hard ones the other — but economy stops at **Friend** on almost every map, because the
-founding needs one neighbour who takes your calls and nothing in the valley yet asks for a
-second. That is the ladder saying, correctly, that the road it measures is the one the game
-has not built.
+Reach a road's top rung and a new section appears above the commission: **The far end**, with
+the ending that road leads to and what it would cost. Nothing about it is on the panel before
+then — a locked ending shown on day one would tell you the shape of the whole game before you
+had played any of it.
+
+An ending is a **commitment, not a threshold**. Nothing lands because a number ticked over.
+You commit, and then you have **twelve days** to pay a bill and still be a colony at the end
+of them — which is the founding's own three-day hold asked once for every rung you climbed.
+The three bills are in three different currencies, because three endings that all cost steel
+would be one ending printed three times: the ship is **built** and takes a bite out of the
+yard every day until the hull is whole; the berths are **bought**, and the fare is what your
+caravans handed out over the entire run, so it was mostly paid before you ever committed; the
+dominion buys nothing at all, and its bill is simply that every holding is still yours on the
+last day.
+
+Fall out and it costs the days, never the goods. There are two ways to fall out and both are
+things the game already had words for — the road slipped below the rung that opened the door,
+or one of the five things the founding asked for stopped being true. Fix it and the count
+starts again from twelve. What is in the hull stays in the hull. **Give it up** is right
+there on the card with no confirmation box, because nothing it destroys is anything a
+confirmation would have saved: you lose the days you spent and you can commit again on the
+next tick.
+
+Two of the grid's principles keep the roads honest and two more keep the endings honest. The
+roads have to *disagree* somewhere across a grid of colonies, or they are one number printed
+three times; no colony playing its whole clock should stand on a top rung with nowhere left
+to go; every ending that lands must have been committed to and survived; and each of the
+three has to be reachable by somebody.
+
+Three of those four are currently broken, and the fourth holds thinly — which is the useful
+part, because it says exactly where the game is thin. Across sixty days a colony walks a fair
+way up science or warfare, but economy stops at **Friend** on almost every map: the founding
+needs one neighbour who takes your calls and nothing in the valley yet asks for a second.
+On the last grid, two colonies of fifteen reached an ending and **both reached the same one**
+— the dominion, on the strength of three holdings held. Nobody finished the ship (the tree
+gets to 17 projects of 19 and runs out of days) and nobody came close to the berths (one town
+of four at standing). One of those is a clock that is too short and the other is a road
+nobody walks, and telling them apart is the whole reason the grid prints the rung beside the
+failure.
 
 ### The war road
 
@@ -2070,8 +2100,10 @@ turn a surplus back into a choice.
 **Getting out.** On the founding the goals panel turns into three roads out of the valley —
 science, economy and warfare, four rungs each, read straight off the colony. The warfare one
 counts ground: three holdings sit behind the rings, and taking one costs three settlers off
-the map for the whole round trip and pays a cart of steel on its own clock ever after. The
-endings those roads lead to are the part that is not built yet.
+the map for the whole round trip and pays a cart of steel on its own clock ever after. Reach
+a road's top rung and its ending opens: commit to it, pay a bill in that road's own currency,
+and hold the colony together for twelve days. What is still missing is what happens on the
+day one lands — the record it writes and the card it shows.
 
 **The frame.** A fixed twenty-tick second and a two-hundred-and-forty-second day. A
 day/night cycle that lights both views, an ambient bed that follows the weather and the

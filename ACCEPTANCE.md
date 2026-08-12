@@ -14,13 +14,32 @@ Four sections: [the killer feature](#the-killer-feature),
 and [what still wants a human](#what-still-wants-a-human) — which is the long one, and is
 ordered to match `PLAYTEST.md` rather than by importance.
 
-Last run — 2026-08-11, the grid that shipped the war road, the instrument that could not see
-it, and the second pass that took the judge out of the instrument:
+Last run — 2026-08-12, the grid that put an ending at the top of each road and found that only
+one of the three is standing anywhere a colony can reach:
 
 - `npx tsc --noEmit` clean.
-- `npm test` — **92 of 94 files, 1,746 tests green**, 13 skipped, in 893.05 s. Forty-one of
-  those tests are new and twenty-seven are on `sim/holdings.ts`, which is the whole of the
-  stage. That every number in the file is bought from one that already existed — one holding
+- `npm test` — **93 of 95 files, 1,765 tests green**, 13 skipped, in 796.30 s. Nineteen of
+  those tests are new and all nineteen are `tests/endings.test.ts`, the whole of stage 5a. They
+  are organised around the three ways this file could be wrong rather than around its functions.
+  That **none of the three bills was typed in**: the ship's is the summed materials of every
+  line in the research tree, so the test recomputes that sum from `research.ts` and asserts the
+  constant equals it — grow the tree and the assertion moves with it; the berths' is
+  `worthOf(SHIP_BILL)` at the `VALUE` table, asserted against a fresh `worthOf` call rather than
+  against a literal, so the two endings cannot drift apart; and the twelve days are
+  `HOLD_DAYS × ROAD_RUNGS`, derived in the test the same way. That **the gate is read every time
+  and never remembered**: nothing is open on day one, only the topped road opens, an unpaid
+  commitment is refused, a second one is refused, a road that slips below its gate stalls the
+  count, a charter that goes unmet stalls it in the founding's own words, abandoning keeps the
+  goods and gives back the days, and a committed terminal survives a `serialize`/`deserialize`
+  round trip. That the bill is **paid by the day and not by the tick** — the instalment cadence,
+  the landing when clock and bill are both met, and a hull that runs out of steel. The last of
+  the nineteen plays a colony to a dominion through the ordinary tick rather than by calling the
+  pieces in order, and it is the only one that would notice if `tick.ts` stopped calling this
+  file at all. One of them found a wart rather than a bug: the terminal logged *"Work resumes on
+  the ship"* on the first tick after the commitment, duplicating the headline the commitment had
+  just written, which is now only ever said as a resumption.
+  Of the rest, forty-one arrived with the war road a grid ago and twenty-seven of those are on
+  `sim/holdings.ts`, which was the whole of that stage. That every number in the file is bought from one that already existed — one holding
   behind each ring, one fewer marcher than the colony must keep at home, a garrison rolled out
   of `raiderBand` so it scales with difficulty and with the ladder without knowing either
   exists, a pack per ring on that ring's own cadence, and a far holding that is dearer without
@@ -41,7 +60,7 @@ it, and the second pass that took the judge out of the instrument:
   `1 + HOLDING_COUNT` rungs, which is the rewiring that made warfare read ground instead of
   kills. The 13 skips are the opt-in gates and nothing else — `ECO`, `SWEEP`, `BALANCE`,
   `LIVE`, `POOL` — and two files (`tests/liveness.test.ts`, `tests/survival-sweep.test.ts`)
-  hold nothing but a gated describe, which is why the file count reads 92 and not 94.
+  hold nothing but a gated describe, which is why the file count reads 93 and not 95.
   **Ten** of the tests are newer than that stage and belong to the instrument rather than the
   game. Eight are `tests/measurements.test.ts`, which is the first thing ever to read the
   staleness guard — the guard that decides whether yesterday's grid may be scored today, which
@@ -56,15 +75,17 @@ it, and the second pass that took the judge out of the instrument:
   re-run separately. It is the one file both entry points share, so a second run is a second
   reading of a number already recorded rather than a second piece of evidence.
 - `npm run measure -- --days 60 --past-founding` then `npm run balance` — 4 tests green.
-  **39 colonies in 2,139 s**, up from 24, and the fifteen extra colonies are the story of this
-  run. **Twenty-six** principles are scored, two more than last time: all **fifteen** enforced
-  ones hold, and of the eleven open ones — reported without asserting — three do.
-  This grid was played twice. The second pass bought nothing but a fingerprint: the judge left
-  the hash, so the hashed file *set* changed, so the stored grid would not be scored — and
-  every sim-derived row of all thirty-nine colonies came back **byte-identical**, across three
-  families, down to the last decimal. Re-measuring rather than hand-stamping the JSON is what
-  makes that sentence worth writing; the thirty-six minutes bought the right to say the slice
-  did not touch the game, instead of assuming it.
+  **39 colonies in 2,003 s**. **Twenty-eight** principles are scored, two more than last time:
+  all **fifteen** enforced ones hold, and of the thirteen open ones — reported without
+  asserting — four do.
+  **Two colonies out of fifteen reached an ending, and both of them reached the same one.**
+  calm/1312 committed to the dominion on day 37 and landed it on day 49; settler/1312 committed
+  on day 47 and landed on day 59, one day inside the clock. The other thirteen never got the
+  offer. That is the whole of stage 5a's result and it is the answer the stage was built to
+  extract, so it is worth being precise about which part of it is a surprise: that dominion is
+  reachable is not — calm/1312 and settler/1312 were the two colonies standing on warfare rung 4
+  a grid ago, and this grid they walked out of the door those rungs had been holding shut. What
+  the grid adds is the shape of the other two, and they are not the same shape.
   **The grid could not see the war, and reported that in the most convincing way available.**
   The first sixty-day grid after stage 4 shipped read `campaigns 0` on all fifteen colonies,
   on every setting, to four decimal places. That is what a road nobody can afford looks like,
@@ -115,7 +136,10 @@ it, and the second pass that took the judge out of the instrument:
   first rung, five of the fifteen never reaching it. The caveat belongs in the same breath —
   fifteen colonies played by one deterministic policy make a *flat* pair evidence and an
   *inverting* pair only the absence of it, so this family can convict and cannot acquit.
-  Neither road promise is enforced, and both are now bills against stage 5.
+  Unchanged this pass, and stage 5a is why it is worth restating rather than re-reading: with
+  an ending standing at the top of each road, *warfare ≥ science ≥ economy on all fifteen* is no
+  longer an ordering of ladders. It is an ordering of **endings**, and the grid below now says
+  so out loud.
   *Nobody starves beside a full pantry* — 6 of 15 runs, each bottoming out at exactly 0.00
   while the colony held eleven to twenty-two days of food: two Settler maps and four Hard
   country ones. Unchanged for a sixth grid, down to the seeds and the day counts, and the
@@ -147,9 +171,43 @@ it, and the second pass that took the judge out of the instrument:
   road pinned at rung 1 of 4 always has road left, so reading it off the unmanaged grid could
   only ever return *holds*. Off the played family it reads **2 roads finished by day 60:
   calm/1312 finished warfare, settler/1312 finished warfare** — three holdings apiece and
-  warfare **rung 4 of 4**, which is precisely the thing the promise exists to catch. A road
-  somebody can walk to its end in sixty days has stopped being somewhere to go, and it needs
-  an ending standing at the top of it.
+  warfare **rung 4 of 4**, which is precisely the thing the promise exists to catch. It reads
+  the same words this pass, and this pass they mean something else: both of those colonies then
+  committed to the dominion and landed it, so what the promise is now pointing at is not a road
+  that ran out but a road whose last twelve days it cannot see. **The promise has outlived its
+  own claim** — *a colony that plays its whole clock has road left on all three* was written
+  when the top rung was a dead end, and it is not one any more. Rewriting it is stage 5b's, not
+  a thing to slip in beside the grid that exposed it: the honest version has to say *road left,
+  or a terminal it has not yet landed*, and the field that tells it which is the verdict 5b
+  adds.
+  *No ending is free* — **new this slice, and it holds**: **2 endings landed, none in under 12
+  days; the longest took 12.** Both landed on the twelfth day exactly, which is the number the
+  promise is a floor against and not evidence that the floor binds. The caveat is the whole
+  reading and it wants stating before the tick is banked: **the one ending anybody reached is
+  the one that buys nothing.** The dominion's bill is that every holding is still yours on the
+  last day, so for these two colonies *paid for* and *waited out* are the same twelve days, and
+  the promise cannot yet tell them apart. It will the first time a hull lands, because a hull
+  that cannot get its steel serves the days without landing — which is a case the unit tests
+  cover and the grid has never seen.
+  *Every ending is reachable* — **new, and broken on arrival, which is what it was written for**:
+  **1 of 3 endings reached in 60 days — unreached: ship (best rung 3 of 4), berths (best rung 1
+  of 4).** `ENDGAME.md` posed this as one question — *does the grid's clock grow, or do two roads
+  have top rungs the game cannot deliver?* — and the first thing the instrument did was split
+  it, because the two unreached endings are not unreached for the same reason and a single
+  answer would be wrong for one of them.
+  **The ship is a clock question.** Best rung 3 of 4 against a top rung that is the whole
+  research tree, and the tree column reads 17 of 19 projects on calm/20260729 with the bench
+  never idle. That is a colony walking at the right pace and running out of days, and it is the
+  case a longer grid would settle — at twice 2,003 s every time anything under `src/sim` moves.
+  **The berths are not.** Best rung **1 of 4**, on a ladder whose top rung is every neighbour on
+  the map at standing, and five of the fifteen never reach rung 1 at all. Sixty more days of the
+  same behaviour does not close that, and the reason is already on the board two promises up:
+  *the far country is walked* reads 3 of 7 — the colonies that could open the far road mostly
+  did not walk it, and standing is only earned by arriving. The economy road is not too long;
+  it is not being walked. Growing the clock to reach the berths would be buying a reachability
+  result with sixty days of wall time and learning nothing about why the road is empty.
+  So the clock question, as posed, has one honest answer and one honest refusal, and neither is
+  a number to move here.
   The enforced set is unchanged. *The far ring is earned* — shut for all 15 runs through day 7,
   7 of the 10 below Hard country had it open by day 42, earliest day 16. *The long road is
   walked* — 10 of 10 below Hard country sent two or more parties past the near ring, mean trips
@@ -158,22 +216,33 @@ it, and the second pass that took the judge out of the instrument:
   *The bench does not wait on an errand* — all 11 runs that reached the third tier had a party
   committed within 2 days, longest gap 0.63 days on settler/424242, mean 0.09, while the road
   itself took 8.1 days a run.
-  **Every one of those figures is identical to the last grid's, on the same seed, to the
-  decimal place** — and unlike the roads slice, which added no simulation at all, this one
-  added a file. It is the strongest available evidence for the claim that stage 4 lives
-  entirely on the far side of a decision no unmanaged colony makes: the fifteen colonies the
-  other twenty-four promises are read off played the same game they played a grid ago. The one
-  column that moved is warfare's rung, and it moved because it was rewired on purpose.
-- `npm run build` — 911.63 kB JS (260.53 kB gzip), 23.07 kB CSS (5.04 kB gzip). The war road
-  cost 8.19 kB of JS and **no CSS at all**, because the holdings list reuses the trade offers'
-  own rows — `deal`, `ttl`, `cost`, `gain`, `blurb` — down to the locked variant that carries
-  the sentence saying why a row cannot be marched on.
-- The war road panel is **not** covered by an automated render, and neither is the three roads
-  panel beside it. Vitest runs `environment: 'node'` here, so nothing in the suite mounts the
-  HUD; what is proved above is the data behind every row, the reason each unmarchable row
-  gives, and the fact that a party in the field survives a save. Seeing it on screen is a
-  manual step — [PLAYTEST.md](PLAYTEST.md) 9jj for the roads and 9kk for the war party — and
-  neither has been walked yet.
+  **Every field that existed before this slice came back byte-identical, on all thirty colonies
+  of both families, and the four new columns are the only thing that moved.** That was checked
+  against the stored pre-slice grid field by field — 510 shared fields a family, zero
+  differences, and the `arm` dial rows identical as strings — rather than eyeballed off the
+  table, because eyeballing a table is how a slice that moved the game gets recorded as one that
+  did not. It is worth more than the same sentence was a grid ago, because this time **two of
+  the colonies actually ran the new subsystem to completion**: calm/1312 and settler/1312
+  committed to an ending and landed it, and not one measured figure moved. That is the right
+  answer and it is the *narrow* answer — the dominion buys nothing, so there was nothing for it
+  to move. The first hull to be committed to will take steel off the yard for twelve days and
+  this paragraph will read differently, which is the point of writing down which of the two
+  sentences this grid earned.
+- `npm run build` — 916.59 kB JS (262.06 kB gzip), 23.41 kB CSS (5.09 kB gzip). The far end
+  cost **4.96 kB of JS and 0.34 kB of CSS**: the panel is the trade offers' own row again —
+  `deal`, `ttl`, `cost`, `gain`, `blurb` — and the whole of the new stylesheet is a gold border,
+  a warmer fill, and a quiet link, because a card that looked like nothing else on the panel
+  would be a fourth thing to learn to read at the point the game is asking for a decision. The
+  war road, a grid ago, cost 8.19 kB of JS and no CSS at all on the same principle.
+- The far end panel is **not** covered by an automated render, and neither is the war road or
+  the three roads beside it. Vitest runs `environment: 'node'` here, so nothing in the suite
+  mounts the HUD; what is proved above is the data behind every row — including that a card
+  quoting a price *before* the commitment reads it off the live colony rather than off a stored
+  figure, which is the one place this panel could lie: two of the three endings are already
+  partly paid at the gate, and a quote that showed zero there would be offering a discount.
+  Seeing it on screen is a manual step —
+  [PLAYTEST.md](PLAYTEST.md) 9jj for the roads, 9kk for the war party, and 9ll for the far end —
+  and none of the three has been walked yet.
 - Dev server on `5063`, play server on `5062` — and on the same port at this machine's
   LAN address, which is deliberately not written down here because it changes with the
   network and a stale IP in a document is worse than no IP.
@@ -257,6 +326,17 @@ rather than what it computes. Each is a numbered step in `PLAYTEST.md`:
   it can only be found out by doing it. The second half of the step is the quieter one:
   a won campaign raises the next raid, and whether that lands as the cost of taking ground or
   as the game punishing you for playing it is not something a number can be shown.
+- **§9ll** — commit to an ending and live the twelve days. `tests/endings.test.ts` pins every
+  number on the card and every way the count can stop, and the grid says two colonies out of
+  fifteen ever got to see it. What none of that can be shown is the only question the step is
+  really asking: **is committing a decision, or is it a button that appears when you have
+  won?** Everything about the design says it should be the first — the offer names a price, the
+  count is twelve days long, and a bad fortnight costs the whole count and none of the goods —
+  but a player who reaches a top rung with fifty days of slack and clicks the one card on the
+  panel has made no decision at all, whatever the mechanism says. The second half is quieter and
+  harder: **give it up** has no confirmation box, deliberately, because nothing it destroys is
+  unrecoverable. Whether that reads as trust or as a trap is the sort of thing only a person who
+  has just lost eleven days can report.
 - **§9m** — walk into the haze. Whether the edge of the known world reads as weather or as
   a missing chunk of the level is not a thing a test can be shown.
 - **§9n** — read the map in the corner. Whether one pixel a cell is legible, and whether
