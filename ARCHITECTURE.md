@@ -1352,13 +1352,16 @@ opening this file. It is read **live** rather than latched, which is the whole r
 bill at all: a colony that took the moor and then lost a piece of it is not holding the moor, and an
 ending gated on a latch would let it leave anyway.
 
-Three bills in three different units, for the same reason there are three ladders. Three endings
-that all cost steel would be one ending printed three times.
+Three bills in three different currencies — what you make, what you give away, what you keep —
+for the same reason there are three ladders. Three endings that all cost steel would be one ending
+printed three times.
 
 - The **ship** is *built*, so it is paid in goods off the yard, one instalment a day as a hull is.
   Its bill is `SHIP_BILL` — the sum of every materials line in the research tree, the whole foundry's
   output made once more. No multiplier was chosen and no number typed: grow the tree and the ship
-  grows with it.
+  grows with it. The card quotes it in **worth** rather than in three numbers, because one bar
+  cannot stand under a three-resource bill; the goods are what actually leave the store, and the
+  hint names them.
 - The **berths** are *bought*, so they are paid in worth handed out through the caravans, and the
   tally is of the whole run rather than of the terminal. Somebody else built that ship; what the
   colony spent is the road it walked to afford it. `BERTHS_WORTH` is `worthOf(SHIP_BILL)` at the

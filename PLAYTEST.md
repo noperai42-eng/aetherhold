@@ -67,6 +67,7 @@ run.
 [9l. Read the path to a win](#9l-read-the-path-to-a-win-1-minute) ·
 [9jj. Read the roads on the morning you are founded](#9jj-read-the-roads-on-the-morning-you-are-founded-3-minutes-after-a-founding) ·
 [9kk. Send a war party](#9kk-send-a-war-party-15-minutes-after-a-founding-on-a-colony-of-seven-or-more) ·
+[9ll. Commit to an ending](#9ll-commit-to-an-ending-20-minutes-at-speed-after-a-road-tops-out) ·
 [9m. Walk into the haze](#9m-walk-into-the-haze-2-minutes) ·
 [9n. Read the map in the corner](#9n-read-the-map-in-the-corner-2-minutes) ·
 [9aa. Walk to the rim](#9aa-walk-to-the-rim-5-minutes) ·
@@ -1505,6 +1506,57 @@ that is the bug worth reporting.
 
 Finally, save mid-march — with the party out on the moor — and reload the tab. **Expect:**
 the party is still out, still due home at the same moment, and still not on the map.
+
+## 9ll. Commit to an ending (~20 minutes at speed, after a road tops out)
+
+This one has a prerequisite you cannot rush: a road standing on its **top rung**. Warfare is
+the one you are most likely to get there first — take all three holdings and keep them — so
+if you are hunting for this, that is the road to walk. Until then the Roads tab looks exactly
+as it did in 9jj and 9kk, and that is correct: **nothing about the far end appears before you
+have earned the right to be offered it.** A panel that shows you a locked ending on day one
+has told you the shape of the whole game before you have played any of it.
+
+The moment a road tops out, look at the Roads tab. **Expect:** a new section at the very top,
+**The far end**, sitting above **The road** where the commission has always been — a promotion
+the commission has earned its way out of, because it was the one thing on that panel with a
+clock on it right up until this appeared. One card for each ending you can now
+commit to, each with its name, a line of what it is, and its bill. The hull and the fare are
+both counted in **worth** and that is not a slip — they are the same ship priced two ways,
+one built and one bought, off the one table every caravan quote in the game already uses. The
+moor is counted in holdings, because ground is not for sale. What separates the first two is
+the direction: *in the hull* is what you put in, *traded away* is what went out on the road
+over the whole run. If the hull's number moves when a caravan comes home, that is the bug.
+
+Click one. **Expect:** the offers are replaced by a single card of **the same shape** in the
+same place, now reading a countdown — twelve days — and the bill as it stands. The choice
+should not redraw into a different-looking thing the moment you make it. Under it, a quiet
+**give it up** link, with no confirmation box in front of it.
+
+Then run the clock and watch four things, in the order they would hurt:
+
+- **The bill is paid by the day, not by the second.** On the ship, steel leaves the store in
+  one instalment a day — a step you can see on the resource line, not a drain. If the store
+  is emptying continuously, the terminal is being worked on the tick instead of on the day,
+  and a twelve-day hull will cost you fifty times what it says.
+- **Falling out costs the days and never the goods.** Break one of the five things the
+  founding asked for — eating the pantry below twelve days of food is the easy one — and the
+  card should turn and say so, in the founding's own words, not in a new vocabulary invented
+  for this panel. What is already in the hull stays in the hull. Fix the food and the count
+  starts again **from twelve**, not from where it stopped. That is the price of a bad
+  fortnight and it is meant to sting.
+- **The gate is still a gate.** On the dominion, lose a holding while the clock runs. The
+  card should stall the same way — the road is no longer standing on its top rung, and an
+  ending you were let out of the door with is not an ending you get to keep by having once
+  qualified for it.
+- **Giving up is walkable-back.** Press **give it up**. The card should return to the offer
+  it came from, the days gone, the goods gone with them — and you should be able to commit
+  again on the very next tick. That is why there is no confirmation box: nothing here is
+  destroyed that a confirmation would have saved.
+
+Finally, save mid-commitment and reload the tab. **Expect:** the same ending, the same days
+left, and the same amount already paid. And one thing to check that is easy to miss: load a
+save made **before** any of this existed. It should open with no ending in progress and the
+Roads tab as it was — not with an error, and not with an ending you never chose.
 
 ## 10. Save it, break it, load it
 
