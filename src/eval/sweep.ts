@@ -17,7 +17,9 @@
 
 import { runColony, type EvalReport, type Verdict } from './run';
 import { DIFFICULTIES, DIFFICULTY_ORDER } from '../sim/difficulty';
+import { WAR_PARTY } from '../sim/holdings';
 import { RESEARCH } from '../sim/research';
+import { CAN_SPARE_ONE } from '../sim/settlements';
 import type { Difficulty } from '../sim/types';
 
 /** Every project there is. The number a finished bench is finished against. */
@@ -186,6 +188,26 @@ export interface RunMeasure {
    * the case this column should report honestly rather than remember fondly.
    */
   roadRungs: number[];
+  /**
+   * The war, in four numbers: the most hands the colony ever had, the parties it
+   * sent, the ground it kept, and what the walking cost.
+   *
+   * `peakHands` is the peak and the other three are totals, and the asymmetry is
+   * the point. Whether a colony *could* have marched is a question about the best
+   * day it ever had — a colony that reached eight settlers and buried two had the
+   * hands and chose otherwise, and reading its final headcount would score that
+   * choice as an impossibility. Whether it *did* march is a question about the
+   * whole run. `the-war-is-a-choice` needs both halves and would be measuring the
+   * wrong thing with either one twice.
+   *
+   * `warPawnDays` is booked in full at the muster rather than accrued day by day
+   * — see the note on `stats.warPawnDays`. It is what makes the pawn-days-per-
+   * holding ratio meaningful on the tick a holding falls rather than a week later.
+   */
+  peakHands: number;
+  campaigns: number;
+  holdingsTaken: number;
+  warPawnDays: number;
 }
 
 export interface SweepOptions {
@@ -242,6 +264,29 @@ export interface Sweep {
    * travels with. A controlled one can, and this is it.
    */
   arm: ArmPoint[];
+  /**
+   * The same colonies, played by somebody.
+   *
+   * The grid runs with `steward: false` — *nobody manages the colony*, the floor
+   * the sim must clear alone — and that is the right instrument for all but two
+   * of the promises here, because every other errand in the game is one the
+   * colony's own foreman eventually picks up. A campaign is not. `types.ts` says
+   * so in as many words: never planned by the colony, a war is the player's
+   * decision every time. So an unmanaged grid cannot march, will never march,
+   * and reported `campaigns 0` on all fifteen runs of the first sixty-day grid
+   * after stage 4 shipped — which reads exactly like a game where the holdings
+   * are priced out and is in fact a grid with nobody at the wheel.
+   *
+   * The fix is not to hand the whole grid to the Steward. Twenty-four of the
+   * twenty-six promises are calibrated against the unmanaged floor and would
+   * quietly start measuring the Steward instead. It is to play a second family
+   * *with* a player and judge only the two war promises on it — the same seeds,
+   * settings and days, so the two families differ in one thing.
+   *
+   * Empty on a sweep read off a measurements file older than this field, which
+   * both war principles answer with `untested` rather than a verdict.
+   */
+  war: RunMeasure[];
 }
 
 /**
@@ -279,7 +324,15 @@ export type RunSpec =
       steward?: boolean;
       playPastFounding?: boolean;
     }
-  | { kind: 'arm'; seed: number; days: number; dial: number; steward?: boolean };
+  | { kind: 'arm'; seed: number; days: number; dial: number; steward?: boolean }
+  /**
+   * A grid colony with a player at the wheel. Same seed, setting and clock; the
+   * Steward drives it. See `Sweep.war` for why this family exists at all.
+   *
+   * It carries no `steward` field, and that absence is the point: this is the
+   * one kind of run for which the flag is not a choice the caller gets to make.
+   */
+  | { kind: 'war'; seed: number; days: number; difficulty: Difficulty; playPastFounding?: boolean };
 
 /** A spec and what playing it produced. Ordered results are the caller's job. */
 export interface SpecResult {
@@ -287,7 +340,7 @@ export interface SpecResult {
   measure: RunMeasure;
 }
 
-/** Every colony a full sweep plays, grid then arm, in the order the grid prints them. */
+/** Every colony a full sweep plays — grid, then war, then arm, in printing order. */
 export function sweepSpecs(opts: SweepOptions = {}): RunSpec[] {
   const seeds = opts.seeds ?? SWEEP_SEEDS;
   const difficulties = opts.difficulties ?? [...DIFFICULTY_ORDER];
@@ -303,6 +356,14 @@ export function sweepSpecs(opts: SweepOptions = {}): RunSpec[] {
         steward: opts.steward,
         playPastFounding: opts.playPastFounding,
       });
+    }
+  }
+  // Queued behind the whole grid rather than paired with it, so the fifteen
+  // colonies every other promise is read off are the fifteen a reader watching
+  // the progress lines sees finish first.
+  for (const difficulty of difficulties) {
+    for (const seed of seeds) {
+      specs.push({ kind: 'war', seed, days, difficulty, playPastFounding: opts.playPastFounding });
     }
   }
   for (const dial of UPKEEP_DIALS) {
@@ -331,6 +392,12 @@ export function sweepSpecs(opts: SweepOptions = {}): RunSpec[] {
  * than per dial, because a worker is reused across specs: a dial left set by one
  * arm run would silently rewrite every colony that worker played afterwards,
  * including ordinary grid runs that have nothing to do with the arm.
+ *
+ * The war leg hard-codes `steward: true` instead of reading a field off the spec,
+ * which is the difference between a family and a flag. `Sweep.war` exists because
+ * a campaign is the one errand nothing plans for itself; a war run that could be
+ * asked to play unmanaged would be a grid run with a misleading label on it, and
+ * the two promises read off it would report the holdings as scenery.
  */
 export function runSpec(spec: RunSpec): SpecResult {
   if (spec.kind === 'arm') {
@@ -348,6 +415,16 @@ export function runSpec(spec: RunSpec): SpecResult {
     } finally {
       settler.upkeep = original;
     }
+  }
+  if (spec.kind === 'war') {
+    const report = runColony({
+      seed: spec.seed,
+      days: spec.days,
+      difficulty: spec.difficulty,
+      steward: true,
+      playPastFounding: spec.playPastFounding,
+    });
+    return { spec, measure: measure(report) };
   }
   const report = runColony({
     seed: spec.seed,
@@ -372,6 +449,7 @@ export function assembleSweep(opts: SweepOptions, results: SpecResult[]): Sweep 
   const difficulties = opts.difficulties ?? [...DIFFICULTY_ORDER];
   const days = opts.days ?? SWEEP_DAYS;
   const runs = results.filter((r) => r.spec.kind === 'grid').map((r) => r.measure);
+  const war = results.filter((r) => r.spec.kind === 'war').map((r) => r.measure);
 
   // Grouped by the dial that was played rather than by position, so a result
   // list that came back out of order — which a worker pool's will — still lands
@@ -394,7 +472,7 @@ export function assembleSweep(opts: SweepOptions, results: SpecResult[]): Sweep 
   // was asked for, not a record of what ran.
   const playPastFounding = results.some((r) => r.spec.kind === 'grid' && r.spec.playPastFounding);
 
-  return { seeds, difficulties, days, playPastFounding, runs, arm };
+  return { seeds, difficulties, days, playPastFounding, runs, arm, war };
 }
 
 /**
@@ -465,6 +543,10 @@ export function measure(r: EvalReport): RunMeasure {
     endSteel: last?.steel ?? 0,
     steelDrawdown,
     roadRungs: last?.roads ?? [],
+    peakHands: Math.max(0, ...r.snapshots.map((s) => s.hands)),
+    campaigns: last?.campaigns ?? 0,
+    holdingsTaken: last?.holdingsTaken ?? 0,
+    warPawnDays: last?.warPawnDays ?? 0,
   };
 }
 
@@ -510,7 +592,7 @@ export function armedShareOf(rs: RunMeasure[]): number {
 /** A fixed-width grid, because a balance pass is read by eye. */
 export function formatSweep(sweep: Sweep): string {
   const cols =
-    'setting        seed  verdict     days  1st  threats  band  downs  buried  alive  kills  rung  worstFood  fed  upkeep  foodDays  raiders  rifles     trips  spare   tree  idle   wait  unsent   steel  spent        roads';
+    'setting        seed  verdict     days  1st  threats  band  downs  buried  alive  kills  rung  worstFood  fed  upkeep  foodDays  raiders  rifles     trips  spare   tree  idle   wait  unsent   steel  spent        roads  hands';
   const lines: string[] = [`balance grid · ${sweep.days} days · ${sweep.seeds.length} seeds`, cols];
   for (const d of sweep.difficulties) {
     const rs = on(sweep, d);
@@ -552,6 +634,14 @@ export function formatSweep(sweep: Sweep): string {
           // deep in the tree and nowhere on the road — and three columns of small
           // integers would be read as three unrelated numbers.
           pad((m.roadRungs ?? []).join('/') || '—', 12),
+          // High-water headcount, which is the biggest the colony ever was and
+          // the only place the grid reports it. There is deliberately no war
+          // column beside it: this family plays unmanaged, so its campaign count
+          // is nought on every row by construction, and fifteen dashes down a
+          // column labelled `war` is a table telling a reader something false in
+          // the most convincing way available. The war is printed below, off the
+          // family that could fight one.
+          pad(m.peakHands ?? 0, 7),
         ].join(''),
       );
     }
@@ -584,11 +674,70 @@ export function formatSweep(sweep: Sweep): string {
         pad(avg(rs, (m) => m.endSteel ?? 0).toFixed(0), 8),
         pad(avg(rs, (m) => m.steelDrawdown ?? 0).toFixed(0), 7),
         pad([0, 1, 2].map((r) => avg(rs, (m) => m.roadRungs?.[r] ?? 0).toFixed(1)).join('/'), 12),
+        pad(avg(rs, (m) => m.peakHands ?? 0).toFixed(1), 7),
       ].join(''),
       '',
     );
   }
+  lines.push(...formatWar(sweep));
   return lines.join('\n');
+}
+
+/**
+ * The played family, in the few columns it is read for.
+ *
+ * Deliberately not the grid's thirty. These colonies are not a second opinion
+ * about food or upkeep — they are a different player, so their food column is
+ * not comparable with anything above it and printing it side by side would
+ * invite exactly that comparison. What they are asked is: could this colony have
+ * gone, did it go, and what did the ground cost. `hands` and `war` are that
+ * question; the verdict and the survivors are beside them so that a colony which
+ * won its holdings and was hollowed out doing it cannot read as a success.
+ */
+function formatWar(sweep: Sweep): string[] {
+  const rs = sweep.war ?? [];
+  if (rs.length === 0) return [];
+  const lines = [
+    `the war road · ${rs.length} of the same colonies, played by the Steward`,
+    'setting            seed  verdict   alive  hands           war',
+  ];
+  for (const d of sweep.difficulties) {
+    for (const m of rs.filter((r) => r.difficulty === d)) {
+      lines.push(
+        [
+          pad(d, -14),
+          pad(m.seed, 9),
+          '  ' + pad(m.verdict, -10),
+          pad(m.survivors, 5),
+          // Could it have gone, and did it. The peak headcount stands next to the
+          // war because it is only ever read as the first half of that question:
+          // a run showing no campaign beside seven hands made a choice, and the
+          // same run beside five never had one to make.
+          pad(m.peakHands ?? 0, 7),
+          // Parties sent / ground kept · pawn-days spent walking. One cell, same
+          // argument as the grid's trips and roads columns: the three numbers are
+          // one reading — two campaigns for one holding is a war that went badly,
+          // and the pawn-days say whether it was fought at the far ring or the
+          // near one.
+          pad(
+            m.campaigns
+              ? `${m.campaigns}/${m.holdingsTaken ?? 0}·${Math.round(m.warPawnDays ?? 0)}`
+              : '—',
+            14,
+          ),
+        ].join(''),
+      );
+    }
+  }
+  const able = rs.filter((m) => (m.peakHands ?? 0) >= CAN_SPARE_ONE + WAR_PARTY);
+  const went = able.filter((m) => (m.campaigns ?? 0) > 0);
+  lines.push(
+    '',
+    `  ${went.length} of ${able.length} colonies that had the hands went out; ` +
+      `${rs.reduce((a, m) => a + (m.holdingsTaken ?? 0), 0)} holdings taken across ${rs.length} runs`,
+    '',
+  );
+  return lines;
 }
 
 /** Negative width left-aligns, which the setting column needs and the numbers do not. */

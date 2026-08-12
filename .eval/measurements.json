@@ -1,7 +1,7 @@
 {
-  "fingerprint": "6f15cf34",
-  "taken": "2026-08-11T17:30:44.348Z",
-  "seconds": 1620.242,
+  "fingerprint": "c9d0feb1",
+  "taken": "2026-08-12T00:10:18.271Z",
+  "seconds": 2175.836,
   "steward": false,
   "sweep": {
     "seeds": [
@@ -61,7 +61,11 @@
           3,
           1,
           1
-        ]
+        ],
+        "peakHands": 13,
+        "campaigns": 0,
+        "holdingsTaken": 0,
+        "warPawnDays": 0
       },
       {
         "seed": 7,
@@ -104,8 +108,12 @@
         "roadRungs": [
           3,
           1,
-          2
-        ]
+          1
+        ],
+        "peakHands": 15,
+        "campaigns": 0,
+        "holdingsTaken": 0,
+        "warPawnDays": 0
       },
       {
         "seed": 1312,
@@ -149,7 +157,11 @@
           2,
           1,
           1
-        ]
+        ],
+        "peakHands": 16,
+        "campaigns": 0,
+        "holdingsTaken": 0,
+        "warPawnDays": 0
       },
       {
         "seed": 99001,
@@ -193,7 +205,11 @@
           3,
           1,
           1
-        ]
+        ],
+        "peakHands": 14,
+        "campaigns": 0,
+        "holdingsTaken": 0,
+        "warPawnDays": 0
       },
       {
         "seed": 424242,
@@ -237,7 +253,11 @@
           2,
           1,
           1
-        ]
+        ],
+        "peakHands": 13,
+        "campaigns": 0,
+        "holdingsTaken": 0,
+        "warPawnDays": 0
       },
       {
         "seed": 20260729,
@@ -280,8 +300,12 @@
         "roadRungs": [
           2,
           1,
-          2
-        ]
+          1
+        ],
+        "peakHands": 9,
+        "campaigns": 0,
+        "holdingsTaken": 0,
+        "warPawnDays": 0
       },
       {
         "seed": 7,
@@ -324,8 +348,12 @@
         "roadRungs": [
           3,
           1,
-          2
-        ]
+          1
+        ],
+        "peakHands": 13,
+        "campaigns": 0,
+        "holdingsTaken": 0,
+        "warPawnDays": 0
       },
       {
         "seed": 1312,
@@ -368,8 +396,12 @@
         "roadRungs": [
           2,
           1,
-          2
-        ]
+          1
+        ],
+        "peakHands": 12,
+        "campaigns": 0,
+        "holdingsTaken": 0,
+        "warPawnDays": 0
       },
       {
         "seed": 99001,
@@ -412,8 +444,12 @@
         "roadRungs": [
           2,
           1,
-          2
-        ]
+          1
+        ],
+        "peakHands": 11,
+        "campaigns": 0,
+        "holdingsTaken": 0,
+        "warPawnDays": 0
       },
       {
         "seed": 424242,
@@ -456,8 +492,12 @@
         "roadRungs": [
           2,
           1,
-          2
-        ]
+          1
+        ],
+        "peakHands": 12,
+        "campaigns": 0,
+        "holdingsTaken": 0,
+        "warPawnDays": 0
       },
       {
         "seed": 20260729,
@@ -501,7 +541,11 @@
           0,
           0,
           1
-        ]
+        ],
+        "peakHands": 5,
+        "campaigns": 0,
+        "holdingsTaken": 0,
+        "warPawnDays": 0
       },
       {
         "seed": 7,
@@ -544,8 +588,12 @@
         "roadRungs": [
           2,
           0,
-          3
-        ]
+          1
+        ],
+        "peakHands": 10,
+        "campaigns": 0,
+        "holdingsTaken": 0,
+        "warPawnDays": 0
       },
       {
         "seed": 1312,
@@ -588,8 +636,12 @@
         "roadRungs": [
           1,
           1,
-          2
-        ]
+          1
+        ],
+        "peakHands": 10,
+        "campaigns": 0,
+        "holdingsTaken": 0,
+        "warPawnDays": 0
       },
       {
         "seed": 99001,
@@ -632,8 +684,12 @@
         "roadRungs": [
           0,
           1,
-          2
-        ]
+          1
+        ],
+        "peakHands": 7,
+        "campaigns": 0,
+        "holdingsTaken": 0,
+        "warPawnDays": 0
       },
       {
         "seed": 424242,
@@ -676,8 +732,12 @@
         "roadRungs": [
           1,
           1,
-          2
-        ]
+          1
+        ],
+        "peakHands": 7,
+        "campaigns": 0,
+        "holdingsTaken": 0,
+        "warPawnDays": 0
       }
     ],
     "arm": [
@@ -692,6 +752,728 @@
       {
         "dial": 1.12,
         "upkeepShare": 0.3666666666666667
+      }
+    ],
+    "war": [
+      {
+        "seed": 20260729,
+        "difficulty": "calm",
+        "verdict": "thriving",
+        "daysLived": 60,
+        "firstThreatDay": 5,
+        "threats": 15,
+        "biggestBand": 5,
+        "downs": 1,
+        "buried": 0,
+        "survivors": 10,
+        "raidersKilled": 20,
+        "peakRung": 2,
+        "worstFood": 0.13,
+        "meanFood": 0.5775,
+        "upkeepShare": 0.308,
+        "endFoodDays": 13.78,
+        "raidersSeen": 33,
+        "armedShare": 0.36363636363636365,
+        "foundedOn": 33,
+        "ringOpenedOn": [
+          0,
+          5,
+          22
+        ],
+        "tripsByRing": [
+          7,
+          6,
+          0
+        ],
+        "spareDays": 44,
+        "tech": 17,
+        "emptyTreeDays": 0,
+        "stalledDays": 12,
+        "stallRing": 1,
+        "unsentDays": 0.33,
+        "endSteel": 759,
+        "steelDrawdown": 563,
+        "roadRungs": [
+          3,
+          1,
+          3
+        ],
+        "peakHands": 12,
+        "campaigns": 3,
+        "holdingsTaken": 2,
+        "warPawnDays": 114
+      },
+      {
+        "seed": 7,
+        "difficulty": "calm",
+        "verdict": "holding",
+        "daysLived": 60,
+        "firstThreatDay": 5,
+        "threats": 15,
+        "biggestBand": 5,
+        "downs": 7,
+        "buried": 0,
+        "survivors": 13,
+        "raidersKilled": 27,
+        "peakRung": 2,
+        "worstFood": 0,
+        "meanFood": 0.6278333333333334,
+        "upkeepShare": 0.302,
+        "endFoodDays": 11.89,
+        "raidersSeen": 31,
+        "armedShare": 0.3548387096774194,
+        "foundedOn": 46,
+        "ringOpenedOn": [
+          0,
+          11,
+          43
+        ],
+        "tripsByRing": [
+          3,
+          5,
+          0
+        ],
+        "spareDays": 31,
+        "tech": 16,
+        "emptyTreeDays": 0,
+        "stalledDays": 17,
+        "stallRing": 1,
+        "unsentDays": 0,
+        "endSteel": 917,
+        "steelDrawdown": 505,
+        "roadRungs": [
+          2,
+          1,
+          3
+        ],
+        "peakHands": 15,
+        "campaigns": 4,
+        "holdingsTaken": 2,
+        "warPawnDays": 174
+      },
+      {
+        "seed": 1312,
+        "difficulty": "calm",
+        "verdict": "thriving",
+        "daysLived": 60,
+        "firstThreatDay": 5,
+        "threats": 15,
+        "biggestBand": 4,
+        "downs": 2,
+        "buried": 0,
+        "survivors": 15,
+        "raidersKilled": 33,
+        "peakRung": 3,
+        "worstFood": 0.1,
+        "meanFood": 0.5536666666666666,
+        "upkeepShare": 0.307,
+        "endFoodDays": 11.41,
+        "raidersSeen": 34,
+        "armedShare": 0.23529411764705882,
+        "foundedOn": 20,
+        "ringOpenedOn": [
+          0,
+          11,
+          26
+        ],
+        "tripsByRing": [
+          4,
+          7,
+          0
+        ],
+        "spareDays": 38,
+        "tech": 16,
+        "emptyTreeDays": 0,
+        "stalledDays": 19,
+        "stallRing": 1,
+        "unsentDays": 0.31,
+        "endSteel": 288,
+        "steelDrawdown": 396,
+        "roadRungs": [
+          2,
+          1,
+          4
+        ],
+        "peakHands": 17,
+        "campaigns": 4,
+        "holdingsTaken": 3,
+        "warPawnDays": 150
+      },
+      {
+        "seed": 99001,
+        "difficulty": "calm",
+        "verdict": "holding",
+        "daysLived": 60,
+        "firstThreatDay": 5,
+        "threats": 15,
+        "biggestBand": 4,
+        "downs": 3,
+        "buried": 0,
+        "survivors": 12,
+        "raidersKilled": 26,
+        "peakRung": 2,
+        "worstFood": 0,
+        "meanFood": 0.6208333333333335,
+        "upkeepShare": 0.32,
+        "endFoodDays": 15.03,
+        "raidersSeen": 27,
+        "armedShare": 0.48148148148148145,
+        "foundedOn": 40,
+        "ringOpenedOn": [
+          0,
+          10,
+          30
+        ],
+        "tripsByRing": [
+          7,
+          5,
+          2
+        ],
+        "spareDays": 29,
+        "tech": 17,
+        "emptyTreeDays": 0,
+        "stalledDays": 14,
+        "stallRing": 1,
+        "unsentDays": 0.35,
+        "endSteel": 423,
+        "steelDrawdown": 495,
+        "roadRungs": [
+          3,
+          1,
+          3
+        ],
+        "peakHands": 14,
+        "campaigns": 5,
+        "holdingsTaken": 2,
+        "warPawnDays": 210
+      },
+      {
+        "seed": 424242,
+        "difficulty": "calm",
+        "verdict": "holding",
+        "daysLived": 60,
+        "firstThreatDay": 5,
+        "threats": 15,
+        "biggestBand": 4,
+        "downs": 1,
+        "buried": 0,
+        "survivors": 10,
+        "raidersKilled": 25,
+        "peakRung": 2,
+        "worstFood": 0,
+        "meanFood": 0.6123333333333333,
+        "upkeepShare": 0.314,
+        "endFoodDays": 23.21,
+        "raidersSeen": 22,
+        "armedShare": 0.36363636363636365,
+        "foundedOn": 42,
+        "ringOpenedOn": [
+          0,
+          6,
+          49
+        ],
+        "tripsByRing": [
+          2,
+          4,
+          1
+        ],
+        "spareDays": 36,
+        "tech": 17,
+        "emptyTreeDays": 0,
+        "stalledDays": 14,
+        "stallRing": 2,
+        "unsentDays": 0,
+        "endSteel": 494,
+        "steelDrawdown": 382,
+        "roadRungs": [
+          3,
+          1,
+          3
+        ],
+        "peakHands": 13,
+        "campaigns": 3,
+        "holdingsTaken": 2,
+        "warPawnDays": 114
+      },
+      {
+        "seed": 20260729,
+        "difficulty": "settler",
+        "verdict": "holding",
+        "daysLived": 60,
+        "firstThreatDay": 3,
+        "threats": 30,
+        "biggestBand": 7,
+        "downs": 22,
+        "buried": 0,
+        "survivors": 8,
+        "raidersKilled": 58,
+        "peakRung": 2,
+        "worstFood": 0,
+        "meanFood": 0.5383333333333333,
+        "upkeepShare": 0.365,
+        "endFoodDays": 28.26,
+        "raidersSeen": 81,
+        "armedShare": 0.654320987654321,
+        "foundedOn": null,
+        "ringOpenedOn": [
+          0,
+          11,
+          58
+        ],
+        "tripsByRing": [
+          3,
+          2,
+          0
+        ],
+        "spareDays": 31,
+        "tech": 16,
+        "emptyTreeDays": 0,
+        "stalledDays": 5,
+        "stallRing": 1,
+        "unsentDays": 0,
+        "endSteel": 557,
+        "steelDrawdown": 384,
+        "roadRungs": [
+          2,
+          0,
+          2
+        ],
+        "peakHands": 9,
+        "campaigns": 4,
+        "holdingsTaken": 1,
+        "warPawnDays": 126
+      },
+      {
+        "seed": 7,
+        "difficulty": "settler",
+        "verdict": "holding",
+        "daysLived": 60,
+        "firstThreatDay": 3,
+        "threats": 29,
+        "biggestBand": 10,
+        "downs": 13,
+        "buried": 0,
+        "survivors": 13,
+        "raidersKilled": 68,
+        "peakRung": 4,
+        "worstFood": 0,
+        "meanFood": 0.5985,
+        "upkeepShare": 0.359,
+        "endFoodDays": 21.86,
+        "raidersSeen": 105,
+        "armedShare": 0.638095238095238,
+        "foundedOn": 32,
+        "ringOpenedOn": [
+          0,
+          11,
+          45
+        ],
+        "tripsByRing": [
+          5,
+          5,
+          0
+        ],
+        "spareDays": 24,
+        "tech": 16,
+        "emptyTreeDays": 0,
+        "stalledDays": 9,
+        "stallRing": 1,
+        "unsentDays": 0.53,
+        "endSteel": 281,
+        "steelDrawdown": 378,
+        "roadRungs": [
+          2,
+          1,
+          2
+        ],
+        "peakHands": 15,
+        "campaigns": 6,
+        "holdingsTaken": 1,
+        "warPawnDays": 180
+      },
+      {
+        "seed": 1312,
+        "difficulty": "settler",
+        "verdict": "holding",
+        "daysLived": 60,
+        "firstThreatDay": 3,
+        "threats": 30,
+        "biggestBand": 7,
+        "downs": 36,
+        "buried": 0,
+        "survivors": 16,
+        "raidersKilled": 57,
+        "peakRung": 1,
+        "worstFood": 0,
+        "meanFood": 0.5983333333333332,
+        "upkeepShare": 0.338,
+        "endFoodDays": 16.66,
+        "raidersSeen": 93,
+        "armedShare": 0.6236559139784946,
+        "foundedOn": 45,
+        "ringOpenedOn": [
+          0,
+          8,
+          37
+        ],
+        "tripsByRing": [
+          2,
+          4,
+          0
+        ],
+        "spareDays": 25,
+        "tech": 15,
+        "emptyTreeDays": 0,
+        "stalledDays": 9,
+        "stallRing": 1,
+        "unsentDays": 0.1,
+        "endSteel": 292,
+        "steelDrawdown": 220,
+        "roadRungs": [
+          2,
+          1,
+          4
+        ],
+        "peakHands": 17,
+        "campaigns": 3,
+        "holdingsTaken": 3,
+        "warPawnDays": 114
+      },
+      {
+        "seed": 99001,
+        "difficulty": "settler",
+        "verdict": "holding",
+        "daysLived": 60,
+        "firstThreatDay": 3,
+        "threats": 29,
+        "biggestBand": 7,
+        "downs": 28,
+        "buried": 0,
+        "survivors": 13,
+        "raidersKilled": 66,
+        "peakRung": 2,
+        "worstFood": 0.02,
+        "meanFood": 0.5703333333333334,
+        "upkeepShare": 0.351,
+        "endFoodDays": 24.73,
+        "raidersSeen": 90,
+        "armedShare": 0.6111111111111112,
+        "foundedOn": 43,
+        "ringOpenedOn": [
+          0,
+          6,
+          34
+        ],
+        "tripsByRing": [
+          7,
+          5,
+          0
+        ],
+        "spareDays": 24,
+        "tech": 15,
+        "emptyTreeDays": 0,
+        "stalledDays": 0,
+        "stallRing": -1,
+        "unsentDays": 0,
+        "endSteel": 1029,
+        "steelDrawdown": 295,
+        "roadRungs": [
+          2,
+          1,
+          3
+        ],
+        "peakHands": 16,
+        "campaigns": 4,
+        "holdingsTaken": 2,
+        "warPawnDays": 174
+      },
+      {
+        "seed": 424242,
+        "difficulty": "settler",
+        "verdict": "holding",
+        "daysLived": 60,
+        "firstThreatDay": 3,
+        "threats": 28,
+        "biggestBand": 8,
+        "downs": 26,
+        "buried": 2,
+        "survivors": 7,
+        "raidersKilled": 61,
+        "peakRung": 2,
+        "worstFood": 0,
+        "meanFood": 0.581,
+        "upkeepShare": 0.353,
+        "endFoodDays": 14.69,
+        "raidersSeen": 85,
+        "armedShare": 0.6,
+        "foundedOn": 45,
+        "ringOpenedOn": [
+          0,
+          6,
+          46
+        ],
+        "tripsByRing": [
+          3,
+          4,
+          0
+        ],
+        "spareDays": 14,
+        "tech": 15,
+        "emptyTreeDays": 0,
+        "stalledDays": 11,
+        "stallRing": 1,
+        "unsentDays": 1.45,
+        "endSteel": 197,
+        "steelDrawdown": 264,
+        "roadRungs": [
+          2,
+          1,
+          2
+        ],
+        "peakHands": 12,
+        "campaigns": 6,
+        "holdingsTaken": 1,
+        "warPawnDays": 198
+      },
+      {
+        "seed": 20260729,
+        "difficulty": "harsh",
+        "verdict": "holding",
+        "daysLived": 60,
+        "firstThreatDay": 2,
+        "threats": 44,
+        "biggestBand": 10,
+        "downs": 111,
+        "buried": 4,
+        "survivors": 8,
+        "raidersKilled": 74,
+        "peakRung": 1,
+        "worstFood": 0,
+        "meanFood": 0.5053333333333335,
+        "upkeepShare": 0.377,
+        "endFoodDays": 13.53,
+        "raidersSeen": 194,
+        "armedShare": 0.865979381443299,
+        "foundedOn": null,
+        "ringOpenedOn": [
+          0,
+          9,
+          null
+        ],
+        "tripsByRing": [
+          5,
+          1,
+          0
+        ],
+        "spareDays": 10,
+        "tech": 8,
+        "emptyTreeDays": 0,
+        "stalledDays": 0,
+        "stallRing": -1,
+        "unsentDays": 0,
+        "endSteel": 300,
+        "steelDrawdown": 362,
+        "roadRungs": [
+          1,
+          1,
+          2
+        ],
+        "peakHands": 11,
+        "campaigns": 4,
+        "holdingsTaken": 1,
+        "warPawnDays": 126
+      },
+      {
+        "seed": 7,
+        "difficulty": "harsh",
+        "verdict": "holding",
+        "daysLived": 60,
+        "firstThreatDay": 2,
+        "threats": 43,
+        "biggestBand": 10,
+        "downs": 105,
+        "buried": 7,
+        "survivors": 4,
+        "raidersKilled": 51,
+        "peakRung": 1,
+        "worstFood": 0,
+        "meanFood": 0.5448333333333334,
+        "upkeepShare": 0.349,
+        "endFoodDays": 27.23,
+        "raidersSeen": 201,
+        "armedShare": 0.8059701492537313,
+        "foundedOn": null,
+        "ringOpenedOn": [
+          0,
+          36,
+          47
+        ],
+        "tripsByRing": [
+          2,
+          2,
+          0
+        ],
+        "spareDays": 12,
+        "tech": 12,
+        "emptyTreeDays": 0,
+        "stalledDays": 0,
+        "stallRing": -1,
+        "unsentDays": 0,
+        "endSteel": 152,
+        "steelDrawdown": 358,
+        "roadRungs": [
+          1,
+          0,
+          2
+        ],
+        "peakHands": 9,
+        "campaigns": 4,
+        "holdingsTaken": 1,
+        "warPawnDays": 126
+      },
+      {
+        "seed": 1312,
+        "difficulty": "harsh",
+        "verdict": "holding",
+        "daysLived": 60,
+        "firstThreatDay": 2,
+        "threats": 43,
+        "biggestBand": 8,
+        "downs": 243,
+        "buried": 13,
+        "survivors": 6,
+        "raidersKilled": 60,
+        "peakRung": 0,
+        "worstFood": 0,
+        "meanFood": 0.5481666666666667,
+        "upkeepShare": 0.356,
+        "endFoodDays": 19.72,
+        "raidersSeen": 208,
+        "armedShare": 0.8557692307692307,
+        "foundedOn": null,
+        "ringOpenedOn": [
+          0,
+          48,
+          null
+        ],
+        "tripsByRing": [
+          4,
+          0,
+          0
+        ],
+        "spareDays": 4,
+        "tech": 7,
+        "emptyTreeDays": 0,
+        "stalledDays": 0,
+        "stallRing": -1,
+        "unsentDays": 0,
+        "endSteel": 3,
+        "steelDrawdown": 193,
+        "roadRungs": [
+          1,
+          0,
+          2
+        ],
+        "peakHands": 16,
+        "campaigns": 2,
+        "holdingsTaken": 1,
+        "warPawnDays": 54
+      },
+      {
+        "seed": 99001,
+        "difficulty": "harsh",
+        "verdict": "holding",
+        "daysLived": 60,
+        "firstThreatDay": 2,
+        "threats": 43,
+        "biggestBand": 8,
+        "downs": 108,
+        "buried": 2,
+        "survivors": 12,
+        "raidersKilled": 90,
+        "peakRung": 1,
+        "worstFood": 0,
+        "meanFood": 0.5558333333333333,
+        "upkeepShare": 0.361,
+        "endFoodDays": 10.58,
+        "raidersSeen": 198,
+        "armedShare": 0.8535353535353535,
+        "foundedOn": null,
+        "ringOpenedOn": [
+          0,
+          10,
+          null
+        ],
+        "tripsByRing": [
+          4,
+          2,
+          0
+        ],
+        "spareDays": 9,
+        "tech": 12,
+        "emptyTreeDays": 0,
+        "stalledDays": 0,
+        "stallRing": -1,
+        "unsentDays": 0,
+        "endSteel": 0,
+        "steelDrawdown": 237,
+        "roadRungs": [
+          1,
+          0,
+          1
+        ],
+        "peakHands": 12,
+        "campaigns": 10,
+        "holdingsTaken": 0,
+        "warPawnDays": 180
+      },
+      {
+        "seed": 424242,
+        "difficulty": "harsh",
+        "verdict": "holding",
+        "daysLived": 60,
+        "firstThreatDay": 2,
+        "threats": 42,
+        "biggestBand": 8,
+        "downs": 101,
+        "buried": 3,
+        "survivors": 9,
+        "raidersKilled": 61,
+        "peakRung": 0,
+        "worstFood": 0,
+        "meanFood": 0.5579999999999999,
+        "upkeepShare": 0.361,
+        "endFoodDays": 16.86,
+        "raidersSeen": 178,
+        "armedShare": 0.797752808988764,
+        "foundedOn": null,
+        "ringOpenedOn": [
+          0,
+          7,
+          53
+        ],
+        "tripsByRing": [
+          2,
+          3,
+          0
+        ],
+        "spareDays": 21,
+        "tech": 11,
+        "emptyTreeDays": 0,
+        "stalledDays": 0,
+        "stallRing": -1,
+        "unsentDays": 0,
+        "endSteel": 59,
+        "steelDrawdown": 242,
+        "roadRungs": [
+          1,
+          0,
+          2
+        ],
+        "peakHands": 12,
+        "campaigns": 10,
+        "holdingsTaken": 1,
+        "warPawnDays": 234
       }
     ]
   }

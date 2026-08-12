@@ -166,6 +166,17 @@ export function deserialize(text: string): LoadResult {
       for (const t of WORK_TYPES) if (typeof away.priorities[t] !== 'number') away.priorities[t] = 3;
     }
   });
+  // The war party is the other place settlers hide from the backfills, and it
+  // hides three of them at once. Same treatment as the caravan and for exactly
+  // the same reason: they walk back onto the map days from now, into a build
+  // that may have grown a work column while they were on the moor.
+  for (const away of world.war?.pawns ?? []) {
+    backfillTraits(away);
+    backfillSkills(away);
+    if (away.priorities) {
+      for (const t of WORK_TYPES) if (typeof away.priorities[t] !== 'number') away.priorities[t] = 3;
+    }
+  }
   // Suspicion does not survive a reload. `stranded.ts` cancels a plan only after
   // two sweeps agree nobody can reach it, and the whole value of the second look
   // is that it is a fresh one — a colony reopened after a fortnight should not

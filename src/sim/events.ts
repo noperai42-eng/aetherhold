@@ -121,7 +121,15 @@ function settleTheStreak(world: World): void {
   }
 }
 
-function raiderBand(world: World, rng: Rng): { hp: number; shooting: number; rifle: boolean } {
+/**
+ * One Ashbound, scaled by the difficulty dials and by the escalation ladder.
+ *
+ * Exported for `holdings.ts`, which rolls a holding's garrison out of it at the
+ * moment of the assault rather than at world generation. That is the whole
+ * reason the war road needs no difficulty settings of its own: the men behind
+ * the wall are the men who would have come over the treeline.
+ */
+export function raiderBand(world: World, rng: Rng): { hp: number; shooting: number; rifle: boolean } {
   const esc = escalation(world);
   // Half, because `step` is the one number every other dial reads. Counting the
   // rung in whole made a rung move all four at once — on seed 99001, reaching rung

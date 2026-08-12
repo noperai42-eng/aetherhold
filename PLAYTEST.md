@@ -66,6 +66,7 @@ run.
 [9ii. Walk the map open](#9ii-walk-the-map-open-one-ring-at-a-time-10-minutes-mostly-waiting) ·
 [9l. Read the path to a win](#9l-read-the-path-to-a-win-1-minute) ·
 [9jj. Read the roads on the morning you are founded](#9jj-read-the-roads-on-the-morning-you-are-founded-3-minutes-after-a-founding) ·
+[9kk. Send a war party](#9kk-send-a-war-party-15-minutes-after-a-founding-on-a-colony-of-seven-or-more) ·
 [9m. Walk into the haze](#9m-walk-into-the-haze-2-minutes) ·
 [9n. Read the map in the corner](#9n-read-the-map-in-the-corner-2-minutes) ·
 [9aa. Walk to the rim](#9aa-walk-to-the-rim-5-minutes) ·
@@ -1460,6 +1461,50 @@ research panel does, with no lag and nothing to collect. Then save, reload the t
 again: identical rungs. Nothing about the roads is written into the save — they are read off
 the colony every frame — so a rung that survives a reload is doing so by being recomputed
 correctly rather than by being remembered.
+
+## 9kk. Send a war party (~15 minutes, after a founding, on a colony of seven or more)
+
+Open the **Roads** tab. Under **The neighbours** is the trade road you already know; under
+**The war road** are the three holdings, one behind each ring.
+
+**Expect:** three rows, each naming the place, how many Ashbound are standing in it, and
+what it would pay if you took it — 40 steel every six days at the doorway, up to 120 every
+twenty at the far one. A row you cannot march on says why in a sentence rather than being
+greyed out with no explanation: *seven on their feet before anyone marches* if you are short
+of hands, *there are raiders in the yard* if a raid is live, *nobody has been out that far*
+if you have not opened the ring. A row you can march on names the three who would go.
+
+Click the near holding. **Expect:** a headline in the log — three settlers by name take up
+arms and start for the place — and then those three drop whatever they were doing and walk
+for the treeline. This is the bit worth watching: for the next few in-game hours the colony
+is visibly short-handed with three people crossing the yard on an errand nobody can
+interrupt.
+
+Then they are gone. **Expect:** the colony count drops by three, the war row shows a phase
+and a countdown, and nothing on the map can reach them — you cannot select, possess, feed or
+draft anybody in the party. Run the clock. Six days later the fight resolves as a headline —
+taken, or thrown back off the walls — and a few days after that the party walks back in.
+
+Three things to check, in the order they would hurt:
+
+- **Everybody comes home.** Count your settlers before and after. Win or lose, three went
+  and three came back; nobody is buried out there. Losers arrive on a quarter health,
+  starving and exhausted, and go straight to bed — that is the cost, not a funeral.
+- **Nobody is on the map twice.** The party is genuinely lifted out of the world while it is
+  away, so the failure to look for is a duplicate: the same name in the settler list twice
+  after the homecoming, or a settler who comes back a stranger with no skills.
+- **A taken holding pays without being asked.** Wait out one cadence after a win. A cart
+  comes down off the moor with steel on it and lands beside the colony — no caravan, nobody
+  sent, no job. Then check the Roads tab: warfare has moved up a rung.
+
+Now try it during a raid. **Expect:** if a raid starts while the party is still crossing the
+yard, the march is called off and every one of them is back on the map and available to
+fight. A war party half-lifted off the map is the one state nothing else in the game knows
+how to read, so if you ever see the countdown running with fewer than three people committed,
+that is the bug worth reporting.
+
+Finally, save mid-march — with the party out on the moor — and reload the tab. **Expect:**
+the party is still out, still due home at the same moment, and still not on the map.
 
 ## 10. Save it, break it, load it
 

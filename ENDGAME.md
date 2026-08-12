@@ -1,10 +1,11 @@
 # The end game
 
-> Status: **stage 0 shipped; stages 1 to 5 are still a plan.** Written 2026-08-06
+> Status: **stages 0 to 4 shipped; stage 5 is still a plan.** Written 2026-08-06
 > against the measurements in [ARCHITECTURE.md](ARCHITECTURE.md) § *What the grid
 > found*, and revised 2026-08-08 against the sixty-day grid it asked for. What is
-> in `src/` is stage 0 and nothing beyond it — the harness plays past the founding
-> and the grid measures a second act. Nothing in stages 1 to 5 is built.
+> in `src/` is the harness, the far country in rings, the third tier of the tree,
+> the three visible roads, and the war road out to the holdings. Stage 5 — the
+> three endings themselves — is not built.
 >
 > Numbers below come from two different grids and are labelled where they differ.
 > The forty-five-day and thirty-day figures are kept where they are the reason a
@@ -954,10 +955,13 @@ anything; the rung number is the only comparable quantity the ladders produce.
 Its boundaries are derived rather than picked — science steps at `NEED_RESEARCH`,
 at the free tree, at the foundry branch, at the whole tree; economy at one place,
 `PER_RING`, two rings, `NEIGHBOUR_COUNT`; warfare at `STANDING_BAND` compounding
-by `CLEAN_PER_STEP`, which is the storyteller's own patience. Four constants had
-to be exported to make that possible, which is the right price: a ladder with
-hand-picked numbers in it is a fourth thing to balance, and it goes stale
-silently the first time the tree or the map grows.
+by `CLEAN_PER_STEP`, which is the storyteller's own patience. (Stage 4 rewired
+that last one to count ground held instead; the compounding kill count was the
+best reading available in a game where war only happened in the yard, and it
+stopped being the best reading the day there was somewhere to march to.) Four
+constants had to be exported to make that possible, which is the right price: a
+ladder with hand-picked numbers in it is a fourth thing to balance, and it goes
+stale silently the first time the tree or the map grows.
 
 The stage's own rule was **no new simulation**, and it held literally: nothing in
 the tick changed, nothing was added to the world, and nothing went into the save
@@ -972,10 +976,10 @@ The panel is the founding's own panel. Once `hasWon`, `syncGoals` puts the three
 roads where the charter checklist was — same rows, same bar, same hint line, with
 the ending each road leads to on the row's hover — so a player who learned to
 read that corner during the first act does not have to learn a second one for the
-second. The warfare road reads raiders put down and nothing else, which is why a
-colony that won its founding without ever being attacked stands at rung 0 on it:
-the road that ends in taking the ground must not be handed to anybody for
-surviving quietly.
+second. The warfare road read raiders put down and nothing else — stage 4 puts
+ground held above that first rung — which is why a colony that won its founding
+without ever being attacked stands at rung 0 on it either way: the road that ends
+in taking the ground must not be handed to anybody for surviving quietly.
 
 *What it bought, measured.* One promise held and one broke on arrival, which is
 the split the sequencing rule is for. `no-road-is-already-finished` **holds**: of
@@ -1017,6 +1021,133 @@ columns added to it is the proof.
 hostile holding, resolved, then held. Held holdings feed the colony. Most new
 machinery of anything here, which is why it comes last of the three — it needs
 the world layer to be solid underneath it.
+
+*Shipped: three holdings, a party of three, and a road that counts ground.* The
+promises first, as the sequencing rule requires, and there are two because the
+stage can fail in two unrelated ways.
+
+`no-holding-falls-for-free` — ground is bought with people: every colony that took
+a holding paid at least `WAR_PARTY * roundTripDays(0)` pawn-days for it. That is
+the cheapest legal war in the game — the smallest party, walking to the nearest
+ring, and home again — and it is a *floor* rather than a window, because a
+campaign that lost walks the same days and takes nothing. It is counted in
+pawn-days and not in campaigns for the reason the instrument keeps learning: a
+campaign that resolved on the tick it was ordered, or one that lifted a single
+settler out and called them an army, would report one campaign and one holding
+and look perfect.
+
+`the-war-is-a-choice` — of the colonies that had the hands, some went and some
+stayed home. It breaks in both directions, and the quieter direction is the one
+worth the principle: a road every able colony walks is not a road, it is the game.
+That is the same shape as `the-three-roads-are-three-roads`, and deliberately so —
+the standing bill stage 3 left is not paid by holdings existing, only by colonies
+disagreeing about whether to go.
+
+The machinery is one file, `holdings.ts`, and every number in it is bought from a
+number that already existed. **How many:** one holding behind each ring,
+`NEIGHBOUR_COUNT / PER_RING` — the far country is already three deep and the depth
+is already earned, so holdings ride on that map instead of laying a second,
+disagreeing one over the top. **How far:** `roundTripDays(ring) / 2` each way, the
+caravan's own walk; a war party is not faster than a merchant. **How many go:**
+`CAN_SPARE_ONE - 1`, one fewer than the colony must keep at home, so seven on
+their feet is the price of admission and the headcount is read off the map rather
+than off `colonySize` — what has to be true is that four remain *here*. **What is
+waiting:** `garrisonSize(ring)` men rolled out of `raiderBand` at the moment of the
+fight, so a garrison scales with difficulty and with the escalation ladder without
+this file knowing either exists. **What it pays:** `PACK_MIN * (ring + 1)` of steel
+every `roundTripDays(ring)` days, which is about the same steel per day whichever
+holding it is. The far one is not richer. What the far one buys is the rung.
+
+The fight is a pure function of the fighters and the dice, and the caller writes
+the outcome down. Both sides fire into the man in front with no spillover, which
+is what stops three rifles evaporating a garrison of four in one exchange, and the
+garrison gets the opening volley because the party is the side crossing open
+ground. That volley is most of what makes a holding a hard thing rather than an
+arithmetic comparison of two totals — it is also why the near garrison is
+deliberately *two* against a party of three: level numbers plus a free volley is a
+holding nobody takes, and the first rung of a road has to be reachable.
+
+The warfare ladder was rewired to read ground. It stepped at `STANDING_BAND`
+compounding by `CLEAN_PER_STEP` when stage 3 shipped, which was the best available
+reading of "how much war has this colony done" in a game where war only happened
+in the yard. Now the valley is one rung — the standing band, put down at home —
+and each holding is one more, so `ROAD_RUNGS` and `1 + HOLDING_COUNT` are the same
+number and a test holds them to it. A colony can kill the Ashbound for sixty days
+and stand on rung 1 for all of them: the road that ends in taking the world is
+walked by taking some of it.
+
+Two departures, both on purpose and both written into the file.
+
+**Nobody dies off-screen.** `settlements.ts` states the rule and a war is exactly
+where a reader expects the exception. A beaten party comes home wrecked — floored
+at a quarter of their health, just above `combat.ts`'s downed line, so nobody
+arrives already on the floor — and not buried. A settler killed by dice the player
+could not watch, on a map they cannot look at, is a story the game has no way to
+tell; three settlers ruined for a week is a story it can, and the escalation a win
+buys is the rest of the bill. The day there is a screen to watch a battle on, this
+is the first rule to revisit.
+
+**The Ashbound do not take a holding back.** Held is held, in this cut. A garrison
+that re-forms is a second system — a threat clock, a second front, and a tribute
+line that stops without the player being anywhere near it — and it belongs to the
+stage that can afford to test it rather than smuggled in under this one.
+
+The muster is the part with the states. `orderCampaign` is the only entry point;
+nothing plans a campaign for the player, which is the difference between this road
+and the trade road and is what makes `the-war-is-a-choice` a question worth asking
+at all. Three settlers walk to the treeline as ordinary jobs, and every way that
+can go wrong — a raid, a settler the player takes over, a road out that is blocked,
+a muster that never fills inside a day — goes through one exit that puts everybody
+back on the map, because a party half-lifted off it is the one state nothing else
+in the sim knows how to read. The bill is booked at the muster and not at the
+homecoming: the colony is short those three for the whole walk the moment it says
+go, and a count that waited would read a holding as free for every day between
+taking it and standing down.
+
+*What it bought, measured.* The first sixty-day grid after this stage shipped read
+`campaigns 0` on all fifteen colonies, on every setting, without a single exception.
+That is what a road nobody can afford looks like, and it took a per-tick probe on
+settler/1312 to establish that it was not one: it was a grid with nobody at the
+wheel. Handed to a Steward, that same seed sends three parties, keeps three
+holdings, and orders the first on day 12. The grid runs `steward: false` — *nobody manages the colony*, the floor the
+sim must clear alone — and `orderCampaign` is the one errand in the game that the
+colony's own foreman never picks up, because `types.ts` says a war is the player's
+decision every time. Fifteen colonies agreeing exactly is not a finding. It is a
+constant, and a constant is usually the instrument.
+
+The fix is a second family rather than a flag: the same fifteen seed-and-setting
+colonies replayed with a player at the wheel, judged only by the two war promises,
+which keeps the other twenty-four denominated in the unmanaged floor they were
+calibrated against. Thirty-nine colonies now, 2,176 s.
+
+`no-holding-falls-for-free` **holds**. Fourteen of the fifteen played colonies took
+ground — twenty-three holdings between them — and every one paid at least 18.0
+pawn-days a holding, the cheapest legal war. The thinnest is settler/1312 at 38.0,
+better than twice the floor, so the margin is not a rounding artefact.
+
+`the-war-is-a-choice` **breaks, in the direction that was always the risk**: fifteen
+of the fifteen colonies with seven hands sent a party. Two readings are available
+and only one of them is about the game. The played family has exactly one player in
+it, and a deterministic policy that marches whenever the gates open has no
+alternative to offer — a choice cannot be measured across colonies that were all
+played by the same decision. What the grid *does* establish is the half that does
+not depend on the policy: **nothing in the game ever says no.** The tell is
+harsh/99001, which sent **ten** parties, took **nothing**, and spent 180 pawn-days
+finding out; harsh/424242 sent ten for one holding and 234 pawn-days. Ten defeats
+did not make staying home right, because losing costs a week of walking and three
+settlers in bed for a few days after it, and nothing that is still true a fortnight
+later. Until there is a price for a war that fails — not a funeral, which this stage
+rules out on purpose, but something a colony can be worse off for having spent —
+the promise has nothing to catch. That is the standing bill, and it is stage 5's
+before it is anyone's.
+
+One more thing the ladder rewiring did, and it is the same fault wearing different
+clothes. Warfare now reads ground, so on the unmanaged grid it is **rung 1 on all
+fifteen runs** — the standing band put down at home, and never anything else, by
+construction. `the-three-roads-are-three-roads` is still read off that grid, so the
+pair it reports as flat, economy against warfare, is two pinned numbers rather than
+one. Its verdict is not wrong; its diagnosis is now half a road short, and the road
+it is short of is the one this stage built.
 
 **5 — The three endings.** Ship, passage, dominion. Each is a long and expensive
 terminal that reads one road's tally, and each writes a real ending.

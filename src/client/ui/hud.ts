@@ -67,8 +67,19 @@ import {
   settlementsOf,
   socialOf,
   specialty,
+  roundTripDays,
   withinRange,
 } from '../../sim/settlements';
+import {
+  WAR_PARTY,
+  garrisonSize,
+  holdingById,
+  holdingsOf,
+  planCampaign,
+  tributeOf,
+  warDaysLeft,
+  warPartyOf,
+} from '../../sim/holdings';
 import { commissionDaysLeft, commissionOf, satisfies } from '../../sim/commissions';
 import { CRAFT_DEFS, RECIPE_ORDER, bestCrafter, canCraft, craftBlocker, pawnQualified, unlockedBy } from '../../sim/crafting';
 import { PASSION_LABEL, SKILL_TITLE, passionOf } from '../../sim/skills';
@@ -126,6 +137,13 @@ export interface HudHooks {
   acceptTrade(offerId: number): void;
   /** Load a pack and walk it over the ridge. See `sim/settlements.ts`. */
   sendCaravan(pawnId: number, settlementId: number, kind: ResourceKind, amount: number): void;
+  /**
+   * March on a holding. No pawn id, unlike the caravan: the colony does not get
+   * to choose who goes to war — `planCampaign` picks the three who are most use
+   * in a fight, and a panel that offered the choice would be offering the player
+   * a way to send the three it can most afford to lose. See `sim/holdings.ts`.
+   */
+  sendWarParty(holdingId: number): void;
   cancelBuilding(buildingId: number): void;
   switchView(): void;
   loadAutosave(): void;
@@ -1636,11 +1654,25 @@ export class Hud {
     const outSig = out
       .map((c) => `${c.id ?? 0}:${c.settlementId}:${c.phase}:${Math.round(caravanDaysLeft(s.world, c) * 4)}`)
       .join(';');
+    // The war road turns on things nothing else in this signature watches: how
+    // far a party still has to walk, who is standing, and whether there are
+    // raiders in the yard. Each of them changes the sentence under a holding —
+    // and the last two change it while the caravans and the towns sit perfectly
+    // still, which is exactly when a panel keyed on the rest of this would lie.
+    const warSig = [
+      s.world.war ? `${s.world.war.phase}:${Math.round(warDaysLeft(s.world) * 4)}` : 'home',
+      holdingsOf(s.world)
+        .map((h) => `${h.id}${h.held ? 'h' : ''}${h.attempts}${planCampaign(s.world, h.id).ok ? '+' : '-'}`)
+        .join(','),
+      String(livingColonists(s.world).filter((p) => !p.downed).length),
+      s.world.storyteller.raidActive ? 'raid' : 'quiet',
+    ].join('|');
     const sig = capped
-      ? `out|${outSig}|${comSig}`
+      ? `out|${outSig}|${comSig}|${warSig}`
       : [
           'in',
           outSig,
+          warSig,
           talker ? `${talker.id}:${Math.round(socialOf(talker) * 4)}` : 'none',
           PACK_KINDS.map((k) => countResource(s.world, k)).join(','),
           // Headcount rides along because it is the one thing range turns on
@@ -1694,11 +1726,17 @@ export class Hud {
         ),
       );
     }
+    this.appendWarRoad(s);
+
     // Only the cap closes the panel. One party out and bodies to spare is a
     // colony that may still send another, and hiding the towns would be the old
     // one-road rule surviving in the interface after it left the simulation.
     if (capped) return;
 
+    // Named now that it is not the only thing on the panel. The war road above it
+    // is a list of places with days and a price on them too, and without a
+    // heading here the towns read as more of it.
+    this.roadtab.append(el('h3', '', {}, 'The neighbours'));
     this.roadtab.append(
       el(
         'div',
@@ -1762,6 +1800,74 @@ export class Hud {
         }
         list.append(row);
       }
+    }
+    this.roadtab.append(list);
+  }
+
+  /**
+   * The other road out of the valley, on the same panel as the one that trades.
+   *
+   * It is here rather than in a tab of its own because it is the same decision
+   * wearing different clothes: somewhere out there, a walk each way, and settlers
+   * who are gone while they do it. A player who has learned that a caravan costs
+   * a fortnight of one pair of hands can read what a campaign costs without being
+   * taught a second interface.
+   *
+   * Three states per holding and they are the whole feature. Ground the colony
+   * holds says what it sends home. Ground it can march on gets a live row with
+   * the garrison on it. Ground it cannot march on gets `planCampaign`'s own
+   * refusal sentence, greyed and still listed — "you have five on their feet, and
+   * it takes seven" is a thing a player can go and fix, and a button that quietly
+   * vanishes is not.
+   */
+  private appendWarRoad(s: HudState): void {
+    this.roadtab.append(el('h3', '', {}, 'The war road'));
+
+    const war = warPartyOf(s.world);
+    if (war) {
+      const where = holdingById(s.world, war.holdingId)?.name ?? 'the moor';
+      const names = war.pawns.map((p) => p.name).join(', ');
+      const days = warDaysLeft(s.world).toFixed(1);
+      this.roadtab.append(
+        el(
+          'div',
+          'hint',
+          {},
+          war.phase === 'mustering'
+            ? `The war party is forming up for ${where}. They leave from the treeline.`
+            : war.phase === 'outbound'
+              ? `${names} are marching on ${where}. They reach the walls in about ${days} days.`
+              : `${names} are walking home from ${where} — about ${days} days out. ` +
+                (war.won ? 'The place is yours.' : 'They were thrown back.'),
+        ),
+      );
+    }
+
+    const list = el('div', 'deals');
+    for (const h of holdingsOf(s.world)) {
+      const each = roundTripDays(h.ring) / 2;
+      if (h.held) {
+        const row = el('div', 'deal done');
+        row.innerHTML =
+          `<div class="ttl"><span class="cost">${escapeHtml(h.name)}</span>` +
+          `<span class="arrow">·</span><span class="gain">yours</span></div>` +
+          `<div class="blurb">${tributeOf(h)} steel comes down off the moor every ` +
+          `${roundTripDays(h.ring)} days. ` +
+          `${h.attempts === 1 ? 'Taken at the first attempt.' : `Taken after ${h.attempts} attempts.`}</div>`;
+        list.append(row);
+        continue;
+      }
+      const plan = planCampaign(s.world, h.id);
+      const row = el('div', `deal${plan.ok ? ' clickable' : ' locked'}`);
+      row.innerHTML =
+        `<div class="ttl"><span class="cost">${escapeHtml(h.name)}</span>` +
+        `<span class="arrow">·</span><span class="gain">${each} days each way</span></div>` +
+        `<div class="blurb">${garrisonSize(h.ring)} Ashbound behind the wall, and ${tributeOf(h)} steel every ` +
+        `${roundTripDays(h.ring)} days if you take it. ` +
+        `${h.attempts > 0 ? `Thrown back ${h.attempts === 1 ? 'once' : `${h.attempts} times`} already. ` : ''}` +
+        `${plan.ok ? `${WAR_PARTY} march: ${escapeHtml(plan.party.map((p) => p.name).join(', '))}.` : escapeHtml(plan.text)}</div>`;
+      if (plan.ok) row.onclick = () => this.hooks.sendWarParty(h.id);
+      list.append(row);
     }
     this.roadtab.append(list);
   }
@@ -2773,6 +2879,7 @@ const JOB_LABEL: Record<Job['kind'], string> = {
   rescue: 'carrying someone clear',
   bury: 'burying the dead',
   caravan: 'leaving with a caravan',
+  campaign: 'marching to war',
   moveTo: 'walking there',
 };
 

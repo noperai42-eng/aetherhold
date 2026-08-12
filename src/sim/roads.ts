@@ -34,11 +34,12 @@
  */
 
 /**
- * `STANDING_BAND` and `CLEAN_PER_STEP` are imported rather than restated: the
- * warfare ladder is measured in bands put down, so a band has to mean the same
- * thing here as it does to the storyteller that sends them.
+ * `STANDING_BAND` is imported rather than restated: the warfare road's first
+ * rung is a band put down, so a band has to mean the same thing here as it does
+ * to the storyteller that sends them. `HOLDING_COUNT` is the rest of that road.
  */
-import { CLEAN_PER_STEP, STANDING_BAND } from './events';
+import { STANDING_BAND } from './events';
+import { HOLDING_COUNT, heldCount } from './holdings';
 import { RESEARCH, RESEARCH_ORDER } from './research';
 import { NEIGHBOUR_COUNT, PER_RING, settlementsOf } from './settlements';
 import type { World } from './types';
@@ -144,14 +145,28 @@ const ECONOMY: Ladder = {
 };
 
 /**
- * The warfare road: raiders put down, counted in bands.
+ * The warfare road: ground held, counted in places.
  *
- * A band is what the storyteller sends, and `CLEAN_PER_STEP` is what it counts
- * before it decides a colony is a pattern rather than a lucky one — so the
- * ladder compounds by three: a band, three bands, nine, twenty-seven. That last
- * is far past anything a sixty-day colony reaches, and deliberately: this is the
- * road that stage 4 turns into off-map campaigning, and a top rung a valley can
- * touch by holding its doorway would have to move the day holdings exist.
+ * It used to be raiders put down, compounding by three up to twenty-seven — and
+ * the note that stood here said why that was temporary: *"a top rung a valley
+ * can touch by holding its doorway would have to move the day holdings exist"*.
+ * Holdings exist. This is that move, and it is the reason stage 4 could not ship
+ * the campaign without re-deriving the ladder in the same slice: a warfare road
+ * still measured in corpses would have a colony climbing toward "Warlords" by
+ * standing behind its own wall being attacked, which is the opposite of taking
+ * ground.
+ *
+ * So the tally is the ground this colony is standing on, and there is exactly
+ * one more piece of it than there are holdings — the valley itself. `ROAD_RUNGS`
+ * and `1 + HOLDING_COUNT` are therefore the same number, and a test holds them
+ * to it: a fourth ring on the map grows this ladder on its own, and the panel
+ * finds out at the same moment the other two ladders do.
+ *
+ * The valley counts as held once the colony has put a band down in it —
+ * `STANDING_BAND`, the old first rung, unchanged and unmoved. A colony that has
+ * fought off the Ashbound and never left the map reads exactly what it read
+ * before this stage, which is what makes every earlier grid reading of rung 1
+ * still true. Everything above it now has to be walked to.
  *
  * Put down rather than *repelled*, because a raid that wanders off is a raid the
  * colony survived and not a fight it won, and the difference is the road.
@@ -160,16 +175,11 @@ const WARFARE: Ladder = {
   id: 'warfare',
   title: 'Warfare',
   ending: 'Take the ground. You never leave — you become the ones who launch.',
-  hint: 'The valley. Hold the line, and hold it again.',
-  rungs: ['Blooded', 'Defenders', 'Feared', 'Warlords'],
-  needs: [
-    STANDING_BAND,
-    STANDING_BAND * CLEAN_PER_STEP,
-    STANDING_BAND * CLEAN_PER_STEP * CLEAN_PER_STEP,
-    STANDING_BAND * CLEAN_PER_STEP * CLEAN_PER_STEP * CLEAN_PER_STEP,
-  ],
-  unit: 'raider',
-  at: (w) => w.stats.raidersKilled,
+  hint: 'The valley first, then the moor. Put a band down; take a holding and keep it.',
+  rungs: ['Blooded', 'Doorway', 'Marchers', 'Warlords'],
+  needs: Array.from({ length: 1 + HOLDING_COUNT }, (_, i) => i + 1),
+  unit: 'place',
+  at: (w) => (w.stats.raidersKilled >= STANDING_BAND ? 1 : 0) + heldCount(w),
 };
 
 const LADDERS: readonly Ladder[] = [SCIENCE, ECONOMY, WARFARE];

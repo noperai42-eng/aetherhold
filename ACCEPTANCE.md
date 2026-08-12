@@ -14,105 +14,141 @@ Four sections: [the killer feature](#the-killer-feature),
 and [what still wants a human](#what-still-wants-a-human) — which is the long one, and is
 ordered to match `PLAYTEST.md` rather than by importance.
 
-Last run — 2026-08-11, the grid that shipped the three roads out of the valley:
+Last run — 2026-08-11, the grid that shipped the war road, and the instrument that could not
+see it:
 
 - `npx tsc --noEmit` clean.
-- `npm test` — **90 of 92 files, 1,695 tests green**, 13 skipped, in 943 s. Seventeen of those
-  tests are new. Eleven are on `sim/roads.ts`: that a fresh colony stands at the foot of all
-  three roads with a named next rung on each, that doing one kind of work moves exactly one
-  ladder (`[1,0,0]` → `[1,1,0]` → `[1,1,1]`), that every boundary is the constant it claims to
-  be rather than a number near it, that the bar measures the leg being walked and not the whole
-  road, that a finished road stops asking, that `0 / 1 place` is not `0 / 1 places`, and — the
-  three that matter most — that a colony played all the way to its founding reads science 1 and
-  economy 1, reads warfare **0** because it fought nobody, and reads exactly the same three
-  rungs after a `serialize`/`deserialize` round trip, which is what will fail the day somebody
-  caches a rung on the world. The other six are on the judge, including a grid where all three
-  roads are level, one where a single pair is flat, and one where every pair inverts. The 13
-  skips are the opt-in gates and nothing else — `ECO`, `SWEEP`, `BALANCE`, `LIVE`, `POOL` — and
-  two files (`tests/liveness.test.ts`, `tests/survival-sweep.test.ts`) hold nothing but a gated
-  describe, which is why the file count reads 90 and not 92. No load flake this time; the
-  `colony-eval.test.ts` timeout described in earlier runs did not reappear.
+- `npm test` — **91 of 93 files, 1,736 tests green**, 13 skipped, in 869.78 s. Forty-one of
+  those tests are new and twenty-seven are on `sim/holdings.ts`, which is the whole of the
+  stage. That every number in the file is bought from one that already existed — one holding
+  behind each ring, one fewer marcher than the colony must keep at home, a garrison rolled out
+  of `raiderBand` so it scales with difficulty and with the ladder without knowing either
+  exists, a pack per ring on that ring's own cadence, and a far holding that is dearer without
+  being richer. That the muster turns down every colony it should: one that cannot leave four
+  behind, one with raiders in the yard, one that already has an army out, one that has never
+  walked the ring, one already standing on the ground. That each of the four ways a march can
+  fall apart puts **everybody** back on the map, because a party half-lifted off it is the one
+  state nothing else in the sim knows how to read. That the bill is booked at the muster and
+  not at the homecoming. That a beaten party comes home wrecked and alive. That a taken
+  holding sends a cart down off the moor on its own cadence and ground the colony does not
+  hold sends nothing. And that a party in the field survives a `serialize`/`deserialize` round
+  trip still out, still not on the map, still due home at the same moment. The last of the
+  twenty-seven musters, walks, fights and comes home through the ordinary tick rather than by
+  calling the pieces in order, and it is the only one of the twenty-seven that would notice if
+  `tick.ts` stopped calling this file at all. Eight more of the forty-one are on the two war
+  promises and four on the sweep's spec list — those twelve exist because of the instrument
+  fault below, not because of the stage. The last two hold the warfare ladder to
+  `1 + HOLDING_COUNT` rungs, which is the rewiring that made warfare read ground instead of
+  kills. The 13 skips are the opt-in gates and nothing else — `ECO`, `SWEEP`, `BALANCE`,
+  `LIVE`, `POOL` — and two files (`tests/liveness.test.ts`, `tests/survival-sweep.test.ts`)
+  hold nothing but a gated describe, which is why the file count reads 91 and not 93.
 - `npm run eval` — the same `tests/colony-eval.test.ts` the suite above already ran, not
   re-run separately. It is the one file both entry points share, so a second run is a second
   reading of a number already recorded rather than a second piece of evidence.
 - `npm run measure -- --days 60 --past-founding` then `npm run balance` — 4 tests green.
-  24 colonies in 1,620 s, 15 of them judged. **Twenty-four** principles are scored, two more
-  than last run: all **fifteen** enforced ones hold, and of the nine open ones — reported
-  without asserting — three do.
-  *No road is already finished* — **new this slice, written before `roads.ts` existed, and it
-  holds**: of the fourteen colonies that played a full sixty days none stood on a top rung, and
-  the furthest anybody got was **rung 3 of 4** — calm/20260729 on science, harsh/7 on warfare.
-  It is not a formality. It would have failed the grid before this one, where calm/20260729
-  finished all nineteen projects and would have topped the science ladder out, and it is the
-  check that will object the first time an ending is reachable before the stage that sells it.
-  *The three roads are three roads* — **new, and broken on arrival**, which is the whole reason
-  a promise is written before the thing that satisfies it. It asks that for every *pair* of
-  roads some colony is ahead on one and behind on the other; it reads **1 of 3 pairs never
-  disagree across 14 runs: economy/warfare never inverts (economy only ever behind)**. Science
-  disagrees with both of the others and disagrees hard — per-difficulty means of calm
-  **2.6/1.0/1.2**, settler **2.2/1.0/2.0**, harsh **0.8/0.6/2.0**, science falling and warfare
-  rising as the country gets harder — so the difficulty axis is already sorting colonies onto
-  different roads. The flat pair is the economy one and the number underneath says why: economy
-  stood on **rung 1 in twelve of the fourteen** runs and rung 0 in the two hardest. Its second
-  rung is four neighbours at charter standing, the founding asks for exactly one, and nothing in
-  the valley asks for a second — while warfare is never behind because raiders arrive whether or
-  not the colony wants a war. That is the ladder correctly reporting that one of the three roads
-  does not exist yet, and it is a standing bill against stages 4 and 5 rather than a defect here.
-  Re-deriving economy's second rung down to two places would turn a true reading green without a
-  single colony doing anything differently, which is the fitted-bar mistake `ENDGAME.md` has now
-  rejected twice.
-  **The grid was run twice, and the second run is the one reported.** The first reading printed
-  `economy/warfare never inverts (always level)` for a pair where economy was strictly *behind*
-  warfare on nine runs of fourteen: the check asked whether either road was ever ahead and
-  called the answer "level" when it was "no". The verdict was right and its sentence was wrong,
-  which on a document that quotes these strings is a bug worth a full re-measure — level means
-  one measurement counted twice, leaning means a road nobody is walking, and those want
-  different fixes. Diffing the two judge outputs, **two lines changed and both of them are that
-  sentence** — every other figure below is identical across both runs, which is also the
-  cleanest available proof that a judge-only edit moved nothing in the simulation.
+  **39 colonies in 2,176 s**, up from 24, and the fifteen extra colonies are the story of this
+  run. **Twenty-six** principles are scored, two more than last time: all **fifteen** enforced
+  ones hold, and of the eleven open ones — reported without asserting — four do.
+  **The grid could not see the war, and reported that in the most convincing way available.**
+  The first sixty-day grid after stage 4 shipped read `campaigns 0` on all fifteen colonies,
+  on every setting, to four decimal places. That is what a road nobody can afford looks like,
+  and it was the instrument. The grid plays `steward: false` — *nobody manages the colony*,
+  the floor the sim must clear alone — and `orderCampaign` is the one errand in the game the
+  colony's own foreman never picks up, because a war is the player's decision every time and
+  `types.ts` says so. A per-tick probe on settler/1312 settled it in one run: handed to a
+  Steward, that same seed sends three parties, keeps three holdings, and orders the first on
+  day 12. Sampling once a day would have missed it, because a marching party is off the map
+  between snapshots. The fix is a second family rather than `--steward` on the whole grid,
+  which would have re-based the twenty-four promises calibrated against the unmanaged floor
+  without printing a word about it: the same fifteen seed-and-setting colonies replayed with a
+  player at the wheel, read by the two war promises and nothing else. `ENDGAME.md` stage 4
+  carries the long version, and `measure.ts`'s own header now warns off the flag.
+  *No holding falls for free* — **new this slice, written before `holdings.ts` existed, and it
+  holds.** Fourteen of the fifteen played colonies took ground, twenty-three holdings between
+  them, and every one of them paid at least 18.0 pawn-days a holding — the cheapest legal war,
+  being the smallest party walking to the nearest ring and home again. The thinnest is
+  settler/1312 at 38.0, better than twice the floor, so the margin is not a rounding artefact.
+  It is counted in pawn-days rather than campaigns because a campaign that resolved on the
+  tick it was ordered would report one campaign and one holding and look perfect.
+  *The war is a choice* — **new, and broken on arrival in the direction that was always the
+  risk**: **15 of 15 colonies with seven hands sent a war party**. Half of that verdict is
+  about the instrument and half is about the game, and the halves want saying apart. The
+  played family has exactly one player in it, and a policy that marches whenever the gates
+  open cannot disagree with itself — a choice is not something fifteen identically-played
+  colonies can exhibit, whatever the game does. What does *not* depend on the policy is the
+  other half: **nothing in the game ever says no.** harsh/99001 sent **ten** parties, took
+  **nothing**, and spent 180 pawn-days finding out; harsh/424242 sent ten for one holding and
+  234. Ten defeats did not make staying home right, because a lost war costs a week of walking
+  and three settlers in bed for a few days after it, and then nothing — no funeral, which this
+  stage rules out on purpose, and nothing that is still true a fortnight later. A colony that
+  can absorb that ten times is a colony for which marching is never the wrong call.
+  Until there is a price for a war that fails, the promise has nothing to catch. That is a
+  standing bill against stage 5, and moving the bar here would be the fitted-bar mistake
+  `ENDGAME.md` rejects by name.
+  *The three roads are three roads* — still broken, still **1 of 3 pairs never disagree:
+  economy/warfare never inverts (economy only ever behind)**, and this grid the sentence is
+  half a road short of the diagnosis. Stage 4 rewired warfare to read ground, so on a grid
+  that can never take ground it stands at **rung 1 on all fifteen runs** — the standing band
+  put down at home, and nothing else, by construction. The flat pair is now two pinned numbers
+  rather than one. Per-difficulty road means read calm **2.6/1.0/1.0**, settler
+  **2.2/1.0/1.0**, harsh **0.8/0.6/1.0**: science is the only one of the three the unmanaged
+  grid moves at all. A grid ago warfare read 1.2 on calm and 2.0 on both of the others, off
+  kill counts — it was measuring how hard the valley attacked the colony, which is exactly why
+  it was rewired, and the honest consequence is that this promise is now read off an
+  instrument with the same blind spot the war promises had until this slice. Naming which
+  family a road is
+  denominated in is the next thing to settle, and it is a judge-only change.
   *Nobody starves beside a full pantry* — 6 of 15 runs, each bottoming out at exactly 0.00
   while the colony held eleven to twenty-two days of food: two Settler maps and four Hard
-  country ones. Unchanged for a fifth grid, and the shape of the spread still cannot be told
-  apart from Hard country being hard by this measurement alone. The argument that it is a
-  feeding failure rests on the mechanism — a settler at 0.00 beside three weeks of meals — and
-  not on the spread, and the claim's own words *"it happens on the kind one"* remain unsupported.
-  *The escalation ladder is climbable to the top* — broken, highest rung anywhere 3 of 4, peaks
-  seen 0/1/2/3. Two grids ago a lone calm map touched rung 4 and no grid since has, which is why
-  the principle stays open rather than being promoted on seed luck.
+  country ones. Unchanged for a sixth grid, down to the seeds and the day counts, and the
+  shape of the spread still cannot be told apart from Hard country being hard by this
+  measurement alone. The argument that it is a feeding failure rests on the mechanism — a
+  settler at 0.00 beside three weeks of meals — and not on the spread, and the claim's own
+  words *"it happens on the kind one"* remain unsupported.
+  *The escalation ladder is climbable to the top* — broken, highest rung anywhere 3 of 4,
+  peaks seen 0/1/2/3. Three grids ago a lone calm map touched rung 4 and no grid since has,
+  which is why the principle stays open rather than being promoted on seed luck.
   *The far country is walked* — 3 of the 7 runs that opened the far road with twenty days to
-  spare walked it. Unchanged, and the diagnosis from the slice that shipped `assemblies` still
-  holds: every colony ever billed machinery went, every colony that was not, stayed home, and
-  what is short is the number that climb far enough up the tree to be asked.
+  spare walked it. Unchanged, and the diagnosis still holds: every colony ever billed
+  machinery went, every colony that was not, stayed home, and what is short is the number that
+  climb far enough up the tree to be asked.
   *The road keeps up with the bench* — 2 of the 11 runs that reached the third tier waited
   longer than one round trip to the ring their bill was payable in: calm/1312 and calm/424242,
-  18 days each on ring-1 bills against a bar of 14, both with a road standing free for 0.05 and
-  0.01 days out of sixty.
+  18 days each on ring-1 bills against a bar of 14, both with a road standing free for 0.05
+  and 0.01 days out of sixty.
   *One robbery does not end the tier* — 6 of 9 runs that reached the third tier finished a
   project inside it (67 %, against a 75 % bar); the three that stopped dead are calm/1312 after
   18 waiting days, settler/1312 after 12, settler/424242 after 3.
   *The tree is not empty at day sixty* holds: no run of the fourteen that played a full clock
-  stood at an empty bench for a week, furthest 17 of 19 projects, longest idle 0 days, 6.4 days
-  a run waiting on a delivery and 18 at worst. *The surplus finds a buyer* holds for a fourth
-  grid: all 8 runs that ended above 300 steel spent at least a quarter of the pile down, the
-  thinnest settler/20260729 at 40 % of 853.
-  The enforced set is unchanged by this slice, which is the point of a stage that adds no
-  simulation. *The far ring is earned* — shut for all 15 runs through day 7, 7 of the 10 below
-  Hard country had it open by day 42, earliest day 16. *The long road is walked* — 10 of 10
-  below Hard country sent two or more parties past the near ring, mean trips by ring 6.0/4.4/0.6.
-  *The first act is finishable* — 9 of 10 below Hard country reached the founding (90 %, against
-  a 50 % floor), the only one that never got there being settler/99001. *The bench does not wait
-  on an errand* — all 11 runs that reached the third tier had a party committed within 2 days,
-  longest gap 0.63 days on settler/424242, mean 0.09, while the road itself took 8.1 days a run.
-  Every one of those figures is the same on the same seed as it was a grid ago: the roads slice
-  moved nothing but the two columns it added, and that is the evidence for the claim that it
-  added no simulation.
-- `npm run build` — 903.44 kB JS (257.73 kB gzip), 23.07 kB CSS (5.04 kB gzip). The roads panel
-  cost 1.85 kB of JS and **no CSS at all**, because it reuses the founding checklist's rows.
-- The three roads panel is **not** covered by an automated render. Vitest runs
-  `environment: 'node'` here, so nothing in the suite mounts the HUD; what is proved above is
-  the data behind every row and the fact that it survives a save, and the markup reuses the
-  founding checklist's own rows verbatim. Seeing it on screen is a manual step —
-  [PLAYTEST.md](PLAYTEST.md) 9jj — and it has not been walked yet.
+  stood at an empty bench for a week, furthest calm/20260729 at 17 of 19 projects, longest
+  idle 0 days, 6.4 days a run waiting on a delivery and 18 at worst. *The surplus finds a
+  buyer* holds for a fifth grid: all 8 runs that ended above 300 steel spent at least a
+  quarter of the pile down, the thinnest settler/20260729 at 40 % of 853. *No road is already
+  finished* holds: no run of the fourteen stood on a top rung, furthest rung 3 of 4.
+  The enforced set is unchanged. *The far ring is earned* — shut for all 15 runs through day 7,
+  7 of the 10 below Hard country had it open by day 42, earliest day 16. *The long road is
+  walked* — 10 of 10 below Hard country sent two or more parties past the near ring, mean trips
+  by ring 6.0/4.4/0.6. *The first act is finishable* — 9 of 10 below Hard country reached the
+  founding (90 %, against a 50 % floor), the only one that never got there being settler/99001.
+  *The bench does not wait on an errand* — all 11 runs that reached the third tier had a party
+  committed within 2 days, longest gap 0.63 days on settler/424242, mean 0.09, while the road
+  itself took 8.1 days a run.
+  **Every one of those figures is identical to the last grid's, on the same seed, to the
+  decimal place** — and unlike the roads slice, which added no simulation at all, this one
+  added a file. It is the strongest available evidence for the claim that stage 4 lives
+  entirely on the far side of a decision no unmanaged colony makes: the fifteen colonies the
+  other twenty-four promises are read off played the same game they played a grid ago. The one
+  column that moved is warfare's rung, and it moved because it was rewired on purpose.
+- `npm run build` — 911.63 kB JS (260.53 kB gzip), 23.07 kB CSS (5.04 kB gzip). The war road
+  cost 8.19 kB of JS and **no CSS at all**, because the holdings list reuses the trade offers'
+  own rows — `deal`, `ttl`, `cost`, `gain`, `blurb` — down to the locked variant that carries
+  the sentence saying why a row cannot be marched on.
+- The war road panel is **not** covered by an automated render, and neither is the three roads
+  panel beside it. Vitest runs `environment: 'node'` here, so nothing in the suite mounts the
+  HUD; what is proved above is the data behind every row, the reason each unmarchable row
+  gives, and the fact that a party in the field survives a save. Seeing it on screen is a
+  manual step — [PLAYTEST.md](PLAYTEST.md) 9jj for the roads and 9kk for the war party — and
+  neither has been walked yet.
 - Dev server on `5063`, play server on `5062` — and on the same port at this machine's
   LAN address, which is deliberately not written down here because it changes with the
   network and a stale IP in a document is worse than no IP.
@@ -179,11 +215,23 @@ rather than what it computes. Each is a numbered step in `PLAYTEST.md`:
 - **§9k** — send somebody over the ridge and get them home again.
 - **§9l** — read the founding panel and understand, without help, what to do next.
 - **§9jj** — read the three roads on the morning the colony is founded. `tests/roads.test.ts`
-  pins every rung, every boundary and the save round trip, and the grid pins that the three
-  ladders disagree with each other; what none of them can be shown is whether a player who has
+  pins every rung, every boundary and the save round trip, and the grid *asks* whether the
+  three ladders disagree with each other — and currently answers no, twice over, since the
+  unmanaged grid can move neither economy nor warfare; what none of them can be shown is
+  whether a player who has
   just won the first act looks at that panel and sees three places to go rather than three
   progress bars. Nothing in the suite mounts the HUD — vitest runs `environment: 'node'` — so
   this row is the only thing that has ever seen the panel.
+- **§9kk** — send three settlers out to take a holding. `tests/holdings.test.ts` pins all of
+  it — that the refusal names the number it wanted, that the party leaves and comes home, that
+  a garrison of two never gives the doorway away for free, that tribute arrives on its ring's
+  own clock — but not one of those things is the question this step asks. A campaign takes
+  three of seven hands off the map for six days on the near ring and twenty on the far one,
+  and there is no undo. Whether the colony going short-handed for that long reads as a bet the
+  player made or as a mistake they cannot back out of is the whole design of the feature, and
+  it can only be found out by doing it. The second half of the step is the quieter one:
+  a won campaign raises the next raid, and whether that lands as the cost of taking ground or
+  as the game punishing you for playing it is not something a number can be shown.
 - **§9m** — walk into the haze. Whether the edge of the known world reads as weather or as
   a missing chunk of the level is not a thing a test can be shown.
 - **§9n** — read the map in the corner. Whether one pixel a cell is legible, and whether

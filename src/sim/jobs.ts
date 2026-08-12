@@ -67,6 +67,7 @@ import {
   tooIllToStand,
 } from './health';
 import { answerable } from './commissions';
+import { abandonMuster, joinWarParty, musterWarParty, planCampaign } from './holdings';
 import { findPath } from './path';
 import { forgetRebuild } from './rebuild';
 import { regionAt } from './regions';
@@ -2001,6 +2002,25 @@ export function orderCaravan(
   return { ok: true, text: `${pawn.name} sets out for ${plan.settlement.name}.` };
 }
 
+/**
+ * Send the war party — the panel's other entry point, and the only way one is
+ * ever raised. The colony's own job picker never plans a war.
+ *
+ * Same shape as `orderCaravan` and for the same reason: every rule about whether
+ * the march may happen lives in `planCampaign`, and the jobs that carry three
+ * settlers to the treeline are this module's business.
+ */
+export function orderCampaign(world: World, holdingId: number): { ok: boolean; text: string } {
+  const plan = planCampaign(world, holdingId);
+  if (!plan.ok) return { ok: false, text: plan.text };
+  musterWarParty(world, plan);
+  for (const pawn of plan.party) {
+    if (pawn.jobId !== null) cancelJob(world, pawn.jobId);
+    createJob(world, pawn, 'campaign', plan.head.x, plan.head.y, { holdingId: plan.holding.id });
+  }
+  return { ok: true, text: `The war party forms up for ${plan.holding.name}.` };
+}
+
 /** Rough compass direction from a settler to somewhere, for the message log. */
 function bearing(pawn: Pawn, to: { x: number; y: number }): string {
   const dx = to.x - pawn.x;
@@ -3624,6 +3644,30 @@ export function tickJob(world: World, pawn: Pawn, rng: Rng): void {
       // them again — including the job table.
       finishJob(world, pawn, job);
       departCaravan(world, pawn, dest, give);
+      return;
+    }
+
+    case 'campaign': {
+      // Everything that calls a march off before it starts goes through
+      // `abandonMuster`, which puts back whoever already reached the treeline —
+      // so these three branches cancel the *muster*, not just this settler's
+      // walk. One settler dropping out of a war party is the party.
+      if (world.storyteller.raidActive || hostiles(world).length > 0) {
+        return abandonMuster(world, 'The war party turns back — there are raiders in the yard.');
+      }
+      if (pawn.playerControlled) {
+        return abandonMuster(world, `${pawn.name} breaks off, and the march is off with them.`);
+      }
+      pawn.activity = 'walking';
+      const r = walkTo(world, pawn, job.tx, job.ty, false);
+      if (r === 'blocked') {
+        return abandonMuster(world, `${pawn.name} cannot get out of the valley. The march is off.`);
+      }
+      if (r !== 'arrived') return;
+      // Closed out while they are still a settler on a map: once `joinWarParty`
+      // has lifted them off it, nothing in the tick may reach them again.
+      finishJob(world, pawn, job);
+      joinWarParty(world, pawn);
       return;
     }
 

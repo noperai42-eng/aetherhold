@@ -27,6 +27,7 @@ import {
   bestTalker,
   caravanAllowed,
   caravansOf,
+  colonySize,
   errandRing,
   ringOf,
   ringOpen,
@@ -205,6 +206,25 @@ export interface DaySnapshot {
    */
   raidersSeen: number;
   armedRaiders: number;
+  /**
+   * Everybody the colony is feeding, including the ones over the horizon.
+   *
+   * `alive` is who is standing on the map, which is the right number for almost
+   * every question here and the wrong one for the war: a colony of seven with
+   * three on the moor reads `alive: 4`, and a principle asking whether it ever
+   * had the hands to send a party would read every campaigning colony as too
+   * small to have sent one. This is `colonySize` — the sim's own answer to how
+   * big the colony is — sampled daily so `peakHands` can be taken off it.
+   */
+  hands: number;
+  /**
+   * War parties sent, holdings taken and kept, and settler-days spent on the
+   * road to them. Cumulative, like every other counter here, so the last
+   * snapshot is the whole run.
+   */
+  campaigns: number;
+  holdingsTaken: number;
+  warPawnDays: number;
 }
 
 export type Verdict = 'thriving' | 'holding' | 'collapsed';
@@ -554,6 +574,10 @@ function snapshot(
     biggestBand,
     raidersSeen,
     armedRaiders,
+    hands: colonySize(world),
+    campaigns: world.stats.campaigns ?? 0,
+    holdingsTaken: world.stats.holdingsTaken ?? 0,
+    warPawnDays: round(world.stats.warPawnDays ?? 0),
   };
 }
 

@@ -20,7 +20,9 @@ import { describe, expect, it } from 'vitest';
 import { judgePrinciples } from '../src/eval/principles';
 import { UPKEEP_DIALS, type ArmPoint, type RunMeasure, type Sweep } from '../src/eval/sweep';
 import { DIFFICULTIES, DIFFICULTY_ORDER } from '../src/sim/difficulty';
+import { WAR_PARTY } from '../src/sim/holdings';
 import { RESEARCH, RESEARCH_ORDER } from '../src/sim/research';
+import { CAN_SPARE_ONE, roundTripDays } from '../src/sim/settlements';
 import type { Difficulty } from '../src/sim/types';
 
 /**
@@ -91,6 +93,22 @@ function run(difficulty: Difficulty, over: Partial<RunMeasure> = {}): RunMeasure
     // would hand `the-three-roads-are-three-roads` half its evidence for free,
     // and a case about the roads should have to say so out loud.
     roadRungs: [1, 1, 1],
+    // Eight settlers at the high-water mark — the same colony `survivors`
+    // describes, which is what makes a run built off this baseline *able* to have
+    // campaigned and then not. A default below `CAN_SPARE_ONE + WAR_PARTY` would
+    // drop every run out of `the-war-is-a-choice`'s denominator, and a case about
+    // the war would come back `untested` while looking like it had been asked.
+    //
+    // The two war promises read `sweep.war`, not `sweep.runs` — the family played
+    // with a Steward at the wheel — so these four columns only reach a verdict
+    // when a fixture puts the run in that family. `healthyWar` does.
+    peakHands: 8,
+    // …and having been able, it stayed home. Warfare is the one road the baseline
+    // does not walk, because a war is the only thing in the game nothing plans:
+    // the colony that did nothing interesting never ordered one.
+    campaigns: 0,
+    holdingsTaken: 0,
+    warPawnDays: 0,
     ...over,
   };
 }
@@ -102,11 +120,43 @@ const healthyArm = (): ArmPoint[] => [
   { dial: 1.12, upkeepShare: 0.371 },
 ];
 
+/**
+ * A war family where both stage-4 promises are kept, to vary only where a case
+ * needs it.
+ *
+ * These are not the grid's colonies. `sweep.runs` plays unmanaged — the floor
+ * the sim has to clear with nobody at the wheel — and a campaign is the one
+ * errand nothing in the sim ever plans for itself, so on that family the war
+ * columns are zero by construction and a fixture that put a campaign there would
+ * be describing a colony that cannot exist. The war questions are asked of the
+ * replay with a Steward driving, and that is the family these three belong to.
+ *
+ * Their disagreement is the promise rather than decoration: all three had the
+ * hands, two went out and one stayed home. `run`'s default `peakHands: 8` clears
+ * `CAN_SPARE_ONE + WAR_PARTY`, so all three are in the denominator.
+ */
+const healthyWar = (): RunMeasure[] => [
+  // Able and stayed home — without this one the war stops being a choice.
+  run('calm'),
+  // One party out to the near ring and home again is `WAR_PARTY *
+  // roundTripDays(0)` = 18 pawn-days, the cheapest legal war in the game — so
+  // this run sits exactly *on* the floor `no-holding-falls-for-free` sets rather
+  // than comfortably above it. A fixture whose healthiest war is also its
+  // thinnest is the honest one: if that check ever starts reading its own
+  // boundary as a breach, this catches it.
+  run('settler', { campaigns: 1, holdingsTaken: 1, warPawnDays: 18 }),
+  // Three wars, two holdings: the one that lost a party and walked home empty
+  // still paid for the walk. Reads well above the floor and is not in breach,
+  // because the floor is a floor and not a window.
+  run('harsh', { campaigns: 3, holdingsTaken: 2, warPawnDays: 62 }),
+];
+
 function sweep(
   runs: RunMeasure[],
   days = 30,
   arm: ArmPoint[] = healthyArm(),
   playPastFounding = false,
+  war: RunMeasure[] = healthyWar(),
 ): Sweep {
   return {
     seeds: [...new Set(runs.map((r) => r.seed))],
@@ -115,6 +165,7 @@ function sweep(
     playPastFounding,
     runs,
     arm,
+    war,
   };
 }
 
@@ -985,6 +1036,114 @@ describe('the balance principles, read against grids that are known wrong', () =
     );
     expect(verdictOf(s, 'no-road-is-already-finished')).toBe('holds');
     expect(detailOf(s, 'no-road-is-already-finished')).toContain('furthest anybody got was rung 3');
+  });
+});
+
+/**
+ * The two stage-4 promises, and the family they are allowed to read.
+ *
+ * The bug these are written against cost a sixty-day grid. Both checks used to
+ * read `sweep.runs`, which is played with `steward: false` — nobody managing the
+ * colony — and a campaign is the one errand nothing in the sim ever plans for
+ * itself. So the grid came back `campaigns 0` on all fifteen colonies and both
+ * promises reported it as a finding: the holdings priced out, the war party
+ * scenery. The game was fine. The instrument had been asking a question about
+ * the player of a colony that had no player.
+ */
+describe('the war promises, and the colonies they are asked of', () => {
+  const FLOOR = WAR_PARTY * roundTripDays(0);
+  const ABLE = CAN_SPARE_ONE + WAR_PARTY;
+
+  it('reads the played family and not the grid', () => {
+    // Both directions, because either alone is passed by a check wired to the
+    // wrong field: a grid full of campaigns must not be able to answer, and a
+    // grid with none must not stop the played family from answering.
+    const marched = healthyWar();
+    expect(verdictOf(sweep(marched, 30, healthyArm(), false, []), 'the-war-is-a-choice')).toBe(
+      'untested',
+    );
+    expect(
+      verdictOf(sweep(marched, 30, healthyArm(), false, []), 'no-holding-falls-for-free'),
+    ).toBe('untested');
+
+    const s = sweep(healthy());
+    expect(verdictOf(s, 'the-war-is-a-choice')).toBe('holds');
+    expect(verdictOf(s, 'no-holding-falls-for-free')).toBe('holds');
+  });
+
+  it('says so plainly when nobody played a colony', () => {
+    // The detail line is what a reader sees on every measurements file taken
+    // before this family existed, so it has to name the reason rather than read
+    // as a war that did not happen.
+    const s = sweep(healthy(), 30, healthyArm(), false, []);
+    expect(detailOf(s, 'the-war-is-a-choice')).toContain('no colony was played by a Steward');
+  });
+
+  it('breaks when every colony that could march did', () => {
+    // The quiet failure, and the one worth more than the loud one. A campaign
+    // that is simply the right move is not a road the player chooses, it is the
+    // game — and it would show up here long before anybody felt it at the table.
+    const s = sweep(healthy(), 30, healthyArm(), false, [
+      run('calm', { campaigns: 1, holdingsTaken: 1, warPawnDays: FLOOR }),
+      run('settler', { campaigns: 2, holdingsTaken: 1, warPawnDays: 40 }),
+      run('harsh', { campaigns: 1, holdingsTaken: 1, warPawnDays: 22 }),
+    ]);
+    expect(verdictOf(s, 'the-war-is-a-choice')).toBe('broken');
+    expect(detailOf(s, 'the-war-is-a-choice')).toContain('the war is not a choice');
+  });
+
+  it('breaks when the holdings are scenery', () => {
+    const s = sweep(healthy(), 30, healthyArm(), false, [run('calm'), run('settler')]);
+    expect(verdictOf(s, 'the-war-is-a-choice')).toBe('broken');
+    expect(detailOf(s, 'the-war-is-a-choice')).toContain('scenery');
+  });
+
+  it('leaves out the colony that never had the hands to go', () => {
+    // A five-settler colony that stayed home chose nothing — the sim would have
+    // refused it a war party. Counting it as a stay-at-home would let a grid of
+    // small colonies manufacture the choice the promise is looking for.
+    const s = sweep(healthy(), 30, healthyArm(), false, [
+      run('calm', { peakHands: ABLE - 1 }),
+      run('settler', { peakHands: ABLE, campaigns: 1, holdingsTaken: 1, warPawnDays: FLOOR }),
+    ]);
+    expect(verdictOf(s, 'the-war-is-a-choice')).toBe('untested');
+    expect(detailOf(s, 'the-war-is-a-choice')).toContain('a choice needs two colonies');
+  });
+
+  it('breaks when ground came cheaper than the walk to it', () => {
+    // The failure the pawn-day count exists for: a campaign that resolved on the
+    // tick it was ordered shows one campaign and one holding, exactly like a war
+    // that was fought. It cannot show the days.
+    const s = sweep(healthy(), 30, healthyArm(), false, [
+      run('calm'),
+      run('settler', { campaigns: 1, holdingsTaken: 1, warPawnDays: FLOOR - 1 }),
+      run('harsh', { campaigns: 1, holdingsTaken: 1, warPawnDays: FLOOR }),
+    ]);
+    expect(verdictOf(s, 'no-holding-falls-for-free')).toBe('broken');
+    expect(detailOf(s, 'no-holding-falls-for-free')).toContain('settler/1');
+  });
+
+  it('does not charge a war that was lost for ground it never took', () => {
+    // Two parties out, one holding home. The floor is a floor and not a window:
+    // the days the losing party spent are days, and a check that divided them
+    // into the ground taken and called the result generous would be reading a
+    // defeat as proof the war is too cheap.
+    const s = sweep(healthy(), 30, healthyArm(), false, [
+      run('calm'),
+      run('settler', { campaigns: 2, holdingsTaken: 1, warPawnDays: FLOOR * 2 }),
+    ]);
+    expect(verdictOf(s, 'no-holding-falls-for-free')).toBe('holds');
+  });
+
+  it('says untested rather than holds when no war was won', () => {
+    // Nothing to divide. A grid where every campaign came home empty has not
+    // shown that ground is expensive; it has shown that no ground changed hands.
+    const s = sweep(healthy(), 30, healthyArm(), false, [
+      run('calm'),
+      run('settler', { campaigns: 1, warPawnDays: 30 }),
+    ]);
+    expect(verdictOf(s, 'no-holding-falls-for-free')).toBe('untested');
+    expect(detailOf(s, 'no-holding-falls-for-free')).toContain('took a holding');
   });
 });
 

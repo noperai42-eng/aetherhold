@@ -25,7 +25,8 @@
 
 import { describe, expect, it } from 'vitest';
 
-import { CLEAN_PER_STEP, STANDING_BAND } from '../src/sim/events';
+import { STANDING_BAND } from '../src/sim/events';
+import { HOLDING_COUNT, holdingsOf } from '../src/sim/holdings';
 import { makePawn } from '../src/sim/pawn';
 import { RESEARCH, RESEARCH_ORDER } from '../src/sim/research';
 import { Rng } from '../src/sim/rng';
@@ -56,6 +57,20 @@ function road(world: World, id: string) {
 /** Finish `n` projects, whichever they are — the science road counts them, not which. */
 function projects(world: World, n: number): void {
   world.research.done = RESEARCH_ORDER.slice(0, n).slice();
+}
+
+/**
+ * Take `n` holdings — the warfare road counts ground and not which piece of it.
+ *
+ * Written straight onto the holding rather than by marching a war party, which is
+ * the same shortcut `projects` and `friends` take above and for the same reason:
+ * whether a campaign can be won is `holdings.test.ts`'s question, and what a road
+ * reads off a colony that has won one is this file's.
+ */
+function hold(world: World, n: number): void {
+  holdingsOf(world).forEach((h, i) => {
+    h.held = i < n;
+  });
 }
 
 /** Bring `n` places up to charter standing. */
@@ -161,12 +176,46 @@ describe('where the colony stands', () => {
     friends(world, NEIGHBOUR_COUNT);
     expect(road(world, 'economy').rung).toBe(ROAD_RUNGS);
 
-    // Warfare compounds by the storyteller's own patience, so each rung is the
-    // last one three times over rather than a hand-picked step.
-    world.stats.raidersKilled = STANDING_BAND * CLEAN_PER_STEP - 1;
+    // Warfare is measured in ground: the valley, once the colony has put a
+    // standing band down in it, and then one rung per holding out there. The
+    // boundaries are pieces of the map rather than a compounding kill count,
+    // which is what the road stopped being the day holdings shipped.
+    world.stats.raidersKilled = STANDING_BAND - 1;
+    expect(road(world, 'warfare').rung).toBe(0);
+    world.stats.raidersKilled = STANDING_BAND;
     expect(road(world, 'warfare').rung).toBe(1);
-    world.stats.raidersKilled = STANDING_BAND * CLEAN_PER_STEP;
+    // …and no number of corpses is a second rung. This is the assertion that
+    // fails if anybody ever puts the old compounding bar back: a colony can kill
+    // the Ashbound all sixty days without taking a step out of its own valley.
+    world.stats.raidersKilled = STANDING_BAND * 100;
+    expect(road(world, 'warfare').rung).toBe(1);
+    hold(world, 1);
     expect(road(world, 'warfare').rung).toBe(2);
+    hold(world, HOLDING_COUNT);
+    expect(road(world, 'warfare').rung).toBe(ROAD_RUNGS);
+  });
+
+  it('has exactly one warfare rung per piece of ground on the map', () => {
+    // The promise `roads.ts` makes in prose — `ROAD_RUNGS` and `1 + HOLDING_COUNT`
+    // are the same number — held to by a test, as that comment says it is. The
+    // ladder is built with `Array.from({length: 1 + HOLDING_COUNT})`, so a fourth
+    // ring would grow warfare past four rungs and the panel, which draws one shape
+    // for all three roads, would quietly stop drawing this one. It is the kind of
+    // mismatch that shows up as a missing bar rather than as an error.
+    expect(ROAD_RUNGS).toBe(1 + HOLDING_COUNT);
+  });
+
+  it('gives a rung for every holding and none for the ones still out there', () => {
+    const world = createWorld(SEED);
+    world.stats.raidersKilled = STANDING_BAND;
+    // One at a time, because the failure this catches is a ladder that counts
+    // *whether* the colony holds anything rather than how much — which reads
+    // identically at one holding and is wrong everywhere above it.
+    for (let taken = 0; taken <= HOLDING_COUNT; taken++) {
+      hold(world, taken);
+      expect(road(world, 'warfare').rung).toBe(1 + taken);
+      expect(road(world, 'warfare').at).toBe(1 + taken);
+    }
   });
 
   it('draws the bar across the leg being walked rather than the whole road', () => {
@@ -260,17 +309,24 @@ describe('a colony that has actually played', () => {
 
   it('reads the same rungs out of a save as it read before writing one', () => {
     const world = founded();
-    world.stats.raidersKilled = STANDING_BAND * CLEAN_PER_STEP;
+    world.stats.raidersKilled = STANDING_BAND;
+    hold(world, 1);
     friends(world, PER_RING);
     const before = roads(world);
     const r = deserialize(serialize(world, VIEW, 1, 1_700_000_000_000));
     expect(r.ok).toBe(true);
     if (!r.ok) return;
     const after = roads(r.save.world);
-    // Nothing about the roads is in the save file, which is exactly why this
-    // passes — and why it is worth a test. The day somebody caches a rung on the
-    // world to save recomputing three integers, this is what fails.
+    // Nothing about the roads themselves is in the save file, which is exactly why
+    // this passes — and why it is worth a test. The day somebody caches a rung on
+    // the world to save recomputing three integers, this is what fails.
+    //
+    // Warfare is the one that makes the test worth more than that now. Its rung is
+    // read off ground held, and holdings *are* saved, so this is also the assertion
+    // that a colony which took a holding still owns it after a reload. Losing the
+    // ground on load would read as a road that walked itself backwards.
     expect(after.map((r) => r.rung)).toEqual(before.map((r) => r.rung));
     expect(after.map((r) => r.count)).toEqual(before.map((r) => r.count));
+    expect(road(r.save.world, 'warfare').rung).toBe(2);
   });
 });

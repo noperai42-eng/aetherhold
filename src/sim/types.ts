@@ -505,6 +505,52 @@ export interface Caravan {
 }
 
 /**
+ * A place the Ashbound hold, out past a ring of neighbours.
+ *
+ * The other thing a map can be: not somewhere to sell to, somewhere somebody
+ * else is standing. One per ring — see `holdings.ts` for why every number on it
+ * is bought from a number the trade road already had.
+ */
+export interface Holding {
+  id: number;
+  name: string;
+  /** Which way out of the valley. Its own bearing, off the neighbours' compass quarters. */
+  bearing: number;
+  /** How deep, which is the whole of how far and how hard. */
+  ring: 0 | 1 | 2;
+  /** True once a war party has taken it and stayed. */
+  held: boolean;
+  takenTick?: number;
+  /** Tick the next tribute cart comes down off the moor. Set only while held. */
+  dueTick?: number;
+  /** Campaigns sent against it, which is what seeds the next one's dice. */
+  attempts: number;
+}
+
+/**
+ * The colony's army, for as long as it has one.
+ *
+ * At most one, ever. A colony that can field two war parties is a colony that
+ * has stopped being short-handed by sending one, which is the entire cost of the
+ * road. The pawns are lifted off the map for the duration, exactly like a
+ * caravan's traveller, so they save as plain data.
+ */
+export interface WarParty {
+  holdingId: number;
+  /** Filled at the treeline, one settler at a time, and emptied on the homecoming. */
+  pawns: Pawn[];
+  /** Where they walk off the map, and where they walk back on. */
+  x: number;
+  y: number;
+  /** Tick the muster expires, or the current leg ends. */
+  dueTick: number;
+  phase: 'mustering' | 'outbound' | 'inbound';
+  /** Set at the walls, read on the way in: what the colony gets told when they arrive. */
+  won?: boolean;
+  killed?: number;
+}
+
+/**
  * A reason to leave the yard.
  *
  * Everything a colony needs on day one is within ten cells of the door, so
@@ -603,6 +649,12 @@ export type JobKind =
   /** Walk to the edge of the map with a pack, and leave it. See `settlements.ts`. */
   | 'caravan'
   /**
+   * Walk to the edge of the map with a rifle and wait for the other two. Never
+   * planned by the colony — a war is the player's decision every time, which is
+   * why there is no work type to set a priority on. See `holdings.ts`.
+   */
+  | 'campaign'
+  /**
    * Go and stand there. The colony's own job picker never creates one — this is
    * the player's, the one command that needs no target worth working on, and the
    * reason a hand-driven settler can be sent somewhere without being drafted.
@@ -674,6 +726,8 @@ export interface Job {
   amount?: number;
   /** which neighbour a caravan job is walking to — see `settlements.ts` */
   settlementId?: number;
+  /** which holding a campaign job is mustering against — see `holdings.ts` */
+  holdingId?: number;
   /**
    * The cell a floor job is laying, and what it is laying there. Separate from
    * `tx`/`ty` because those follow the stage — first the woodpile, then the cell.
@@ -1587,6 +1641,19 @@ export interface World {
     rawGathered?: number;
     /** Trade parties that walked out to a neighbour and came home. Optional, as above. */
     caravans?: number;
+    /** War parties sent. Counted at the muster, because that is when the colony committed to it. */
+    campaigns?: number;
+    /** Holdings taken and kept. Optional, as above. */
+    holdingsTaken?: number;
+    /**
+     * Settler-days spent on campaign, booked in full the day the party forms up.
+     *
+     * The whole round trip rather than the days walked so far: the road home is
+     * not optional, and a count that accrued day by day would read a holding as
+     * free for the week between taking it and standing down — which is exactly
+     * the window `no-holding-falls-for-free` is watching.
+     */
+    warPawnDays?: number;
     /** Requests from over the ridge the colony actually answered. Optional, as above. */
     commissions?: number;
     /**
@@ -1739,6 +1806,16 @@ export interface World {
    * the next quiet day. See `commissions.ts`.
    */
   commission?: Commission | null;
+  /**
+   * The Ashbound holdings of this map, and which of them are the colony's.
+   *
+   * Lazily grown like `settlements`, off a stream of its own, so a save written
+   * before there was anything out there to take loads with the country already
+   * on it and every other number in it untouched. See `holdings.ts`.
+   */
+  holdings?: Holding[];
+  /** The war party in the field, or none. At most one, ever. */
+  war?: WarParty | null;
   /**
    * The Pickies currently out on an errand. See `pickies.ts`.
    *

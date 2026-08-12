@@ -1565,14 +1565,17 @@ nothing to switch on.
 |---|---|---|
 | **Science** | Schooled, Toolmakers, Foundrymen, Machinists | Build the ship, and leave on something you made |
 | **Economy** | Friend, Circuit, Reach, House | Buy the berths — somebody else's ship, your passage, paid for |
-| **Warfare** | Blooded, Defenders, Feared, Warlords | Take the ground; you never leave, you become the ones who launch |
+| **Warfare** | Blooded, Doorway, Marchers, Warlords | Take the ground; you never leave, you become the ones who launch |
 
 Science counts finished projects and steps at the joints of the tree — the founding's own
 six, the free tree done, the foundry branch, everything. Economy counts *places* that deal
 with you at charter standing rather than standing summed, so walking the same near
 neighbour twenty times gets you one friend and no further: the road asks for breadth, and
-the last rung is every town on the map. Warfare counts raiders put down, in bands, and each
-rung is three of the one below it.
+the last rung is every town on the map. Warfare counts **ground**: the valley is the first
+rung, earned by putting a band of Ashbound down at home, and every rung above it is a
+holding out on the moor that your people went and took. A colony can fight raiders in its
+yard for sixty days and stand on **Blooded** for all sixty — the road that ends in taking
+the world is walked by taking some of it.
 
 The endings themselves are not built yet — those are the last two stages in
 [ENDGAME.md](ENDGAME.md). What is built is the road, and two of the grid's principles exist
@@ -1586,6 +1589,48 @@ the hard ones the other — but economy stops at **Friend** on almost every map,
 founding needs one neighbour who takes your calls and nothing in the valley yet asks for a
 second. That is the ladder saying, correctly, that the road it measures is the one the game
 has not built.
+
+### The war road
+
+Behind each ring of neighbours sits a **holding** — a place the Ashbound hold, and the
+doorway the raids come through. There are three, one per ring, and they are on the same
+panel as the trade road: what is out there, what it is worth, who would go, and what is
+standing in it.
+
+Sending a war party is the most expensive thing a colony can do, and it is priced the way
+everything else here is priced — in people. **Three settlers go and four must stay**, so you
+need seven on their feet before the game will let anybody out of the gate, and it counts
+who is standing in the valley rather than who is on the books: a settler on the floor is not
+a settler holding a wall. The three walk to the treeline as an ordinary errand, and then
+they are gone — off the map for the whole round trip, which is the same walk a caravan takes
+to that ring. Six days to the near holding, twenty to the far one. Nothing can path to them,
+feed them or shoot them while they are away, and the colony works short-handed for every day
+of it.
+
+What is waiting is two men at the doorway, three a ring out, four at the far one — rolled at
+the difficulty you are playing and at whatever rung the Ashbound have escalated to, so a
+garrison gets harder as the rest of the game does. They shoot first, because your people are
+the ones crossing open ground, and that opening volley is most of what makes a holding a
+hard thing rather than a headcount. Rifles matter enormously; a party sent out with clubs is
+paying for the walk and coming home with nothing.
+
+Win and the ground is yours. It stays yours — the Ashbound do not come and take it back, in
+this cut — and a cart comes down off the moor on its own clock with steel on it: forty from
+the near holding every six days, eighty from the middle one every twelve, a hundred and
+twenty from the far one every twenty. About the same steel a day whichever it is. The far
+one is not richer; what the far one buys is the rung.
+
+Lose and your three come home wrecked and alive. **Nobody dies off-screen** — a settler
+killed by dice you could not watch, on a map you cannot look at, is not a story the game has
+any way to tell you, so a beaten party arrives at a quarter of their health, off whatever
+they were doing, hungry and exhausted and out of the rota for days. You can go back. The
+place remembers how many times you have tried it and does not deal you the same afternoon
+twice.
+
+There is one more bill, and it is quiet: a won campaign counts as a clean run on the same
+streak the storyteller uses to decide what comes over the treeline next. Taking ground makes
+the next raid worse. That is the price of the third road, and it is the only price that
+follows you home.
 
 ## Who your settlers are
 
@@ -2021,6 +2066,12 @@ that puts back what fire and raiders take off it.
 tier is bought with goods off the road as well as with points. Scouting
 parties that walk out to the edges of the map and come back with salvage. Caravans that
 turn a surplus back into a choice.
+
+**Getting out.** On the founding the goals panel turns into three roads out of the valley —
+science, economy and warfare, four rungs each, read straight off the colony. The warfare one
+counts ground: three holdings sit behind the rings, and taking one costs three settlers off
+the map for the whole round trip and pays a cart of steel on its own clock ever after. The
+endings those roads lead to are the part that is not built yet.
 
 **The frame.** A fixed twenty-tick second and a two-hundred-and-forty-second day. A
 day/night cycle that lights both views, an ambient bed that follows the weather and the

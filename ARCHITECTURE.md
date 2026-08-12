@@ -31,13 +31,14 @@ hands-on script, [ACCEPTANCE.md](ACCEPTANCE.md) is what has been checked and by 
 - [A window and a history are different lists](#a-window-and-a-history-are-different-lists)
 - [One flag cannot mean two endings](#one-flag-cannot-mean-two-endings)
 - [A ladder with nothing behind it](#a-ladder-with-nothing-behind-it)
+- [Three bodies in a place nothing expects one](#three-bodies-in-a-place-nothing-expects-one)
 - [A cable is not a footpath](#a-cable-is-not-a-footpath)
 - [Save / load](#save--load)
 - [Rendering notes](#rendering-notes)
 
 ## The source map
 
-Seventy-three files in `sim/`, and the order below is roughly the order a colony meets them:
+Seventy-five files in `sim/`, and the order below is roughly the order a colony meets them:
 the ground, then the people, then the work, then the weather, then the things that come out
 of the treeline.
 
@@ -114,6 +115,7 @@ src/
     objectives.ts      what to do next: the sticky curriculum behind the Goals panel
     victory.ts         the exam: five charters, the three days they hold, and no shutdown
     roads.ts           what comes after the exam: three ladders of four rungs, all derived
+    holdings.ts        the ground the Ashbound hold, and the three settlers sent to take it
     steward.ts         the colony's own foreman: restock, beds, fence, gate, grid, floors, cover
     tick.ts            stepWorld(): the one ordered tick
     save.ts            versioned envelope <-> localStorage
@@ -528,7 +530,7 @@ than two: `takeJob` skips both outright, so each is a guaranteed zero on top of 
 guaranteed one underneath. Leaving either in lets `bite`, `band` and `respite` push the upkeep
 column *down* on the setting that raids hardest.
 
-Four things about it are load-bearing:
+Five things about it are load-bearing:
 
 **Three checks are not gated, because they are what every other number is denominated in.** That
 Settler is bit-for-bit the game as it was written is asserted by running the same seed with the
@@ -570,9 +572,27 @@ ten minutes the real grid costs to play, and it earned its place immediately: it
 harsh costing 8 where Settler cost 7. That is the same game with worse luck, and the check now
 asks for half again as expensive.
 
+**A grid with nobody at the wheel cannot be asked a question about the player.** The grid plays
+`steward: false` on purpose — nobody manages the colony, and what it measures is the floor the sim
+clears alone — which is the right instrument for every errand the colony's own foreman eventually
+picks up. A campaign is not one of those. `types.ts` says so where the job kind is declared: never
+planned by the colony, a war is the player's decision every time. So when stage 4 shipped, the
+first sixty-day grid after it came back `campaigns 0` on all fifteen colonies, and the two war
+promises duly reported that the holdings were priced out and the war party was scenery. Both were
+false. An unmanaged grid cannot march, will never march, and the reading was of the instrument.
+The fix was *not* to hand the whole grid to the Steward — twenty-four of the twenty-six promises
+are calibrated against the unmanaged floor and would have started quietly measuring the Steward
+instead, with nothing on screen to say the baseline had moved. `sweepSpecs` now emits a second
+family, `kind: 'war'`: the same fifteen seed-and-setting colonies on the same clock, played with a
+Steward at the wheel, collected into `Sweep.war`, and read by those two promises and nothing else.
+The transferable half: **when a measurement comes back at exactly zero on every run, ask what would
+have had to happen for it to be non-zero, and check that the harness does that thing.** Fifteen
+colonies agreeing exactly is not a finding, it is a constant, and a constant is usually the
+instrument.
+
 ### Measured once, judged in milliseconds
 
-The grid is expensive and the checks are not. Playing twenty-four colonies costs tens of minutes;
+The grid is expensive and the checks are not. Playing thirty-nine colonies costs thirty-six minutes;
 scoring the result costs nine milliseconds. For as long as those two lived inside one command the
 whole cost was paid by anybody who wanted the cheap half — fix a threshold in a check, wait half an
 hour to see whether the fix was right — and a feedback loop with that shape gets run less often
@@ -625,24 +645,36 @@ waiting to drift. There is one definition now. `npm run measure -- --serial` pla
 through the same `runSpec` in one process, so if a parallel grid and a serial one ever disagree the
 argument is settled by running both rather than by reading the pool.
 
-What it bought: twenty-four colonies — 1,000 colony-days on the current sixty-day grid — in **1,556
-seconds** on eight workers of a ten-core box, against several hours for the same grid played one at
-a time. Do not call it a benchmark: the numbers were taken on a machine doing other work, and eight
+What it bought: twenty-four colonies — 1,000 colony-days on the sixty-day grid as it stood before
+the war family was added — in **1,556 seconds** on eight workers of a ten-core box, against several
+hours for the same grid played one at a time. The grid is thirty-nine colonies now and takes
+**2,176 seconds** — sixty-two per cent more colonies for forty per cent more wall-clock, which is
+the pool getting *better* as the list gets longer: more specs across the same eight workers means
+fewer workers standing idle while the last long colony finishes.
+
+Do not call it a benchmark: the numbers were taken on a machine doing other work, and eight
 workers buy something like three and a half times rather than eight for two reasons worth knowing.
 The colonies are wildly uneven — a calm map with fourteen threats in sixty days is a fraction of the
 work of a harsh one with forty-two, and the harsh colonies are also the ones that grow biggest — so
-the run ends when the *longest* colony ends, and twenty-four specs across eight workers is three
+the run ends when the *longest* colony ends, and thirty-nine specs across eight workers is five
 waves deep with a ragged edge on each. The fix for that is to start the long ones first, and it is
-not worth doing until the grid is long enough that the tail is the cost. The
-determinism claim was checked twice over: `tests/eval-pool.test.ts` plays a mixed list of grid and
+not worth doing until the grid is long enough that the tail is the cost — the twelve-day arm runs
+landing last on the most recent grid is exactly that cost, and it is still small.
+The determinism claim was checked twice over: `tests/eval-pool.test.ts` plays a mixed list of grid and
 arm specs through two workers and asserts the results are identical to playing them one at a time,
 and two independent parallel runs of the full grid, scheduled differently by a differently-loaded
 machine, produced the same numbers row for row.
 
 ### What the grid found
 
+**The current reading lives in [ACCEPTANCE.md](ACCEPTANCE.md), not here.** That file is rewritten
+every grid; this section is the story of what the grid *found* — the things nobody designed and
+would not have guessed — and its figures are the ones that were on screen when each finding was
+made. Counts below that disagree with ACCEPTANCE are older readings, not competing ones. The
+promise count in particular only goes up: twenty when this was written, twenty-six now.
+
 Sixty days, five seeds, three settings, seven multipliers, every run played past its founding.
-Twenty principles are scored; fifteen of them are enforced and all fifteen hold on measured
+Twenty principles were scored; fifteen of them are enforced and all fifteen held on measured
 evidence — trouble comes sooner (day 5.0 → 3.0 → 2.0), more often (15.0 → 29.2 → 42.2 threats), in
 bigger bands (4.0 → 6.8 → 8.8), better armed (31 % → 61 % → 84 % of raiders carrying a rifle),
 hitting harder (2.4 → 36.6 → 104.6 trips to a sick bed), nobody is wiped on the quiet valley,
@@ -1210,8 +1242,8 @@ The second half now has something in it, and the thing worth writing down is wha
 deliberately is not. It holds no state. There is no rung on the world, nothing in the save envelope,
 nothing to migrate, and a colony saved before the file existed reads its three rungs correctly the
 first time it is opened. Every tally is read off world the colony was already keeping — finished
-projects, standing with the neighbours, raiders put down — and the whole module is two pure functions
-over that.
+projects, standing with the neighbours, raiders put down and ground held — and the whole module is
+two pure functions over that.
 
 That was not the obvious build. The obvious build is a `roadProgress` record on the world that the
 tick advances, because that is how a progress bar usually works and because reading three tallies
@@ -1222,11 +1254,20 @@ bug with no natural place to be caught, and it survives a save.
 
 The rung boundaries are derived rather than picked. Science steps at `NEED_RESEARCH`, at the free
 tree finished, at the foundry branch, at the whole tree; economy at one place, `PER_RING`, two rings,
-`NEIGHBOUR_COUNT`; warfare at `STANDING_BAND` compounding by `CLEAN_PER_STEP`, which is the
-storyteller's own patience. Three of those constants had to be exported to make it possible, which is
+`NEIGHBOUR_COUNT`; warfare at `STANDING_BAND` — the standing band put down at home — and then one
+rung per holding taken. Three of those constants had to be exported to make it possible, which is
 a fair price: a ladder with hand-picked numbers in it is a fourth thing to balance, and it goes stale
 silently the first time the tree or the map grows. Grow the map to a fourth ring and the economy road
-lengthens on its own.
+lengthens on its own — and so does warfare, because `ROAD_RUNGS` and `1 + HOLDING_COUNT` are the same
+number by construction and `roads.test.ts` holds them to it.
+
+Warfare did not start there. It stepped at `STANDING_BAND` compounding by `CLEAN_PER_STEP` when this
+file shipped, which was the best available reading of *how much war has this colony done* in a game
+where war only ever happened in the yard. It stopped being the best reading the day there was
+somewhere to march to, and the tell was in the grid before the replacement was: warfare was the road
+that was **never behind**, on every seed, because raiders arrive whether or not the colony wants a
+war. A tally that rises without the player choosing anything is a difficulty readout wearing a
+ladder's clothes.
 
 The rung exists at all because the three tallies are in different units — projects, places, raiders —
 and no arithmetic across them means anything. The rung is the only comparable quantity the three
@@ -1256,6 +1297,48 @@ The panel is the founding's own panel. Once `hasWon`, `syncGoals` puts the three
 charter checklist was: same rows, same bar, same hint line, and the ending each road leads to on the
 row's hover. A player who learned to read that corner during the first act does not have to learn a
 second one for the second.
+
+## Three bodies in a place nothing expects one
+
+The trade road already taught this lesson once: a traveller is *genuinely gone* — out of `world.pawns`
+entirely, so nothing can path to them, feed them or shoot them — and that is both the cost the feature
+is built around and a settler in a place nothing else in the sim looks. `holdings.ts` does it three at
+a time, and adds the state the caravan never had: a party that is **half** off the map.
+
+A muster is three settlers walking to the treeline as ordinary jobs. Between the order and the
+departure, some of them are lifted and some are still crossing the yard, and every way that stretch can
+end badly is a way to strand the colony in a state nothing can read — a `campaign` job whose party no
+longer exists, a settler off the books with nobody to join, a war that is neither happening nor
+cancelled. So there is exactly one exit. `abandonMuster` cancels every campaign job first and then puts
+back everyone already lifted, and the four callers that can end a march early — a raid in the yard, a
+settler the player takes over, a road out that is blocked, a muster that has not filled inside a day —
+all go through it rather than each unwinding their own half. **One settler dropping out of a war party
+is the party**, which sounds like a design choice and is really a structural one: a party of two is a
+size no other rule in the file was written for.
+
+The fight itself is a pure function of the fighters and the dice, and the caller writes the outcome
+down. That split is what makes the assault testable at all — `storm` never touches the world, so the
+branches can be exercised without a colony around them — and it is also what keeps the escalation
+honest, because the one thing a win writes is `storyteller.unbloodied`, the streak the storyteller was
+already counting. Taking ground raises what comes over the treeline next, with no second dial to keep
+in step with the first.
+
+Two numbers in there are worth naming because they are the ones a reader would expect to be invented
+and are not. **A club counts for `club.range / rifle.range` of the exchange** — about an eighth. Off the
+map there are no cells, so the range difference that `combat.ts` settles by making a clubbing man spend
+the firefight walking has to be paid some other way, or three bodies would read as the equal of three
+rifles. It is not a guess about melee; it is the ratio of the two numbers the on-map fight is already
+using. **A beaten settler floors at a quarter of their health**, just above `combat.ts`'s downed line,
+which is the whole of the arithmetic behind *nobody dies off-screen*: the homecoming does not have to
+reproduce bleeding, rescue and a doctor's queue for bodies that were never on the map to be carried.
+A settler killed by dice the player could not watch is a story the game has no way to tell them.
+
+The bill is booked at the muster and not at the homecoming. The colony is short those three for the
+whole walk the moment it says go — the road back is not optional — and a count that waited for the
+return would read a holding as free for every day between taking it and standing down. That is the
+difference between `no-holding-falls-for-free` measuring what a holding cost and it measuring nothing,
+and it is the same reason the principle counts pawn-days instead of campaigns: a campaign that
+resolved on the tick it was ordered still reports one campaign and one holding.
 
 ## A cable is not a footpath
 

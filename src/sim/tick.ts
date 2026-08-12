@@ -52,6 +52,7 @@ import { tickTemperature } from './temperature';
 import { tickTrade } from './trade';
 import { tickVictory } from './victory';
 import { tickCaravan } from './settlements';
+import { tickWar } from './holdings';
 import { tickCommissions } from './commissions';
 import { tickTraps } from './traps';
 import { tickWeather } from './weather';
@@ -202,6 +203,12 @@ export function stepWorld(world: World, streams: Streams): void {
   // traveller who gets home this tick should be looking for work this tick and
   // not standing at the map edge for one.
   tickCaravan(world);
+  // The other party off the map, on the same beat and for the same reason: a war
+  // party that walks in this tick should be looking for work this tick. It is
+  // behind the caravan rather than in front of it because a homecoming drops
+  // goods on the ground and the tribute pass does too — one order, so two carts
+  // arriving on the same tick always land in the same order.
+  tickWar(world);
   // Immediately behind it, and that adjacency is a contract rather than a
   // preference: a deal struck on the road stamps the caravan with this tick, and
   // this is the pass that reads the stamp and settles the request it answered.

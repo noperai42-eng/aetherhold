@@ -22,9 +22,10 @@
  */
 
 import { DIFFICULTY_ORDER } from '../sim/difficulty';
+import { WAR_PARTY } from '../sim/holdings';
 import { RESEARCH, RESEARCH_ORDER } from '../sim/research';
 import { ROAD_IDS, ROAD_RUNGS } from '../sim/roads';
-import { roundTripDays } from '../sim/settlements';
+import { CAN_SPARE_ONE, roundTripDays } from '../sim/settlements';
 import { armedShareOf, avg, on, type RunMeasure, type Sweep } from './sweep';
 
 export type PrincipleVerdict = 'holds' | 'broken' | 'untested';
@@ -1588,6 +1589,135 @@ export const PRINCIPLES: Principle[] = [
             verdict: 'broken',
             detail: `${topped.length} road${topped.length === 1 ? '' : 's'} finished by day ${s.days}: ${topped.join(', ')}`,
           };
+    },
+  },
+  {
+    id: 'no-holding-falls-for-free',
+    claim:
+      'Ground is bought with people. A holding cost a war party the whole walk out and back, and ' +
+      'the colony worked short-handed for every day of it.',
+    // Stage 4's first promise, written before `holdings.ts` existed.
+    //
+    // The failure it guards is the one every game with a map on it eventually
+    // has: an army that is cheap to field and free to move, so taking ground
+    // becomes the thing the player does because there is nothing else to click.
+    // This colony's whole cost model is bodies — a caravan is expensive because
+    // the traveller is *genuinely gone*, and `CAN_SPARE_ONE` is the standing
+    // argument that four left behind is a colony that can still hold a wall — so
+    // a war party is charged the same way and harder: `WAR_PARTY` settlers, off
+    // the map, for the round trip to wherever the holding is.
+    //
+    // Counted in pawn-days rather than in campaigns, because campaigns are the
+    // number a bug would keep right. A campaign that resolved on the tick it was
+    // ordered, or one that lifted a single settler out and called them a war
+    // party, each show one campaign and one holding; neither shows
+    // `WAR_PARTY * roundTripDays(0)` pawn-days, which is the cheapest legal war
+    // in the game — the smallest legal party, walking to the nearest ring, and
+    // home again.
+    //
+    // A floor and not a window. A campaign that lost and walked home empty
+    // spends the same days and takes no ground, so a colony that lost two wars
+    // and won one reads three times the floor and is not in breach: the promise
+    // is that ground is never *cheaper* than the walk, not that every war was
+    // worth fighting. Whether it was is `the-war-is-a-choice`'s question.
+    //
+    // Read off `sweep.war` and not `sweep.runs`, like the other war promise and
+    // for the reason set out on `Sweep.war`: the grid plays with nobody at the
+    // wheel, and a campaign is the one errand nobody but a player ever orders.
+    enforced: false,
+    check: (s) => {
+      const played = s.war ?? [];
+      if (played.length === 0) {
+        return { verdict: 'untested', detail: 'no colony was played by a Steward on this grid' };
+      }
+      const took = played.filter((m) => (m.holdingsTaken ?? 0) > 0);
+      if (took.length === 0) {
+        return { verdict: 'untested', detail: `no run of ${played.length} took a holding` };
+      }
+      const floor = WAR_PARTY * roundTripDays(0);
+      const paid = took.map((m) => ({
+        m,
+        each: (m.warPawnDays ?? 0) / (m.holdingsTaken ?? 1),
+      }));
+      const cheap = paid.filter((p) => p.each < floor);
+      const thinnest = paid.reduce((a, b) => (b.each < a.each ? b : a));
+      return cheap.length === 0
+        ? {
+            verdict: 'holds',
+            detail:
+              `all ${took.length} runs that took ground paid at least ${floor.toFixed(1)} pawn-days ` +
+              `a holding; thinnest ${thinnest.m.difficulty}/${thinnest.m.seed} at ${thinnest.each.toFixed(1)}`,
+          }
+        : {
+            verdict: 'broken',
+            detail:
+              `${cheap.length} of ${took.length} runs took ground under the ${floor.toFixed(1)} pawn-day floor: ` +
+              cheap.map((p) => `${p.m.difficulty}/${p.m.seed} at ${p.each.toFixed(1)}`).join(', '),
+          };
+    },
+  },
+  {
+    id: 'the-war-is-a-choice',
+    claim:
+      'Warfare is a road a colony chooses to walk. Of the colonies with the hands to field a war ' +
+      'party, some went out and some stayed home.',
+    // Stage 4's other promise, and the one that decides whether the stage was
+    // worth building. It fails in both directions and that is the point:
+    //
+    // - **Nobody goes.** The war party is priced out of the game, the holdings
+    //   are scenery, and the warfare road is a ladder whose top three rungs
+    //   nothing can reach. This is `the-far-country-is-walked`'s failure — a
+    //   road built, opened, and never walked — and that one has been open for
+    //   four grids, so it is not a hypothetical.
+    // - **Everybody goes.** Worse, and quieter. A campaign that is simply the
+    //   right move makes warfare mandatory, and a road every colony walks is not
+    //   a road, it is the game. It would show up here long before a player felt
+    //   it, and it is exactly what `the-three-roads-are-three-roads` needs to be
+    //   false for the pairs to invert at all.
+    //
+    // The denominator is the colonies that *could*: `CAN_SPARE_ONE + WAR_PARTY`
+    // is the headcount the sim demands before it will let a party out of the
+    // gate, so a five-settler colony that never campaigned is not evidence of
+    // anything and is left out rather than counted as a stay-at-home. Peak
+    // rather than final headcount, because the choice was live on the day the
+    // colony was biggest, whatever the raid a fortnight later did to it.
+    // The colonies read here are `sweep.war` — the family with a player at the
+    // wheel. On the unmanaged grid this question has no answer to give: nothing
+    // in the sim ever orders a campaign, so every colony would read as having
+    // stayed home and the promise would report `broken` for ever while the game
+    // it describes was working. See `Sweep.war`.
+    enforced: false,
+    check: (s) => {
+      const played = s.war ?? [];
+      if (played.length === 0) {
+        return { verdict: 'untested', detail: 'no colony was played by a Steward on this grid' };
+      }
+      const able = played.filter((m) => (m.peakHands ?? 0) >= CAN_SPARE_ONE + WAR_PARTY);
+      if (able.length < 2) {
+        return {
+          verdict: 'untested',
+          detail:
+            `${able.length} of ${played.length} runs ever had ${CAN_SPARE_ONE + WAR_PARTY} hands; ` +
+            'a choice needs two colonies that had one',
+        };
+      }
+      const went = able.filter((m) => (m.campaigns ?? 0) > 0);
+      const where = `${went.length} of ${able.length} colonies with ${CAN_SPARE_ONE + WAR_PARTY}+ hands sent a war party`;
+      if (went.length === 0) {
+        return { verdict: 'broken', detail: `${where} — the holdings are scenery` };
+      }
+      if (went.length === able.length) {
+        return { verdict: 'broken', detail: `${where} — every one of them, so the war is not a choice` };
+      }
+      return {
+        verdict: 'holds',
+        detail:
+          `${where}; ${went.map((m) => `${m.difficulty}/${m.seed}×${m.campaigns}`).join(', ')} went, ` +
+          `${able
+            .filter((m) => !(m.campaigns ?? 0))
+            .map((m) => `${m.difficulty}/${m.seed}`)
+            .join(', ')} stayed home`,
+      };
     },
   },
 ];

@@ -630,8 +630,15 @@ export function mishapChance(s: Settlement, pawn: Pawn, world?: World): number {
   return Math.min(0.3, Math.max(0.01, raw));
 }
 
-/** Where the road out to this settlement leaves the map. */
-export function roadHead(world: World, s: Settlement, from: Pawn): { x: number; y: number } | null {
+/**
+ * Where the road out to somewhere leaves the map.
+ *
+ * Takes a bearing rather than a settlement, because that is all it has ever
+ * read: `holdings.ts` sends war parties out of the same valley on the same
+ * roads, and a second copy of this function for the second kind of destination
+ * would be two answers to "which way is out".
+ */
+export function roadHead(world: World, s: { bearing: number }, from: Pawn): { x: number; y: number } | null {
   const cx = world.width / 2;
   const cy = world.height / 2;
   const home = regionAt(world, Math.round(from.x), Math.round(from.y));
@@ -1135,9 +1142,16 @@ const SURPLUS: Record<ResourceKind, number> = {
   assemblies: 100000,
 };
 
-/** The most they will load, and the least worth walking for. */
+/**
+ * The most they will load, and the least worth walking for.
+ *
+ * `PACK_MIN` is exported because `holdings.ts` denominates tribute in it: what a
+ * holding sends down off the moor is "a pack worth, per ring", which keeps the
+ * war road's income on the same scale as the trade road's rather than on a
+ * number invented for it.
+ */
 const PACK_MAX = 150;
-const PACK_MIN = 40;
+export const PACK_MIN = 40;
 
 /**
  * The biggest pack any road on the board takes, before anybody has built a cart.

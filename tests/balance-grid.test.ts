@@ -123,9 +123,14 @@ describe.runIf(process.env.BALANCE)('the balance grid', () => {
       );
     }
 
+    // The two families are named separately because they answer different
+    // questions and a single total would hide which one is missing: a
+    // measurements file taken before the war family existed judges the same
+    // twenty-four promises and quietly declines the two war ones.
     console.log(
       `judging ${sweep.runs.length} colonies measured ${m.taken} in ` +
-        `${m.seconds.toFixed(0)}s${m.steward ? ', steward driving' : ''}\n`,
+        `${m.seconds.toFixed(0)}s${m.steward ? ', steward driving' : ''}` +
+        `${sweep.war?.length ? `, and ${sweep.war.length} of them again with a player at the wheel` : ''}\n`,
     );
     console.log(`${formatSweep(sweep)}`);
 

@@ -15,7 +15,8 @@
 import { CABIN, GARDEN } from '../sim/worldgen';
 import { canSow, canTill, growingCells } from '../sim/farming';
 import { buildingAt, dist, isWalkable } from '../sim/grid';
-import { missingResource } from '../sim/jobs';
+import { holdingsOf, planCampaign } from '../sim/holdings';
+import { missingResource, orderCampaign } from '../sim/jobs';
 import { PEN_CELLS_PER_HEAD, livestock, penCapacity, penCells } from '../sim/livestock';
 import { isPet } from '../sim/pets';
 import { DRAW, conducts, isProducer, isSource, powerNetworks } from '../sim/power';
@@ -95,6 +96,59 @@ export function stewardTick(world: World, tick: number): void {
   keepAColdStore(world);
   keepResearchGoing(world, colonists);
   dealWithCaravans(world, colonists.length);
+  marchOnAHolding(world);
+}
+
+// ---------------------------------------------------------------------------
+// The war road
+// ---------------------------------------------------------------------------
+
+/**
+ * Take ground, when the colony can plainly afford to.
+ *
+ * This is the one errand nothing in the sim plans on its own. Every other trip
+ * out of the valley has a work type behind it and a settler who eventually picks
+ * it up; a campaign is ordered or it does not happen, deliberately (see the
+ * `'campaign'` note in `types.ts`). So without these fifteen lines no colony on
+ * the balance grid would ever march, `no-holding-falls-for-free` would read
+ * `untested` for ever, and stage 4 would have shipped a road nothing walks —
+ * which is the exact failure `the-far-country-is-walked` has been open on for
+ * four grids and the reason that principle exists.
+ *
+ * The rule is a condition on the colony's own state and never on the seed, the
+ * setting or the day, because the differences between grid colonies have to come
+ * out of the world rather than out of the instrument. If every able colony went,
+ * a policy that said "go when you can" would be the reason and the grid would be
+ * measuring the Steward. What it says instead is *go when you can afford to*:
+ *
+ * - **Hands.** `planCampaign` asks for `CAN_SPARE_ONE + WAR_PARTY` on their feet,
+ *   which is the sim's rule and not this file's.
+ * - **A pantry.** `HIRE_FOOD_FLOOR` again, borrowed from the trade table above: a
+ *   colony that cannot afford to feed one more mouth cannot afford to lose three
+ *   pairs of hands for a fortnight. Reusing the number is the point — the two
+ *   decisions are the same judgement about how deep the larder is.
+ * - **Weapons.** A player does not send men with their fists at a garrison, and
+ *   the war has no reinforcements to send after them.
+ *
+ * Nearest ring first, and one holding at a time. `world.war` holding the only
+ * party means the second campaign cannot start until the first walks home, so a
+ * colony that takes all three has spent three round trips doing it.
+ */
+function marchOnAHolding(world: World): void {
+  if (world.war) return;
+  if (countResource(world, 'rawfood') + countResource(world, 'meal') * 2 < HIRE_FOOD_FLOOR) return;
+  for (const h of holdingsOf(world)) {
+    if (h.held) continue;
+    const plan = planCampaign(world, h.id);
+    if (!plan.ok) continue;
+    // Give up on the whole idea rather than trying the next holding along: the
+    // party is picked by how much use its members are in a fight and not by where
+    // it is going, so the three who would march on the moor are the same three
+    // who would march on the valley. Bare-handed here is bare-handed everywhere.
+    if (plan.party.some((p) => p.weapon === 'none')) return;
+    orderCampaign(world, h.id);
+    return;
+  }
 }
 
 // ---------------------------------------------------------------------------

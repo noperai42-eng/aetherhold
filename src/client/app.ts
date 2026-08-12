@@ -25,7 +25,7 @@ import { createWorld } from '../sim/worldgen';
 import { daylight, timeOfDay } from '../sim/clock';
 import { cloudiness, rainfall, windStrength } from '../sim/weather';
 import { findPawn, livingColonists, msg } from '../sim/world';
-import { orderCaravan } from '../sim/jobs';
+import { orderCampaign, orderCaravan } from '../sim/jobs';
 import { indoors } from '../sim/rooms';
 import { installDevtools } from './devtools';
 import { interact } from '../sim/interact';
@@ -137,6 +137,14 @@ export class App {
         // are already looking.
         const r = orderCaravan(this.world, pawn, settlementId, { kind, amount });
         if (!r.ok) msg(this.world, r.text, 'bad');
+      },
+      sendWarParty: (holdingId) => {
+        // Same shape as the caravan above and for the same reason: every refusal
+        // `planCampaign` can give is a sentence about something the player can
+        // fix — hands, a shut ring, raiders in the yard — and the log is where
+        // they are already reading.
+        const r = orderCampaign(this.world, holdingId);
+        msg(this.world, r.text, r.ok ? 'good' : 'bad');
       },
       cancelBuilding: (id) => this.cancelBuilding(id),
       switchView: () => this.toggleView(),

@@ -40,6 +40,7 @@ const WORKER = new URL('../.eval/build/worker.js', import.meta.url);
 
 const isGrid = (s: RunSpec): s is Extract<RunSpec, { kind: 'grid' }> => s.kind === 'grid';
 const isArm = (s: RunSpec): s is Extract<RunSpec, { kind: 'arm' }> => s.kind === 'arm';
+const isWar = (s: RunSpec): s is Extract<RunSpec, { kind: 'war' }> => s.kind === 'war';
 
 describe('the spec list the parallel grid plays', () => {
   it('is the same grid the sweep has always asked for', () => {
@@ -67,6 +68,34 @@ describe('the spec list the parallel grid plays', () => {
     const specs = sweepSpecs({ days: 60, seeds: [7], difficulties: ['harsh'] });
     const grid = specs.filter(isGrid);
     expect(grid).toEqual([{ kind: 'grid', seed: 7, days: 60, difficulty: 'harsh', steward: undefined }]);
+  });
+
+  it('plays the war family over the same colonies as the grid', () => {
+    // The two war promises are read off this family and nothing else, so a war
+    // list that quietly played fewer seeds — or a shorter clock — would leave
+    // them answering about a colony the rest of the grid never met. Same
+    // (setting, seed) pairs, same days, or the two families are not comparable
+    // and the one difference between them stops being the Steward.
+    const specs = sweepSpecs({ days: 30 });
+    const grid = specs.filter(isGrid);
+    const war = specs.filter(isWar);
+
+    expect(war.length).toBe(DIFFICULTY_ORDER.length * SWEEP_SEEDS.length);
+    expect(war.map((s) => `${s.difficulty}/${s.seed}/${s.days}`)).toEqual(
+      grid.map((s) => `${s.difficulty}/${s.seed}/${s.days}`),
+    );
+  });
+
+  it('never lets a war colony be played with nobody at the wheel', () => {
+    // The whole family exists because a campaign is the one errand the colony
+    // never plans for itself, so a war run without a Steward is not a cheaper
+    // war run — it is a grid run wearing the label, and the promises read off it
+    // would report the holdings as scenery for ever. The flag is deliberately
+    // not on the spec, and asking the sweep for an unmanaged grid must not be
+    // able to put it there.
+    for (const spec of sweepSpecs({ days: 2, steward: false }).filter(isWar)) {
+      expect(spec).not.toHaveProperty('steward');
+    }
   });
 });
 
@@ -115,6 +144,33 @@ describe('assembling a grid from results that came back out of order', () => {
     const sweep = assembleSweep({}, results);
     expect(sweep.arm.map((p) => p.dial)).toEqual(UPKEEP_DIALS);
     expect(sweep.arm[1]!.upkeepShare).toBe(0);
+  });
+
+  it('keeps the two families apart', () => {
+    // The grid is judged by twenty-four promises calibrated against a colony
+    // nobody manages. A war colony that leaked into `runs` would be a managed
+    // colony sitting in that floor's evidence, reading as a settler grid that
+    // had suddenly got better at everything — and the war family is the same
+    // seeds and settings, so it would look like the grid rather than like an
+    // intruder. Routed by kind, and checked rather than assumed.
+    const results: SpecResult[] = [
+      { spec: { kind: 'grid', seed: 1, days: 2, difficulty: 'settler' }, measure: measureAt(0.3) },
+      { spec: { kind: 'war', seed: 1, days: 2, difficulty: 'settler' }, measure: measureAt(0.9) },
+    ];
+    const sweep = assembleSweep({}, results);
+    expect(sweep.runs.map((r) => r.upkeepShare)).toEqual([0.3]);
+    expect(sweep.war.map((r) => r.upkeepShare)).toEqual([0.9]);
+  });
+
+  it('gives an empty war family rather than none at all', () => {
+    // What a narrowed ask and every measurements file taken before stage 4 both
+    // produce. The principles are written to answer `untested` on an empty
+    // family; they cannot do that if the field is missing and the judge throws
+    // on the way to asking.
+    const results: SpecResult[] = [
+      { spec: { kind: 'grid', seed: 1, days: 2, difficulty: 'settler' }, measure: measureAt(0.3) },
+    ];
+    expect(assembleSweep({}, results).war).toEqual([]);
   });
 
   it('leaves a dial off only when nothing was played for it', () => {

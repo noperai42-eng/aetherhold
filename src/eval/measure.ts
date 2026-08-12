@@ -16,6 +16,14 @@
  *
  * Defaults are the sweep's own — five seeds, three settings, thirty days — so
  * the bare command reproduces the grid the difficulty work was calibrated on.
+ *
+ * `--steward` is not the way to measure the war, and it is the flag most likely
+ * to be reached for by somebody who has just read a war promise come back
+ * `untested`. It hands the *whole* grid to the Steward, and twenty-four of the
+ * twenty-six promises are calibrated against a colony nobody manages — they would
+ * carry on printing verdicts against a baseline that had quietly moved. The two
+ * war promises read `Sweep.war`, a second family this script already plays with a
+ * Steward on every run, and the recorded command has never passed this flag.
  */
 
 import {
@@ -77,10 +85,11 @@ const opts: SweepOptions = {
   playPastFounding: process.argv.includes('--past-founding'),
 };
 
-const label = (s: RunSpec) =>
-  s.kind === 'grid'
-    ? `${s.difficulty} ${s.seed} ${s.days}d`
-    : `arm upkeep=${s.dial} ${s.seed} ${s.days}d`;
+const label = (s: RunSpec) => {
+  if (s.kind === 'grid') return `${s.difficulty} ${s.seed} ${s.days}d`;
+  if (s.kind === 'war') return `war ${s.difficulty} ${s.seed} ${s.days}d`;
+  return `arm upkeep=${s.dial} ${s.seed} ${s.days}d`;
+};
 
 const specs = sweepSpecs(opts);
 const started = Date.now();
