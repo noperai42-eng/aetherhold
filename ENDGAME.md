@@ -1176,6 +1176,72 @@ was found that way rather than by being bitten.
 **5 — The three endings.** Ship, passage, dominion. Each is a long and expensive
 terminal that reads one road's tally, and each writes a real ending.
 
+*Planned, not built. Expanded from two lines to a spec on 2026-08-11, once stages 3
+and 4 had put real numbers under it.* The three fictions are already fixed in
+[The three roads](#the-three-roads) and are not reopened here; what follows is the
+mechanism, and it is written down first because the mechanism is where an ending
+goes wrong.
+
+**An ending is a commitment, not a threshold.** The founding is the precedent and it
+is the right one: the tense part of it was never meeting the five charters, it was
+holding them together for three days while the valley tried to take one back.
+`victory.ts` rejected by name the version where a win lands on the tick a number
+ticks over — *"the most dramatic moment in the run is a number quietly ticking
+over"* — and an ending that fires when a rung is reached would be that same mistake
+one act later and three times over. So each ending is something the colony **commits
+to, pays for, and then has to survive**: it takes days, the colony still has to be a
+colony while it runs, and a colony that falls apart underneath it loses it.
+
+**The gate is the top rung of its own road**, which is what "reads one road's tally"
+means and why the ladders had to be derived rather than picked. The ship needs
+Machinists, the berths need House, dominion needs Warlords. When a fourth ring or a
+fourth tier grows a ladder, the gate moves with it and nobody edits a second file.
+
+**Three bills in three different units**, for the same reason there are three
+ladders at all — three endings that all cost steel would be one ending printed three
+times, which is the failure `the-three-roads-are-three-roads` was written to catch,
+one layer up:
+
+| Ending | What it costs | Why that unit |
+| --- | --- | --- |
+| **Ship** | Assemblies and steel, a large multiple of the third tier's own bill | The science road's currency is the top of the crafting chain. You leave on something you made, so you have to have made it. |
+| **Berths** | A very large sum handed *out* through the caravans, over many trips, priced at the `VALUE` table the quotes already use | The economy road's currency is trade, and the point of this ending is that somebody else built the ship. Paid, not built. There is no money in `ResourceKind` and this ending does not add one: `settlements.ts` already prices every good in one table, and the bill is a running total of what was given away at that price. |
+| **Dominion** | Nothing bought — every holding still yours after a long stretch of days | The warfare road's currency is ground, and ground is kept rather than spent. The bill is that nobody takes any of it back. |
+
+**What stage 5 cannot decide on its own: the clock.** The played sixty-day grid
+reaches warfare **rung 4 twice** (calm/1312 and settler/1312), science **rung 3** at
+best, and economy **rung 1**. Read against the gates above that says exactly one of
+the three endings is reachable inside the clock the grid currently runs, and the
+other two are not — so either the grid's clock grows, or two of the three roads have
+top rungs the game as it stands cannot deliver. Both answers are defensible and they
+cost different things: a hundred-and-twenty-day grid is twice 2,139 s every time
+anything under `src/sim` moves, and shortening a ladder to fit a clock is the
+fitted-bar mistake this file keeps rejecting by name. It is named here rather
+than settled in passing, because settling it in passing is how a balance document
+becomes a balance opinion.
+
+Three slices, in this order:
+
+- **5a — the terminal.** `endings.ts`: three endings, each gated on its road's top
+  rung, each with its bill and its days; commit, work, abandon. Two promises.
+  *No ending is free* — every ending that lands was paid for out of something the
+  colony had to go and get. *Every ending is reachable* — each of the three is
+  reached by somebody on the grid, which on the day it is written will be **broken**,
+  and that is the point of writing it: it is the clock question above, in a form the
+  instrument reports every run instead of a paragraph nobody re-reads.
+- **5b — the ending itself.** The record, the card, and the run's verdict. `gameOver`
+  is *not* the field this writes to — it means "nobody is left" and nine passes read
+  it that way, which is the bug `victory.ts` documents at length. An ending is its
+  own field, and `run.ts` learns a fourth verdict beside thriving, holding and
+  collapsed.
+- **5c — the manifest.** [The one thing to build now for the
+  sequel](#the-one-thing-to-build-now-for-the-sequel), which is cheap the moment 5b
+  exists and expensive to reconstruct afterward.
+
+The save needs no migration for any of it: `world.ending` is optional and the
+envelope serialises the world whole, so a colony saved today opens tomorrow with no
+ending in progress — which is the truth about it.
+
 ## The one thing to build now for the sequel
 
 If there is ever a second game that takes these colonists into space, the single
