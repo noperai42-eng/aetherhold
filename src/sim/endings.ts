@@ -64,9 +64,11 @@ import { RESEARCH, RESEARCH_ORDER } from './research';
 import { ROAD_IDS, ROAD_RUNGS, type RoadId, roadRungs } from './roads';
 import { VALUE } from './settlements';
 import {
+  SKILL_NAMES,
   TICKS_PER_DAY,
   type EndingRecord,
   type EndingState,
+  type ManifestEntry,
   type ResourceKind,
   type World,
 } from './types';
@@ -398,13 +400,72 @@ export function hasEnded(world: World): boolean {
   return world.ending !== undefined && world.ending.landed !== null;
 }
 
-/** The colony, frozen. Taken on the tick it lands and not a tick later. */
-function takeRecord(world: World): EndingRecord {
+/**
+ * The roll, by name, on the tick the ending landed.
+ *
+ * Everyone the colony still has a body for — the ones standing and the ones in
+ * the ground — because *who did not come* is half of what a manifest is for and
+ * the valley is where they stayed. Prisoners are not on it: they are their own
+ * faction and this is a list of the colony's people, not of everyone who was
+ * inside the wall that day.
+ *
+ * Bodies that rotted away before the ending are not on it either, and that is
+ * the one gap worth naming out loud. `world.pawns` drops a corpse nobody buried
+ * after `ROT_TICKS`, so a colony that lost somebody early and left them lying
+ * has no record of them here. The alternative is a second list kept from day
+ * one against the chance of an ending that most runs never reach, which is a
+ * cost every colony pays for a card two in fifteen ever see. A grave is how a
+ * colony remembers somebody, and this reads what the colony kept.
+ */
+function takeManifest(world: World, id: EndingId): ManifestEntry[] {
+  const leaving = id !== 'dominion';
+  return world.pawns
+    .filter((p) => p.faction === 'colony')
+    .map((p) => {
+      // The raw pairing rather than `partnerOf`, which drops a partner who is
+      // dead — see `ManifestEntry.partner`. Somebody boarding alone who did not
+      // arrive alone is the line this record exists to still have in fifty days.
+      const mate = world.partners?.[p.id];
+      const with_ = mate === undefined ? null : world.pawns.find((o) => o.id === mate);
+      return {
+        id: p.id,
+        name: p.name,
+        fate: p.dead ? 'lost' : leaving ? 'left' : 'held',
+        // Floored, because a level is what the game means by a level everywhere
+        // else — the inspector, the job gates, the message when somebody makes
+        // one. Writing 4.83 here would be recording the practice rather than the
+        // person, and it would put settlers on the roll at "cooking 0".
+        skills: SKILL_NAMES.map((skill) => ({ skill, level: Math.floor(p.skills[skill] ?? 0) }))
+          .filter((s) => s.level > 0)
+          .sort((a, b) => b.level - a.level),
+        traits: [...(p.traits ?? [])],
+        weapon: p.weapon,
+        apparel: p.apparel,
+        gear: p.gear,
+        hurt: p.maxHp > 0 ? Math.max(0, Math.min(1, 1 - p.hp / p.maxHp)) : 1,
+        partner: with_?.name ?? null,
+      } satisfies ManifestEntry;
+    });
+}
+
+/** The numbers, frozen. Taken on the tick it lands and not a tick later. */
+function takeTally(world: World): EndingRecord {
   return {
     day: dayNumber(world),
     standing: livingColonists(world).length,
     stats: { ...world.stats },
   };
+}
+
+/**
+ * The whole record: the numbers and the names.
+ *
+ * The ending's id is handed in rather than read off `world.ending`, because the
+ * caller already holds it and a default here would be a fourth ending nobody
+ * ever reaches — the manifest asks it whether these people left or stayed.
+ */
+function takeRecord(world: World, id: EndingId): EndingRecord {
+  return { ...takeTally(world), manifest: takeManifest(world, id) };
 }
 
 /**
@@ -414,11 +475,17 @@ function takeRecord(world: World): EndingRecord {
  * the ending landing and the record existing. Reading the world now is the only
  * honest answer available there — the moment was not kept, and the numbers on
  * that card are the numbers today. Everything since is the frozen tally.
+ *
+ * It is a **tally and no roll**, and the asymmetry is the point. A stale number
+ * is a number that has drifted; a roll read twenty days late is a different list
+ * of people, with settlers on it who walked in after the ship sailed and without
+ * the ones who were on board. There is no honest way to answer *who left* out of
+ * a world that has moved, so it does not answer.
  */
 export function endingRecord(world: World): EndingRecord | null {
   const st = world.ending;
   if (!st || st.landed === null) return null;
-  return st.record ?? takeRecord(world);
+  return st.record ?? takeTally(world);
 }
 
 /**
@@ -467,6 +534,6 @@ export function tickEndings(world: World): void {
   if (world.tick - st.since < ENDING_TICKS) return;
   if (bill.at < bill.of) return;
   st.landed = world.tick;
-  st.record = takeRecord(world);
+  st.record = takeRecord(world, st.id);
   msg(world, `${t.title}. ${t.blurb}`, 'good', { headline: true });
 }

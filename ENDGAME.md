@@ -1,14 +1,14 @@
 # The end game
 
-> Status: **stages 0 to 4 shipped, and 5a and 5b with them; 5c is still a plan.**
+> Status: **stage 5 is shipped whole — 5a, 5b and 5c.**
 > Written 2026-08-06 against the measurements in [ARCHITECTURE.md](ARCHITECTURE.md)
 > § *What the grid found*, revised 2026-08-08 against the sixty-day grid it asked
 > for, and again 2026-08-12 against the grid that first reached an ending. What is
 > in `src/` is the harness, the far country in rings, the third tier of the tree,
 > the three visible roads, the war road out to the holdings, the terminal at
 > the top of each road — commit, pay, land — and the ending itself: the record it
-> writes, the card it shows, and the fourth verdict the instrument reads it by. What
-> is not built is the *manifest*: who actually left, by name.
+> writes, the card it shows, the manifest of who was there by name, and the fourth
+> verdict the instrument reads it by.
 >
 > Numbers below come from two different grids and are labelled where they differ.
 > The forty-five-day and thirty-day figures are kept where they are the reason a
@@ -1291,15 +1291,29 @@ Three slices, in this order:
   **that road's own ending landed**, not when any ending did and not when one was merely
   committed to. That reads green now too: across fifteen colonies no run ended its clock
   on a top rung it had not walked off, and the furthest anybody got was rung four of four.
-- **5c — the manifest.** [The one thing to build now for the
-  sequel](#the-one-thing-to-build-now-for-the-sequel), which is cheap the moment 5b
-  exists and expensive to reconstruct afterward.
+- **5c — the manifest. Shipped.** [The one thing to build now for the
+  sequel](#the-one-thing-to-build-now-for-the-sequel), which was cheap the moment 5b
+  existed and expensive to reconstruct afterward. `EndingRecord.manifest` is written
+  on the landing tick beside the tally and frozen with it: everybody the colony still
+  had a body for, by name, with every skill they had a level in, their traits, what
+  they were carrying, how much of them was missing, and who they were paired with —
+  alive or buried. Three fates, `left` / `held` / `lost`, which is the only place the
+  record says which *kind* of ending this was about its people rather than about its
+  bill. It is deliberately complete rather than card-shaped; the card shows three
+  skills and `client/manifest.ts` is where that decision lives.
+
+  One gap, named rather than papered over: an unburied body leaves `world.pawns` at
+  `ROT_TICKS`, so a colony that lost somebody early and left them lying has no record
+  of them. The alternative is a second list kept from day one against the chance of an
+  ending most runs never reach — a cost every colony pays for a card two in fifteen
+  ever see. A grave is how a colony remembers somebody, and this reads what the colony
+  kept.
 
 The save needs no migration for any of it: `world.ending` is optional and the
 envelope serialises the world whole, so a colony saved today opens tomorrow with no
 ending in progress — which is the truth about it.
 
-## The one thing to build now for the sequel
+## The one thing to build now for the sequel — built
 
 If there is ever a second game that takes these colonists into space, the single
 piece worth building today is the **manifest**: when a colony reaches an ending,
@@ -1308,6 +1322,20 @@ whom, who is buried back in the valley and did not come.
 
 It is cheap to emit at stage 5 and expensive to reconstruct afterward from a save
 that never recorded it. Everything else about that game is that game's problem.
+
+**It is emitted.** `EndingRecord.manifest` in `src/sim/types.ts` is that list, written
+by `takeManifest` in `endings.ts` on the tick the ending lands and carried through
+`serialize`/`deserialize` unchanged — which is the only form of it that matters, since
+a sequel reads this out of a save file or it does not read it at all. Every entry
+carries the pawn's own `id`, so a second game can match a person to the save they came
+out of rather than to a name two settlers might share.
+
+The one decision worth restating here, because it is the one a later reader will want
+to undo: a record written before the manifest existed reports **a tally and no roll**,
+and `endingRecord` refuses to fill it in. A stale number is a number that has drifted;
+a roll read twenty days late is a *different list of people* — settlers on it who
+walked in after the ship sailed, and missing the ones who were on board. There is no
+honest way to answer *who left* out of a world that has moved, so it does not answer.
 
 ## Costs and risks, stated plainly
 

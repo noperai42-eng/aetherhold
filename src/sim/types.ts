@@ -575,9 +575,8 @@ export interface WarParty {
  * aliasing the live world again, so a test asserts the shape rather than a
  * comment asking nicely.
  *
- * This is also the hook `ENDGAME.md` names for the manifest — who left, and who
- * is buried back in the valley and did not come. That belongs beside the tally
- * and nowhere else, because it is true of the same instant.
+ * The `manifest` is the same instant told by name instead of by number, and it
+ * lives here rather than anywhere else for exactly that reason.
  */
 export interface EndingRecord {
   /** Day it landed, one-based, the way the log and the card count days. */
@@ -586,6 +585,73 @@ export interface EndingRecord {
   standing: number;
   /** The colony's whole tally, frozen. */
   stats: World['stats'];
+  /**
+   * Who the colony was, by name, on that tick. Optional because a save written
+   * between the record and the manifest has a tally and no roll, and the honest
+   * reading of that is *nobody wrote the names down* rather than a roll invented
+   * out of a world twenty days further on. See `ManifestEntry`.
+   */
+  manifest?: ManifestEntry[];
+}
+
+/**
+ * One person on the manifest, as they were on the tick the ending landed.
+ *
+ * `ENDGAME.md` asks for this and says why: if there is ever a second game that
+ * takes these colonists somewhere, the roll is cheap to write here and cannot be
+ * reconstructed later from a save that never kept it. So this is deliberately
+ * **complete rather than card-shaped** — every skill above zero, not the three
+ * the overlay has room for. What to show is the client's problem; what happened
+ * is this one's.
+ *
+ * Every field is a copied value. Nothing on here points at a `Pawn`, because a
+ * manifest holding live bodies would be the `EndingRecord` bug one level down:
+ * a card about the day the ship sailed, printing the wounds of a settler who was
+ * shot a fortnight later.
+ */
+export interface ManifestEntry {
+  /** Their id in the world that wrote this, so a sequel can match a save to it. */
+  id: number;
+  name: string;
+  /**
+   * What became of them.
+   *
+   * `left` and `held` are the same people under two different endings — the ship
+   * and the berths take the colony off the map, the dominion is the one you win
+   * by staying — and the distinction is worth keeping because it is the only
+   * place the record says which kind of ending this was about its people rather
+   * than about its bill.
+   *
+   * `lost` is everyone the colony buried and everyone it never got to bury. The
+   * manifest's question is who came, and a headstone is not the difference.
+   */
+  fate: 'left' | 'held' | 'lost';
+  /**
+   * Every skill they had a level in, best first. Ties keep table order.
+   *
+   * Whole levels, the way every other surface in the game reads a skill. The
+   * fractional progress towards the next one is a fact about a settler who is
+   * still working, and this is a list of people who have stopped.
+   */
+  skills: { skill: SkillName; level: number }[];
+  traits: TraitName[];
+  weapon: Pawn['weapon'];
+  apparel?: ApparelKind;
+  gear?: GearKind;
+  /**
+   * How much of them was missing: 0 whole, 1 gone. The dead are 1 by arithmetic
+   * rather than by a special case, which is the right kind of accident.
+   */
+  hurt: number;
+  /**
+   * The person they were paired with, by name, alive or buried.
+   *
+   * Deliberately not `partnerOf`, which answers *do they have somebody now* and
+   * so returns null for the one who is left. On a manifest that would erase the
+   * one line worth reading twice: somebody walking onto a ship alone who did not
+   * board it alone.
+   */
+  partner: string | null;
 }
 
 export interface EndingState {

@@ -1864,6 +1864,50 @@ body {
   border-radius: 3px;
 }
 
+/*
+ * The ending card's roll. One person per row: a name in the colony's own type,
+ * then their trade and then everything else, each on its own line and each
+ * dimmer than the one above it. The ordering is the point — a player scanning
+ * nine settlers is scanning names, and the detail is there for the two they
+ * stop on.
+ *
+ * Rows do not scroll on their own. The card already scrolls, and a list inside
+ * a scrolling card is the shape where a reader loses the buttons.
+ */
+.card .roll {
+  margin: 4px 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: 12px;
+}
+
+.card .roll li {
+  padding: 5px 0;
+  border-top: 1px solid var(--edge);
+}
+
+.card .roll li:first-child {
+  border-top: 0;
+}
+
+.card .roll b {
+  display: block;
+  color: var(--ink);
+}
+
+/* The trade takes the term colour the tally's `dt` column has, because it is
+   the same kind of thing: the number the row is actually about. */
+.card .roll .trade {
+  display: block;
+  font-family: var(--mono);
+  color: var(--edge-strong);
+}
+
+.card .roll .note {
+  display: block;
+  color: var(--dim);
+}
+
 .card .acts {
   display: flex;
   gap: 8px;

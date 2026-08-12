@@ -126,6 +126,7 @@ src/
     app.ts             fixed-timestep loop, mode switching, wiring
     pace.ts            how many ticks a frame owes: the accumulator, alone and testable
     overlays.ts        who has the hands while a card is up, alone and testable
+    manifest.ts        which parts of an ending's roll fit on a card, alone and testable
     devtools.ts        the console handles a developer needs and a player never sees
     input/input.ts     one keyboard/mouse listener set, shared by both modes
     input/touch-controls.ts  the same intents off a phone: sticks, taps, long-press
@@ -198,6 +199,15 @@ Two details are deliberate. The world **keeps ticking** behind the card — an e
 stopped the colony would contradict the promise the ending card makes — so the settler stands
 still while the day goes on around them. And the wipe card **refuses Escape**, because it is
 the one card with no colony behind it: the only move left is the one it offers.
+
+`client/manifest.ts` is the third module of that shape and the clearest case for it. The
+ending's roll is written by the sim to be **complete** — everybody the colony had a body for,
+every skill they had a level in, every trait — because it exists to be read by something that
+does not exist yet, and a record trimmed to fit today's card is a record that has to be
+regretted later. A card is the opposite: three skills, one soft line, two headings. That gap is
+a decision with an opinion in it, so it lives where `tests/manifest.test.ts` can hold it to
+something, and `hud.ts` gets the tags and the escaping and nothing else. The same architecture
+rule pins that half too.
 
 ### What a tick costs, and how to find out
 

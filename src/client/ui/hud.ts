@@ -6,7 +6,7 @@
  */
 
 import { BUILD_GROUPS, defOf, isBed } from '../../sim/buildings';
-import { SKILL_NAMES, WORK_TYPES } from '../../sim/types';
+import { SKILL_NAMES, WORK_TYPES, type EndingRecord } from '../../sim/types';
 import { clockString, dayNumber } from '../../sim/clock';
 import { DAYS_PER_SEASON, dayOfSeason, seasonLabel, seasonOf } from '../../sim/seasons';
 import {
@@ -44,6 +44,7 @@ import { animalSex, bodyScale, MATURE_TICKS, maturity } from '../../sim/livestoc
 import { ageOf, ANIMALS, lifeStage } from '../../sim/wildlife';
 import { isPet, keeperOf, PET_HEEL, petName, petOf } from '../../sim/pets';
 import { traitsOf } from '../../sim/traits';
+import { manifestSections } from '../manifest';
 import { courtedFor, partnerOf } from '../../sim/partners';
 import { bondLabel, bondsOf, FRIEND, RIVAL } from '../../sim/social';
 import { memoriesOf } from '../../sim/lifelog';
@@ -2727,7 +2728,11 @@ export class Hud {
       // seed is the only way to hand this exact valley to somebody else — or to
       // come back and take it on harder terms.
       `<dt>Valley</dt><dd>${escapeHtml(DIFFICULTIES[world.difficulty ?? 'settler'].label)}</dd>` +
-      `<dt>Seed</dt><dd>${world.seed}</dd></dl>`;
+      `<dt>Seed</dt><dd>${world.seed}</dd></dl>` +
+      // Under the numbers, because the numbers are the answer to *how did it go*
+      // and this is the answer to *who was it* — and a player who only wants the
+      // first one should not have to scroll past nine settlers to reach it.
+      (rec ? manifestHtml(rec) : '');
     const acts = el('div', 'acts');
     // First, and on anything but a wipe, because it is the one the player
     // actually wants: the charters are met, or the ship is away, and the reward
@@ -3310,6 +3315,34 @@ function colonyTime(ticks: number): string {
   if (minutes < 90) return `${minutes} minute${minutes === 1 ? '' : 's'}`;
   const hours = Math.round(minutes / 60);
   return `about ${hours} hours`;
+}
+
+/**
+ * The roll on the ending card. Headings and rows; who goes where is decided in
+ * `client/manifest.ts`, and this puts tags round the answer.
+ *
+ * A row with nothing to say past its name renders as its name, which is the
+ * honest shape for somebody who arrived last week: a card that filled the gap
+ * with *no trade to speak of* would be inventing a judgement the record does
+ * not make.
+ */
+function manifestHtml(rec: EndingRecord): string {
+  return manifestSections(rec)
+    .map(
+      (s) =>
+        `<h2>${escapeHtml(s.title)}</h2><ul class="roll">` +
+        s.lines
+          .map(
+            (l) =>
+              `<li><b>${escapeHtml(l.name)}</b>` +
+              (l.trade ? `<span class="trade">${escapeHtml(l.trade)}</span>` : '') +
+              (l.notes ? `<span class="note">${escapeHtml(l.notes)}</span>` : '') +
+              '</li>',
+          )
+          .join('') +
+        '</ul>',
+    )
+    .join('');
 }
 
 function escapeHtml(s: string): string {

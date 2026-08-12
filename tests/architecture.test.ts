@@ -136,6 +136,21 @@ describe('one simulation', () => {
     expect(text, 'the app never hands the pointer back').toContain('pointerMustBeFree');
   });
 
+  it('asks one module who goes on the ending card', () => {
+    // Same shape again: the record is complete and the card is not, and the
+    // decision about which parts of a settler a player actually reads lives in
+    // `client/manifest.ts` where `tests/manifest.test.ts` can hold it to
+    // something. The HUD is allowed the tags and the escaping and nothing else
+    // — the moment it starts slicing skills itself, the rule is back in a file
+    // no test can load.
+    const hud = under('src/client').find(([path]) => path.endsWith('ui/hud.ts'));
+    expect(hud, 'the hud has moved').toBeTruthy();
+    const [, text] = hud!;
+    expect(importsOf(text)).toContain('../manifest');
+    expect(text, 'the hud never renders the roll').toContain('manifestSections');
+    expect(text.includes('.manifest?.'), 'the hud reads the record itself').toBe(false);
+  });
+
   it('lets only one file know how fast the ground is', () => {
     // `terrainSpeed` is the bare table — the boards and the paving, with nothing
     // lying on them. `groundSpeed` is that table plus whatever the weather has

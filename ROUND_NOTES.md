@@ -4,6 +4,104 @@ One round, one measured gap, one fix. Newest first.
 
 ---
 
+## 2026-08-12 — The card knew how many, and not who
+
+**Track A.** Stage 5c, the last piece of the endgame plan.
+
+### The gap
+
+`ENDGAME.md` has carried the same paragraph since it was written, under a heading that says
+*the one thing to build now for the sequel*: when a colony reaches an ending, write out who
+left — names, skills, traits, gear, injuries, who was married to whom, who is buried back in
+the valley and did not come. **It is cheap to emit at stage 5 and expensive to reconstruct
+afterward from a save that never recorded it.**
+
+Nothing was emitting it. `EndingRecord` froze the day, the standing count and a copy of
+`world.stats` — how many settlers saw it through, and not one of their names. That is a
+one-way door and it was standing open: `world.pawns` drops an unburied corpse at `ROT_TICKS`,
+skills move every day the colony works, and a settler shot a fortnight after the ship sails
+looks in a save exactly like a settler who boarded wounded. A save written today and read by
+anything later can answer *eight* and can never answer *which eight*.
+
+### The fix
+
+`takeManifest` runs on the landing tick, beside the tally, and freezes with it.
+
+- `src/sim/types.ts` — `EndingRecord.manifest?: ManifestEntry[]`, **beside** `stats` and not
+  inside it, because a test pins that tally as a bag of numbers and a shallow copy is only
+  honest while it stays flat. `ManifestEntry` is every settler the colony still had a body for:
+  `id`, name, fate, every skill they had a level in, traits, weapon, apparel, gear, how much of
+  them was missing, and the partner they came here with.
+- `src/sim/endings.ts` — `takeRecord` split into `takeTally` and `takeManifest`. Three fates:
+  `left` (the ship and the berths take the colony off the map), `held` (the dominion is the one
+  you win by staying), `lost` (everyone the colony buried and everyone it never got to bury).
+  Skills are floored, because a level is what a level means everywhere else in the game and
+  `4.83` would put settlers on the roll at *cooking 0*.
+- **New** `src/client/manifest.ts` — the record is complete on purpose and a card is not, so
+  the trimming is a decision with an opinion in it: two headings, three skills, one soft line.
+  It returns rows rather than HTML; `hud.ts` gets the tags and the escaping and nothing else.
+  Its own module for the reason `pace.ts` and `overlays.ts` are theirs.
+- `src/client/ui/hud.ts` + `ui/style.css` — the roll under the final tally, name over trade
+  over notes, on a card that already scrolls.
+
+Two decisions worth naming because a later reader will want to undo them:
+
+**A record written before the manifest existed reports a tally and no roll, and
+`endingRecord` refuses to fill it in.** The fallback for a stale *number* is fine — a number
+has drifted. A roll read twenty days late is a *different list of people*: settlers on it who
+walked in after the ship sailed, missing the ones who were on board. There is no honest way to
+answer *who left* out of a world that has moved, so it does not answer.
+
+**The partner is read off `world.partners` raw, not through `partnerOf`.** That function
+answers *do they have somebody now* and so returns null for the one who is left — right for the
+inspector, wrong here. Somebody walking onto a ship alone who did not board it alone is the one
+line on this card worth reading twice.
+
+### Before / after
+
+- **PLAYTEST 9oo — "Read the roll"** (new, follows 9nn). Before: the ending card ended at
+  *Settlers lost: 2*. After: two headings and every name under them, and two checks that cost
+  something — a settler whose partner is buried, and a fortnight of play after the landing that
+  must not move a single row.
+- **`tests/endings.test.ts`** (+10, 24 → 34) — the roll holds the dead and drops the
+  prisoners; ship and moor file their people differently; a buried partner is still named;
+  whole levels only, best first; frozen on the landing tick; copies and not a window onto the
+  pawns; through a save and back; and a record written without a roll does not grow one.
+- **`tests/manifest.test.ts`** (new, 10) — what the card is allowed to say. The dead in their
+  own list under the living, the fate in the heading rather than in every row, three skills and
+  the rest left in the record, an empty line for somebody with no trade rather than an invented
+  judgement, wounds on the living and silence on the dead, and a trait a later build no longer
+  has costing that settler one word instead of the card.
+- **`tests/architecture.test.ts`** — one new rule, *"asks one module who goes on the ending
+  card"*: `hud.ts` imports `../manifest`, calls `manifestSections`, and never reads
+  `.manifest?.` itself.
+
+### Verified
+
+- `npx tsc --noEmit` — clean.
+- `npm test` — **95 of 97 files, 1,811 passed, 13 skipped**, 818.31 s. Twenty-one of those are
+  this round's, and the run was taken after the last edit and not beside it: an earlier pass was
+  killed mid-flight when the de-gendering sweep was still going, because a suite that predates a
+  line is not evidence about it.
+- `npm run build` — exit 0. 919.45 kB JS (263.04 kB gzip), 23.76 kB CSS (5.15 kB gzip). The
+  manifest cost **1.60 kB of JS and 0.35 kB of CSS**. Almost all of that JS is `endings.ts`: the
+  card's half is one `map` over rows, and the sim's half is the part that has to walk every pawn
+  and copy them.
+- Dual-view honesty: the sim half writes a plain-JSON list and imports nothing new; the client
+  half is a pure function over that list. Neither camera can show a different roll, because
+  there is one roll and it stopped moving on the tick it was written.
+
+### Next target
+
+- Track B, still unclaimed: **L5 Motion** is the layer with the widest gap between the two
+  cameras. A settler crossing the yard reads fine from above and reads as a slide from eye
+  level.
+- Still open from stage 5a: `every-ending-is-reachable` and `no-ending-is-free` have no unit
+  tests in `tests/balance-principles.test.ts`, while the three road promises and 5b's do.
+- The grid still only reaches one ending of three. That is a clock question as much as a
+  balance one — sixty days gets the tree to 17 projects of 19 — and growing it to ~120 is the
+  user's call, not a code change.
+
 ## 2026-08-12 — An overlay in first person was a trap
 
 **Track A.** No Track B this round; the measured gap was not visual mush.

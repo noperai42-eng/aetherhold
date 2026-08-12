@@ -70,6 +70,7 @@ run.
 [9ll. Commit to an ending](#9ll-commit-to-an-ending-20-minutes-at-speed-after-a-road-tops-out) ·
 [9mm. Land it, and keep playing](#9mm-land-it-and-keep-playing-3-minutes-once-a-countdown-runs-out) ·
 [9nn. Take a card in a body](#9nn-take-a-card-in-a-body-2-minutes) ·
+[9oo. Read the roll](#9oo-read-the-roll-4-minutes-on-the-card-from-9mm) ·
 [9m. Walk into the haze](#9m-walk-into-the-haze-2-minutes) ·
 [9n. Read the map in the corner](#9n-read-the-map-in-the-corner-2-minutes) ·
 [9aa. Walk to the rim](#9aa-walk-to-the-rim-5-minutes) ·
@@ -1614,6 +1615,41 @@ to go back to and the only move left is the one it offers.
 click any button with, W kept walking, and the only way out was a browser Escape that gave back
 a pointer and left the card exactly where it was. Pinned by `tests/overlays.test.ts` and the
 wiring rule in `tests/architecture.test.ts`.
+
+## 9oo. Read the roll (~4 minutes, on the card from 9mm)
+
+Same card, further down it. Under **Final tally** the ending card now names everybody, and the
+point of this step is that the names are the ones from the day it landed and not the ones alive
+today.
+
+**Expect** two headings, and only ever two. **Who left** — or **Who held it**, if the ending was
+the moor, because that is the one you win by staying. Then **Who stayed in the valley**, which
+is the dead: buried and unburied both, because the manifest's question is who came and a
+headstone is not the difference. Each row is a name, then their three best trades as whole
+levels, then one soft line with their traits, what they were carrying and wearing, who they were
+paired with, and a word about their wounds if they took any worth mentioning. A settler who
+arrived last week gets their name and nothing after it — that is right, not a gap.
+
+Then the two checks that actually cost something:
+
+**Somebody's partner is dead.** Get a pair — 9gg is how — and lose one of them before the ending
+lands. **Expect** the survivor's row to still read *with <name>*. The inspector will tell you
+that settler has nobody, and both are true: the inspector answers *do they have somebody now*
+and the manifest answers *who did they come here with*. Somebody walking onto a ship alone who
+did not board it alone is the one line on this card worth reading twice.
+
+**Play a fortnight past the landing and reopen the card.** Get somebody shot, let somebody make
+two levels, hand somebody a rifle. **Expect** none of it on the roll. This is 9mm's freeze one
+level down and it is the failure the whole record exists to stop: a card about the day the ship
+sailed printing the wounds of a settler who was shot two weeks later. Save and load in between
+and it should still be the same list — a sequel reads this out of a save file or not at all.
+
+One gap, named because it is deliberate rather than missed: somebody who died early and was
+never buried is not on the roll. Their body left the valley at `ROT_TICKS` and the record reads
+what the colony kept. Bury your dead and the manifest remembers them.
+
+Pinned by `tests/endings.test.ts` (the roll) and `tests/manifest.test.ts` (what the card does
+with it).
 
 ## 10. Save it, break it, load it
 

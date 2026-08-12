@@ -48,6 +48,7 @@ import {
 } from '../src/sim/endings';
 import { STANDING_BAND } from '../src/sim/events';
 import { holdingsOf } from '../src/sim/holdings';
+import { partnerOf } from '../src/sim/partners';
 import { makePawn } from '../src/sim/pawn';
 import { RESEARCH, RESEARCH_ORDER } from '../src/sim/research';
 import { Rng } from '../src/sim/rng';
@@ -55,7 +56,13 @@ import { ROAD_RUNGS, roadRungs } from '../src/sim/roads';
 import { deserialize, serialize } from '../src/sim/save';
 import { VALUE, settlementsOf } from '../src/sim/settlements';
 import { makeStreams, stepWorldN } from '../src/sim/tick';
-import { TICKS_PER_DAY, type ResourceKind, type World } from '../src/sim/types';
+import {
+  SKILL_NAMES,
+  TICKS_PER_DAY,
+  type ManifestEntry,
+  type ResourceKind,
+  type World,
+} from '../src/sim/types';
 import {
   HOLD_DAYS,
   HOLD_TICKS,
@@ -558,5 +565,192 @@ describe('a record of the day it landed', () => {
     for (const [key, value] of Object.entries(endingRecord(world)!.stats)) {
       expect(typeof value, `stats.${key} is not a number`).toBe('number');
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// the same instant told by name instead of by number
+// ---------------------------------------------------------------------------
+
+/** A colony one tick short of holding the moor, at the top of the warfare road. */
+function aboutToHold(): World {
+  const world = founded();
+  topOf(world, 'warfare');
+  commitEnding(world, 'dominion');
+  runTerminal(world, ENDING_TICKS);
+  return world;
+}
+
+/** The roll off a landed ending, which every test in this block starts with. */
+function rollOf(world: World): ManifestEntry[] {
+  const roll = endingRecord(world)?.manifest;
+  if (!roll) throw new Error('the ending landed without writing anybody down');
+  return roll;
+}
+
+/**
+ * Two settlers more than the charters ask for.
+ *
+ * The tests below take somebody off the colony's books on purpose — a burial,
+ * a captive — and the hearth charter is read live on the landing tick. Without
+ * the slack, half this block would be measuring a stalled ending rather than a
+ * manifest.
+ */
+function withSpares(world: World): World {
+  const rng = new Rng(7);
+  makePawn(world, rng, 'colony', 30, 30);
+  makePawn(world, rng, 'colony', 30, 30);
+  return world;
+}
+
+describe('a manifest of who was there', () => {
+  it('writes down everybody the colony still has a body for', () => {
+    const world = withSpares(aboutToSail());
+    // One in the ground before the ship sails. `who did not come` is half of
+    // what a manifest is for, so a roll that only lists the survivors is a list
+    // of who was lucky.
+    const buried = livingColonists(world)[0]!;
+    buried.dead = true;
+    buried.buried = true;
+    runTerminal(world, 20);
+
+    const roll = rollOf(world);
+    const mine = world.pawns.filter((p) => p.faction === 'colony');
+    expect(roll.map((m) => m.id).sort()).toEqual(mine.map((p) => p.id).sort());
+    expect(roll.some((m) => m.id === buried.id)).toBe(true);
+    expect(roll.length).toBeGreaterThan(livingColonists(world).length);
+  });
+
+  it('leaves the prisoners off it, because they are not the colony', () => {
+    const world = withSpares(aboutToSail());
+    // Inside the wall on the day the ship goes, and not one of the colony's
+    // people. A roll that counted them would be a list of everybody who was
+    // standing there rather than a list of who came.
+    const captive = livingColonists(world)[0]!;
+    captive.faction = 'prisoner';
+    runTerminal(world, 20);
+    expect(rollOf(world).some((m) => m.id === captive.id)).toBe(false);
+  });
+
+  it('files the ship as gone and the moor as held', () => {
+    const sailed = aboutToSail();
+    runTerminal(sailed, 20);
+    // The only place the record says which *kind* of ending this was about its
+    // people rather than about its bill: two of the three take the colony off
+    // the map and the third is the one you win by staying.
+    expect(new Set(rollOf(sailed).map((m) => m.fate))).toEqual(new Set(['left']));
+
+    const stayed = aboutToHold();
+    runTerminal(stayed, 20);
+    expect(new Set(rollOf(stayed).map((m) => m.fate))).toEqual(new Set(['held']));
+  });
+
+  it('names a partner who is buried, which `partnerOf` will not do', () => {
+    const world = withSpares(aboutToSail());
+    const [alone, gone] = livingColonists(world);
+    world.partners = { ...(world.partners ?? {}), [alone!.id]: gone!.id, [gone!.id]: alone!.id };
+    gone!.dead = true;
+    runTerminal(world, 20);
+
+    // `partnerOf` answers *do they have somebody now* and so returns null for
+    // the one who is left — right for the inspector, wrong here. Somebody
+    // walking onto a ship alone who did not board it alone is the line this
+    // record exists to still have in fifty days' time.
+    expect(partnerOf(world, alone!)).toBeNull();
+    expect(rollOf(world).find((m) => m.id === alone!.id)!.partner).toBe(gone!.name);
+  });
+
+  it('keeps whole levels, and only the trades they actually have one in', () => {
+    const world = aboutToSail();
+    const p = livingColonists(world)[0]!;
+    for (const skill of SKILL_NAMES) p.skills[skill] = 0;
+    // 4.9 is a settler at level four who is nearly five, and 0.4 is a settler
+    // who has picked up a hammer twice. The card reads the first as `4` and must
+    // not read the second as `cooking 0`.
+    p.skills.construction = 4.9;
+    p.skills.cooking = 0.4;
+    runTerminal(world, 20);
+
+    const mine = rollOf(world).find((m) => m.id === p.id)!;
+    expect(mine.skills).toEqual([{ skill: 'construction', level: 4 }]);
+  });
+
+  it('sorts each roll by what they were best at', () => {
+    const world = aboutToSail();
+    const p = livingColonists(world)[0]!;
+    for (const skill of SKILL_NAMES) p.skills[skill] = 0;
+    p.skills.cooking = 3;
+    p.skills.shooting = 9;
+    p.skills.medicine = 6;
+    runTerminal(world, 20);
+
+    // The card shows three of these and the record keeps all of them, so the
+    // order here is what decides which three a player ever sees.
+    expect(rollOf(world).find((m) => m.id === p.id)!.skills).toEqual([
+      { skill: 'shooting', level: 9 },
+      { skill: 'medicine', level: 6 },
+      { skill: 'cooking', level: 3 },
+    ]);
+  });
+
+  it('freezes the roll on the landing tick, the same as the tally', () => {
+    const world = aboutToSail();
+    runTerminal(world, 20);
+    const before = rollOf(world);
+    const p = livingColonists(world)[0]!;
+    const was = before.find((m) => m.id === p.id)!;
+
+    // A fortnight in the valley after the ship is away. The bug this guards is
+    // a card about the day the ship sailed printing the wounds of a settler who
+    // was shot two weeks later.
+    p.hp = 1;
+    p.skills.shooting = 20;
+    p.traits = [];
+    p.weapon = 'rifle';
+    world.tick += TICKS_PER_DAY * 14;
+
+    const after = rollOf(world).find((m) => m.id === p.id)!;
+    expect(after).toEqual(was);
+  });
+
+  it('holds copies and not a window onto the pawns', () => {
+    const world = aboutToSail();
+    runTerminal(world, 20);
+    const p = livingColonists(world)[0]!;
+    const mine = rollOf(world).find((m) => m.id === p.id)!;
+    const traits = [...mine.traits];
+    const skills = mine.skills.map((s) => ({ ...s }));
+
+    // The freeze above catches a record that is re-derived; this catches one
+    // that was taken on the right tick and then pointed at the live arrays. The
+    // two failures look identical on the card and are one `[...]` apart.
+    p.traits!.push('tough');
+    p.skills.shooting = (p.skills.shooting ?? 0) + 9;
+    expect(rollOf(world).find((m) => m.id === p.id)!.traits).toEqual(traits);
+    expect(rollOf(world).find((m) => m.id === p.id)!.skills).toEqual(skills);
+  });
+
+  it('carries the roll through a save and back', () => {
+    const world = aboutToSail();
+    runTerminal(world, 20);
+    const roll = rollOf(world);
+    const back = deserialize(serialize(world, VIEW, 1, 0));
+    if (!back.ok) throw new Error(`save refused: ${back.detail}`);
+    // A sequel reads this out of a save file or it does not read it at all, so
+    // the round trip is the only form of this record that matters.
+    expect(rollOf(back.save.world)).toEqual(roll);
+  });
+
+  it('does not invent a roll for a record that was written without one', () => {
+    const world = aboutToSail();
+    runTerminal(world, 20);
+    // A save from the stage between the tally and the manifest. The honest
+    // reading is *nobody wrote the names down* — a roll taken now would be a
+    // different list of people, with settlers on it who walked in after the
+    // ship sailed and without the ones who were on board.
+    delete world.ending!.record!.manifest;
+    world.tick += TICKS_PER_DAY * 20;
+    expect(endingRecord(world)!.manifest).toBeUndefined();
+    expect(endingRecord(world)!.standing).toBeGreaterThan(0);
   });
 });

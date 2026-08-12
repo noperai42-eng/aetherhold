@@ -1611,7 +1611,13 @@ next tick.
 
 Pay the bill, serve the days, and it **lands**: a headline, a card with the ending's name on
 it, and the tally of the run — how many days, how much built, and how many settlers saw it
-through. Then the game carries on. The ship leaving does not delete the valley, and whoever
+through. Under the numbers the card names them. **Who left**, or **who held it** if the ending
+was the moor, and then **who stayed in the valley** — the dead, buried and not, because the
+question a manifest asks is who *came* and a headstone is not the difference. Each row is a
+name, their three best trades, and one line of everything else: their traits, what they were
+carrying, who they were paired with. That last one is read off the pairing itself rather than
+off who is still alive, so somebody who walks onto a ship alone is on the card beside the name
+of the person they did not board with. Then the game carries on. The ship leaving does not delete the valley, and whoever
 stayed behind is still down there with winter coming, so an ending is something that happened
 to your colony rather than the end of it. That is also why the card is written down on the day
 it lands instead of read off the world when you open it: a week later those are two different

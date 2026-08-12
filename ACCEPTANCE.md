@@ -14,14 +14,40 @@ Four sections: [the killer feature](#the-killer-feature),
 and [what still wants a human](#what-still-wants-a-human) — which is the long one, and is
 ordered to match `PLAYTEST.md` rather than by importance.
 
-Last run — 2026-08-12. The suite and the build are the overlay round's, taken after a card over
-the world learned to take the body's controls with it. The grid is a fresh one, and it is the
-first that could read 5b's two promises — the one it wrote and the one it rewrote — so the two
-lines this section used to defer are now numbers rather than a promise to look later:
+Last run — 2026-08-12. The suite and the build are the manifest round's, taken after the ending
+card learned to say who was there and not only how many. The grid is the overlay round's and has
+not been re-run: nothing this round touched is measurable by it, because a manifest is written on
+the tick a run ends and every figure the grid reads is taken before that.
 
 - `npx tsc --noEmit` clean.
-- `npm test` — **94 of 96 files, 1,790 tests green**, 13 skipped, in 1,477.49 s. **Ten** of those
-  tests are new and they are the whole of the overlay rule. **Nine** are `tests/overlays.test.ts`,
+- `npm test` — **95 of 97 files, 1,811 tests green**, 13 skipped, in 818.31 s. **Twenty-one** of
+  those tests are new and they are the whole of stage 5c, split by what each half can be held to.
+  **Ten** are `tests/endings.test.ts`, on the roll as the sim writes it: that it holds everybody
+  the colony still had a body for and drops the prisoners, who are not the colony; that the ship
+  and the moor file their people under different fates; that a partner who is *buried* is still
+  named, which `partnerOf` will not do and which the test asserts by calling `partnerOf` beside it
+  and getting null; that the levels are whole and only the trades a settler actually has one in,
+  best first; that the roll freezes on the landing tick — the test plays twenty more days and
+  asserts not a row moved; that what it holds are copies and not a window onto the pawns; that it
+  survives a `serialize`/`deserialize` round trip, which is the only reason any of this was worth
+  writing; and that a record written before manifests existed **does not grow one**, because the
+  fallback that is right for a stale number is a lie about a list of people.
+  **Ten** more are `tests/manifest.test.ts`, a new file for what the card is allowed to say — its
+  own file for the reason `tests/overlays.test.ts` is: `hud.ts` cannot be loaded under
+  `environment: 'node'`, so a decision made in there is a comment and a decision made in
+  `client/manifest.ts` is a test. The dead go in their own list under the living; the fate is in
+  the heading rather than repeated down every row; three skills are shown and the fourth stays in
+  the record where a sequel can still read it; a settler with no trade gets an empty line rather
+  than an invented judgement; wounds are noted on the living and never on the dead, where they
+  would be a cause of death the record never claimed to know; and a trait a later build no longer
+  ships costs that settler one word instead of costing the card, which is the failure mode a roll
+  read out of an old save actually has.
+  The **twenty-first** is one new rule in `tests/architecture.test.ts`, pinning that `hud.ts`
+  *asks* `manifest.ts` rather than reading `.manifest?.` itself — the same half a refactor drops
+  silently, where the pure module keeps passing its own tests while the client goes back to its
+  own answer.
+  **Ten** more arrived one slice ago and they are the whole of the overlay rule. **Nine** are
+  `tests/overlays.test.ts`,
   a new file for a rule that is three functions long, because the alternative was a comment in
   `app.ts` that nothing can run: an overlay takes the body's controls and hands back the mouse.
   It is walked over **all sixteen** combinations of the four overlays rather than sampled, since
@@ -280,7 +306,10 @@ lines this section used to defer are now numbers rather than a promise to look l
   to move. The first hull to be committed to will take steel off the yard for twelve days and
   this paragraph will read differently, which is the point of writing down which of the two
   sentences this grid earned.
-- `npm run build` — 917.85 kB JS (262.44 kB gzip), 23.41 kB CSS (5.09 kB gzip). The overlay rule
+- `npm run build` — 919.45 kB JS (263.04 kB gzip), 23.76 kB CSS (5.15 kB gzip). The manifest cost
+  **1.60 kB of JS and 0.35 kB of CSS**, and nearly all of that JS is the sim's half rather than
+  the card's: `manifestSections` is one `map` over rows, while `takeManifest` walks every pawn and
+  copies them. The overlay rule, a slice ago,
   cost **1.26 kB of JS and nothing at all in CSS**, which is what a rule that only decides who
   reads the keyboard should cost. The far end
   cost **4.96 kB of JS and 0.34 kB of CSS**: the panel is the trade offers' own row again —
@@ -296,7 +325,10 @@ lines this section used to defer are now numbers rather than a promise to look l
   partly paid at the gate, and a quote that showed zero there would be offering a discount.
   Seeing it on screen is a manual step —
   [PLAYTEST.md](PLAYTEST.md) 9jj for the roads, 9kk for the war party, and 9ll for the far end —
-  and none of the three has been walked yet.
+  and none of the three has been walked yet. The same is true of the ending card's roll, one
+  layer up and one layer down: `manifestSections` is proved down to the last row, and the six
+  lines of `hud.ts` that turn those rows into `<li>`s are not, because nothing in the suite can
+  mount them. That is 9oo, and it has not been walked either.
 - Dev server on `5063`, play server on `5062` — and on the same port at this machine's
   LAN address, which is deliberately not written down here because it changes with the
   network and a stale IP in a document is worse than no IP.
@@ -391,6 +423,17 @@ rather than what it computes. Each is a numbered step in `PLAYTEST.md`:
   harder: **give it up** has no confirmation box, deliberately, because nothing it destroys is
   unrecoverable. Whether that reads as trust or as a trap is the sort of thing only a person who
   has just lost eleven days can report.
+- **§9nn** — land an ending while standing in a body. `tests/overlays.test.ts` proves the rule
+  over all sixteen states, but a rule about *who has the hands* is a feeling before it is a
+  boolean: whether the pointer coming back on the frame the card opens reads as the game letting
+  go, or as the game losing its grip, is not a thing sixteen assertions can say.
+- **§9oo** — read the roll. `tests/manifest.test.ts` pins what each row is allowed to say and
+  `tests/endings.test.ts` pins that it froze on the landing tick, and neither can answer the only
+  question the step asks: **does a list of names at the end make the forty days feel like they
+  happened to somebody?** The card is a tally with a roll under it, and if the roll reads as more
+  data rather than as an ending, the ordering is wrong and no test will ever say so. The check
+  worth doing twice is the quiet one — find a settler whose partner is buried and see whether
+  *with <name>* under a name on a ship lands the way it is meant to, or reads as a bug.
 - **§9m** — walk into the haze. Whether the edge of the known world reads as weather or as
   a missing chunk of the level is not a thing a test can be shown.
 - **§9n** — read the map in the corner. Whether one pixel a cell is legible, and whether
