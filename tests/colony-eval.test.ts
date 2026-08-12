@@ -9,7 +9,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { formatReport, runColony } from '../src/eval/run';
+import { formatReport, judge, runColony } from '../src/eval/run';
 import { stewardTick } from '../src/eval/steward';
 import { CABIN, createWorld } from '../src/sim/worldgen';
 import { makeStreams, stepWorld } from '../src/sim/tick';
@@ -203,5 +203,66 @@ describe('playing past the founding', () => {
     const on = runColony({ seed: SEEDS[0], days: 4, steward: false, playPastFounding: true });
     expect(on.foundedOn, 'four days should be far short of any founding').toBeNull();
     expect(on).toEqual(off);
+  });
+});
+
+/**
+ * The fourth verdict, and the order it has to be taken in.
+ *
+ * Same division as above: the colony that actually reaches a terminal is a
+ * forty-day run and the grid carries it — `an-ending-is-the-last-word` is the
+ * promise that reads it. What the gate can afford is the part that goes wrong by
+ * being rearranged, so `judge` is called directly on worlds built to have
+ * exactly one interesting fact each.
+ */
+describe('a run that reached the far end of a road', () => {
+  const landed = (id: 'ship' | 'berths' | 'dominion', day: number, tick: number) => {
+    const world = createWorld(1);
+    world.tick = tick;
+    world.ending = {
+      id,
+      committed: tick - TICKS_PER_DAY * 12,
+      since: tick - TICKS_PER_DAY * 12,
+      paid: {},
+      lastWorked: day - 1,
+      landed: tick,
+      record: { day, standing: 6, stats: { ...world.stats } },
+    };
+    return world;
+  };
+
+  it('is filed under its ending and named by it', () => {
+    const out = judge(landed('ship', 43, TICKS_PER_DAY * 43), [], 12, true);
+    expect(out.verdict).toBe('landed');
+    expect(out.summary).toContain('founded on day 12');
+    expect(out.summary).toContain('the ship on day 43');
+    expect(out.summary).toContain('6 still standing');
+  });
+
+  it('keeps its ending when the valley behind it is wiped out', () => {
+    // The ordering, stated as the case that breaks it. The ship sailed on day
+    // forty-three and everyone who stayed is dead by day sixty: `gameOver` is
+    // set, there is no snapshot to read, and the wipe branch below would take
+    // this run and file it beside the ones that never left the yard. The clause
+    // about the valley is not optional either — an instrument that swallowed a
+    // wipe to keep a nicer verdict would be lying in the other direction.
+    const world = landed('dominion', 43, TICKS_PER_DAY * 43);
+    world.gameOver = true;
+    const out = judge(world, [], 12, true);
+    expect(out.verdict).toBe('landed');
+    expect(out.summary).toContain('the dominion on day 43');
+    expect(out.summary).toContain('the valley was empty');
+  });
+
+  it('leaves a committed-but-unlanded terminal to be judged on its last day', () => {
+    // Committed and still paying when the clock ran out, which is not an ending
+    // — it is a colony in the middle of something, and how it is doing is still
+    // the question. `landed: null` is the whole difference and the only thing
+    // separating this world from the first one.
+    const world = landed('berths', 43, TICKS_PER_DAY * 43);
+    world.ending!.landed = null;
+    delete world.ending!.record;
+    world.gameOver = true;
+    expect(judge(world, [], 12, true).verdict).toBe('collapsed');
   });
 });

@@ -559,6 +559,35 @@ export interface WarParty {
  * a road slip out from under it stops the clock. See `endings.ts` for the whole
  * of the mechanism and for why none of this touches `gameOver`.
  */
+/**
+ * What the colony was on the day its ending landed.
+ *
+ * The run does not stop when a terminal lands. That is the choice, not an
+ * oversight — the ship leaves and the valley is still there with whoever stayed
+ * in it — and it means every number on the ending card would otherwise be read
+ * off a world that has moved on since. A colony that sailed on day forty-three
+ * and buried two people by day sixty must not be handed a card saying it lost
+ * two people getting out. So the tally is taken once, on the tick it lands, and
+ * never again.
+ *
+ * `stats` is a shallow copy, which is right exactly as long as the tally stays a
+ * bag of numbers. The day somebody nests an object in it this quietly starts
+ * aliasing the live world again, so a test asserts the shape rather than a
+ * comment asking nicely.
+ *
+ * This is also the hook `ENDGAME.md` names for the manifest — who left, and who
+ * is buried back in the valley and did not come. That belongs beside the tally
+ * and nowhere else, because it is true of the same instant.
+ */
+export interface EndingRecord {
+  /** Day it landed, one-based, the way the log and the card count days. */
+  day: number;
+  /** Settlers standing when it landed. */
+  standing: number;
+  /** The colony's whole tally, frozen. */
+  stats: World['stats'];
+}
+
 export interface EndingState {
   id: EndingId;
   /** Tick the colony committed. Kept for the record even after it lands. */
@@ -571,6 +600,12 @@ export interface EndingState {
   lastWorked: number | null;
   /** Tick it landed, or null. */
   landed: number | null;
+  /**
+   * The colony as it stood on that tick. Absent until it lands — and absent
+   * forever on a save written before the record existed, which reads as "no
+   * tally was kept" and is exactly what happened.
+   */
+  record?: EndingRecord;
 }
 
 /**

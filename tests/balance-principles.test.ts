@@ -1091,6 +1091,135 @@ describe('the balance principles, read against grids that are known wrong', () =
     expect(verdictOf(s, 'no-road-is-already-finished')).toBe('broken');
     expect(detailOf(s, 'no-road-is-already-finished')).toContain('settler/2 finished warfare');
   });
+
+  it('lets a colony off the top rung when it walked through the door behind it', () => {
+    // The half stage 5a added. A top rung used to be a dead end and standing on
+    // one was the whole failure; now there is a terminal behind it, and a colony
+    // that topped warfare and landed the dominion did not run out of road — it
+    // reached the end of one, which is where the road was always going.
+    const s = sweep(healthy(), 60, healthyArm(), true, [
+      run('calm', {
+        seed: 1,
+        daysLived: 60,
+        roadRungs: [1, 2, 4],
+        endingId: 'dominion',
+        endingCommittedOn: 30,
+        endingLandedOn: 45,
+        verdict: 'landed',
+      }),
+    ]);
+    expect(verdictOf(s, 'no-road-is-already-finished')).toBe('holds');
+  });
+
+  it('still counts a top rung whose own ending is not the one that landed', () => {
+    // Two roads topped and one ending, which is the case the exemption must not
+    // wave through wholesale: the ship is away, and the science road behind it
+    // is a ladder with a landing on the end — but economy is a top rung with the
+    // door still shut, and that is the original failure unchanged.
+    const s = sweep(healthy(), 60, healthyArm(), true, [
+      run('settler', {
+        seed: 2,
+        daysLived: 60,
+        roadRungs: [4, 4, 1],
+        endingId: 'ship',
+        endingCommittedOn: 20,
+        endingLandedOn: 40,
+        verdict: 'landed',
+      }),
+    ]);
+    expect(verdictOf(s, 'no-road-is-already-finished')).toBe('broken');
+    expect(detailOf(s, 'no-road-is-already-finished')).toContain('settler/2 finished economy');
+    expect(detailOf(s, 'no-road-is-already-finished')).not.toContain('finished science');
+  });
+
+  it('does not accept a commitment as a door walked through', () => {
+    // Committed on day fifty and still paying when the clock ran out. The colony
+    // spent its last days going somewhere, which is a nicer failure than
+    // standing still, and it is still a colony that finished the run with a road
+    // it had run out of. An ending is what it landed, not what it meant to.
+    const s = sweep(healthy(), 60, healthyArm(), true, [
+      run('harsh', {
+        seed: 3,
+        daysLived: 60,
+        roadRungs: [1, 1, 4],
+        endingId: 'dominion',
+        endingCommittedOn: 50,
+        endingLandedOn: null,
+      }),
+    ]);
+    expect(verdictOf(s, 'no-road-is-already-finished')).toBe('broken');
+    expect(detailOf(s, 'no-road-is-already-finished')).toContain('harsh/3 finished warfare');
+  });
+});
+
+/**
+ * Stage 5b's promise, and the three ways an ending can be lost on the way to the
+ * report: filed as something else, dated off the wrong day, or never read at all.
+ */
+describe('an ending that has to survive being written down', () => {
+  it('says nothing about a grid where nobody reached one', () => {
+    // Not `holds`. The check has no landed ending to read, and a promise about
+    // landed endings that reports green on a grid without any is the failure
+    // `untested` exists to name.
+    expect(verdictOf(sweep(healthy()), 'an-ending-is-the-last-word')).toBe('untested');
+  });
+
+  it('reads the verdict and the day together, and prints how long the valley ran on', () => {
+    const s = sweep(healthy(), 60, healthyArm(), true, [
+      run('calm', {
+        seed: 1,
+        daysLived: 60,
+        endingId: 'ship',
+        endingCommittedOn: 30,
+        endingLandedOn: 45,
+        verdict: 'landed',
+      }),
+    ]);
+    expect(verdictOf(s, 'an-ending-is-the-last-word')).toBe('holds');
+    // The number that says the harness is still playing past the ending. The day
+    // somebody makes it stop, this reads zero and the line says so on its own.
+    expect(detailOf(s, 'an-ending-is-the-last-word')).toContain('up to 15 days after');
+  });
+
+  it('catches a landed ending judged on the day the grid stopped instead', () => {
+    // The whole reason the fourth verdict exists: the ship sailed on day
+    // forty-five, the three who stayed went hungry, and the last snapshot is a
+    // colony under a day of food. Judged on that snapshot it reads `holding`,
+    // and the run that reached the far end of a road is filed beside the ones
+    // that never left the yard.
+    const s = sweep(healthy(), 60, healthyArm(), true, [
+      run('harsh', {
+        seed: 3,
+        daysLived: 60,
+        endingId: 'ship',
+        endingCommittedOn: 30,
+        endingLandedOn: 45,
+        verdict: 'holding',
+      }),
+    ]);
+    expect(verdictOf(s, 'an-ending-is-the-last-word')).toBe('broken');
+    expect(detailOf(s, 'an-ending-is-the-last-word')).toContain('harsh/3 filed as holding');
+  });
+
+  it('catches a record dated after the run it belongs to', () => {
+    // A day that cannot have happened. It is the shape a frozen record takes
+    // when it has quietly stopped being frozen — read off "now" on a world that
+    // moved on, or off a clock that is not the run's.
+    const s = sweep(healthy(), 60, healthyArm(), true, [
+      run('settler', {
+        seed: 2,
+        daysLived: 60,
+        endingId: 'berths',
+        endingCommittedOn: 40,
+        endingLandedOn: 61,
+        verdict: 'landed',
+      }),
+    ]);
+    expect(verdictOf(s, 'an-ending-is-the-last-word')).toBe('broken');
+    expect(detailOf(s, 'an-ending-is-the-last-word')).toContain(
+      'settler/2 landed on day 61 of a 60-day run',
+    );
+  });
 });
 
 /**

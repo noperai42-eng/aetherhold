@@ -86,6 +86,7 @@ import {
   type EndingProgress,
   endingOffer,
   endingProgress,
+  endingRecord,
   endingsOpen,
 } from '../../sim/endings';
 import { commissionDaysLeft, commissionOf, satisfies } from '../../sim/commissions';
@@ -420,11 +421,13 @@ export class Hud {
   private readonly overCard: HTMLElement;
   /**
    * Which ending has already had its card, so a founding is shown once and then
-   * gets out of the way. A colony can have both in one run — found the place on
-   * day thirty and lose it on day ninety — and the second one still deserves its
-   * card, so this is the ending that was shown rather than a boolean.
+   * gets out of the way. A colony can have all three in one run — found the
+   * place on day thirty, sail on day fifty, and lose what stayed behind on day
+   * ninety — and each still deserves its card, so this is the ending that was
+   * shown rather than a boolean. A terminal counts as its own id, because there
+   * is no run in which two of them land.
    */
-  private endingShown: 'none' | 'won' | 'lost' = 'none';
+  private endingShown: 'none' | 'won' | 'lost' | EndingId = 'none';
   private readonly cards: HTMLElement;
   /** The card stack's arithmetic. See `ui/toasts.ts`. */
   private readonly minimap: Minimap;
@@ -2626,27 +2629,38 @@ export class Hud {
   /**
    * Which ending card the world is owed, if any.
    *
-   * There are two endings now and only one of them stops the game: a wipe is
-   * final, a founding is a headline the colony carries on past. So this can't be
-   * the old `if (over) show(); else hide();` — that reopened the card on the very
-   * next frame after the player dismissed it, for the rest of the run. It shows
-   * each ending once, remembers which, and otherwise keeps its hands off an
-   * overlay the player has already closed.
+   * There are five endings now and only one of them stops the game: a wipe is
+   * final, a founding is a headline the colony carries on past, and a terminal
+   * is the far end of a road the valley outlives. So this can't be the old
+   * `if (over) show(); else hide();` — that reopened the card on the very next
+   * frame after the player dismissed it, for the rest of the run. It shows each
+   * ending once, remembers which, and otherwise keeps its hands off an overlay
+   * the player has already closed.
    *
-   * A colony can earn both in one run — founded on day thirty, overrun on day
-   * ninety — and the wipe still deserves its card, which is why this is the
-   * ending shown rather than a boolean.
+   * A colony can earn three in one run — founded on day thirty, sailed on day
+   * fifty, and whoever stayed overrun on day ninety — and each still deserves
+   * its card, which is why this is the ending shown rather than a boolean.
    */
   private syncEnding(world: World): void {
     if (world.gameOver) {
       if (this.endingShown === 'lost') return;
       this.endingShown = 'lost';
-      this.showEnding(world, false);
+      this.showEnding(world, 'lost');
+      return;
+    }
+    // Before the founding, because by the time a terminal lands the founding
+    // card has long since been shown and dismissed, and the terminal is the
+    // bigger news. Gated on the id rather than on `'none'` for the same reason:
+    // the state here is already `'won'` and will be for the rest of the run.
+    const end = world.ending;
+    if (end && end.landed !== null && this.endingShown !== end.id) {
+      this.endingShown = end.id;
+      this.showEnding(world, end.id);
       return;
     }
     if (hasWon(world) && this.endingShown === 'none') {
       this.endingShown = 'won';
-      this.showEnding(world, true);
+      this.showEnding(world, 'won');
     }
   }
 
@@ -2656,26 +2670,38 @@ export class Hud {
     this.overOverlay.classList.remove('on');
   }
 
-  private showEnding(world: World, won: boolean): void {
+  private showEnding(world: World, outcome: 'won' | 'lost' | EndingId): void {
     this.overOverlay.classList.add('on');
-    // The same card either way, because a run that ends in a founding deserves
+    // A terminal reads its tally off the record rather than off the world, and
+    // the other two off the world because for them there is no difference — a
+    // wipe stops the clock and a founding is shown on the tick it happens. A
+    // terminal is the one card the player can be looking at twenty days after
+    // the moment it is about. See `EndingRecord`.
+    const rec = outcome === 'won' || outcome === 'lost' ? null : endingRecord(world);
+    const stats = rec?.stats ?? world.stats;
+    // The same card every time, because a run that ends in a founding deserves
     // the same tally a run that ends in a wipe gets — it is the only place the
     // whole colony is summed up, and a win with no numbers behind it reads as an
     // achievement popup rather than an ending.
-    const head = won
-      ? `<h1>Aetherhold stands</h1><p>Every charter held for ${HOLD_DAYS} days. ` +
-        `The colony is founded — a place on the map with a name, a wall and friends over the ridge.</p>`
-      : `<h1>Aetherhold has fallen</h1><p>${escapeHtml(
-          world.messages.filter((m) => m.kind === 'bad').slice(-1)[0]?.text ?? 'The colony is gone.',
-        )}</p>`;
+    const term = rec ? endingProgress(world) : null;
+    const head = term
+      ? `<h1>${escapeHtml(term.title)}</h1><p>${escapeHtml(term.blurb)} ` +
+        `${rec!.standing} settler${rec!.standing === 1 ? '' : 's'} saw it through.</p>`
+      : outcome === 'won'
+        ? `<h1>Aetherhold stands</h1><p>Every charter held for ${HOLD_DAYS} days. ` +
+          `The colony is founded — a place on the map with a name, a wall and friends over the ridge.</p>`
+        : `<h1>Aetherhold has fallen</h1><p>${escapeHtml(
+            world.messages.filter((m) => m.kind === 'bad').slice(-1)[0]?.text ??
+              'The colony is gone.',
+          )}</p>`;
     this.overCard.innerHTML =
       head +
-      `<h2>Final tally</h2><dl><dt>Days survived</dt><dd>${dayNumber(world)}</dd>` +
-      `<dt>Structures built</dt><dd>${world.stats.built}</dd>` +
-      `<dt>Meals cooked</dt><dd>${world.stats.mealsCooked}</dd>` +
-      `<dt>Raiders killed</dt><dd>${world.stats.raidersKilled}</dd>` +
-      `<dt>Caravans returned</dt><dd>${world.stats.caravans ?? 0}</dd>` +
-      `<dt>Settlers lost</dt><dd>${world.stats.colonistsLost}</dd>` +
+      `<h2>Final tally</h2><dl><dt>Days survived</dt><dd>${rec?.day ?? dayNumber(world)}</dd>` +
+      `<dt>Structures built</dt><dd>${stats.built}</dd>` +
+      `<dt>Meals cooked</dt><dd>${stats.mealsCooked}</dd>` +
+      `<dt>Raiders killed</dt><dd>${stats.raidersKilled}</dd>` +
+      `<dt>Caravans returned</dt><dd>${stats.caravans ?? 0}</dd>` +
+      `<dt>Settlers lost</dt><dd>${stats.colonistsLost}</dd>` +
       // Named here and nowhere else, because this is the one moment a player
       // wants both: the difficulty says what the tally above was worth, and the
       // seed is the only way to hand this exact valley to somebody else — or to
@@ -2683,12 +2709,12 @@ export class Hud {
       `<dt>Valley</dt><dd>${escapeHtml(DIFFICULTIES[world.difficulty ?? 'settler'].label)}</dd>` +
       `<dt>Seed</dt><dd>${world.seed}</dd></dl>`;
     const acts = el('div', 'acts');
-    // First, and only on a win, because it is the one the founder actually
-    // wants: the charters are met, the walls are up, and the reward for all of
-    // that should not be a card that only offers to throw the place away. The
-    // colony is still running behind this overlay — dismissing it is the whole
-    // action.
-    if (won) {
+    // First, and on anything but a wipe, because it is the one the player
+    // actually wants: the charters are met, or the ship is away, and the reward
+    // for all of that should not be a card that only offers to throw the place
+    // away. The colony is still running behind this overlay — dismissing it is
+    // the whole action.
+    if (outcome !== 'lost') {
       const on = el('button', 'btn strong', {}, 'Keep playing') as HTMLButtonElement;
       on.onclick = () => this.overOverlay.classList.remove('on');
       acts.append(on);

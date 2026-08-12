@@ -1331,9 +1331,16 @@ words are *a colony that plays its whole clock has road left on all three*, and 
 when a top rung was a dead end. Calm/1312 and settler/1312 still trip it, and what they did next was
 commit to the dominion and land it — so a road it calls finished is a road with twelve days left on
 it that this check cannot see. The honest version reads *road left, or a terminal not yet landed*,
-and it needs the field the ending's verdict adds; until then the promise is left as it is rather than
-loosened, because a check that has stopped meaning what it says is easier to spot open and broken
-than quietly re-worded.
+and it needs the field the ending's verdict adds; until then the promise was left as it was rather
+than loosened, because a check that has stopped meaning what it says is easier to spot open and
+broken than quietly re-worded.
+
+That field now exists, and the rewrite is deliberately the narrow one. A top rung is forgiven only
+when **that road's own ending landed** — the ladders and the terminals are the same three in the
+same order, so the rung's index is the ending's index, and a colony that finished warfare and sailed
+the ship is still standing on a dead end. A *commitment* forgives nothing either; the door has to
+have been walked through. The exemption is worth three tests on its own for that reason: it is the
+kind of loosening that passes by accident if the index is dropped.
 
 Reading it on the grid costs one column and no new sampling. `runColony` already writes a daily row,
 so `roads: roadRungs(world)` rides along beside the columns that were there, the last row's copy
@@ -1407,7 +1414,35 @@ switched off — is written up two sections below. An ending is its own optional
 which also means no save migration: a colony saved before this file existed loads with `ending`
 undefined, and undefined is exactly *has not committed*.
 
-Two new promises read it on the grid, and both are `enforced: false` on the day they were written.
+**Landing does not stop the world, so the ending carries its own copy of it.** The ship leaves and
+the valley is still there with whoever stayed; the run plays its clock out either way. That was a
+choice, and the tidier alternative — break the loop the moment a terminal lands — is wrong for a
+reason that has nothing to do with fiction: every other promise on the grid filters on
+`daysLived >= days`, so a run that stopped on day forty-nine would drop out of
+`every-ending-is-reachable` on its way to being counted by it, and *1 of 3 reached* would quietly
+read *0 of 3* as a pure plumbing artefact. Playing on keeps the run in the sample and makes *landed,
+then wiped out* a case the instrument can see. The price is that a card drawn later would be
+describing a different colony wearing the same name, so `EndingRecord` is taken on the landing tick:
+the day, the settlers standing, and the whole `stats` tally copied out. It is the same argument as
+the hull's bill being paid by the day — the moment is the unit, and anything read off *now* instead
+is a different colony. A test asserts that copy is a bag of numbers rather than a comment asking
+nicely, because the day a nested object joins `stats` is the day the shallow copy starts aliasing
+without a single line of this file changing.
+
+The card and the run's verdict read the same record. `hud.ts` had two endings and now has five, and
+only one of them still stops the game: the terminal branch is taken **before** the founding's,
+because by the time a hull sails the founding card has long since been read and dismissed and the
+terminal is the bigger news, and it is gated on the ending's id rather than on *nothing shown yet*
+for the same reason — the state there is already `'won'` and will be for the rest of the run.
+`run.ts` learns a fourth verdict beside thriving, holding and collapsed. `landed` is the word the
+mechanism already uses, it covers all three terminals (two leave, one stays), and it is deliberately
+**not** a fourth grade of *how is it doing*: the other three are that question asked on the last day,
+and this one says the question stopped applying. That is why `judge` takes it first, and why a colony
+that sailed on day forty-three and was wiped out by day sixty is still reported as having sailed —
+with the empty valley named in the same sentence, because an instrument that swallowed the wipe to
+keep a nicer verdict would be lying in the other direction.
+
+Three promises read it on the grid, and all three are `enforced: false` on the day they were written.
 `no-ending-is-free` breaks if any ending landed in fewer than `ENDING_DAYS` days between commitment
 and landing — a floor rather than an equality, because the bill is the other half and a colony that
 cannot pay serves the days twice. `every-ending-is-reachable` requires that each of the three is
@@ -1415,7 +1450,12 @@ reached by somebody, and it is written knowing it fails: its job is to put the c
 sixty days enough to walk a road to its end and then hold it for twelve? — where the instrument
 reports it every run, instead of in a paragraph nobody re-reads. When an ending goes unreached it
 prints the best road rung anybody managed, so *finished the tree and ran out of days* is
-distinguishable from *never opened a foundry*.
+distinguishable from *never opened a foundry*. `an-ending-is-the-last-word` is the third, and it
+checks the reporting rather than the balance: every run that holds a record is filed as `landed`, and
+no ending landed on a day its run never reached. It is what would catch the fourth verdict being
+dropped, ordered behind the wipe branch, or read off a world that has moved on — and when it holds it
+prints how many days the colony played on after the landing, because that number is the entire reason
+the record is frozen rather than looked up.
 
 That last sentence earned its keep on the first grid. Two colonies of fifteen reached an ending and
 both reached the dominion — calm/1312 on days 37→49, settler/1312 on 47→59 — so the promise reads

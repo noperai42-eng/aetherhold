@@ -1260,6 +1260,34 @@ Three slices, in this order:
   it that way, which is the bug `victory.ts` documents at length. An ending is its
   own field, and `run.ts` learns a fourth verdict beside thriving, holding and
   collapsed.
+
+  *Shipped: `EndingRecord`, the terminal card, the `landed` verdict, and one promise
+  that reads them.* The decision that shaped the slice was whether the run **stops**
+  when an ending lands. It does not. Stopping is the tidier fiction — the ship leaves,
+  roll credits — but every other promise on the grid filters on `daysLived >= days`, so
+  a run that broke on day forty-nine would fall out of `every-ending-is-reachable` on
+  its way to being counted by it, and *1 of 3* would read *0 of 3* for reasons that are
+  entirely plumbing. The colony plays its clock out, which is what makes the frozen
+  record load-bearing: the card and the verdict describe the tick the ending landed on,
+  not a world that has moved eleven days past it. It also makes **landed, then wiped
+  out** a real case rather than an impossible one, and `judge` takes the ending first
+  and names the empty valley in the same sentence.
+
+  The verdict is `landed` — the word the mechanism already uses, covering all three
+  terminals, and deliberately not a fourth grade of *how is it doing*. The other three
+  are that question asked on the last day; this one says the question stopped applying.
+  The new promise, *an ending is the last word*, checks the reporting rather than the
+  balance: every run holding a record is filed as `landed`, no ending landed on a day
+  its run never reached, and when it holds it prints how long the colony played on
+  afterwards. It reads on the next sixty-day grid.
+
+  It also closed the bill 5a left open. *No road is already finished* had outlived its
+  own claim — calm/1312 and settler/1312 stood on a top rung it called a dead end and
+  then walked through the door behind it — and it was left open and red rather than
+  quietly re-worded, because until an ending had a verdict there was nothing to read.
+  Now there is, and the rewrite is the narrow one: a top rung is forgiven only when
+  **that road's own ending landed**, not when any ending did and not when one was merely
+  committed to.
 - **5c — the manifest.** [The one thing to build now for the
   sequel](#the-one-thing-to-build-now-for-the-sequel), which is cheap the moment 5b
   exists and expensive to reconstruct afterward.

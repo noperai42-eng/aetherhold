@@ -1547,7 +1547,7 @@ export const PRINCIPLES: Principle[] = [
     id: 'no-road-is-already-finished',
     claim:
       'The end game is where the game goes, not where it has been. A colony that plays its whole ' +
-      'clock has road left on all three.',
+      'clock has road left on all three — or walked through the door its top rung opened.',
     // The other half of stage 3, and the one that will fail first. A ladder is
     // only a ladder while somebody is still climbing it: the moment a sixty-day
     // colony stands on the top rung, that road has stopped being somewhere to go
@@ -1561,6 +1561,22 @@ export const PRINCIPLES: Principle[] = [
     // work. It exists because stages 4 and 5 are going to extend these ladders,
     // and the failure mode of extending a ladder is discovering afterwards that
     // the old top was reachable all along.
+    //
+    // Stage 5a is why the claim now has a second half, and the second half is
+    // not a softening. The original sentence was written when a top rung was a
+    // dead end — nothing was behind it, so a colony standing there had nowhere
+    // left to go and the promise was exactly right. Terminals put something
+    // behind it. Two colonies then topped warfare, committed, and landed the
+    // dominion, and the check called that a broken promise, which is the
+    // instrument reading the letter of a sentence whose subject had changed
+    // underneath it. What the promise was ever about is *somewhere to go*, and
+    // a top rung with a door behind it is somewhere to go; a top rung with the
+    // door still shut at the end of the clock is the failure it always was.
+    // The check was left visibly broken for one stage rather than re-worded in
+    // the same breath as the change that broke it, because a guard that has
+    // stopped meaning what it says is easier to spot open and red than quietly
+    // adjusted — and 5b is the stage that could tell the two cases apart,
+    // because until an ending had a verdict there was nothing to read.
     //
     // It should hold on the grid that ships it, and that is not a reason to
     // skip it. A guard that has never been read is a guard nobody knows the
@@ -1592,9 +1608,13 @@ export const PRINCIPLES: Principle[] = [
       const topped: string[] = [];
       for (const m of full) {
         for (let i = 0; i < ROAD_IDS.length; i++) {
-          if ((m.roadRungs?.[i] ?? 0) >= ROAD_RUNGS) {
-            topped.push(`${m.difficulty}/${m.seed} finished ${ROAD_IDS[i]}`);
-          }
+          if ((m.roadRungs?.[i] ?? 0) < ROAD_RUNGS) continue;
+          // The ladders and the terminals are the same three in the same order
+          // — `endings.ts` derives each gate from the road it belongs to — so
+          // the rung's index is the ending's index, and that is checked once by
+          // a test rather than trusted three times here.
+          const out = m.endingId === ENDING_IDS[i] && m.endingLandedOn !== null;
+          if (!out) topped.push(`${m.difficulty}/${m.seed} finished ${ROAD_IDS[i]}`);
         }
       }
       // The furthest anybody got, reported either way. On a holding grid it is
@@ -1606,12 +1626,14 @@ export const PRINCIPLES: Principle[] = [
         ? {
             verdict: 'holds',
             detail:
-              `no run of ${full.length} stood on a top rung; furthest anybody got was rung ` +
-              `${deepest} of ${ROAD_RUNGS}`,
+              `no run of ${full.length} ended the clock on a top rung it had not walked off; ` +
+              `furthest anybody got was rung ${deepest} of ${ROAD_RUNGS}`,
           }
         : {
             verdict: 'broken',
-            detail: `${topped.length} road${topped.length === 1 ? '' : 's'} finished by day ${s.days}: ${topped.join(', ')}`,
+            detail:
+              `${topped.length} road${topped.length === 1 ? '' : 's'} finished by day ${s.days} ` +
+              `with the ending still shut: ${topped.join(', ')}`,
           };
     },
   },
@@ -1730,6 +1752,70 @@ export const PRINCIPLES: Principle[] = [
                     `${m.difficulty}/${m.seed} ${m.endingId} in ${m.endingLandedOn! - m.endingCommittedOn!}`,
                 )
                 .join(', '),
+          };
+    },
+  },
+  {
+    id: 'an-ending-is-the-last-word',
+    claim:
+      'An ending is what happened to a colony, not something that happened to it. A run that ' +
+      'landed one is reported as having landed it, on the day it landed.',
+    // Stage 5b's promise, and it guards the mistake `judge` already documents
+    // itself against for the founding: an outcome that is true of the whole run
+    // being overwritten by whatever the last day happened to look like.
+    //
+    // The colony does not stop when its ending lands. That is deliberate — the
+    // grid's unit is the clock, every other principle here filters on `daysLived
+    // >= days`, and a harness that stopped the moment a terminal landed would
+    // quietly delete those runs from every promise that asks about a colony that
+    // went the distance. So a landed ending is followed by days that can look
+    // like anything: the ship leaves with six of nine and the three who stayed
+    // starve, and on the last day the snapshot is a colony out of food with
+    // somebody buried. Read off that day the verdict is `holding`, or with the
+    // valley emptied `collapsed`, and the run that reached the far end of a road
+    // is filed beside the ones that never left the yard.
+    //
+    // Which is why the verdict is taken from the record rather than the last
+    // snapshot, and why this reads both halves of that: the verdict says
+    // `landed`, and the day on the record is the day it landed rather than the
+    // day the grid stopped. The gap between them is printed pass or fail,
+    // because it is the number that says whether the harness is still playing
+    // past the ending — the day somebody makes it stop, that reads zero and this
+    // detail line says so without anybody having to remember why it mattered.
+    //
+    // `sweep.war` for the reason the other ending promises give at length: the
+    // unmanaged family does not walk roads, so it cannot reach a terminal, and a
+    // principle about landed endings read against a grid with none in it is a
+    // question about the harness.
+    enforced: false,
+    check: (s) => {
+      const landed = (s.war ?? []).filter((m) => m.endingLandedOn !== null);
+      if (landed.length === 0) {
+        return { verdict: 'untested', detail: 'no played run landed an ending' };
+      }
+      const misfiled = landed.filter((m) => m.verdict !== 'landed');
+      const impossible = landed.filter((m) => m.endingLandedOn! > m.daysLived);
+      const after = landed.map((m) => m.daysLived - m.endingLandedOn!);
+      const longest = Math.max(...after);
+      const wrong = [...misfiled, ...impossible];
+      return wrong.length === 0
+        ? {
+            verdict: 'holds',
+            detail:
+              `${landed.length} landed ending${landed.length === 1 ? '' : 's'}, all filed as ` +
+              `landed; the colony played on for up to ${longest} day${longest === 1 ? '' : 's'} after`,
+          }
+        : {
+            verdict: 'broken',
+            detail:
+              `${wrong.length} of ${landed.length} landed endings misreported: ` +
+              [
+                ...misfiled.map((m) => `${m.difficulty}/${m.seed} filed as ${m.verdict}`),
+                ...impossible.map(
+                  (m) =>
+                    `${m.difficulty}/${m.seed} landed on day ${m.endingLandedOn} of a ${m.daysLived}-day run`,
+                ),
+              ].join(', '),
           };
     },
   },

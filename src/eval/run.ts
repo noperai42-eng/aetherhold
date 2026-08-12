@@ -22,6 +22,7 @@ import {
   type World,
 } from '../sim/types';
 import { hasWon } from '../sim/victory';
+import { endingRecord, endingTitle } from '../sim/endings';
 import {
   PACK_CEILING,
   bestTalker,
@@ -235,7 +236,12 @@ export interface DaySnapshot {
   tradedWorth: number;
 }
 
-export type Verdict = 'thriving' | 'holding' | 'collapsed';
+/**
+ * `landed` is the fourth and it is not a fourth grade of "how is it doing" — the
+ * other three are that question asked on the last day, and this one says the
+ * question stopped applying. See `judge`.
+ */
+export type Verdict = 'thriving' | 'holding' | 'collapsed' | 'landed';
 
 export interface EvalReport {
   seed: number;
@@ -609,9 +615,27 @@ function snapshot(
 }
 
 /**
- * Three outcomes, because "did it survive" is too coarse to tune against:
+ * Four outcomes, because "did it survive" is too coarse to tune against:
  * a colony that ends the run whole and fed is thriving, one that buried
  * somebody or is out of food is holding, and one with nobody left collapsed.
+ *
+ * The fourth is an ending, and it is taken before any of them. Not because it
+ * is the best outcome — it is not a grade at all — but because the other three
+ * are the same question asked about the last day, and a colony that reached the
+ * far end of a road has an answer that the last day cannot overwrite. The run
+ * carries on after a terminal lands (see `EndingRecord` for why), so those
+ * remaining days can look like anything: the ship sails with six of nine and
+ * the three who stayed starve, and the last snapshot is a hungry colony with
+ * somebody buried in it. Judged on that snapshot the run reads `holding`, and
+ * the fact that it got out is gone from the report entirely. So the verdict is
+ * taken from the record, and the summary carries the wipe rather than losing
+ * it — what happened to the valley afterwards is worth a clause, not the whole
+ * line.
+ *
+ * Exported for the one test that pins that order. Everything else here is
+ * exercised by running a colony, but the run that produces a landed ending
+ * naturally is a forty-day one and the gate cannot afford one of those — and an
+ * ordering is exactly the kind of thing that gets quietly rearranged.
  *
  * A founding is worth two different verdicts depending on whether the run
  * stopped there. Stopped at, it *is* the outcome — checked first, or the best
@@ -623,19 +647,29 @@ function snapshot(
  * `hasWon` exactly as brightly as one that is thriving, and taking that answer
  * first would report the failure this stage exists to expose as a success.
  */
-function judge(
+export function judge(
   world: World,
   snapshots: DaySnapshot[],
   foundedOn: number | null,
   playedPast: boolean,
 ): { verdict: Verdict; summary: string } {
   const last = snapshots[snapshots.length - 1];
-  if (!playedPast && hasWon(world)) {
-    return { verdict: 'thriving', summary: `founded on day ${foundedOn ?? last?.day ?? 0}` };
-  }
   // Empty on every run that stopped at its founding, so every summary the grid
   // has ever printed is the string it was before.
   const founded = foundedOn === null ? '' : `founded on day ${foundedOn}, `;
+  const record = endingRecord(world);
+  if (record && world.ending) {
+    const after = world.gameOver ? `, and the valley was empty by day ${last?.day ?? record.day}` : '';
+    return {
+      verdict: 'landed',
+      summary:
+        `${founded}${endingTitle(world.ending.id).toLowerCase()} on day ${record.day}, ` +
+        `${record.standing} still standing${after}`,
+    };
+  }
+  if (!playedPast && hasWon(world)) {
+    return { verdict: 'thriving', summary: `founded on day ${foundedOn ?? last?.day ?? 0}` };
+  }
   if (!last || last.alive === 0 || world.gameOver) {
     return { verdict: 'collapsed', summary: `${founded}wiped out on day ${last?.day ?? 0}` };
   }

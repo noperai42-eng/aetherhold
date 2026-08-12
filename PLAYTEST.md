@@ -68,6 +68,7 @@ run.
 [9jj. Read the roads on the morning you are founded](#9jj-read-the-roads-on-the-morning-you-are-founded-3-minutes-after-a-founding) ·
 [9kk. Send a war party](#9kk-send-a-war-party-15-minutes-after-a-founding-on-a-colony-of-seven-or-more) ·
 [9ll. Commit to an ending](#9ll-commit-to-an-ending-20-minutes-at-speed-after-a-road-tops-out) ·
+[9mm. Land it, and keep playing](#9mm-land-it-and-keep-playing-3-minutes-once-a-countdown-runs-out) ·
 [9m. Walk into the haze](#9m-walk-into-the-haze-2-minutes) ·
 [9n. Read the map in the corner](#9n-read-the-map-in-the-corner-2-minutes) ·
 [9aa. Walk to the rim](#9aa-walk-to-the-rim-5-minutes) ·
@@ -1557,6 +1558,33 @@ Finally, save mid-commitment and reload the tab. **Expect:** the same ending, th
 left, and the same amount already paid. And one thing to check that is easy to miss: load a
 save made **before** any of this existed. It should open with no ending in progress and the
 Roads tab as it was — not with an error, and not with an ending you never chose.
+
+## 9mm. Land it, and keep playing (~3 minutes, once a countdown runs out)
+
+The step 9ll leads to, and the one that is easiest to get wrong by being tidy. Run a
+committed terminal to the end of its twelve days with its bill paid.
+
+**Expect,** on the tick it lands: a headline in the log naming the ending, and the ending card
+over the map — the terminal's own name and its line, then **N settlers saw it through**, then
+the final tally you already know from the founding card. Two things about that card are the
+whole point of this step. It is **not** the *Aetherhold has fallen* card wearing a new title;
+and its buttons are the ones a colony that is still standing gets, because the charters are met
+or the ship is away, and neither of those is a wipe.
+
+Now dismiss it and **keep going**. The game does not stop. That is deliberate and it is worth
+sitting with for a minute: the ship leaving does not delete the valley, and whoever stayed is
+still down there with winter coming. Run another week at speed and check the one thing that
+would be quietly wrong if the card were re-read instead of remembered — **the numbers on that
+card are the numbers from the day it landed.** Reopen it if the UI lets you. Days survived
+should still read the landing day, not today; the settler count should still be who was
+standing then, not who is standing now. Kill nobody and build nothing and you will see
+nothing; that is why the check is *after a week of playing*.
+
+Then the case that is easy to forget exists: **land an ending and then lose the colony.** Sail
+the ship and let the ones who stayed starve. **Expect** the ordinary wipe — the game does end,
+`gameOver` still means nobody is left — and the run's own record still says the ship sailed on
+the day it sailed. An ending and a wipe are two different facts about the same colony and it
+should be able to hold both.
 
 ## 10. Save it, break it, load it
 

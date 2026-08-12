@@ -45,19 +45,33 @@
  * labour. Three different day counts would be a fourth thing to balance and
  * would say nothing three different bills do not already say better.
  *
+ * **Landing takes a record and does not stop the world.** The colony goes on —
+ * the ship leaves and the valley is still there with whoever stayed — so the
+ * tally the ending is about is copied on the tick it lands rather than read
+ * later off a world that has moved on. See `EndingRecord`. It is the same
+ * argument as the bill being paid by the day: the moment is the unit, and
+ * anything read off "now" instead is a different colony wearing the same name.
+ *
  * **What this file does not touch: `world.gameOver`.** It means *nobody is
  * left*, nine passes read it that way, and `victory.ts` documents at length the
  * slice where a founding set it and the prize for winning was that the foreman
  * switched off. An ending is its own field.
  */
 
+import { dayNumber } from './clock';
 import { HOLDING_COUNT, heldCount } from './holdings';
 import { RESEARCH, RESEARCH_ORDER } from './research';
 import { ROAD_IDS, ROAD_RUNGS, type RoadId, roadRungs } from './roads';
 import { VALUE } from './settlements';
-import { TICKS_PER_DAY, type EndingState, type ResourceKind, type World } from './types';
+import {
+  TICKS_PER_DAY,
+  type EndingRecord,
+  type EndingState,
+  type ResourceKind,
+  type World,
+} from './types';
 import { HOLD_DAYS, charters } from './victory';
-import { msg, spendableResource, takeResource } from './world';
+import { livingColonists, msg, spendableResource, takeResource } from './world';
 
 export type EndingId = 'ship' | 'berths' | 'dominion';
 
@@ -210,6 +224,11 @@ export const ENDING_IDS: readonly EndingId[] = TERMINALS.map((t) => t.id);
 
 function terminalOf(id: EndingId): Terminal {
   return TERMINALS.find((t) => t.id === id)!;
+}
+
+/** What an ending is called, for a line of prose that is not a panel. */
+export function endingTitle(id: EndingId): string {
+  return terminalOf(id).title;
 }
 
 export interface EndingOffer {
@@ -379,6 +398,29 @@ export function hasEnded(world: World): boolean {
   return world.ending !== undefined && world.ending.landed !== null;
 }
 
+/** The colony, frozen. Taken on the tick it lands and not a tick later. */
+function takeRecord(world: World): EndingRecord {
+  return {
+    day: dayNumber(world),
+    standing: livingColonists(world).length,
+    stats: { ...world.stats },
+  };
+}
+
+/**
+ * The record of a landed ending, or null while there is nothing to record.
+ *
+ * The fallback is for one case and it is a narrow one: a save written between
+ * the ending landing and the record existing. Reading the world now is the only
+ * honest answer available there — the moment was not kept, and the numbers on
+ * that card are the numbers today. Everything since is the frozen tally.
+ */
+export function endingRecord(world: World): EndingRecord | null {
+  const st = world.ending;
+  if (!st || st.landed === null) return null;
+  return st.record ?? takeRecord(world);
+}
+
 /**
  * One check of the terminal, on the same once-a-second cadence as the exam.
  *
@@ -425,5 +467,6 @@ export function tickEndings(world: World): void {
   if (world.tick - st.since < ENDING_TICKS) return;
   if (bill.at < bill.of) return;
   st.landed = world.tick;
+  st.record = takeRecord(world);
   msg(world, `${t.title}. ${t.blurb}`, 'good', { headline: true });
 }

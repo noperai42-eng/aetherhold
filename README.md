@@ -1603,13 +1603,24 @@ there on the card with no confirmation box, because nothing it destroys is anyth
 confirmation would have saved: you lose the days you spent and you can commit again on the
 next tick.
 
-Two of the grid's principles keep the roads honest and two more keep the endings honest. The
+Pay the bill, serve the days, and it **lands**: a headline, a card with the ending's name on
+it, and the tally of the run — how many days, how much built, and how many settlers saw it
+through. Then the game carries on. The ship leaving does not delete the valley, and whoever
+stayed behind is still down there with winter coming, so an ending is something that happened
+to your colony rather than the end of it. That is also why the card is written down on the day
+it lands instead of read off the world when you open it: a week later those are two different
+colonies wearing the same name. You can land an ending and lose the colony afterwards, and the
+game will tell you both things.
+
+Two of the grid's principles keep the roads honest and three more keep the endings honest. The
 roads have to *disagree* somewhere across a grid of colonies, or they are one number printed
 three times; no colony playing its whole clock should stand on a top rung with nowhere left
-to go; every ending that lands must have been committed to and survived; and each of the
-three has to be reachable by somebody.
+to go — unless it walked out of the door that rung opened; every ending that lands must have
+been committed to and survived; each of the three has to be reachable by somebody; and an
+ending that landed has to be **reported** as one, on the day it landed.
 
-Three of those four are currently broken, and the fourth holds thinly — which is the useful
+The fifth is new and the second was just rewritten, so the next grid is what says where those
+two stand. Of the three that have been read, two are broken and one holds thinly — which is the useful
 part, because it says exactly where the game is thin. Across sixty days a colony walks a fair
 way up science or warfare, but economy stops at **Friend** on almost every map: the founding
 needs one neighbour who takes your calls and nothing in the valley yet asks for a second.
@@ -2102,8 +2113,10 @@ science, economy and warfare, four rungs each, read straight off the colony. The
 counts ground: three holdings sit behind the rings, and taking one costs three settlers off
 the map for the whole round trip and pays a cart of steel on its own clock ever after. Reach
 a road's top rung and its ending opens: commit to it, pay a bill in that road's own currency,
-and hold the colony together for twelve days. What is still missing is what happens on the
-day one lands — the record it writes and the card it shows.
+and hold the colony together for twelve days. Land it and the run is written down — the day,
+who was standing, the whole tally — and then the colony carries on without you, because the
+ship leaving is not the same thing as the valley being empty. What is still missing is the
+**manifest**: who actually left, by name.
 
 **The frame.** A fixed twenty-tick second and a two-hundred-and-forty-second day. A
 day/night cycle that lights both views, an ambient bed that follows the weather and the

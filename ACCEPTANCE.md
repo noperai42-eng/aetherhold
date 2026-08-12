@@ -14,12 +14,40 @@ Four sections: [the killer feature](#the-killer-feature),
 and [what still wants a human](#what-still-wants-a-human) — which is the long one, and is
 ordered to match `PLAYTEST.md` rather than by importance.
 
-Last run — 2026-08-12, the grid that put an ending at the top of each road and found that only
-one of the three is standing anywhere a colony can reach:
+Last run — 2026-08-12. The suite and the build are stage 5b's, taken after the ending learned to
+write itself down; the grid below is still the one that put an ending at the top of each road and
+found that only one of the three is standing anywhere a colony can reach. The new promise and the
+rewritten one read on the next grid, and this section says so rather than quoting numbers that
+predate them:
 
 - `npx tsc --noEmit` clean.
-- `npm test` — **93 of 95 files, 1,765 tests green**, 13 skipped, in 796.30 s. Nineteen of
-  those tests are new and all nineteen are `tests/endings.test.ts`, the whole of stage 5a. They
+- `npm test` — **93 of 95 files, 1,780 tests green**, 13 skipped, in 820.85 s. **Fifteen** of
+  those tests are new and they are the whole of stage 5b, spread over three files by what each
+  one can afford to run. **Five** are `tests/endings.test.ts`, on the record itself: that nothing
+  is kept until there is something to keep; that the tally is frozen on the landing tick and not
+  a tick later — the test kills a settler, builds, and plays twenty more days, then asserts that
+  nothing on the record moved; that the record survives a `serialize`/`deserialize` round trip;
+  that an ending which landed before records existed falls back to the world rather than
+  throwing; and that what was copied is a bag of numbers, which is the only thing that makes a
+  shallow copy honest — the day a nested object joins `stats` that copy starts aliasing without
+  a line of `endings.ts` changing.
+  **Three** are `tests/colony-eval.test.ts` and they exist for the **order** `judge` takes its
+  branches in, which is the part of this slice that breaks by being rearranged rather than by
+  being wrong: a landed run is filed under its ending and named by it; a colony that landed and
+  was *then* wiped out keeps the ending and names the empty valley in the same sentence; and a
+  terminal that was committed to but never landed is still judged on its last day. The gate
+  cannot afford the forty-day colony that lands an ending by playing, so `judge` is exported and
+  called on worlds built to hold exactly one interesting fact each — the same split `npm run
+  sweep` already carries for the founding, and the reason the fourth verdict also has a promise
+  on the grid.
+  The last **seven** are `tests/balance-principles.test.ts`: four on the new promise — untested
+  when nobody landed, holding with the days-played-on counted, and broken in each of its two
+  directions — and three on the rewritten one, which is where the risk actually was. A top rung
+  is forgiven when **its own** ending landed, not when a different road's did, and not when one
+  was merely committed to. That exemption is the kind of loosening that passes by accident if
+  the road-to-ending index is dropped, so it is pinned from all three sides rather than
+  demonstrated once.
+  Nineteen more arrived with the terminal one slice ago, all of them `tests/endings.test.ts`. They
   are organised around the three ways this file could be wrong rather than around its functions.
   That **none of the three bills was typed in**: the ship's is the summed materials of every
   line in the research tree, so the test recomputes that sum from `research.ts` and asserts the

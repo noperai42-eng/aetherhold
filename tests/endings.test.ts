@@ -29,6 +29,7 @@
 
 import { describe, expect, it } from 'vitest';
 
+import { dayNumber } from '../src/sim/clock';
 import {
   BERTHS_WORTH,
   ENDING_DAYS,
@@ -39,6 +40,7 @@ import {
   commitEnding,
   endingOffer,
   endingProgress,
+  endingRecord,
   endingsOpen,
   hasEnded,
   tickEndings,
@@ -466,5 +468,95 @@ describe('an ending played end to end', () => {
     expect(berths.bill.of).toBe(BERTHS_WORTH);
     expect(berths.bill.at).toBe(Math.round(world.stats.tradedWorth ?? 0));
     expect(endingOffer(world, 'dominion').bill.at).toBe(holdingsOf(world).length);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// the record, kept because the day it is about goes past
+// ---------------------------------------------------------------------------
+
+/** A colony one tick short of landing the hull, with the yard fully stocked. */
+function aboutToSail(): World {
+  const world = founded();
+  topOf(world, 'science');
+  for (const [kind, n] of Object.entries(SHIP_BILL) as Array<[ResourceKind, number]>) {
+    addItem(world, kind, n + 50, 31, 34);
+  }
+  commitEnding(world, 'ship');
+  runTerminal(world, ENDING_TICKS);
+  return world;
+}
+
+describe('a record of the day it landed', () => {
+  it('keeps nothing until there is something to keep', () => {
+    const world = founded();
+    expect(endingRecord(world)).toBeNull();
+    topOf(world, 'science');
+    commitEnding(world, 'ship');
+    // Committed and paying, which is a colony in the middle of something rather
+    // than one that has finished it. A record taken here would be a card about
+    // a day that has not happened.
+    runTerminal(world, TICKS_PER_DAY * 3);
+    expect(endingRecord(world)).toBeNull();
+  });
+
+  it('freezes the tally on the tick it lands, and not a tick later', () => {
+    const world = aboutToSail();
+    runTerminal(world, 20);
+    expect(hasEnded(world)).toBe(true);
+    const rec = endingRecord(world)!;
+    expect(rec.day).toBe(dayNumber(world));
+    expect(rec.standing).toBe(livingColonists(world).length);
+    const built = rec.stats.built;
+
+    // Twenty days in the valley after the ship is away: somebody dies, the
+    // survivors put up a wall, the pantry keeps being cooked out of. None of it
+    // is what the ship left with, and none of it may move a number on the card.
+    livingColonists(world)[0]!.dead = true;
+    world.stats.colonistsLost += 1;
+    world.stats.built += 7;
+    world.tick += TICKS_PER_DAY * 20;
+    const after = endingRecord(world)!;
+    expect(after.day).toBe(rec.day);
+    expect(after.day).toBeLessThan(dayNumber(world));
+    expect(after.standing).toBe(rec.standing);
+    expect(after.standing).toBeGreaterThan(livingColonists(world).length);
+    expect(after.stats.built).toBe(built);
+    expect(after.stats.colonistsLost).toBe(rec.stats.colonistsLost);
+  });
+
+  it('carries the record through a save and back', () => {
+    const world = aboutToSail();
+    runTerminal(world, 20);
+    const rec = endingRecord(world)!;
+    const back = deserialize(serialize(world, VIEW, 1, 0));
+    if (!back.ok) throw new Error(`save refused: ${back.detail}`);
+    // The whole point of the freeze is that it outlives the moment, and a
+    // colony reopened tomorrow is the longest way for a moment to be over.
+    expect(endingRecord(back.save.world)).toEqual(rec);
+  });
+
+  it('falls back to the world for an ending that landed before records existed', () => {
+    const world = aboutToSail();
+    runTerminal(world, 20);
+    // Exactly the shape of a save written by the stage that shipped terminals
+    // without a record: landed, and nothing kept about the day.
+    delete world.ending!.record;
+    const rec = endingRecord(world)!;
+    expect(rec).not.toBeNull();
+    expect(rec.day).toBe(dayNumber(world));
+    expect(rec.standing).toBe(livingColonists(world).length);
+  });
+
+  it('freezes a bag of numbers, which is the only reason a shallow copy is honest', () => {
+    const world = aboutToSail();
+    runTerminal(world, 20);
+    // `takeRecord` spreads `world.stats` one level deep. That is right for as
+    // long as the tally is flat — the day somebody nests an object in it the
+    // copy starts aliasing the live world again and the test above would still
+    // pass, because it only reads numbers. This is the one that fails.
+    for (const [key, value] of Object.entries(endingRecord(world)!.stats)) {
+      expect(typeof value, `stats.${key} is not a number`).toBe('number');
+    }
   });
 });
