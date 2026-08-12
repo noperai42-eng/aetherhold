@@ -10,7 +10,13 @@ import { daylight, dayNumber, hourOfDay, isNight } from '../src/sim/clock';
 import { defOf } from '../src/sim/buildings';
 import { buildingAt, canStep, isSolid, isWalkable } from '../src/sim/grid';
 import { HUNGRY, computeMood, tickNeeds } from '../src/sim/needs';
-import { BODY_RADIUS, WALK_SPEED, collides, moveWithCollision } from '../src/sim/movement';
+import {
+  BODY_RADIUS,
+  PHASE_PER_CELL,
+  WALK_SPEED,
+  collides,
+  moveWithCollision,
+} from '../src/sim/movement';
 import { assignJob, blueprintReady, findStockpileCell } from '../src/sim/jobs';
 import { clearSave, deserialize, hasSave, loadGame, saveGame, savedAt, serialize } from '../src/sim/save';
 import { findPath } from '../src/sim/path';
@@ -280,6 +286,46 @@ describe('movement', () => {
     p.y = 20;
     for (let i = 0; i < 40; i++) moveWithCollision(world, p, WALK_SPEED, 0);
     expect(p.x).toBeLessThanOrEqual(21 - 0.5 - BODY_RADIUS + 1e-6);
+  });
+
+  it('feeds the stride from ground covered, so a jammed body stops striding', () => {
+    // The stride is advanced inside `moveWithCollision` rather than by its
+    // callers, which is what makes this true of everything that walks — settler,
+    // wolf, Picky, and the body the player is driving — instead of true of
+    // whichever call sites remembered to do it.
+    const { world } = fresh();
+    clearArea(world, 18, 18, 22, 22);
+    addBuilding(world, 'wall', 21, 20, true);
+    const p = livingColonists(world)[0]!;
+    p.x = 20;
+    p.y = 20;
+    p.animPhase = 0;
+
+    moveWithCollision(world, p, WALK_SPEED, 0);
+    expect(p.animPhase).toBeCloseTo(WALK_SPEED * PHASE_PER_CELL, 10);
+
+    for (let i = 0; i < 40; i++) moveWithCollision(world, p, WALK_SPEED, 0);
+    const jammed = p.animPhase;
+    for (let i = 0; i < 10; i++) moveWithCollision(world, p, WALK_SPEED, 0);
+    expect(p.animPhase - jammed).toBeLessThan(1e-9);
+  });
+
+  it('charges no stride for being lifted out of a wall raised on top of it', () => {
+    // The unstick can carry a body several cells. It is a rescue, not a journey,
+    // and paying stride for it would spin a settler's legs the instant somebody
+    // finished a wall over their head.
+    const { world } = fresh();
+    clearArea(world, 18, 18, 22, 22);
+    const p = livingColonists(world)[0]!;
+    p.x = 20;
+    p.y = 20;
+    addBuilding(world, 'wall', 20, 20, true);
+    p.animPhase = 0;
+
+    moveWithCollision(world, p, 0, 0);
+
+    expect(Math.hypot(p.x - 20, p.y - 20)).toBeGreaterThan(0.4);
+    expect(p.animPhase).toBe(0);
   });
 
   it('opens doors from the sim so both views see the same door angle', () => {

@@ -11,7 +11,7 @@
 import * as THREE from 'three';
 
 import { BODY_RADIUS, PLAYER_RUN, PLAYER_WALK, moveWithCollision } from '../../sim/movement';
-import { PHASE_PER_CELL, SETTLER_PHASE } from '../gait';
+import { SETTLER_PHASE } from '../gait';
 import { LAYER_FPS } from '../render/renderer';
 import { cancelJob } from '../../sim/world';
 import { playerAttack } from '../../sim/combat';
@@ -134,16 +134,12 @@ export class FpsController {
       const sin = Math.sin(this.yaw);
       const dx = (cos * f - sin * r) * speed;
       const dy = (sin * f + cos * r) * speed;
-      // The stride is fed by ground actually covered, which is the rule
-      // `followPath` applies to every other body on the map. A flat per-tick
-      // number was the one place the possessed settler disagreed with the
-      // manager camera: hold W against a wall and the body stood still while
-      // its legs ran on the spot, at a cadence that matched neither its own
-      // speed nor the settler walking past it on the same paving.
-      const fromX = pawn.x;
-      const fromY = pawn.y;
+      // The stride comes back out of `moveWithCollision` along with the position,
+      // because it is fed by ground actually covered and that function is what
+      // decides how much of it there was. The player's body is not a special case
+      // and nothing here has to remember to advance it — which is the whole
+      // reason the rule lives down there and not up here.
       moveWithCollision(world, pawn, dx, dy);
-      pawn.animPhase += Math.hypot(pawn.x - fromX, pawn.y - fromY) * PHASE_PER_CELL;
       pawn.activity = 'walking';
     } else if (pawn.activity === 'walking') {
       pawn.activity = 'idle';

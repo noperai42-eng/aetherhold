@@ -1680,8 +1680,17 @@ the body used to sprint on the spot for the manager camera while first person fe
 into stone, which is the one disagreement between the two views the player was guaranteed to
 find.
 
-**Then watch a calf trot beside its dam.** **Expect** the calf to take visibly more steps over
-the same ground. Short legs, more steps; it falls out of the same rule rather than being animated
+**Then watch the animals, which is the part of this step to spend the time on.** A goat on its way
+to a bush, a wolf on its way to the goat, a pet following its person: every one of them was being
+handed 16.5 of stride per cell of ground while its legs were built for 7.5, so what you have
+watched them do until now was a scissor at better than twice the ground. Their legs have just
+slowed to under half of that. **Expect** a trot you could count, not a blur. This is the largest
+single change to how the game moves and the one most likely to now be wrong in the other
+direction — if a wolf mid-chase reads as gliding rather than running, the animal swing wants to
+come up.
+
+**And watch a calf beside its dam.** **Expect** the calf to take visibly more steps over the same
+ground. Short legs, more steps; it falls out of the same rule rather than being animated
 separately, and if the two of them look like they are running the same animation at the same rate
 then the rule is not reaching the herd.
 
@@ -1690,8 +1699,9 @@ contact point to plant, and its body shrinks to nothing as it poofs out — a st
 legs that short would spin them out while it vanished. It is wrong by about a fifth of what a
 settler was wrong by, in the other direction, and it stays that way on purpose.
 
-Pinned by `tests/gait.test.ts` (the arithmetic) and `tests/fps-view.test.ts` (the possessed
-body). Neither of them can see.
+Pinned by `tests/gait.test.ts` (the arithmetic, and that only one place in the sim converts
+distance into stride), `tests/sim-units.test.ts` (that a jammed body stops striding and a rescued
+one is charged nothing), and `tests/fps-view.test.ts` (the body you drive). None of them can see.
 
 ## 10. Save it, break it, load it
 

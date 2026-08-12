@@ -2,10 +2,11 @@
  * Stride length: the arithmetic that turns distance walked into a gait.
  *
  * `Pawn.animPhase` is advanced by the simulation, by the distance a body
- * actually travelled after collision — `followPath` in `src/sim/movement.ts`
- * adds `step * PHASE_PER_CELL` every tick a body moves. That is the honest half
- * of a walk: both cameras read one number, and a settler shoved against a wall
- * stops striding instead of running on the spot.
+ * actually travelled after collision — `moveWithCollision` in
+ * `src/sim/movement.ts` adds `moved * PHASE_PER_CELL`, and it is the only place
+ * in the sim that does. That is the honest half of a walk: both cameras read one
+ * number, and a settler shoved against a wall stops striding instead of running
+ * on the spot.
  *
  * The dishonest half was on this side. A rig swung its legs about the hip by a
  * fixed amplitude while the body translated on its own, so the two agreed only
@@ -23,17 +24,18 @@
  * calf can trot beside its dam without either of them scrubbing.
  */
 
+import { PHASE_PER_CELL } from '../sim/movement';
+
 /**
  * What the sim adds to `animPhase` per cell walked.
  *
- * Mirrored rather than imported. The literal lives inline in `followPath`, and
- * exporting it would edit `src/sim/**`, which changes the fingerprint keying
- * `.eval/measurements.json` — a sixty-day grid re-run spent to say exactly what
- * it already says. `tests/gait.test.ts` reads the sim's source text instead and
- * fails the day the two drift apart, which is the thing an import would have
- * bought us.
+ * Imported from the sim and re-exported, so that everything with an opinion about
+ * a stride reads it from one file. It was briefly a copy here, to spare the
+ * fingerprint keying `.eval/measurements.json`; that turned out to be the wrong
+ * saving, because the sim was carrying four different values of it at the time
+ * and a copy of one of four is not a source of truth.
  */
-export const PHASE_PER_CELL = 7.5;
+export { PHASE_PER_CELL };
 
 /**
  * How far one full stride cycle carries a body whose feet do not scrub.

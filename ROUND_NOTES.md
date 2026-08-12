@@ -4,10 +4,118 @@ One round, one measured gap, one fix. Newest first.
 
 ---
 
+## 2026-08-12 — One stride, and the four rates it was being fed at
+
+**Track A: a measured fix.** In `src/sim/**`, so the fingerprint moved and the sixty-day grid was
+re-run. The whole point of the re-run is that it should have changed nothing — see below.
+
+### The gap
+
+Found while checking the round below this one, which is the right way to find it and a bad look
+for the round below this one. That round derived every rig's stride from `PHASE_PER_CELL = 7.5`
+and stated that the sim advances `animPhase` by ground covered. Neither half survived reading the
+sim.
+
+`animPhase` had **four** writers converting distance into stride, at three rates, and two of them
+stacked:
+
+| where | what it added | per cell |
+|---|---|---|
+| `followPath` | `step * 7.5` — the step it *intended*, before collision refused any of it | 7.5 |
+| a wolf chasing, a pet heeling, an animal browsing or courting | `speed * 9` **on top of** `followPath` | **16.5** |
+| an animal walking home to its pen | nothing on top | 7.5 |
+| an animal wandering | `hypot(dx, dy) * 9`, on the delta it asked for | 9 |
+| a settler retreating from a threat, off-path | `step * 8` | 8 |
+
+So a goat trotting to a berry bush ran its legs at **2.2×** the ground it covered — worse than the
+settler defect the previous round spent itself on, on more bodies, and it was *introduced into the
+render* by that round rather than found by it. The same animal walking home to its pen ran
+correctly, because that one branch happened not to have the extra line. Two animals side by side,
+one pathing and one strayed, disagreed with each other about how legs work.
+
+And "after collision" was not true even for settlers. `followPath` charged the intended step, so a
+free settler jammed against a wall kept striding for the twenty-five ticks it takes the stuck
+counter to give up the path — the exact bug the previous round fixed in the possessed body while
+claiming it was matching `followPath`.
+
+### The fix
+
+**One writer.** `moveWithCollision` advances the stride itself, by `hypot(moved) * PHASE_PER_CELL`,
+and it is now the only place in the sim that touches `animPhase` by distance. Every walking thing
+in the game already goes through that function — settler, wolf, pet, Picky, the body the player is
+driving — so no caller has to remember, and the four call sites that used to remember are deleted.
+
+- The advance is taken **before the unstick**, which can teleport a body up to six cells out of a
+  wall raised on top of it. That is a rescue, not a step, and paying stride for it would spin a
+  settler's legs the moment somebody finished a roof over their head.
+- `PHASE_PER_CELL` is now **exported and imported**, and the mirror in `src/client/gait.ts` is
+  gone. Last round justified the copy as sparing a grid re-run; that was the wrong saving, since
+  the value it copied was one of four the sim was actually using.
+- `fps/controller.ts` stopped advancing the phase by hand. It calls `moveWithCollision`, so it
+  already had it.
+- The flat per-tick advances in `jobs.ts` **stay**. A settler at a bench covers no ground and still
+  has to move; that is a working cadence, a different quantity honestly sharing a field, and the
+  renderer reads it under a different activity. A test pins that they are still flat rather than
+  that they still exist.
+
+### The grid
+
+`animPhase` is never read by sim logic, so this edit cannot change what a colony does — which is a
+claim, and the fingerprint is what turns it into a measurement. Sixty days, past founding, same
+sweep as before.
+
+- Fingerprint `4fc79614` → `4e7e7e91`. 39 colonies, 2470s.
+- `steward` and `sweep` are **identical to the byte** against the pre-round baseline. Not one
+  digit moved: same endings reached, same deaths, same stalls, same day counts.
+- Which is the result the round wanted and the only one it would have accepted. Forty-one minutes
+  to be told nothing happened is what the difference between *believing* a field is cosmetic and
+  *knowing* it costs.
+
+### Before / after
+
+| | before | after |
+|---|---|---|
+| Rates converting distance to stride | **4 sites, 3 rates, 2 of them stacked** | 1 site, 1 rate |
+| Animal pathing to food, a mate, or prey | 16.5 per cell — legs at **2.2×** the ground | 7.5, planted |
+| Animal wandering | 9 per cell, on a delta collision had not agreed to | 7.5, on ground covered |
+| Settler retreating from a threat | 8 per cell, on intent | 7.5, planted |
+| Free settler jammed against a wall | strides on for ~25 ticks | stops with the body |
+| `PHASE_PER_CELL` | one literal in the sim, one copy in the client, two other rates ignoring both | exported once, imported everywhere |
+
+### Verified
+
+- `npx tsc --noEmit` clean.
+- `npm test` — 1840 passed, 13 skipped, 1184 s. Four new: two in `tests/sim-units.test.ts` that
+  drive a body into a wall and assert the stride stops with it, and against the unstick that a
+  body lifted out of a wall pays exactly zero; two in `tests/gait.test.ts` that scan every `.ts`
+  under `src/sim` and fail if anywhere but `moveWithCollision` turns a distance into a stride.
+- `npm run build` — 919.45 kB JS (263.12 kB gzip), 23.76 kB CSS (5.15 kB gzip). Five lines
+  deleted and one added, so the bundle came back 0.16 kB smaller than the round before.
+- `npm run balance` re-judged the identical grid and returned the identical eight open
+  principles, which is what "identical to the byte" has to mean downstream to be worth saying.
+
+### Next target
+
+- **Look at it**, which was the last round's next target too and is now overdue by two rounds.
+  Animals in particular: their legs just slowed by more than half, and no eye has been on that.
+- The grid clock — sixty days reaches one ending of three — is still the player's call.
+
+---
+
 ## 2026-08-12 — The body that kept walking after it had stopped
 
 **Track B: L5 Motion.** Client only. `src/sim/**` is untouched, so the fingerprint keying
 `.eval/measurements.json` is intact and the grid still stands.
+
+> **Corrected by the round above it, the same day.** Two sentences below are wrong and they are
+> left standing rather than quietly edited. *"the same arithmetic `followPath` does"* was not:
+> `followPath` advanced the phase by the step it **intended**, not the ground it got, so a free
+> settler jammed against a wall went on striding for up to twenty-five ticks while the possessed
+> one correctly stopped. And *"neither of them scrubs"*, of the calf and its dam, was true only
+> of the rate this round assumed — the sim was feeding animals at **9 per cell, and 16.5 when
+> pathing**, so a wolf's legs came out of this round running at better than twice its ground.
+> Both are fixed above; the wrong claims stay here because a round note that edits itself is
+> not a record.
 
 ### The gap
 

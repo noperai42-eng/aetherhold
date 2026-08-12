@@ -1412,7 +1412,6 @@ export function tickWildlife(world: World, rng: Rng): void {
         routeTo(world, animal, Math.round(quarry.x), Math.round(quarry.y), CHASE_REPATH, latch);
         if (animal.path) {
           followPath(world, animal, def.speed, latch);
-          animal.animPhase += def.speed * 9;
         } else {
           // No route to it — which, for a wolf, now usually means the thing it
           // wants is behind a shut gate. Aimed straight at it anyway, and left to
@@ -1448,7 +1447,6 @@ export function tickWildlife(world: World, rng: Rng): void {
       animal.activity = 'walking';
       if (animal.path) {
         followPath(world, animal, pace, latch);
-        animal.animPhase += pace * 9;
       } else {
         // No route at all — the keeper is across water, or behind a wall that has
         // not been holed yet. Lean towards them anyway rather than stand still:
@@ -1511,7 +1509,6 @@ export function tickWildlife(world: World, rng: Rng): void {
         animal.activity = 'walking';
         if (animal.path) {
           followPath(world, animal, def.speed, latch);
-          animal.animPhase += def.speed * 9;
         } else {
           // No route to it: the fruit is across the lake, or behind a wall the
           // colony put up. Lean that way and let collision sort it out, the same
@@ -1540,7 +1537,6 @@ export function tickWildlife(world: World, rng: Rng): void {
       animal.activity = 'walking';
       if (animal.path) {
         followPath(world, animal, def.speed, latch);
-        animal.animPhase += def.speed * 9;
       } else {
         const ang = Math.atan2(mate.y - animal.y, mate.x - animal.x);
         dx = Math.cos(ang) * def.speed;
@@ -1562,7 +1558,6 @@ export function tickWildlife(world: World, rng: Rng): void {
       moveWithCollision(world, animal, dx, dy, latch);
       // Walked into something: turn rather than grind against it for a minute.
       if (Math.abs(animal.x + animal.y - before) < 1e-4) animal.facing = rng.range(0, Math.PI * 2);
-      animal.animPhase += Math.hypot(dx, dy) * 9;
     }
   }
 

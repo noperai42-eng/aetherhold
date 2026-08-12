@@ -1632,9 +1632,19 @@ swing carries the body exactly as far as the foot reaches**, so a stride spans
 `4 · leg · sin(swing)` and a rig scales the phase by `2π / (stride · PHASE_PER_CELL)`. Each
 rig derives its own from its own legs, which is why a calf takes more steps than its dam over
 the same ground without either scrubbing a foot, and why nothing needs re-tuning when a limb
-changes length. `PHASE_PER_CELL` is mirrored from `movement.ts` rather than imported —
-exporting the inline literal would edit `src/sim/**` and invalidate the fingerprint that keys
-`.eval/measurements.json`, so `tests/gait.test.ts` reads the sim's source as text and fails
-the day the two drift apart. The possessed body in `fps/controller.ts` advances the same
-phase by the same rule, measured after `moveWithCollision`, and the first-person eye bobs on
-it; there is no separate animation clock anywhere in the client.
+changes length.
+
+The distance half of that has exactly one writer: **`moveWithCollision` is the only place in
+the sim that advances `animPhase`**, it does so by `hypot(moved) * PHASE_PER_CELL`, and
+`PHASE_PER_CELL` is exported from `movement.ts` and imported everywhere else. Everything that
+walks — settler, wolf, pet, Picky, the body the player is driving — arrives through that one
+function, so no caller has to remember. It had to be pulled down there: when each caller did
+its own, the sim held four rates at once (`step * 7.5` in `followPath`, `speed * 9` stacked on
+top of it for a pathing animal, `step * 8` for a settler retreating, `hypot * 9` for a
+wanderer), and a wolf's legs ran at better than twice its ground. The advance is taken before
+the unstick, which can move a body several cells and is a rescue rather than a step.
+`tests/gait.test.ts` scans `src/sim/**` and fails if a second distance-to-stride conversion
+appears anywhere; the flat per-tick advances in `jobs.ts` are a different quantity — a
+stationary settler's working cadence — and are pinned as flat rather than removed. The
+first-person eye bobs on the same phase, and there is no separate animation clock anywhere in
+the client.

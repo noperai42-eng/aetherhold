@@ -14,13 +14,28 @@ Four sections: [the killer feature](#the-killer-feature),
 and [what still wants a human](#what-still-wants-a-human) — which is the long one, and is
 ordered to match `PLAYTEST.md` rather than by importance.
 
-Last run — 2026-08-12, the motion round. The grid is the overlay round's and has not been re-run:
-this round is client-only, and the fingerprint `.eval/measurements.json` is keyed on has not
-moved.
+Last run — 2026-08-12, the stride round, which edited `src/sim/**` and therefore re-ran the
+sixty-day grid. It came back **identical to the byte** — fingerprint `4fc79614` → `4e7e7e91`,
+39 colonies, 2470 s, and every number in `steward` and `sweep` unchanged, which is the proof
+that `animPhase` is cosmetic rather than the assertion that it is.
 
 - `npx tsc --noEmit` clean.
-- `npm test` — **96 of 98 files, 1836 tests green**, 13 skipped, in 850 s.
-  **Fourteen** of those are the newest and they are the walk.
+- `npm test` — **96 of 98 files, 1840 tests green**, 13 skipped, in 1184 s.
+  **Four** of those are the newest and they are the stride's one writer.
+  **Two** are in `tests/gait.test.ts` and they replaced a weaker one. It used to read
+  `movement.ts` as text to check that a copied constant still matched; the constant is imported
+  now, so instead the file **scans every `.ts` under `src/sim`** and fails if any place other
+  than `moveWithCollision` converts a distance into a stride. That is the contract the round
+  bought, and it is worth a test because the thing it replaced was four call sites at three
+  rates with two of them stacked — a wolf's legs ran at 2.2× the ground it covered, and nothing
+  in the build could tell. A third pins the flat per-tick advances in `jobs.ts` as *flat*: a
+  settler at a bench covers no ground and still has to move, which is a working cadence rather
+  than a gait, and the test says so rather than letting the next reader assume they were missed.
+  **Two** are in `tests/sim-units.test.ts` and they are behaviour rather than source text: a body
+  walking into a wall advances its stride by exactly the ground it got and then **stops** while
+  still pushing, and a body lifted out of a wall built on top of it is charged **nothing** — the
+  unstick can carry it six cells, and a rescue is not a journey.
+  **Fourteen** arrived one round ago and they are the walk.
   **Eleven** are `tests/gait.test.ts`, a new file for the arithmetic that turns distance walked
   into a gait — its own module for the reason `pace.ts` and `overlays.ts` are theirs: it holds no
   three.js, so `environment: 'node'` can load it and a decision made in it is a test rather than a
@@ -34,10 +49,8 @@ moved.
   still rather than dividing by zero and scissoring at the frame rate, which is what a calf scaled
   to nothing or a rig mid-vanish would otherwise do; and three hold the *cadence* the fix leaves
   behind, since planting a foot is done by slowing the legs and slowing them far enough is its own
-  bug. The load-bearing one is none of those: it reads `src/sim/movement.ts` **as text** and fails
-  if the literal there stops matching the copy here. The copy exists because exporting the real
-  one would edit `src/sim/**` and cost a sixty-day grid re-run to say what the grid already says,
-  and a copy is only safe while something breaks when it drifts.
+  bug. One of them read the sim's source as text to guard a copied constant; the constant is
+  imported now, and that test was replaced by the two above it.
   **Three** are `tests/fps-view.test.ts`, on the body you drive, and they are the dual-view law
   rather than a rendering detail: held against a wall the possessed settler's stride **stops with
   it** — it used to advance on intent, so the manager camera watched a body sprint on the spot
@@ -195,7 +208,13 @@ moved.
   re-run separately. It is the one file both entry points share, so a second run is a second
   reading of a number already recorded rather than a second piece of evidence.
 - `npm run measure -- --days 60 --past-founding` then `npm run balance` — 4 tests green.
-  **39 colonies in 2,847 s**. **Twenty-nine** principles are scored, one more than last time:
+  **39 colonies in 2,470 s**, re-run because this round edited `src/sim/**` and moved the source
+  fingerprint from `4fc79614` to `4e7e7e91`. Every number below is *the same number*: `steward`
+  and `sweep` compare identical to the byte against the grid taken before the edit, and `balance`
+  returned the same eight open principles in the same order. That is the round's actual result.
+  Moving the stride into `moveWithCollision` touched a field the sim writes and never reads, and
+  forty-one minutes is what it costs to know that rather than to say it.
+  **Twenty-nine** principles are scored, one more than the run before that one:
   all **fifteen** enforced ones hold, and of the fourteen open ones — reported without
   asserting — **six** do, up from four. Both of the two that moved are 5b's: the promise it
   wrote and the promise it rewrote.
@@ -354,11 +373,15 @@ moved.
   to move. The first hull to be committed to will take steel off the yard for twelve days and
   this paragraph will read differently, which is the point of writing down which of the two
   sentences this grid earned.
-- `npm run build` — 919.61 kB JS (263.15 kB gzip), 23.76 kB CSS (5.15 kB gzip). The gait module
-  cost **0.16 kB and no CSS**, which is what a page of arithmetic that deletes two fields on its
-  way in should cost. The build also caught the round's only type error — a `URL` handed to a
-  `readFileSync` the hand-written `node.d.ts` had declared as `string`-only — which is the gate
-  doing its job rather than confirming a green that was already there.
+- `npm run build` — 919.45 kB JS (263.12 kB gzip), 23.76 kB CSS (5.15 kB gzip). The stride round
+  came in **0.16 kB smaller** than the round before it, which is the only bundle line here that
+  reads as a saving: it deleted five hand-written phase advances and wrote one, and a rule that
+  lives in the one function everybody already calls is cheaper than the same rule remembered in
+  five places. The gait module, a round ago, cost **0.16 kB and no CSS**, which is what a page of
+  arithmetic that deletes two fields on its way in should cost; that build also caught that
+  round's only type error — a `URL` handed to a `readFileSync` the hand-written `node.d.ts` had
+  declared as `string`-only — which is the gate doing its job rather than confirming a green that
+  was already there.
   The manifest cost
   **1.60 kB of JS and 0.35 kB of CSS**, and nearly all of that JS is the sim's half rather than
   the card's: `manifestSections` is one `map` over rows, while `takeManifest` walks every pawn and
@@ -395,7 +418,7 @@ moved.
 | `V` switches instantly, no reload | `toggleView()` swaps camera + HUD layer in the same frame; nothing rebuilds the scene or the world | read `app.ts:405`; manual — PLAYTEST §4 |
 | Selection and possessed id survive the switch | `enterFps` sets `manager.selection` to the body you entered; `exitFps` remembers the id so `V` drops you back in | read `app.ts:422`, `app.ts:447`; manual — PLAYTEST §4 |
 | Collision matches the visuals | the possessed body moves through `moveWithCollision` — the same call a settler's job makes — and never scans `world.buildings` itself | automated — `tests/architecture.test.ts`, `tests/fps-view.test.ts` |
-| One gait, whichever camera is watching | limbs come off `animPhase`, which is *distance travelled after collision* — the possessed body advances it by the ground it actually covered, so a body held against a wall stops striding in both views instead of sprinting on the spot for the manager camera. There is no animation clock left anywhere in the client, and each rig derives its stride from its own legs | automated — `tests/gait.test.ts`, `tests/fps-view.test.ts`; manual — PLAYTEST §9pp |
+| One gait, whichever camera is watching | limbs come off `animPhase`, and `moveWithCollision` is the **only** thing in the sim that advances it — by ground actually covered, at one exported rate, for every body that walks. So a body held against a wall stops striding in both views instead of sprinting on the spot, and the settler you are standing next to, the wolf outside the fence and the body you are driving are all counting the same steps. There is no animation clock left anywhere in the client, and each rig derives its stride from its own legs | automated — `tests/gait.test.ts`, `tests/sim-units.test.ts`, `tests/fps-view.test.ts`; manual — PLAYTEST §9pp |
 | One answer to what the colony has seen | `sim/explore.ts` owns `world.seen`; the shroud keeps no flags of its own, mirrors that array, and can only ever take haze away — so the map view and the body standing in it end at the same edge | automated — `tests/explore.test.ts`; read `render/shroud.ts:103`; manual — PLAYTEST §9m |
 
 ## The engine constraints
@@ -497,7 +520,10 @@ rather than what it computes. Each is a numbered step in `PLAYTEST.md`:
   3.6 steps a second is right on paper for a body crossing 3.1 cells of it, and paper is where
   that ends. Stand next to a settler crossing the yard, then take a body and hold W into a wall:
   the legs should stop when the body does, which is the thing the manager camera used to
-  contradict. Nobody has looked at any of this yet.
+  contradict. **The animals want the harder look**: a wolf or a goat on its way somewhere was
+  being fed 16.5 of stride per cell against the 7.5 its rig assumed, so their legs have just
+  slowed to under half of what anybody has ever seen them run at. That is the correct number and
+  it is the largest single change to how this game moves. Nobody has looked at any of it yet.
 - **§9m** — walk into the haze. Whether the edge of the known world reads as weather or as
   a missing chunk of the level is not a thing a test can be shown.
 - **§9n** — read the map in the corner. Whether one pixel a cell is legible, and whether

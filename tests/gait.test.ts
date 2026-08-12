@@ -7,7 +7,7 @@
  * stay there.
  */
 
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 
 import { describe, expect, it } from 'vitest';
 
@@ -29,16 +29,51 @@ const CALF_SCALE = 0.45;
 const ANIMAL_LEG = 0.56;
 const ANIMAL_SWING = 0.55;
 
-describe('the number the sim and the renderer both have to hold', () => {
-  it('still matches the literal in followPath', () => {
-    // `PHASE_PER_CELL` is a copy, because exporting the real one would edit
-    // `src/sim/**` and cost a sixty-day grid re-run to say what it already
-    // says. A copy is only safe while something fails when it drifts, and this
-    // is that something.
-    const source = readFileSync(new URL('../src/sim/movement.ts', import.meta.url), 'utf8');
-    const written = source.match(/animPhase \+= step \* ([0-9.]+)/);
-    expect(written).not.toBeNull();
-    expect(Number(written![1])).toBe(PHASE_PER_CELL);
+describe('the one place in the sim that turns distance into a stride', () => {
+  /** Every `animPhase += …` in the simulation, with the file it was written in. */
+  const advances = (): { file: string; rhs: string }[] => {
+    const out: { file: string; rhs: string }[] = [];
+    const walk = (dir: string): void => {
+      for (const entry of readdirSync(dir, { withFileTypes: true })) {
+        const path = `${dir}/${entry.name}`;
+        if (entry.isDirectory()) walk(path);
+        else if (entry.name.endsWith('.ts')) {
+          const source = readFileSync(path, 'utf8');
+          for (const m of source.matchAll(/animPhase\s*\+=\s*([^;]+);/g)) {
+            out.push({ file: entry.name, rhs: m[1]!.trim() });
+          }
+        }
+      }
+    };
+    walk(new URL('../src/sim', import.meta.url).pathname);
+    return out;
+  };
+
+  it('is moveWithCollision, and it counts ground the body actually covered', () => {
+    const moves = advances().filter((a) => a.file === 'movement.ts');
+    expect(moves).toHaveLength(1);
+    expect(moves[0]!.rhs).toBe('Math.hypot(pawn.x - fromX, pawn.y - fromY) * PHASE_PER_CELL');
+  });
+
+  it('is the only one, because four of them at three rates is what we just cleaned up', () => {
+    // `followPath` added `step * 7.5` on intent, the wolf chase added `speed * 9`
+    // on top of that, the retreat added `step * 8`, and the wanderer added
+    // `hypot * 9` on a delta collision had not agreed to yet. A pathing animal's
+    // legs ran at better than twice the ground. Anything that adds a fifth rate
+    // has to walk past this test to do it.
+    const elsewhere = advances().filter((a) => a.file !== 'movement.ts');
+    const distances = elsewhere.filter((a) => !/^[0-9.]+$/.test(a.rhs));
+    expect(distances).toEqual([]);
+  });
+
+  it('leaves the work cadences alone, because a hammer is not a step', () => {
+    // A settler standing at a bench covers no ground and still has to move. Those
+    // sites add a flat number per tick, which is a different quantity in the same
+    // field — legitimately so, since the renderer reads it under a different
+    // activity. This pins that they are still flat, not that they are still there.
+    const jobs = advances().filter((a) => a.file === 'jobs.ts');
+    expect(jobs.length).toBeGreaterThan(0);
+    for (const j of jobs) expect(Number(j.rhs)).toBeGreaterThan(0);
   });
 });
 

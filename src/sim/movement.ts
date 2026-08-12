@@ -38,6 +38,20 @@ export const PLAYER_RUN = 0.27;
 export const BODY_RADIUS = 0.34;
 
 /**
+ * Gait phase per cell of ground covered — the unit `animPhase` is counted in.
+ *
+ * The sim never reads `animPhase`. It is here, rather than in the client, so that
+ * the manager camera and the first-person camera cannot each invent their own
+ * answer to *"how far along its stride is that body?"*; a settler you are standing
+ * next to and the same settler seen from above are one walk.
+ *
+ * Its value is arbitrary. What is not arbitrary is that there is only one of it,
+ * and that it multiplies **distance actually moved** — see `moveWithCollision`,
+ * which is the only place in the sim allowed to advance a body's stride.
+ */
+export const PHASE_PER_CELL = 7.5;
+
+/**
  * Slide-along-walls collision against the SAME solidity table pathfinding uses.
  * Axes are resolved separately so a body brushing a wall keeps its other axis.
  *
@@ -67,6 +81,9 @@ export function moveWithCollision(
       ? penetration(world, nx, ny, r, latch) < embedded
       : !collides(world, nx, ny, r, latch);
 
+  const fromX = pawn.x;
+  const fromY = pawn.y;
+
   if (dx !== 0) {
     const nx = pawn.x + dx;
     if (allowed(nx, pawn.y)) pawn.x = nx;
@@ -75,6 +92,18 @@ export function moveWithCollision(
     const ny = pawn.y + dy;
     if (allowed(pawn.x, ny)) pawn.y = ny;
   }
+
+  // The stride is fed here and nowhere else, by ground the body actually covered.
+  // Every walking thing in the game — settler, wolf, pet, Picky, the body the
+  // player is driving — arrives through this function, so the alternative was
+  // each caller remembering to do it, which is how the wolves ended up counting
+  // their steps twice and the retreating settler counting them at a different
+  // rate than the settler walking beside it.
+  //
+  // Deliberately before the unstick below: that is a rescue, not a step. A body
+  // lifted out of a wall raised on top of it should not pay six cells of stride
+  // for a journey it did not take.
+  pawn.animPhase += Math.hypot(pawn.x - fromX, pawn.y - fromY) * PHASE_PER_CELL;
 
   // Never let rounding trap a body inside geometry (a wall built on top of it).
   // Same `latch` on both halves, or a door hung over a sleeping deer would find
@@ -183,7 +212,6 @@ export function followPath(world: World, pawn: Walker, speed: number, latch = tr
   const before = { x: pawn.x, y: pawn.y };
   moveWithCollision(world, pawn, (dx / d) * step, (dy / d) * step, latch);
   pawn.facing = Math.atan2(dy, dx);
-  pawn.animPhase += step * 7.5;
 
   const moved = Math.hypot(pawn.x - before.x, pawn.y - before.y);
   if (moved < step * 0.35) {

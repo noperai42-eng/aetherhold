@@ -853,7 +853,6 @@ function defendSelf(world: World, pawn: Pawn, rng: Rng): boolean {
     }
     const ang = Math.atan2(pawn.y - threat.y, pawn.x - threat.x);
     moveWithCollision(world, pawn, Math.cos(ang) * step, Math.sin(ang) * step);
-    pawn.animPhase += step * 8;
     if (!fought) {
       pawn.facing = ang;
       pawn.activity = 'walking';
