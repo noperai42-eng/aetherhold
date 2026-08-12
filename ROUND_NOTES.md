@@ -4,6 +4,111 @@ One round, one measured gap, one fix. Newest first.
 
 ---
 
+## 2026-08-12 — The body that kept walking after it had stopped
+
+**Track B: L5 Motion.** Client only. `src/sim/**` is untouched, so the fingerprint keying
+`.eval/measurements.json` is intact and the grid still stands.
+
+### The gap
+
+Every body on the map animates off `Pawn.animPhase`, which the sim advances by the distance a
+body *actually travelled after collision* — `followPath` adds `step * 7.5`. That half has always
+been honest, and it is the half that makes one settler look the same from both cameras.
+
+Nobody had checked the other half: what the renderer does with that distance. It did not use it.
+A rig swung its legs about the hip by a fixed amplitude and the body translated on its own, so
+the two agreed only by accident, and they did not agree. A settler's foot reaches
+`0.74 · sin(0.62)` = **0.43 cells** either side of the hip, 0.86 across a step, while the body
+covers `π / 7.5` = **0.42** over the same half-cycle. The planted foot slid backwards over the
+ground by 0.44 cells per step — about the length of the step it had just taken. Eleven cells up
+that is invisible. At eye level it is skating, and eye level is half of what this game is.
+
+Two sharper ones turned up underneath it, both in the body the player is *guaranteed* to be
+looking at:
+
+- **The possessed settler did not use the sim's rule at all.** `controller.ts` added a flat
+  `0.42` per tick — `0.62` running — and added it *after* `moveWithCollision`, on intent rather
+  than on ground. Hold W against a wall and the body stood still while its legs sprinted, which
+  the manager camera showed as a settler running on the spot. That is not a cosmetic gap, it is
+  the one law: **one world, two cameras, never disagree.** The flat number also matched neither
+  the walk speed nor the paving bonus, so a possessed settler and a free one on the same stone
+  walked at different cadences.
+- **The eye bobbed on a wall clock.** `bob += dt * 9`, gated on keys held, so the same wall left
+  the view bobbing over a body that was not moving — at a rate that never changed between a walk
+  and a run.
+
+### The fix
+
+`src/client/gait.ts`, pure and three.js-free, so it is testable under `environment: 'node'` — the
+fourth module to earn that treatment after `pace`, `overlays` and `manifest`. It is one equation:
+**a foot stays put when a full swing carries the body exactly as far as the foot reaches.**
+`strideCells = 4 · leg · sin(swing)`, and `phaseScale = 2π / (stride · PHASE_PER_CELL)`.
+
+- Both rigs convert distance into their own gait from their own legs. The settler's swing is
+  **unchanged** — the amplitude was the readable part and was never the problem; the cadence was.
+  So the walk looks the same and the legs run at half the speed, 7.4 steps a second down to 3.6.
+- A calf gets a bigger scale than its dam out of the same formula — half the leg, twice the steps
+  — and neither of them scrubs. That falls out; it was not written for.
+- The possessed body advances its phase by `hypot(moved) * PHASE_PER_CELL`, measured after
+  collision. It is now the same arithmetic `followPath` does, so the body you drive and the body
+  walking beside it keep one gait.
+- The eye bobs on the pawn's own phase, at the rig's amplitude and its two rises per cycle. It
+  stops dead when the body is blocked and quickens into a run for nothing. `FpsController.bob`
+  and `.moving` are both gone — the state that replaced them already belonged to the pawn.
+
+`PHASE_PER_CELL` is **mirrored, not imported**. The literal is inline in `followPath`, and adding
+an `export` to it would edit `src/sim/**`, change the fingerprint and spend a sixty-day grid
+re-run to say exactly what the grid already says. A copy is only safe while something fails when
+it drifts, so `tests/gait.test.ts` reads `movement.ts` as text and asserts the two still match.
+
+Reading it cost one word elsewhere: `readFileSync` in `src/eval/node.d.ts` was declared as taking a
+`string`, and the test hands it a `URL`. Widened to `string | URL`, which is what Node actually
+accepts and what `existsSync` two lines below already said. That file is on the fingerprint's
+`NOT_THE_SIM` list, so the grid is untouched by it.
+
+### Left alone, deliberately
+
+**The Picky.** Same defect, and it stays. Its legs already end below the floor — pivot 0.124 up,
+leg 0.229 long — so there is no contact point to plant; its error is the opposite sign and a
+quarter the size (0.09 cells against the settler's 0.44); and its body scale animates to near
+zero as it poofs out, so a phase derived from its legs would spin them out while it vanished.
+
+### Before / after
+
+| | before | after |
+|---|---|---|
+| Settler foot scrub, per step | **0.441 cells** | **0** |
+| Settler cadence at walking speed | 7.4 steps/s | 3.6 steps/s |
+| Possessed body, phase per cell | 2.5 walking, 2.3 running, less again on paving | 7.5, whatever the ground |
+| Possessed body held against a wall | legs sprint, body still | both stop |
+| Eye bob | wall clock, gated on keys held | the body's own stride |
+
+### Verified
+
+- `npx tsc --noEmit` — clean, once the `URL` overload above was declared. It was not before: the
+  round's first `npm run build` failed on that single line, which is the build gate earning its
+  place on this list rather than rubber-stamping it.
+- `tests/gait.test.ts` — **11 passed**, new.
+- `tests/fps-view.test.ts` — **21 passed** (was 18).
+- `npm test` — **1836 passed**, 13 skipped, 96 of 98 files, 850 s. Fourteen of those are new and
+  the other 1822 are the ones that had to still be true.
+- `npm run build` — exit 0. 919.61 kB JS (263.15 kB gzip), 23.76 kB CSS (5.15 kB gzip). The gait
+  module cost **0.16 kB** shipped, and deleted two fields to do it.
+
+**The honest caveat:** this is derived from the rig's geometry and pinned in cells, not looked at.
+No browser has been attached this session, so *"it now reads as walking"* is still an inference —
+a much better grounded one than the guess it replaces, but the eyes have not been on it. §9pp in
+`ACCEPTANCE.md` is that step.
+
+### Next target
+
+- **Look at it.** The whole round argues from arithmetic. One pass at `:5062`, standing in a body
+  and walking a settler past, would either confirm it or find the thing the numbers cannot say.
+- The grid clock — whether to grow it past sixty days to chase the ship and berths endings — is
+  still the player's call and still not a code change.
+
+---
+
 ## 2026-08-12 — Two promises that had only ever printed one verdict
 
 **Track A.** Tests only; no behaviour changed and none was meant to.

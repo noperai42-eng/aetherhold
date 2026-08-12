@@ -9,6 +9,7 @@
 import * as THREE from 'three';
 
 import { ANIMAL_COLOR, FACTION_COLOR, SKIN_TONES, pawnTint } from './palette';
+import { SETTLER_LEG, SETTLER_PHASE, SETTLER_SWING, phaseScale } from '../gait';
 import { ANIMALS } from '../../sim/wildlife';
 import { isRipe } from '../../sim/husbandry';
 import { maturity } from '../../sim/livestock';
@@ -16,7 +17,9 @@ import { LAYER_ALL, LAYER_MANAGER } from './renderer';
 import { standHeight } from '../../sim/grid';
 import type { Pawn, World } from '../../sim/types';
 
-const LIMB_SWING = 0.62;
+/** The same two numbers for a four-legged body, whose legs are shorter. */
+const ANIMAL_LEG_LENGTH = 0.56;
+const ANIMAL_SWING = 0.55;
 
 /**
  * How big a newborn is beside its dam, as a fraction of her linear size.
@@ -78,8 +81,8 @@ class PawnRig implements Rig {
     this.torso.position.y = 1.02;
     this.head.position.y = 1.5;
     this.hair.position.y = 1.5;
-    this.legL.position.set(-0.11, 0.74, 0);
-    this.legR.position.set(0.11, 0.74, 0);
+    this.legL.position.set(-0.11, SETTLER_LEG, 0);
+    this.legR.position.set(0.11, SETTLER_LEG, 0);
     this.armL.position.set(-0.26, 1.28, 0);
     this.armR.position.set(0.26, 1.28, 0);
 
@@ -160,9 +163,13 @@ class PawnRig implements Rig {
     const ph = pawn.animPhase;
     switch (pawn.activity) {
       case 'walking': {
-        const s = Math.sin(ph) * LIMB_SWING;
+        // `ph` is distance travelled, not time elapsed, so the stride reads off
+        // the ground rather than off the clock and the foot stays where it was
+        // put. The bob rides the same phase: two rises per cycle, one per step.
+        const w = ph * SETTLER_PHASE;
+        const s = Math.sin(w) * SETTLER_SWING;
         this.setPose(s, -s, -s * 0.75, s * 0.75);
-        g.position.y = floor + Math.abs(Math.sin(ph * 2)) * 0.035;
+        g.position.y = floor + Math.abs(Math.sin(w * 2)) * 0.035;
         break;
       }
       case 'working': {
@@ -239,6 +246,12 @@ class AnimalRig implements Rig {
   private readonly size: number;
   /** Last growth factor pushed to the body scale, so it is set on change only. */
   private grown = -1;
+  /**
+   * Stride phase per unit of `animPhase`, recomputed whenever the body changes
+   * size. A calf's legs are shorter than its dam's, so it has to take more steps
+   * over the same ground — and does, without either of them scrubbing a foot.
+   */
+  private walkPhase = 0;
 
   constructor(pawn: Pawn, shared: SharedGeometry) {
     const kind = pawn.animal ?? 'dunhare';
@@ -309,7 +322,7 @@ class AnimalRig implements Rig {
       [0.16, -0.26],
     ] as const) {
       const leg = new THREE.Mesh(shared.animalLeg, trimMat);
-      leg.position.set(lx, 0.56, lz);
+      leg.position.set(lx, ANIMAL_LEG_LENGTH, lz);
       leg.castShadow = true;
       this.legs.push(leg);
       this.body.add(leg);
@@ -365,6 +378,7 @@ class AnimalRig implements Rig {
       this.grown = grow;
       this.body.scale.setScalar(this.size * grow);
       this.mark.position.y = 0.55 + this.size * grow * 0.9;
+      this.walkPhase = phaseScale(ANIMAL_LEG_LENGTH * this.size * grow, ANIMAL_SWING);
     }
     this.mark.visible = !!pawn.hunted && !pawn.dead;
     this.collar.visible = pawn.tame === true;
@@ -396,14 +410,15 @@ class AnimalRig implements Rig {
 
     const ph = pawn.animPhase;
     if (pawn.activity === 'walking') {
-      const s = Math.sin(ph) * 0.55;
+      const w = ph * this.walkPhase;
+      const s = Math.sin(w) * ANIMAL_SWING;
       // Diagonal pairs, the way a four-legged animal actually moves.
       this.legs[0]!.rotation.x = s;
       this.legs[3]!.rotation.x = s;
       this.legs[1]!.rotation.x = -s;
       this.legs[2]!.rotation.x = -s;
       this.head.rotation.x = 0;
-      this.group.position.y = floor + Math.abs(Math.sin(ph * 2)) * 0.03 * this.size * this.grown;
+      this.group.position.y = floor + Math.abs(Math.sin(w * 2)) * 0.03 * this.size * this.grown;
     } else {
       // Standing: head down in the grass, up every few seconds to look around.
       for (const l of this.legs) l.rotation.x = 0;
@@ -461,7 +476,7 @@ function makeShared(): SharedGeometry {
     torso: new THREE.BoxGeometry(0.44, 0.58, 0.26),
     head,
     hair,
-    leg: pivoted(0.15, 0.74, 0.17),
+    leg: pivoted(0.15, SETTLER_LEG, 0.17),
     arm: pivoted(0.12, 0.6, 0.13),
     rifle,
     club,
@@ -469,7 +484,7 @@ function makeShared(): SharedGeometry {
     animalNeck: new THREE.BoxGeometry(0.2, 0.44, 0.2),
     animalHead: new THREE.BoxGeometry(0.22, 0.22, 0.32),
     animalTail: new THREE.BoxGeometry(0.1, 0.16, 0.1),
-    animalLeg: pivoted(0.1, 0.56, 0.1),
+    animalLeg: pivoted(0.1, ANIMAL_LEG_LENGTH, 0.1),
     animalProng: prong,
     // A band round the neck. The only thing on the map that separates a tamed
     // mossback from the wild one grazing beside it, so it is a ring of solid

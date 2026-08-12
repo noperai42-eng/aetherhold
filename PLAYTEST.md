@@ -71,6 +71,7 @@ run.
 [9mm. Land it, and keep playing](#9mm-land-it-and-keep-playing-3-minutes-once-a-countdown-runs-out) ·
 [9nn. Take a card in a body](#9nn-take-a-card-in-a-body-2-minutes) ·
 [9oo. Read the roll](#9oo-read-the-roll-4-minutes-on-the-card-from-9mm) ·
+[9pp. Watch the walk](#9pp-watch-the-walk-4-minutes) ·
 [9m. Walk into the haze](#9m-walk-into-the-haze-2-minutes) ·
 [9n. Read the map in the corner](#9n-read-the-map-in-the-corner-2-minutes) ·
 [9aa. Walk to the rim](#9aa-walk-to-the-rim-5-minutes) ·
@@ -1650,6 +1651,47 @@ what the colony kept. Bury your dead and the manifest remembers them.
 
 Pinned by `tests/endings.test.ts` (the roll) and `tests/manifest.test.ts` (what the card does
 with it).
+
+## 9pp. Watch the walk (~4 minutes)
+
+Every claim in this step was arrived at by arithmetic and none of it has been looked at, which
+is the whole reason it is a step.
+
+**From the manager camera.** Zoom in on a settler crossing open ground and watch their feet
+rather than their body. **Expect** the foot that is down to *stay* down — planted, while the
+settler travels over it. The thing it replaces is unmistakable once you know to look for it: the
+legs scissored better than twice as fast as the ground went by, so the contact foot slid
+backwards about the length of the step it had just taken. If it still reads as skating, the
+arithmetic is right and the geometry it assumes is not — check `SETTLER_LEG` in
+`src/client/gait.ts` against where the rig actually hangs its legs.
+
+**The other way this fails is the more likely one.** A planted foot is bought with leg speed,
+and the cadence halved to pay for it. **Expect** a walk, not a moon-bounce. Three and a half
+steps a second under a body covering three cells of ground is right on paper, and paper is not
+this step. If it reads as slow motion, the swing amplitude wants to come *down* and the cadence
+will follow it back up on its own — that is the one direction the module is built to make easy,
+and it is a one-line change.
+
+**Now take a body** (`V`) and walk. **Expect** the view to bob with your steps, stop bobbing the
+instant you stop, and quicken when you hold Shift: it rides the stride, not a clock. Then **hold
+W into a wall** and press `V` while still holding it. **Expect** the bob to stop, and expect to
+find the settler you just left standing still with their legs down. That pairing is the point —
+the body used to sprint on the spot for the manager camera while first person felt like walking
+into stone, which is the one disagreement between the two views the player was guaranteed to
+find.
+
+**Then watch a calf trot beside its dam.** **Expect** the calf to take visibly more steps over
+the same ground. Short legs, more steps; it falls out of the same rule rather than being animated
+separately, and if the two of them look like they are running the same animation at the same rate
+then the rule is not reaching the herd.
+
+One thing deliberately left as it was: a Picky's legs. They end below the floor, so there is no
+contact point to plant, and its body shrinks to nothing as it poofs out — a stride derived from
+legs that short would spin them out while it vanished. It is wrong by about a fifth of what a
+settler was wrong by, in the other direction, and it stays that way on purpose.
+
+Pinned by `tests/gait.test.ts` (the arithmetic) and `tests/fps-view.test.ts` (the possessed
+body). Neither of them can see.
 
 ## 10. Save it, break it, load it
 

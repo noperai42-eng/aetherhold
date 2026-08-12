@@ -11,6 +11,7 @@
 import * as THREE from 'three';
 
 import { BODY_RADIUS, PLAYER_RUN, PLAYER_WALK, moveWithCollision } from '../../sim/movement';
+import { PHASE_PER_CELL, SETTLER_PHASE } from '../gait';
 import { LAYER_FPS } from '../render/renderer';
 import { cancelJob } from '../../sim/world';
 import { playerAttack } from '../../sim/combat';
@@ -43,9 +44,7 @@ export class FpsController {
   /** Sim-space facing angle, 0 = +X. Shared with the pawn every tick. */
   yaw = 0;
   pitch = 0;
-  private bob = 0;
   private eye = EYE_HEIGHT;
-  private moving = false;
 
   constructor() {
     this.camera.rotation.order = 'YXZ';
@@ -61,7 +60,6 @@ export class FpsController {
   attach(pawn: Pawn): void {
     this.yaw = pawn.facing;
     this.pitch = 0;
-    this.bob = 0;
   }
 
   /** Mouse look runs per frame, so turning is never limited by the 20 Hz sim. */
@@ -107,10 +105,7 @@ export class FpsController {
    */
   applyTick(world: World, pawn: Pawn, input: Input, combatRng: Rng): void {
     pawn.facing = this.yaw;
-    if (pawn.dead || pawn.downed) {
-      this.moving = false;
-      return;
-    }
+    if (pawn.dead || pawn.downed) return;
 
     let f = 0;
     let r = 0;
@@ -120,9 +115,9 @@ export class FpsController {
     if (input.held('KeyA')) r -= 1;
 
     const running = input.held('ShiftLeft') || input.held('ShiftRight');
-    this.moving = f !== 0 || r !== 0;
+    const moving = f !== 0 || r !== 0;
 
-    if (this.moving) {
+    if (moving) {
       // Taking the wheel cancels whatever the settler was doing. That is the
       // spec's manual override, and it is deliberately impossible to do by accident.
       if (pawn.jobId !== null) cancelJob(world, pawn.jobId);
@@ -139,8 +134,16 @@ export class FpsController {
       const sin = Math.sin(this.yaw);
       const dx = (cos * f - sin * r) * speed;
       const dy = (sin * f + cos * r) * speed;
+      // The stride is fed by ground actually covered, which is the rule
+      // `followPath` applies to every other body on the map. A flat per-tick
+      // number was the one place the possessed settler disagreed with the
+      // manager camera: hold W against a wall and the body stood still while
+      // its legs ran on the spot, at a cadence that matched neither its own
+      // speed nor the settler walking past it on the same paving.
+      const fromX = pawn.x;
+      const fromY = pawn.y;
       moveWithCollision(world, pawn, dx, dy);
-      pawn.animPhase += (running ? 0.62 : 0.42);
+      pawn.animPhase += Math.hypot(pawn.x - fromX, pawn.y - fromY) * PHASE_PER_CELL;
       pawn.activity = 'walking';
     } else if (pawn.activity === 'walking') {
       pawn.activity = 'idle';
@@ -164,8 +167,14 @@ export class FpsController {
     // Ease the eye height so lying down and standing up are not teleports.
     this.eye += (wanted - this.eye) * Math.min(1, dt * 9);
 
-    if (this.moving && !prone) this.bob += dt * 9;
-    const bobY = this.moving && !prone ? Math.sin(this.bob) * 0.035 : 0;
+    // The eye rides the body's own stride instead of a wall clock: it stops the
+    // instant the body is blocked, quickens when the settler runs, and is the
+    // same phase, amplitude and two-rises-per-cycle the rig bobs on — so the
+    // head you watch from outside and the head you look out of move together.
+    const bobY =
+      !prone && pawn.activity === 'walking'
+        ? Math.sin(pawn.animPhase * SETTLER_PHASE * 2) * 0.035
+        : 0;
 
     this.camera.position.set(x, this.eye + bobY, y);
     this.camera.rotation.y = -this.yaw - Math.PI / 2;

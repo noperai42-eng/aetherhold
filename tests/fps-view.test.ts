@@ -8,6 +8,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { BODY_RADIUS, penetration } from '../src/sim/movement';
+import { PHASE_PER_CELL } from '../src/client/gait';
 import { FpsController } from '../src/client/fps/controller';
 import { describeTarget, interact } from '../src/sim/interact';
 import { isWalkable } from '../src/sim/grid';
@@ -254,6 +255,77 @@ describe('walking a possessed body', () => {
 
     expect(pawn.x).toBeGreaterThan(spot.x); // it did walk
     expect(pawn.x).toBeLessThanOrEqual(wallX - 0.5 - BODY_RADIUS + 1e-6); // and it stopped
+  });
+
+  it('stops striding when the wall stops the body', () => {
+    // The dual-view law, at the one place the player is guaranteed to be
+    // looking. The possessed body used to advance its stride by a flat number
+    // every tick it *intended* to move, so holding W against stone left the
+    // manager camera watching a settler sprint on the spot while its feet stayed
+    // where they were. Twenty ticks of that was eight and a half cells of phase.
+    const world = createWorld(77);
+    const spot = clearRun(world);
+    const pawn = bodyIn(world);
+    pawn.x = spot.x;
+    pawn.y = spot.y;
+    expect(addBuilding(world, 'wall', spot.x + 2, spot.y, true)).not.toBeNull();
+
+    const fps = new FpsController();
+    fps.attach(pawn);
+    fps.yaw = 0;
+    const input = fakeInput({ held: ['KeyW'], locked: true });
+    for (let t = 0; t < 60; t++) fps.applyTick(world, pawn, input, new Rng(1));
+
+    const stuckAt = pawn.x;
+    const stuckPhase = pawn.animPhase;
+    for (let t = 0; t < 20; t++) fps.applyTick(world, pawn, input, new Rng(1));
+
+    expect(pawn.x - stuckAt).toBeLessThan(1e-9);
+    expect(pawn.animPhase - stuckPhase).toBeLessThan(1e-9);
+    expect(pawn.activity).toBe('walking'); // still trying, which is a different thing
+  });
+
+  it('advances the stride by ground covered, the rule every other body walks by', () => {
+    const world = createWorld(77);
+    const spot = clearRun(world);
+    const pawn = bodyIn(world);
+    pawn.x = spot.x;
+    pawn.y = spot.y;
+
+    const fps = new FpsController();
+    fps.attach(pawn);
+    fps.yaw = 0;
+    const from = { x: pawn.x, y: pawn.y, phase: pawn.animPhase };
+    fps.applyTick(world, pawn, fakeInput({ held: ['KeyW'], locked: true }), new Rng(1));
+
+    const moved = Math.hypot(pawn.x - from.x, pawn.y - from.y);
+    expect(moved).toBeGreaterThan(0);
+    // The same arithmetic `followPath` does for a free settler, so a possessed
+    // body and the one walking beside it on the same paving keep the same gait.
+    expect(pawn.animPhase - from.phase).toBeCloseTo(moved * PHASE_PER_CELL, 10);
+  });
+
+  it('takes one stride per cell whether it walks or runs', () => {
+    // Two flat constants used to sit here — 0.42 and 0.62 — so breaking into a
+    // run changed how far the body went *and*, separately, how fast its legs
+    // went, and the two did not agree with each other or with the ground.
+    const strideRate = (running: boolean): number => {
+      const world = createWorld(77);
+      const spot = clearRun(world);
+      const pawn = bodyIn(world);
+      pawn.x = spot.x;
+      pawn.y = spot.y;
+      const fps = new FpsController();
+      fps.attach(pawn);
+      fps.yaw = 0;
+      const held = running ? ['KeyW', 'ShiftLeft'] : ['KeyW'];
+      const from = { x: pawn.x, y: pawn.y, phase: pawn.animPhase };
+      fps.applyTick(world, pawn, fakeInput({ held, locked: true }), new Rng(1));
+      return (pawn.animPhase - from.phase) / Math.hypot(pawn.x - from.x, pawn.y - from.y);
+    };
+
+    expect(strideRate(true)).toBeCloseTo(strideRate(false), 10);
+    expect(strideRate(false)).toBeCloseTo(PHASE_PER_CELL, 10);
   });
 
   it('takes the wheel: moving yourself cancels the job the manager queued', () => {

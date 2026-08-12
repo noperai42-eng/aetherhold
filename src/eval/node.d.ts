@@ -43,7 +43,7 @@ declare module 'node:os' {
 // staleness guard, which needs a throwaway source tree to fingerprint and has
 // to leave nothing behind. Nothing the game ships touches either.
 declare module 'node:fs' {
-  export function readFileSync(path: string, encoding: 'utf8'): string;
+  export function readFileSync(path: string | URL, encoding: 'utf8'): string;
   export function writeFileSync(path: string, data: string): void;
   export function mkdirSync(path: string, options?: { recursive?: boolean }): void;
   export function mkdtempSync(prefix: string): string;

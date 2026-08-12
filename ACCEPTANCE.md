@@ -14,14 +14,38 @@ Four sections: [the killer feature](#the-killer-feature),
 and [what still wants a human](#what-still-wants-a-human) — which is the long one, and is
 ordered to match `PLAYTEST.md` rather than by importance.
 
-Last run — 2026-08-12. The suite is the principles round's and the build is the manifest round's
-before it — byte-identical, which is the point: a round that only added tests must not move the
-bundle, and this one did not, down to the content hash in the filename. The grid is the overlay
-round's and has not been re-run: neither round touched anything it measures.
+Last run — 2026-08-12, the motion round. The grid is the overlay round's and has not been re-run:
+this round is client-only, and the fingerprint `.eval/measurements.json` is keyed on has not
+moved.
 
 - `npx tsc --noEmit` clean.
-- `npm test` — **95 of 97 files, 1,822 tests green**, 13 skipped, in 911.01 s. **Eleven** of those
-  are the newest and they are all instrument rather than game: the two stage-5 promises about the
+- `npm test` — **96 of 98 files, 1836 tests green**, 13 skipped, in 850 s.
+  **Fourteen** of those are the newest and they are the walk.
+  **Eleven** are `tests/gait.test.ts`, a new file for the arithmetic that turns distance walked
+  into a gait — its own module for the reason `pace.ts` and `overlays.ts` are theirs: it holds no
+  three.js, so `environment: 'node'` can load it and a decision made in it is a test rather than a
+  comment. What they pin is that a foot **stays where it was put**, expressed as a distance in the
+  same cells the sim moves bodies through, because *"it reads as skating"* is a feeling and a
+  feeling cannot fail a build. Foot scrub is asserted at zero for the settler, for a calf, and
+  across a grid of leg lengths and swings that no rig currently uses — the rule has to be a rule,
+  not a constant that happens to fit the two bodies in the game today. One case records **what the
+  old fixed swing cost** (0.441 cells of backwards slide per step, better than twice as fast as
+  the ground went by) so a revert cannot pass quietly; one pins that a body with no legs stands
+  still rather than dividing by zero and scissoring at the frame rate, which is what a calf scaled
+  to nothing or a rig mid-vanish would otherwise do; and three hold the *cadence* the fix leaves
+  behind, since planting a foot is done by slowing the legs and slowing them far enough is its own
+  bug. The load-bearing one is none of those: it reads `src/sim/movement.ts` **as text** and fails
+  if the literal there stops matching the copy here. The copy exists because exporting the real
+  one would edit `src/sim/**` and cost a sixty-day grid re-run to say what the grid already says,
+  and a copy is only safe while something breaks when it drifts.
+  **Three** are `tests/fps-view.test.ts`, on the body you drive, and they are the dual-view law
+  rather than a rendering detail: held against a wall the possessed settler's stride **stops with
+  it** — it used to advance on intent, so the manager camera watched a body sprint on the spot
+  while its feet stayed put; the stride advances by ground actually covered, the same arithmetic
+  `followPath` does for every free settler; and it is **one stride per cell whether it walks or
+  runs**, where two unrelated flat constants used to make breaking into a run change the legs and
+  the ground by different amounts.
+  **Eleven** more arrived one round ago and they are all instrument rather than game: the two
   far end, `every-ending-is-reachable` and `no-ending-is-free`, which had no cases until now for a
   reason worth writing down. Both are `enforced: false`, and on every grid ever run they report
   `broken` or `untested` — the honest state of a game whose sixty days reach one ending of three.
@@ -44,7 +68,7 @@ round's and has not been re-run: neither round touched anything it measures.
   of five, and `s.war` to `s.runs` on the reachability check fails four of six. `principles.ts` was
   restored to `HEAD` after each and verified with `git diff --stat`, so the source fingerprint
   `.eval/measurements.json` is keyed on never moved.
-  **Twenty-one** more arrived one round ago and they are the whole of stage 5c, split by what each
+  **Twenty-one** more arrived two rounds ago and they are the whole of stage 5c, split by what each
   half can be held to.
   **Ten** are `tests/endings.test.ts`, on the roll as the sim writes it: that it holds everybody
   the colony still had a body for and drops the prisoners, who are not the colony; that the ship
@@ -330,7 +354,12 @@ round's and has not been re-run: neither round touched anything it measures.
   to move. The first hull to be committed to will take steel off the yard for twelve days and
   this paragraph will read differently, which is the point of writing down which of the two
   sentences this grid earned.
-- `npm run build` — 919.45 kB JS (263.04 kB gzip), 23.76 kB CSS (5.15 kB gzip). The manifest cost
+- `npm run build` — 919.61 kB JS (263.15 kB gzip), 23.76 kB CSS (5.15 kB gzip). The gait module
+  cost **0.16 kB and no CSS**, which is what a page of arithmetic that deletes two fields on its
+  way in should cost. The build also caught the round's only type error — a `URL` handed to a
+  `readFileSync` the hand-written `node.d.ts` had declared as `string`-only — which is the gate
+  doing its job rather than confirming a green that was already there.
+  The manifest cost
   **1.60 kB of JS and 0.35 kB of CSS**, and nearly all of that JS is the sim's half rather than
   the card's: `manifestSections` is one `map` over rows, while `takeManifest` walks every pawn and
   copies them. The overlay rule, a slice ago,
@@ -366,6 +395,7 @@ round's and has not been re-run: neither round touched anything it measures.
 | `V` switches instantly, no reload | `toggleView()` swaps camera + HUD layer in the same frame; nothing rebuilds the scene or the world | read `app.ts:405`; manual — PLAYTEST §4 |
 | Selection and possessed id survive the switch | `enterFps` sets `manager.selection` to the body you entered; `exitFps` remembers the id so `V` drops you back in | read `app.ts:422`, `app.ts:447`; manual — PLAYTEST §4 |
 | Collision matches the visuals | the possessed body moves through `moveWithCollision` — the same call a settler's job makes — and never scans `world.buildings` itself | automated — `tests/architecture.test.ts`, `tests/fps-view.test.ts` |
+| One gait, whichever camera is watching | limbs come off `animPhase`, which is *distance travelled after collision* — the possessed body advances it by the ground it actually covered, so a body held against a wall stops striding in both views instead of sprinting on the spot for the manager camera. There is no animation clock left anywhere in the client, and each rig derives its stride from its own legs | automated — `tests/gait.test.ts`, `tests/fps-view.test.ts`; manual — PLAYTEST §9pp |
 | One answer to what the colony has seen | `sim/explore.ts` owns `world.seen`; the shroud keeps no flags of its own, mirrors that array, and can only ever take haze away — so the map view and the body standing in it end at the same edge | automated — `tests/explore.test.ts`; read `render/shroud.ts:103`; manual — PLAYTEST §9m |
 
 ## The engine constraints
@@ -458,6 +488,16 @@ rather than what it computes. Each is a numbered step in `PLAYTEST.md`:
   data rather than as an ending, the ordering is wrong and no test will ever say so. The check
   worth doing twice is the quiet one — find a settler whose partner is buried and see whether
   *with <name>* under a name on a ship lands the way it is meant to, or reads as a bug.
+- **§9pp** — watch a settler walk, then walk one yourself. The whole motion round argues from
+  arithmetic: foot scrub is asserted at zero in cells, the possessed body's stride is asserted
+  against the ground it covered, and the mutation the tests refuse to let back in is a measured
+  0.441 of backwards slide per step. None of that is a claim about how it **looks**, and the two
+  numbers the fix trades against each other pull opposite ways — a foot that plants is bought by
+  halving the leg speed, and legs that are slow enough read as a moon-bounce rather than a walk.
+  3.6 steps a second is right on paper for a body crossing 3.1 cells of it, and paper is where
+  that ends. Stand next to a settler crossing the yard, then take a body and hold W into a wall:
+  the legs should stop when the body does, which is the thing the manager camera used to
+  contradict. Nobody has looked at any of this yet.
 - **§9m** — walk into the haze. Whether the edge of the known world reads as weather or as
   a missing chunk of the level is not a thing a test can be shown.
 - **§9n** — read the map in the corner. Whether one pixel a cell is legible, and whether

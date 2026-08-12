@@ -1620,3 +1620,21 @@ pixel ratio and effect density. The device pixel ratio is always capped — at 1
 preset — because a retina display asking for 3 costs nine times the fill for a colony that
 is mostly flat colour. All geometry is generated in code; there are no model, texture, or
 audio files anywhere in the project, and `tests/architecture.test.ts` fails if one appears.
+
+Limbs come off `Pawn.animPhase`, which the sim advances by the distance a body actually
+travelled after collision rather than by ticks elapsed. That is what makes a settler shoved
+against a wall stop striding instead of running on the spot, and it is why the two cameras
+never disagree about a gait. What the renderer *does* with that distance is a client
+decision, and it lives in `src/client/gait.ts` — pure, three.js-free, and therefore testable
+under vitest's `environment: 'node'`, the same treatment `pace.ts`, `overlays.ts` and
+`manifest.ts` get. The rule is one equation: **a foot stays where it was put when a full
+swing carries the body exactly as far as the foot reaches**, so a stride spans
+`4 · leg · sin(swing)` and a rig scales the phase by `2π / (stride · PHASE_PER_CELL)`. Each
+rig derives its own from its own legs, which is why a calf takes more steps than its dam over
+the same ground without either scrubbing a foot, and why nothing needs re-tuning when a limb
+changes length. `PHASE_PER_CELL` is mirrored from `movement.ts` rather than imported —
+exporting the inline literal would edit `src/sim/**` and invalidate the fingerprint that keys
+`.eval/measurements.json`, so `tests/gait.test.ts` reads the sim's source as text and fails
+the day the two drift apart. The possessed body in `fps/controller.ts` advances the same
+phase by the same rule, measured after `moveWithCollision`, and the first-person eye bobs on
+it; there is no separate animation clock anywhere in the client.
