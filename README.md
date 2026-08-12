@@ -136,6 +136,12 @@ storyteller makes, and it is not in a production build. `PLAYTEST.md` uses it.
 
 Time controls belong to the manager. In a body you get 1× or paused.
 
+A card over the world — the key list, the colony code box, a new colony, an ending — takes the
+body's controls with it and hands the mouse back on the same frame. You stop walking, the
+settler stands still, and there is a cursor to press the buttons with. The colony keeps running
+behind it, because an ending that stopped the valley would be a different promise than the one
+the card makes.
+
 ## The screen
 
 The **build bar** along the bottom is a row of categories — Structure, Furniture, Production,
@@ -1619,12 +1625,16 @@ to go — unless it walked out of the door that rung opened; every ending that l
 been committed to and survived; each of the three has to be reachable by somebody; and an
 ending that landed has to be **reported** as one, on the day it landed.
 
-The fifth is new and the second was just rewritten, so the next grid is what says where those
-two stand. Of the three that have been read, two are broken and one holds thinly — which is the useful
-part, because it says exactly where the game is thin. Across sixty days a colony walks a fair
+All five have now been read on a sixty-day grid, and **three hold**. The two that were open
+came back green on their first reading: no run of fifteen ended its clock on a top rung it had
+not walked off, and both endings that landed were committed to first, took the full twelve
+days, were filed as *landed*, and left the colony playing on for up to eleven days afterwards.
+The **two that are broken are the two that were broken before** — which is the useful part,
+because it says exactly where the game is thin. Across sixty days a colony walks a fair
 way up science or warfare, but economy stops at **Friend** on almost every map: the founding
 needs one neighbour who takes your calls and nothing in the valley yet asks for a second.
-On the last grid, two colonies of fifteen reached an ending and **both reached the same one**
+On this grid, as on the one before it, two colonies of fifteen reached an ending and **both
+reached the same one**
 — the dominion, on the strength of three holdings held. Nobody finished the ship (the tree
 gets to 17 projects of 19 and runs out of days) and nobody came close to the berths (one town
 of four at standing). One of those is a clock that is too short and the other is a road

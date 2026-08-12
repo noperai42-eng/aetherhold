@@ -125,6 +125,7 @@ src/
   client/              THE VIEWS — three.js, DOM, input. Reads sim, never forks it.
     app.ts             fixed-timestep loop, mode switching, wiring
     pace.ts            how many ticks a frame owes: the accumulator, alone and testable
+    overlays.ts        who has the hands while a card is up, alone and testable
     devtools.ts        the console handles a developer needs and a player never sees
     input/input.ts     one keyboard/mouse listener set, shared by both modes
     input/touch-controls.ts  the same intents off a phone: sticks, taps, long-press
@@ -175,6 +176,28 @@ it calls `sim/orders.ts`, which appends a blueprint to `world.buildings`.
 
 Speed lives in the manager. Entering a body clamps it to 1x (or paused): the manager is
 where you fast-forward a day, the body is where you live in one.
+
+### A card over the world takes the hands with it
+
+The HUD has four overlays — the key list, the colony-code box, the new-colony card and the
+ending — and all four are one DOM tree over both views, so all four can land on a player who
+is standing in a body. That view is the one holding the pointer lock, and a locked pointer is
+*no cursor at all*. So an overlay in first person used to be unanswerable: nothing to click the
+button with, and `keydown` and `mousemove` bound to the window rather than the canvas, so WASD
+kept walking the settler and the mouse kept turning a head the player could not see. Escape
+was no way out either — Chrome eats the keypress that exits a pointer lock, so it handed back
+a cursor and left the card exactly where it was.
+
+The rule is one sentence: while an overlay is up, the body reads no input and the pointer goes
+back. It lives in `client/overlays.ts` for the same reason `pace.ts` does — `app.ts` cannot be
+loaded outside a browser, and a rule about who is allowed to move should be provable. `app.ts`
+asks it twice a frame, once for the per-frame look and once for the per-tick step, and
+`tests/architecture.test.ts` pins that it asks rather than deciding inline again.
+
+Two details are deliberate. The world **keeps ticking** behind the card — an ending that
+stopped the colony would contradict the promise the ending card makes — so the settler stands
+still while the day goes on around them. And the wipe card **refuses Escape**, because it is
+the one card with no colony behind it: the only move left is the one it offers.
 
 ### What a tick costs, and how to find out
 

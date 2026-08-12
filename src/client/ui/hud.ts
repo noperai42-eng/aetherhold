@@ -428,6 +428,8 @@ export class Hud {
    * is no run in which two of them land.
    */
   private endingShown: 'none' | 'won' | 'lost' | EndingId = 'none';
+  /** Whether the card on screen has a way out that is not "throw this colony away". */
+  private endingDismissible = false;
   private readonly cards: HTMLElement;
   /** The card stack's arithmetic. See `ui/toasts.ts`. */
   private readonly minimap: Minimap;
@@ -2667,11 +2669,29 @@ export class Hud {
   /** Wipe the memory of a shown card, so a fresh colony gets its own endings. */
   private resetEnding(): void {
     this.endingShown = 'none';
+    this.endingDismissible = false;
     this.overOverlay.classList.remove('on');
+  }
+
+  get endingOpen(): boolean {
+    return this.overOverlay.classList.contains('on');
+  }
+
+  /**
+   * The Escape route, for a player who is looking at this from inside a body.
+   *
+   * Refuses on a wipe, because that card has no dismiss button either: there is
+   * no colony behind it to go back to, and the one move left is the one it
+   * offers. Escape closing it would leave the player alone on a map that has
+   * stopped.
+   */
+  closeEnding(): void {
+    if (this.endingDismissible) this.overOverlay.classList.remove('on');
   }
 
   private showEnding(world: World, outcome: 'won' | 'lost' | EndingId): void {
     this.overOverlay.classList.add('on');
+    this.endingDismissible = outcome !== 'lost';
     // A terminal reads its tally off the record rather than off the world, and
     // the other two off the world because for them there is no difference — a
     // wipe stops the clock and a founding is shown on the tick it happens. A
@@ -2716,7 +2736,7 @@ export class Hud {
     // the whole action.
     if (outcome !== 'lost') {
       const on = el('button', 'btn strong', {}, 'Keep playing') as HTMLButtonElement;
-      on.onclick = () => this.overOverlay.classList.remove('on');
+      on.onclick = () => this.closeEnding();
       acts.append(on);
     }
     const again = el('button', 'btn', {}, 'New colony…') as HTMLButtonElement;

@@ -1,7 +1,7 @@
 {
-  "fingerprint": "ce03a113",
-  "taken": "2026-08-12T03:21:12.585Z",
-  "seconds": 2003.393,
+  "fingerprint": "4fc79614",
+  "taken": "2026-08-12T14:50:09.843Z",
+  "seconds": 2847.35,
   "steward": false,
   "sweep": {
     "seeds": [
@@ -922,7 +922,7 @@
       {
         "seed": 1312,
         "difficulty": "calm",
-        "verdict": "thriving",
+        "verdict": "landed",
         "daysLived": 60,
         "firstThreatDay": 5,
         "threats": 15,
@@ -1182,7 +1182,7 @@
       {
         "seed": 1312,
         "difficulty": "settler",
-        "verdict": "holding",
+        "verdict": "landed",
         "daysLived": 60,
         "firstThreatDay": 3,
         "threats": 30,

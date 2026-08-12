@@ -18,6 +18,7 @@ import { QUALITY, Viewport, guessQuality } from './render/renderer';
 import { Ambience } from './audio/ambience';
 import { Sfx } from './audio/sfx';
 import { alphaOf, pace } from './pace';
+import { anyOverlayUp, bodyMayAct, pointerMustBeFree } from './overlays';
 import { WorldView } from './render/world-view';
 import { clearSave, defaultCamera, hasSave, loadGame, saveGame, savedAt, serialize } from '../sim/save';
 import { exportColony, importColony } from '../sim/transfer';
@@ -51,6 +52,7 @@ import type { ResearchId } from '../sim/research';
 import type { BuildingKind, Difficulty, Pawn, World, WorkType } from '../sim/types';
 import type { CameraState, ViewMode } from '../sim/save';
 import type { Quality } from './render/renderer';
+import type { Overlays } from './overlays';
 import type { Selection, Tool } from './manager/controller';
 import type { Streams } from '../sim/tick';
 
@@ -207,9 +209,17 @@ export class App {
     const pawn = this.mode === 'fps' ? this.playerPawn() : null;
     if (this.mode === 'fps' && !pawn) this.exitFps('Nobody left to inhabit.');
 
+    // An overlay takes the body's controls and hands back the mouse. See
+    // `overlays.ts` — the world keeps ticking behind the card, because an
+    // ending that stopped the colony would be a different promise than the one
+    // the card makes, but nobody is driving the settler while it is up.
+    const overlays = this.overlays();
+    const bodyActs = bodyMayAct(this.mode, overlays);
+    if (pointerMustBeFree(this.mode, overlays)) this.input.releaseLock();
+
     if (this.mode === 'manager') {
       this.manager.update(this.world, this.input, dt);
-    } else if (pawn) {
+    } else if (pawn && bodyActs) {
       this.fpsFrame(pawn, dt);
     }
 
@@ -217,7 +227,7 @@ export class App {
     const owed = pace(this.accumulator, dt, this.speed);
     this.accumulator = owed.left;
     for (let step = 0; step < owed.steps; step++) {
-      const body = this.mode === 'fps' ? this.playerPawn() : null;
+      const body = bodyActs ? this.playerPawn() : null;
       if (body) this.fps.applyTick(this.world, body, this.input, this.streams.combat);
       stepWorld(this.world, this.streams);
       this.view.onTick(this.world);
@@ -321,10 +331,13 @@ export class App {
       fps: this.fpsShown,
       viewQuad: player ? null : this.cam.viewQuad(),
     });
-    this.hud.setLockHint(this.mode === 'fps' && !this.input.locked && !this.input.touchSeen);
+    const covered = anyOverlayUp(this.overlays());
+    this.hud.setLockHint(this.mode === 'fps' && !this.input.locked && !this.input.touchSeen && !covered);
     // The thumb pad only exists for a machine that has shown it has no keyboard,
-    // and only in the view that needs one. A desktop never sees it.
-    this.touch.setVisible(this.mode === 'fps' && this.input.touchSeen);
+    // and only in the view that needs one. A desktop never sees it. Nor does a
+    // tablet with a card up: the body is not taking input, and a stick that
+    // moves nobody is worse than no stick.
+    this.touch.setVisible(this.mode === 'fps' && this.input.touchSeen && !covered);
     this.hud.setContinueAvailable(this.autosaveExists);
   }
 
@@ -397,6 +410,16 @@ export class App {
 
   // ---------------------------------------------------------------- input
 
+  /** What the HUD currently has over the world. See `overlays.ts`. */
+  private overlays(): Overlays {
+    return {
+      help: this.hud.helpOpen,
+      backup: this.hud.backupOpen,
+      setup: this.hud.setupOpen,
+      ending: this.hud.endingOpen,
+    };
+  }
+
   private globalKeys(): void {
     if (this.input.clicked(0) || this.input.pressed('Space')) this.sfx.unlock();
 
@@ -418,6 +441,26 @@ export class App {
       this.hud.closeSetup();
       return;
     }
+    // And the ending card, which is the one overlay the player did not open. It
+    // refuses on a wipe — see `Hud.closeEnding` — so this falls through to the
+    // guard below and the keyboard stays with the card, which is correct: there
+    // is nothing left to drive.
+    if (this.input.pressed('Escape') && this.hud.endingOpen) {
+      this.hud.closeEnding();
+      if (!this.hud.endingOpen) return;
+    }
+    // Help closes on its own key as well as on Escape, and this has to be said
+    // before the guard or the guard would eat it.
+    if (this.hud.helpOpen && (this.input.pressed('Slash') || this.input.pressed('F1'))) {
+      this.hud.toggleHelp();
+      return;
+    }
+    // Nothing below this line reaches the colony while an overlay is over it.
+    // Pause, the view swap and every panel key belong to the world behind the
+    // card, and the player looking at a card is not looking at the world — most
+    // sharply in the backup box, where the colony code is typed and a stray `p`
+    // used to open the work tab underneath.
+    if (anyOverlayUp(this.overlays())) return;
     if (this.input.pressed('Slash') || this.input.pressed('F1')) this.hud.toggleHelp();
     if (this.input.pressed('KeyV')) this.toggleView();
     if (this.input.pressed('Space')) this.setSpeed(this.speed === 0 ? 1 : 0);

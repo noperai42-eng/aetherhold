@@ -121,6 +121,21 @@ describe('one simulation', () => {
     expect(text.includes('world.buildings'), 'the fps controller scans buildings itself').toBe(false);
   });
 
+  it('asks one module who has the hands while a card is up', () => {
+    // In first person the browser has the mouse, so an overlay that opens over
+    // a possessed body is unanswerable — no cursor to click it with — and the
+    // keyboard keeps walking the settler behind it. The rule that fixes that
+    // lives in `client/overlays.ts` so `tests/overlays.test.ts` can reach it;
+    // this pins the wiring, which is the part a refactor drops silently. See
+    // `pace.ts` and its test for the same shape.
+    const app = under('src/client').find(([path]) => path.endsWith('client/app.ts'));
+    expect(app, 'the app has moved').toBeTruthy();
+    const [, text] = app!;
+    expect(importsOf(text)).toContain('./overlays');
+    expect(text, 'the app decides body input itself').toContain('bodyMayAct');
+    expect(text, 'the app never hands the pointer back').toContain('pointerMustBeFree');
+  });
+
   it('lets only one file know how fast the ground is', () => {
     // `terrainSpeed` is the bare table — the boards and the paving, with nothing
     // lying on them. `groundSpeed` is that table plus whatever the weather has

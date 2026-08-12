@@ -1,14 +1,14 @@
 # The end game
 
-> Status: **stages 0 to 4 shipped, and 5a with them; 5b and 5c are still a plan.**
+> Status: **stages 0 to 4 shipped, and 5a and 5b with them; 5c is still a plan.**
 > Written 2026-08-06 against the measurements in [ARCHITECTURE.md](ARCHITECTURE.md)
 > § *What the grid found*, revised 2026-08-08 against the sixty-day grid it asked
 > for, and again 2026-08-12 against the grid that first reached an ending. What is
 > in `src/` is the harness, the far country in rings, the third tier of the tree,
-> the three visible roads, the war road out to the holdings, and the terminal at
-> the top of each road — commit, pay, land. What is not built is the *ending
-> itself*: the record it writes, the card it shows, and the fourth verdict the
-> instrument reads it by.
+> the three visible roads, the war road out to the holdings, the terminal at
+> the top of each road — commit, pay, land — and the ending itself: the record it
+> writes, the card it shows, and the fourth verdict the instrument reads it by. What
+> is not built is the *manifest*: who actually left, by name.
 >
 > Numbers below come from two different grids and are labelled where they differ.
 > The forty-five-day and thirty-day figures are kept where they are the reason a
@@ -1279,7 +1279,9 @@ Three slices, in this order:
   The new promise, *an ending is the last word*, checks the reporting rather than the
   balance: every run holding a record is filed as `landed`, no ending landed on a day
   its run never reached, and when it holds it prints how long the colony played on
-  afterwards. It reads on the next sixty-day grid.
+  afterwards. It **holds** on its first sixty-day grid: two landed endings, both filed
+  as `landed`, neither on a day its run never reached, and the colony played on for up
+  to eleven days after the record froze.
 
   It also closed the bill 5a left open. *No road is already finished* had outlived its
   own claim — calm/1312 and settler/1312 stood on a top rung it called a dead end and
@@ -1287,7 +1289,8 @@ Three slices, in this order:
   quietly re-worded, because until an ending had a verdict there was nothing to read.
   Now there is, and the rewrite is the narrow one: a top rung is forgiven only when
   **that road's own ending landed**, not when any ending did and not when one was merely
-  committed to.
+  committed to. That reads green now too: across fifteen colonies no run ended its clock
+  on a top rung it had not walked off, and the furthest anybody got was rung four of four.
 - **5c — the manifest.** [The one thing to build now for the
   sequel](#the-one-thing-to-build-now-for-the-sequel), which is cheap the moment 5b
   exists and expensive to reconstruct afterward.

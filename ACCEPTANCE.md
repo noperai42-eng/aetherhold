@@ -14,16 +14,33 @@ Four sections: [the killer feature](#the-killer-feature),
 and [what still wants a human](#what-still-wants-a-human) — which is the long one, and is
 ordered to match `PLAYTEST.md` rather than by importance.
 
-Last run — 2026-08-12. The suite and the build are stage 5b's, taken after the ending learned to
-write itself down; the grid below is still the one that put an ending at the top of each road and
-found that only one of the three is standing anywhere a colony can reach. The new promise and the
-rewritten one read on the next grid, and this section says so rather than quoting numbers that
-predate them:
+Last run — 2026-08-12. The suite and the build are the overlay round's, taken after a card over
+the world learned to take the body's controls with it. The grid is a fresh one, and it is the
+first that could read 5b's two promises — the one it wrote and the one it rewrote — so the two
+lines this section used to defer are now numbers rather than a promise to look later:
 
 - `npx tsc --noEmit` clean.
-- `npm test` — **93 of 95 files, 1,780 tests green**, 13 skipped, in 820.85 s. **Fifteen** of
-  those tests are new and they are the whole of stage 5b, spread over three files by what each
-  one can afford to run. **Five** are `tests/endings.test.ts`, on the record itself: that nothing
+- `npm test` — **94 of 96 files, 1,790 tests green**, 13 skipped, in 1,477.49 s. **Ten** of those
+  tests are new and they are the whole of the overlay rule. **Nine** are `tests/overlays.test.ts`,
+  a new file for a rule that is three functions long, because the alternative was a comment in
+  `app.ts` that nothing can run: an overlay takes the body's controls and hands back the mouse.
+  It is walked over **all sixteen** combinations of the four overlays rather than sampled, since
+  the failure being guarded against is a fifth overlay arriving and being left out of the union.
+  The four cards are also named one at a time instead of looped over the shipped key list —
+  a loop over `KEYS` would welcome an omission rather than notice it. Two of the nine are the
+  manager's side and they are there to stop the fix over-reaching: at the desk the body may
+  never act and the pointer is never taken, with or without a card, or `app.ts` would start
+  feeding WASD to a settler nobody is standing in the moment an overlay closed. The last one is
+  the load-bearing equivalence — `pointerMustBeFree` is exactly `!bodyMayAct` in first person,
+  over all sixteen — because these are one decision and a version where they drift is a version
+  where the cursor comes back while the settler is still walking.
+  The **tenth** is one new rule in `tests/architecture.test.ts`, pinning that `app.ts` *asks*
+  `overlays.ts` rather than deciding it inline again. That is the half a refactor drops
+  silently: the pure module would keep passing its own tests while the client quietly went back
+  to its own answer.
+  **Fifteen** more arrived one slice ago and they are the whole of stage 5b, spread over three
+  files by what each one can afford to run. **Five** are `tests/endings.test.ts`, on the record
+  itself: that nothing
   is kept until there is something to keep; that the tally is frozen on the landing tick and not
   a tick later — the test kills a settler, builds, and plays twenty more days, then asserts that
   nothing on the record moved; that the record survives a `serialize`/`deserialize` round trip;
@@ -47,7 +64,8 @@ predate them:
   was merely committed to. That exemption is the kind of loosening that passes by accident if
   the road-to-ending index is dropped, so it is pinned from all three sides rather than
   demonstrated once.
-  Nineteen more arrived with the terminal one slice ago, all of them `tests/endings.test.ts`. They
+  Nineteen more arrived with the terminal the slice before that, all of them
+  `tests/endings.test.ts`. They
   are organised around the three ways this file could be wrong rather than around its functions.
   That **none of the three bills was typed in**: the ship's is the summed materials of every
   line in the research tree, so the test recomputes that sum from `research.ts` and asserts the
@@ -103,9 +121,10 @@ predate them:
   re-run separately. It is the one file both entry points share, so a second run is a second
   reading of a number already recorded rather than a second piece of evidence.
 - `npm run measure -- --days 60 --past-founding` then `npm run balance` — 4 tests green.
-  **39 colonies in 2,003 s**. **Twenty-eight** principles are scored, two more than last time:
-  all **fifteen** enforced ones hold, and of the thirteen open ones — reported without
-  asserting — four do.
+  **39 colonies in 2,847 s**. **Twenty-nine** principles are scored, one more than last time:
+  all **fifteen** enforced ones hold, and of the fourteen open ones — reported without
+  asserting — **six** do, up from four. Both of the two that moved are 5b's: the promise it
+  wrote and the promise it rewrote.
   **Two colonies out of fifteen reached an ending, and both of them reached the same one.**
   calm/1312 committed to the dominion on day 37 and landed it on day 49; settler/1312 committed
   on day 47 and landed on day 59, one day inside the clock. The other thirteen never got the
@@ -194,20 +213,17 @@ predate them:
   idle 0 days, 6.4 days a run waiting on a delivery and 18 at worst. *The surplus finds a
   buyer* holds for a fifth grid: all 8 runs that ended above 300 steel spent at least a
   quarter of the pile down, the thinnest settler/20260729 at 40 % of 853. *No road is already
-  finished* — **broken this pass, and it was broken last pass too; nobody could see it.** It
-  had the same fault as its companion and was found by looking rather than by being bitten: a
-  road pinned at rung 1 of 4 always has road left, so reading it off the unmanaged grid could
-  only ever return *holds*. Off the played family it reads **2 roads finished by day 60:
-  calm/1312 finished warfare, settler/1312 finished warfare** — three holdings apiece and
-  warfare **rung 4 of 4**, which is precisely the thing the promise exists to catch. It reads
-  the same words this pass, and this pass they mean something else: both of those colonies then
-  committed to the dominion and landed it, so what the promise is now pointing at is not a road
-  that ran out but a road whose last twelve days it cannot see. **The promise has outlived its
-  own claim** — *a colony that plays its whole clock has road left on all three* was written
-  when the top rung was a dead end, and it is not one any more. Rewriting it is stage 5b's, not
-  a thing to slip in beside the grid that exposed it: the honest version has to say *road left,
-  or a terminal it has not yet landed*, and the field that tells it which is the verdict 5b
-  adds.
+  finished* — **holds, on the first grid after the rewrite that paid its bill.** It was broken
+  on the last two passes for a reason that was never a balance fault: calm/1312 and settler/1312
+  finished warfare at rung 4 of 4 and the promise called that a road that had run out, when in
+  fact both of them walked through the door those rungs had opened and landed the dominion. The
+  claim was rewritten in 5b to the narrow version — *road left on all three, **or** that road's
+  own ending landed* — and it now reads **no run of fifteen ended its clock on a top rung it had
+  not walked off; furthest anybody got was rung 4 of 4**. What makes this a real green rather
+  than a re-worded one is the exemption's shape: it is *that road's own* ending, not any ending
+  and not a commitment, which is pinned from all three sides in
+  `tests/balance-principles.test.ts` precisely because the loose version would also have printed
+  *holds* here.
   *No ending is free* — **new this slice, and it holds**: **2 endings landed, none in under 12
   days; the longest took 12.** Both landed on the twelfth day exactly, which is the number the
   promise is a floor against and not evidence that the floor binds. The caveat is the whole
@@ -217,6 +233,14 @@ predate them:
   the promise cannot yet tell them apart. It will the first time a hull lands, because a hull
   that cannot get its steel serves the days without landing — which is a case the unit tests
   cover and the grid has never seen.
+  *An ending is the last word* — **new with 5b, and it holds on its first reading**: **2 landed
+  endings, all filed as `landed`, and the colony played on for up to 11 days after.** The three
+  ways it could have failed are the three the promise checks and none of them fired: no run
+  holding a record was filed under a different verdict, no ending landed on a day its run never
+  reached, and no run was filed as landed without a record to show for it. The days-played-on
+  figure is the one worth reading twice — it is the evidence that the frozen record and the
+  living world are two different things, which is the whole design decision of the slice. A run
+  that stopped on the landing tick would print 0 there and the promise would still be green.
   *Every ending is reachable* — **new, and broken on arrival, which is what it was written for**:
   **1 of 3 endings reached in 60 days — unreached: ship (best rung 3 of 4), berths (best rung 1
   of 4).** `ENDGAME.md` posed this as one question — *does the grid's clock grow, or do two roads
@@ -226,7 +250,7 @@ predate them:
   **The ship is a clock question.** Best rung 3 of 4 against a top rung that is the whole
   research tree, and the tree column reads 17 of 19 projects on calm/20260729 with the bench
   never idle. That is a colony walking at the right pace and running out of days, and it is the
-  case a longer grid would settle — at twice 2,003 s every time anything under `src/sim` moves.
+  case a longer grid would settle — at twice 2,847 s every time anything under `src/sim` moves.
   **The berths are not.** Best rung **1 of 4**, on a ladder whose top rung is every neighbour on
   the map at standing, and five of the fifteen never reach rung 1 at all. Sixty more days of the
   same behaviour does not close that, and the reason is already on the board two promises up:
@@ -256,7 +280,9 @@ predate them:
   to move. The first hull to be committed to will take steel off the yard for twelve days and
   this paragraph will read differently, which is the point of writing down which of the two
   sentences this grid earned.
-- `npm run build` — 916.59 kB JS (262.06 kB gzip), 23.41 kB CSS (5.09 kB gzip). The far end
+- `npm run build` — 917.85 kB JS (262.44 kB gzip), 23.41 kB CSS (5.09 kB gzip). The overlay rule
+  cost **1.26 kB of JS and nothing at all in CSS**, which is what a rule that only decides who
+  reads the keyboard should cost. The far end
   cost **4.96 kB of JS and 0.34 kB of CSS**: the panel is the trade offers' own row again —
   `deal`, `ttl`, `cost`, `gain`, `blurb` — and the whole of the new stylesheet is a gold border,
   a warmer fill, and a quiet link, because a card that looked like nothing else on the panel

@@ -69,6 +69,7 @@ run.
 [9kk. Send a war party](#9kk-send-a-war-party-15-minutes-after-a-founding-on-a-colony-of-seven-or-more) ·
 [9ll. Commit to an ending](#9ll-commit-to-an-ending-20-minutes-at-speed-after-a-road-tops-out) ·
 [9mm. Land it, and keep playing](#9mm-land-it-and-keep-playing-3-minutes-once-a-countdown-runs-out) ·
+[9nn. Take a card in a body](#9nn-take-a-card-in-a-body-2-minutes) ·
 [9m. Walk into the haze](#9m-walk-into-the-haze-2-minutes) ·
 [9n. Read the map in the corner](#9n-read-the-map-in-the-corner-2-minutes) ·
 [9aa. Walk to the rim](#9aa-walk-to-the-rim-5-minutes) ·
@@ -1585,6 +1586,34 @@ the ship and let the ones who stayed starve. **Expect** the ordinary wipe — th
 `gameOver` still means nobody is left — and the run's own record still says the ship sailed on
 the day it sailed. An ending and a wipe are two different facts about the same colony and it
 should be able to hold both.
+
+## 9nn. Take a card in a body (~2 minutes)
+
+The same landing as 9mm, from the other camera. Press **V** before the countdown runs out and
+be standing in somebody — walking, ideally, with a hand on W — when the ending lands.
+
+**Expect:** the card arrives over the first-person view the same way it arrives over the map,
+and three things happen with it that did not before. The **mouse comes back** — the pointer
+lock lets go on the frame the card opens, so there is a cursor to press *Keep playing* with.
+The **settler stops**: the keyboard and the mouse both belong to the card while it is up, so
+holding W walks nobody into a wall behind it and the mouse does not turn a head you cannot
+see. And **Escape closes it**, exactly as it closes the key list. Dismiss it and the *Click to
+look with the mouse* hint is waiting: one click on the world and you are back in, facing where
+you were, still holding W.
+
+The colony behind the card does not stop — that is 9mm's point and it survives this one. Let a
+minute run at the card and the clock in the corner will have moved when you dismiss it.
+
+Worth doing once for each of the other three cards too, since they follow the same rule: open
+the key list with **/** in a body, open the colony-code box, open the new-colony card. Each
+should hand back the mouse, freeze the settler, and give you Escape. The one exception is on
+purpose — the *Aetherhold has fallen* card refuses Escape, because there is no colony behind it
+to go back to and the only move left is the one it offers.
+
+**Before this shipped:** the card opened, the mouse stayed locked away, there was no cursor to
+click any button with, W kept walking, and the only way out was a browser Escape that gave back
+a pointer and left the card exactly where it was. Pinned by `tests/overlays.test.ts` and the
+wiring rule in `tests/architecture.test.ts`.
 
 ## 10. Save it, break it, load it
 
