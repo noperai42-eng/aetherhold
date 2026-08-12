@@ -4,6 +4,93 @@ One round, one measured gap, one fix. Newest first.
 
 ---
 
+## 2026-08-12 — Nobody starves beside a full pantry, and it took a duration to say who
+
+**Track A: the instrument.** No game code changed — the client bundle comes out byte-identical.
+`src/eval/**` changed, so the fingerprint moved and the sixty-day grid was re-run.
+
+### The gap
+
+`nobody-starves-beside-a-full-pantry` had reported `broken` on six of fifteen colonies for four
+rounds, naming runs and no cause. Its own comment listed three live explanations — a downed settler
+nobody carried a meal to, a recruit who joined starving, a hauling reservation holding the last
+meal — and said honestly that it did not claim between them.
+
+It could not. The check read `worstFood`, which is a **level**: how low did anybody get. A level
+cannot tell a settler walking home from the far end of the valley, who bottoms out on the way and
+eats on arrival, from one who is not going to be fed at all. Both read 0.00 and the detail line
+could only ever say `hit 0.00 on 19 days of food`.
+
+### The measurement
+
+`scripts/probe-food.ts` — outside `src/sim` and `src/eval` so it does not move the fingerprint —
+replays a named run and logs every unbroken spell at or below the starving line: how long, how much
+of it on the floor, and whether the colony had food at the time. Every tick, not once a day: this
+world's day boundary lands at 07:12 every time, so a daily sample of a hunger curve reads one fixed
+phase of it, and forty minutes at zero looks exactly like a week at zero.
+
+Two populations in the two runs it replayed, and they do not overlap:
+
+| | length | on the floor | pantry stocked | ends in |
+|---|---|---|---|---|
+| walking home | 0.03–0.24 d | 0% | 100% | `eating` |
+| on the floor | 0.39–1.05 d | 89–100% | 100% | getting up, or not |
+
+Recruits are out: every settler who joined mid-run arrived at 0.45 food or better, so nobody walked
+in already starving. The reservation theory is not needed either — the pantry was stocked for the
+whole of every spell in both columns. What is left is the plain one. **Nothing in the sim carries
+food to a downed settler.** They lie at zero next to weeks of meals until they get up or die.
+
+### The change
+
+Feeding is not fixed this round, deliberately. Fix it first and the principle still reads `broken`
+— the walkers are still walking — and nothing in the grid shows the repair landing. So the round
+buys the instrument that can see it, the way "the wait column learns to tell a decision from a
+road" did two rounds ago.
+
+- `starveHours` and `floorStarveHours` on every run: the longest unbroken spell at or below the
+  line **on their feet**, and the longest **on the floor**. Disjoint by state, not nested — one is
+  a walk to dinner, the other is a settler who is not getting one. Latched per tick inside the run
+  loop, next to what upkeep already does.
+- The check is `floorStarveHours >= 1 && endFoodDays >= 5`. The walkers are printed alongside
+  rather than counted as failures, on every verdict — a number that only shows up on a failure is a
+  number nobody tunes.
+- `floorH` joins the grid table.
+
+### The grid
+
+- Fingerprint `4e7e7e91` → `4952c293`. 39 colonies, 3037 s.
+- **Every pre-existing column is identical on all 15 sweep runs.** The new latches read the world
+  and write nothing, and the grid says so rather than me.
+- The one principle that moved is the one this round touched. All eight others return their
+  previous verdict and detail line to the character.
+- It moved in the direction I did not predict: six runs to **seven**. Every run the old check named
+  did have a real unfed casualty, so on this grid the level was not over-firing — it was *missing*
+  one. `settler/20260729` left a settler down and unfed for 6.7 h and never quite touched 0.00, and
+  a bar drawn at the bottom of the scale read that colony as fine.
+- And it put a number on the upright population for the first time: **26.3 h** at zero on their
+  feet, against the under-six the probe's two runs showed. That is not a walk home. The check does
+  not fire on it, on purpose — there is no measurement of what those settlers were doing, and the
+  reason this principle spent four rounds saying nothing useful is that a bar once got drawn around
+  a story instead of a reading. It is printed, in the open, waiting for a probe.
+
+### Verified
+
+- `npx tsc --noEmit` — clean.
+- `npm test` — **96 of 98 files, 1843 tests green**, 13 skipped, in 2248 s (run alongside the grid,
+  hence the wall clock). Three new: two on the principle's ability to tell the two columns apart,
+  one on a named run that pins both columns nonzero and unequal — a new metric wired to nothing
+  stays zero and passes every assertion about its shape.
+- `npm run build` — 919.45 kB, **byte-identical bundle hash** to the round below. Nothing shipped
+  to the player this round, and that is checkable rather than asserted.
+- `npm run balance` — eight principles open, seven of them unchanged.
+
+### Next
+
+Carry food to a downed settler, with `floorStarveHours` as the number that has to fall.
+
+---
+
 ## 2026-08-12 — One stride, and the four rates it was being fed at
 
 **Track A: a measured fix.** In `src/sim/**`, so the fingerprint moved and the sixty-day grid was

@@ -56,6 +56,31 @@ export interface DaySnapshot {
    */
   avgFood: number;
   /**
+   * The longest unbroken spell any settler has spent at or below the starving
+   * line **on their feet**, in in-game hours, run to date.
+   *
+   * `minFood` says somebody touched zero and this says for how long, which turns
+   * out to be the whole question. A settler who comes back from a forage at the
+   * far end of the valley bottoms out on the walk home and eats on arrival, and
+   * that is this column: a long walk, hours of it, ending in a meal. Sampled
+   * every tick, because a walk and a starvation are the same reading at one
+   * sample a day and the day boundary always lands at the same hour — the hunger
+   * curve has a phase, and a daily probe reads that phase rather than the day.
+   */
+  starveHours: number;
+  /**
+   * The longest unbroken spell any settler has spent at or below the starving
+   * line **on the floor**, in in-game hours, run to date.
+   *
+   * This is the column the starvation promise is actually about, and it is
+   * disjoint from the one above rather than a subset of it: a settler on their
+   * feet at zero is walking towards a meal under their own power and arrives; a
+   * downed settler is waiting for one to be brought, and nothing in the sim
+   * brings it. Kept apart so one long collapse cannot fill both columns and
+   * leave the walk invisible.
+   */
+  floorStarveHours: number;
+  /**
    * Share of a *free* settler's day spent eating, sleeping or relaxing rather
    * than working, run to date.
    *
@@ -375,6 +400,14 @@ export function runColony(opts: EvalOptions = {}): EvalReport {
   // day reports that raid as though nobody was touched.
   const onFloor = new Set<number>();
   let downs = 0;
+  // Where each settler's current spell at or below the starving line began, and
+  // the longest any of them has run. Kept as a start tick rather than a counter
+  // so the maximum can be taken every tick and a settler who dies mid-spell
+  // needs no closing bookkeeping — the spell simply stops growing.
+  const starveSince = new Map<number, number>();
+  const floorStarveSince = new Map<number, number>();
+  let longestStarve = 0;
+  let longestFloorStarve = 0;
   let biggestBand = 0;
   // Every raider ever seen standing, and how many of them were carrying. Counted
   // by id because a raider is only in `world.pawns` while the fight lasts, and
@@ -484,6 +517,27 @@ export function runColony(opts: EvalOptions = {}): EvalReport {
           continue;
         }
         if (p.faction !== 'colony') continue;
+        // Before the `downed` branch below, because a settler on the floor is
+        // the case this measures and that branch does not come back.
+        // Two spells rather than one and a subset, because the question each
+        // answers is different and a settler who goes down mid-spell has stopped
+        // being able to answer the first one. On their feet, hungry, is a walk
+        // that ends; on the floor, hungry, is a wait for something the sim does
+        // not do. Overlapping them would let one long collapse dominate both
+        // columns and hide the walk entirely.
+        const hungry = p.needs.food <= STARVING;
+        const on = hungry && !p.downed ? starveSince : null;
+        const floor = hungry && p.downed ? floorStarveSince : null;
+        if (on) {
+          const from = on.get(p.id) ?? world.tick;
+          on.set(p.id, from);
+          longestStarve = Math.max(longestStarve, world.tick - from + 1);
+        } else starveSince.delete(p.id);
+        if (floor) {
+          const from = floor.get(p.id) ?? world.tick;
+          floor.set(p.id, from);
+          longestFloorStarve = Math.max(longestFloorStarve, world.tick - from + 1);
+        } else floorStarveSince.delete(p.id);
         if (p.downed) {
           if (!onFloor.has(p.id)) {
             onFloor.add(p.id);
@@ -507,6 +561,8 @@ export function runColony(opts: EvalOptions = {}): EvalReport {
       snapshot(world, day, downs, biggestBand, seenRaiders.size, armedRaiders, {
         upkeepTicks,
         freeTicks,
+        longestStarve,
+        longestFloorStarve,
       }),
     );
     if (foundedOn === null && hasWon(world)) foundedOn = day;
@@ -549,7 +605,12 @@ function snapshot(
   biggestBand: number,
   raidersSeen: number,
   armedRaiders: number,
-  time: { upkeepTicks: number; freeTicks: number },
+  time: {
+    upkeepTicks: number;
+    freeTicks: number;
+    longestStarve: number;
+    longestFloorStarve: number;
+  },
 ): DaySnapshot {
   const colonists = livingColonists(world);
   const n = Math.max(1, colonists.length);
@@ -577,6 +638,8 @@ function snapshot(
     lost: world.stats.colonistsLost,
     minFood: round(minFood),
     avgFood: round(bellies / n),
+    starveHours: round(hoursOf(time.longestStarve)),
+    floorStarveHours: round(hoursOf(time.longestFloorStarve)),
     upkeepShare: round3(time.upkeepTicks / Math.max(1, time.freeTicks)),
     avgMood: round(mood / n),
     avgHp: round(hp / n),
@@ -707,6 +770,19 @@ const round = (v: number) => Math.round(v * 100) / 100;
  */
 const dayOf = (tick: number | null | undefined): number | null =>
   tick === null || tick === undefined ? null : Math.floor(tick / TICKS_PER_DAY) + 1;
+
+/**
+ * The food need at or below which the run report already calls a settler
+ * starving. Shared by `minFood`'s readers and by the two spell columns, so the
+ * level and the duration are talking about the same line.
+ */
+const STARVING = 0.02;
+/**
+ * Ticks as in-game hours, which is the unit a spell at zero food is legible in.
+ * Days hide it — a settler is on the floor at zero for *most of a day* and the
+ * number reads 0.8, which sounds like a rounding error rather than a night.
+ */
+const hoursOf = (ticks: number): number => (ticks / TICKS_PER_DAY) * 24;
 /** The upkeep share separates the settings in the third decimal, not the second. */
 const round3 = (v: number) => Math.round(v * 1000) / 1000;
 

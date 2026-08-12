@@ -167,6 +167,27 @@ describe('colony survives its first week', () => {
     }
   });
 
+  // The two starvation columns, on a run chosen because it contains both things
+  // they exist to tell apart. Twenty days on the hard setting, seed 424242: one
+  // settler spends most of a day on the floor at zero with the larder stocked,
+  // and a different settler spends most of a working day at zero on their feet
+  // and then eats.
+  //
+  // A run where both came back zero would pass any assertion about the shape of
+  // these numbers, which is the way a new column quietly dies — wired to nothing
+  // and green forever. So this pins them **nonzero**, on a named run, with the
+  // walk and the collapse separated.
+  it('tells a settler walking home hungry from one starving on the floor', () => {
+    const r = runColony({ seed: 424242, days: 20, difficulty: 'harsh', playPastFounding: true });
+    const last = r.snapshots[r.snapshots.length - 1]!;
+    expect(last.floorStarveHours, 'nobody was left down and hungry — has feeding been fixed?')
+      .toBeGreaterThan(1);
+    expect(last.starveHours, 'nobody walked home hungry').toBeGreaterThan(1);
+    // Disjoint, not nested: the floor spell must not be counted in the walk. If
+    // one collapse could fill both columns the pair would say one thing twice.
+    expect(last.starveHours).not.toBe(last.floorStarveHours);
+  });
+
   // The opening week is tuned to be kind. The check that the game is still a
   // game is the long run: threats escalate every beat, so by the third week the
   // Ashbound out-shoot three settlers and the colony is living off its turrets

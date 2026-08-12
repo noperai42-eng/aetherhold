@@ -1219,6 +1219,56 @@ Dependencies run the same way `social.ts` does and for the same reason: `needs.t
 from the day the colony just had) and prices mood *last* within its own pass, so the tick that pairs
 two settlers is the tick they feel it.
 
+## Starvation is duration too, and the level was hiding two of them
+
+The section above is about a threshold on an accumulating quantity. This one is about the
+instrument reading it, and it is the same mistake seen from the other side.
+
+`nobody-starves-beside-a-full-pantry` checked `worstFood <= 0.02` — how low did anybody get, all
+run — with five days of stores standing in for "the colony is not short". It reported broken on six
+of fifteen colonies for four rounds and named a cause in none of them, and the comment in the file
+said so honestly: a downed settler nobody fed, a recruit who joined starving, and a hauling
+reservation were all live, and it did not claim between them.
+
+A level cannot claim between them, because the bottom of the scale is a place several unrelated
+things pass through. `scripts/probe-food.ts` replays a named run a tick at a time and logs every
+unbroken spell at or below the line — how long, how much of it on the floor, whether the colony had
+food at the time. Two populations, disjoint:
+
+| | length | on the floor | pantry stocked | ends in |
+|---|---|---|---|---|
+| walking home from a far field | 0.03–0.24 d | 0% | 100% | `eating` |
+| lying downed | 0.39–1.05 d | 89–100% | 100% | getting up, or not |
+
+Recruits are eliminated — every mid-run joiner arrived at 0.45 food or better. The reservation is
+not needed — the pantry was stocked for the whole of both columns. **Nothing in the sim carries
+food to a downed settler**, and that is a game defect this document is recording rather than a
+measurement fault. The measurement fault is that four rounds of grids could not see it.
+
+So `RunMeasure` grew two columns and not one: `starveHours` for the longest unbroken spell at the
+line **on their feet**, `floorStarveHours` for the longest **on the floor**. Disjoint by state
+rather than nested, because a nested pair would let one collapse fill both and the printed "on
+their feet" figure would then be a lie. Both are latched per tick inside the run loop, for the
+reason [the instrument was sampling breakfast](#the-instrument-was-sampling-breakfast) gives at
+length: this world's day boundary is 07:12 on every seed in the repo's history, so a daily sample
+of a hunger curve reads one fixed phase of it, and forty minutes at zero and a week at zero are the
+same reading.
+
+Two things the grid then said that the probe could not.
+
+The count went **up**, six runs to seven. On this grid the level was not over-firing on walkers as
+predicted — every colony it named did have a real unfed casualty. It was *missing* one:
+`settler/20260729` left a settler down and unfed for 6.7 h and never quite touched 0.00, and a bar
+drawn at the bottom of the scale reads that as a colony that is fine. **A level check fails at both
+ends, and the end it fails at is not the one you reason your way to.**
+
+And the upright column came back at **26.3 h**, against the under-six the probe's two runs showed.
+That is not a walk home; there is a third thing in there and nobody has measured it. The check
+deliberately does not fire on it, and prints it on every verdict including the passing ones —
+a number that only appears on failures is a number nobody tunes, and the reason this promise spent
+four rounds saying nothing useful is that a bar once got drawn around a plausible story instead of
+a reading.
+
 ## A floor is terrain, not a building
 
 `sim/floors.ts` is small because the decision it encodes does the work. A cell holds at most

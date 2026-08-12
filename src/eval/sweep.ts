@@ -54,6 +54,23 @@ export interface RunMeasure {
   peakRung: number;
   /** hungriest anybody ever got, 0..1 — the number that predicts a starvation */
   worstFood: number;
+  /**
+   * The longest unbroken spell any settler spent at or below the starving line
+   * on their feet, in in-game hours.
+   *
+   * `worstFood` is a level and this is its duration. The level alone cannot tell
+   * a settler walking home from a far field — who bottoms out on the way and
+   * eats on arrival — from one who is not going to be fed at all, and the two
+   * are the same reading. Measured per tick inside the run; see `run.ts`.
+   */
+  starveHours: number;
+  /**
+   * The same for spells spent on the floor, which is the one the starvation
+   * promise is about. Disjoint from the column above, not a subset of it: a
+   * settler on their feet at zero walks to a meal; a downed settler waits for
+   * one to be carried over.
+   */
+  floorStarveHours: number;
   /** how well fed the colony was on an average day, 0..1 */
   meanFood: number;
   /**
@@ -545,6 +562,10 @@ export function measure(r: EvalReport): RunMeasure {
     raidersKilled: last?.raidersKilled ?? 0,
     peakRung: Math.max(0, ...r.snapshots.map((s) => s.rung)),
     worstFood: Math.min(1, ...r.snapshots.map((s) => s.minFood)),
+    // Off the last snapshot rather than a maximum over them: both are running
+    // maxima already, so the last one is the whole run.
+    starveHours: last?.starveHours ?? 0,
+    floorStarveHours: last?.floorStarveHours ?? 0,
     meanFood: mean(r.snapshots.map((s) => s.avgFood)),
     upkeepShare: last?.upkeepShare ?? 0,
     endFoodDays: last?.foodDays ?? 0,
@@ -617,7 +638,7 @@ export function armedShareOf(rs: RunMeasure[]): number {
 /** A fixed-width grid, because a balance pass is read by eye. */
 export function formatSweep(sweep: Sweep): string {
   const cols =
-    'setting        seed  verdict     days  1st  threats  band  downs  buried  alive  kills  rung  worstFood  fed  upkeep  foodDays  raiders  rifles     trips  spare   tree  idle   wait  unsent   steel  spent        roads  hands';
+    'setting        seed  verdict     days  1st  threats  band  downs  buried  alive  kills  rung  worstFood  floorH  fed  upkeep  foodDays  raiders  rifles     trips  spare   tree  idle   wait  unsent   steel  spent        roads  hands';
   const lines: string[] = [`balance grid · ${sweep.days} days · ${sweep.seeds.length} seeds`, cols];
   for (const d of sweep.difficulties) {
     const rs = on(sweep, d);
@@ -637,6 +658,7 @@ export function formatSweep(sweep: Sweep): string {
           pad(m.raidersKilled, 7),
           pad(m.peakRung, 6),
           pad(m.worstFood.toFixed(2), 11),
+          pad(m.floorStarveHours.toFixed(1), 8),
           pad(m.meanFood.toFixed(2), 5),
           pad(`${Math.round(m.upkeepShare * 100)}%`, 8),
           pad(m.endFoodDays.toFixed(1), 10),
@@ -685,6 +707,7 @@ export function formatSweep(sweep: Sweep): string {
         pad(avg(rs, (m) => m.raidersKilled).toFixed(1), 7),
         pad(avg(rs, (m) => m.peakRung).toFixed(1), 6),
         pad(avg(rs, (m) => m.worstFood).toFixed(2), 11),
+        pad(avg(rs, (m) => m.floorStarveHours).toFixed(1), 8),
         pad(avg(rs, (m) => m.meanFood).toFixed(2), 5),
         pad(`${(avg(rs, (m) => m.upkeepShare) * 100).toFixed(1)}%`, 8),
         pad(avg(rs, (m) => m.endFoodDays).toFixed(1), 10),

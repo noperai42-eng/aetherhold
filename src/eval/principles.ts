@@ -550,33 +550,76 @@ export const PRINCIPLES: Principle[] = [
   {
     id: 'nobody-starves-beside-a-full-pantry',
     claim:
-      'A settler at zero on food while the colony is holding weeks of meals is a feeding or a ' +
-      'hauling failure. It is not the hard setting being hard, and it happens on the kind one.',
-    // Found by the first thirty-day grid, not designed in: seed 424242 on calm
-    // put a settler at 0.00 with 24.5 days of food in store and nobody hurt, and
-    // seed 99001 on calm reached 0.01 with 30.2 days in store and not one trip
-    // to a sick bed all run. Open rather than enforced because it is a report of
-    // something nobody has diagnosed yet — a downed settler nobody carried a
-    // meal to, a recruit who joined starving, and a hauling reservation are all
-    // live explanations, and the last balance diagnosis made on a plausible
-    // story rather than a measurement was wrong. This prints the runs; it does
-    // not claim the cause.
+      'A settler who cannot walk to a meal is brought one. Lying on the floor at zero food for ' +
+      'hours while the colony holds weeks of meals is a feeding failure, not the hard setting ' +
+      'being hard.',
+    // Found by the first thirty-day grid, not designed in. It named runs for
+    // several rounds without naming a cause, because it asked how *low* anybody
+    // got and the answer to that is zero in almost every colony ever played,
+    // including healthy ones.
+    //
+    // Diagnosed by replaying two of the named runs a tick at a time and asking
+    // who was at zero, for how long, and what they were doing. Three
+    // explanations had been standing since this was written — a downed settler
+    // nobody carried a meal to, a recruit who joined starving, a hauling
+    // reservation — and the recruits were the first to go: across both runs
+    // every settler who joined mid-run arrived at 0.45 food or better, so
+    // nobody walked in already starving. What is left is two
+    // populations. Settlers on their feet touch zero for one to six hours,
+    // walking, and the spell ends in `eating`. Settlers on the floor sit at zero
+    // for up to a full day with meals in store the whole time, and the spell
+    // ends when they get up or die. Nothing in the sim carries food to a downed
+    // settler.
+    //
+    // Still open rather than enforced: the diagnosis is a measurement now, but
+    // the fix is not written, and a promise that fails on every grid teaches
+    // nobody anything the day it starts passing.
     enforced: false,
     check: (s) => {
-      // The 0.02 the run verdict already calls starvation, and five days of food
-      // as "the colony is not short" — a colony genuinely out of food is a
+      // Was `worstFood <= 0.02`, which is a level, and a level cannot answer
+      // this claim. A per-tick probe of the runs it named found two different
+      // things wearing the same reading: settlers walking home from the far end
+      // of the valley who bottom out on the way and eat on arrival — hours, on
+      // their feet, resolved — and settlers lying downed at zero for most of a
+      // day with the pantry stocked the entire time. The first is a long walk.
+      // The second is the failure this promise is named after, and it was being
+      // reported in the same breath as the walks, which is why six of fifteen
+      // runs read broken and no round could tell what to fix.
+      //
+      // The sixty-day grid then said something the probe could not: swapping the
+      // level for the floor took the count *up*, six to seven. Every run the old
+      // check named had a real downed casualty, so it was not over-firing here —
+      // it was missing one. settler/20260729 left a settler down and unfed for
+      // 6.7 h and never quite touched 0.00, and a bar drawn at the bottom of the
+      // scale read that as a colony that was fine.
+      //
+      // It also put a number on the upright population for the first time, and
+      // it is not the one the probe led me to expect: 26.3 h at zero on their
+      // feet, where the probe's two runs topped out under six. That is longer
+      // than a walk home and this check does not fire on it, deliberately —
+      // there is no measurement yet of what those settlers were doing, and the
+      // whole reason this principle spent four rounds saying nothing useful is
+      // that somebody once drew a bar around a story instead of a reading.
+      //
+      // So: the floor, not the level. Five days of food still stands in for "the
+      // colony is not short", because a colony genuinely out of food is a
       // different and honest failure.
-      const stranded = s.runs.filter((m) => m.worstFood <= 0.02 && m.endFoodDays >= 5);
+      const stranded = s.runs.filter((m) => m.floorStarveHours >= 1 && m.endFoodDays >= 5);
+      // Printed either way. On a grid where nobody starves on the floor this is
+      // the only sign left that settlers still hit zero on their feet, and a
+      // number that only appears on failures is a number nobody tunes.
+      const onFeet = Math.max(0, ...s.runs.map((m) => m.starveHours));
+      const walked = `longest spell at zero on their feet anywhere: ${onFeet.toFixed(1)} h`;
       return stranded.length === 0
-        ? { verdict: 'holds', detail: 'nobody starved next to a stocked larder' }
+        ? { verdict: 'holds', detail: `nobody starved on the floor beside a stocked larder — ${walked}` }
         : {
             verdict: 'broken',
             detail: `${stranded.length} of ${s.runs.length} runs — ${stranded
               .map(
                 (m) =>
-                  `${m.difficulty}/${m.seed} hit ${m.worstFood.toFixed(2)} on ${m.endFoodDays.toFixed(0)} days of food`,
+                  `${m.difficulty}/${m.seed} left a downed settler at zero for ${m.floorStarveHours.toFixed(1)} h on ${m.endFoodDays.toFixed(0)} days of food`,
               )
-              .join(', ')}`,
+              .join(', ')} (${walked})`,
           };
     },
   },

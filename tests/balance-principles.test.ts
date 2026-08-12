@@ -51,6 +51,8 @@ function run(difficulty: Difficulty, over: Partial<RunMeasure> = {}): RunMeasure
     raidersKilled: 10,
     peakRung: 2,
     worstFood: 0.4,
+    starveHours: 0,
+    floorStarveHours: 0,
     meanFood: 0.6,
     upkeepShare: 0.42,
     endFoodDays: 20,
@@ -471,15 +473,50 @@ describe('the balance principles, read against grids that are known wrong', () =
   });
 
   it('separates a settler starving from a colony being out of food', () => {
-    // The two cases the old check ran together. One settler at zero with weeks
-    // of meals in the larder is a feeding or hauling failure and gets reported;
-    // a colony that has actually eaten everything is not this finding.
-    const stranded = sweep([run('calm', { worstFood: 0.0, endFoodDays: 24.5 })]);
+    // A downed settler at zero with weeks of meals in the larder is the failure:
+    // they cannot walk to a meal and nothing carries them one.
+    const stranded = sweep([
+      run('calm', { worstFood: 0.0, floorStarveHours: 6.2, endFoodDays: 24.5 }),
+    ]);
     expect(verdictOf(stranded, 'nobody-starves-beside-a-full-pantry')).toBe('broken');
     expect(detailOf(stranded, 'nobody-starves-beside-a-full-pantry')).toContain('calm/1');
 
-    const empty = sweep([run('harsh', { worstFood: 0.0, endFoodDays: 0.5 })]);
+    // A colony that has actually eaten everything is not this finding.
+    const empty = sweep([
+      run('harsh', { worstFood: 0.0, floorStarveHours: 6.2, endFoodDays: 0.5 }),
+    ]);
     expect(verdictOf(empty, 'nobody-starves-beside-a-full-pantry')).toBe('holds');
+  });
+
+  it('does not call a long walk home a starvation', () => {
+    // The case that made this promise unreadable for four rounds. Reading the
+    // *level* alone, these two runs are identical — somebody hit 0.00 with a
+    // stocked larder — and the check called both of them broken. A tick-by-tick
+    // replay of the runs it named found that most of them were settlers on their
+    // feet, walking back from the far end of the valley, who bottomed out on the
+    // way and ate on arrival. That is a long walk, not a colony that cannot feed
+    // its people, and a promise that cannot tell them apart names runs nobody can
+    // act on.
+    const walked = sweep([
+      run('settler', { worstFood: 0.0, starveHours: 5.8, floorStarveHours: 0, endFoodDays: 24.5 }),
+    ]);
+    expect(verdictOf(walked, 'nobody-starves-beside-a-full-pantry')).toBe('holds');
+
+    // And it is still reported, because a number that only appears on failures is
+    // a number nobody tunes: six hours on foot at zero is not this failure and is
+    // not nothing either.
+    expect(detailOf(walked, 'nobody-starves-beside-a-full-pantry')).toContain('5.8');
+  });
+
+  it('reports the hours a downed settler waited, not how low they got', () => {
+    // The detail has to carry the quantity a fix would move. `0.00` is where
+    // every hunger bar bottoms out and says nothing about whether the colony is
+    // broken; *how long they stayed there on the floor* is the whole finding, and
+    // it is what the next grid will be compared on.
+    const s = sweep([run('harsh', { worstFood: 0.0, floorStarveHours: 18.4, endFoodDays: 22 })]);
+    const detail = detailOf(s, 'nobody-starves-beside-a-full-pantry');
+    expect(detail).toContain('18.4');
+    expect(detail).toContain('h');
   });
 
   it('says untested rather than broken when the grid was too short to look', () => {

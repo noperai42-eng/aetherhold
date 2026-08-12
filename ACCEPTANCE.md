@@ -14,13 +14,22 @@ Four sections: [the killer feature](#the-killer-feature),
 and [what still wants a human](#what-still-wants-a-human) — which is the long one, and is
 ordered to match `PLAYTEST.md` rather than by importance.
 
-Last run — 2026-08-12, the stride round, which edited `src/sim/**` and therefore re-ran the
-sixty-day grid. It came back **identical to the byte** — fingerprint `4fc79614` → `4e7e7e91`,
-39 colonies, 2470 s, and every number in `steward` and `sweep` unchanged, which is the proof
-that `animPhase` is cosmetic rather than the assertion that it is.
+Last run — 2026-08-12, the starvation-instrument round, which edited `src/eval/**` and therefore
+re-ran the sixty-day grid — fingerprint `4e7e7e91` → `4952c293`, 39 colonies, 3037 s. **Every
+pre-existing column came back identical on all 15 sweep runs**, and the client bundle hash did not
+move, which together say the round read the world and changed nothing in it. The one number that
+moved is the one it went after: `nobody-starves-beside-a-full-pantry` stopped asking how *low* a
+settler got and started asking how *long* one lay downed at zero beside a stocked pantry — and
+found a colony the old bar had been reading as fine.
 
 - `npx tsc --noEmit` clean.
-- `npm test` — **96 of 98 files, 1840 tests green**, 13 skipped, in 1184 s.
+- `npm test` — **96 of 98 files, 1843 tests green**, 13 skipped, in 2248 s (run alongside the grid,
+  which is the wall clock rather than the work).
+  **Three** of those are the newest and they are the starvation columns: two that the principle can
+  tell a settler walking home hungry from one on the floor, and one on a named run that pins both
+  columns nonzero *and unequal* — a new metric wired to nothing stays zero and passes every
+  assertion anyone would think to write about its shape.
+- The stride round, one below: **1840 tests** green in 1184 s.
   **Four** of those are the newest and they are the stride's one writer.
   **Two** are in `tests/gait.test.ts` and they replaced a weaker one. It used to read
   `movement.ts` as text to check that a copied constant still matched; the constant is imported
@@ -208,12 +217,16 @@ that `animPhase` is cosmetic rather than the assertion that it is.
   re-run separately. It is the one file both entry points share, so a second run is a second
   reading of a number already recorded rather than a second piece of evidence.
 - `npm run measure -- --days 60 --past-founding` then `npm run balance` — 4 tests green.
-  **39 colonies in 2,470 s**, re-run because this round edited `src/sim/**` and moved the source
-  fingerprint from `4fc79614` to `4e7e7e91`. Every number below is *the same number*: `steward`
-  and `sweep` compare identical to the byte against the grid taken before the edit, and `balance`
-  returned the same eight open principles in the same order. That is the round's actual result.
-  Moving the stride into `moveWithCollision` touched a field the sim writes and never reads, and
-  forty-one minutes is what it costs to know that rather than to say it.
+  **39 colonies in 3,037 s**, re-run because this round edited `src/eval/**` and moved the source
+  fingerprint from `4e7e7e91` to `4952c293`. Every pre-existing column compares identical on all
+  fifteen sweep runs, which is what a round that only adds instruments is supposed to look like,
+  and the two new columns — `starveHours`, `floorStarveHours` — are the only things on the grid
+  that were not there before. Eight principles open, seven returning their previous verdict and
+  detail to the character. The eighth is the point: the starvation promise now names a downed
+  settler and the hours they waited instead of a number nobody could act on, and it names **seven**
+  colonies where the level had named six. The extra one is `settler/20260729`, which left a settler
+  down and unfed for 6.7 h without ever quite touching 0.00 — the old bar read it as a healthy
+  colony. The round below re-ran the same grid at 2,470 s to prove a stride was cosmetic.
   **Twenty-nine** principles are scored, one more than the run before that one:
   all **fifteen** enforced ones hold, and of the fourteen open ones — reported without
   asserting — **six** do, up from four. Both of the two that moved are 5b's: the promise it
@@ -373,8 +386,12 @@ that `animPhase` is cosmetic rather than the assertion that it is.
   to move. The first hull to be committed to will take steel off the yard for twelve days and
   this paragraph will read differently, which is the point of writing down which of the two
   sentences this grid earned.
-- `npm run build` — 919.45 kB JS (263.12 kB gzip), 23.76 kB CSS (5.15 kB gzip). The stride round
-  came in **0.16 kB smaller** than the round before it, which is the only bundle line here that
+- `npm run build` — 919.45 kB JS (263.12 kB gzip), 23.76 kB CSS (5.15 kB gzip). The starvation
+  round emitted the **same content hash** as the round below it, `index-GQkx7ZcS.js`, which is the
+  strongest form the claim "no game code changed" comes in: the two new columns live in the eval
+  harness, the probe that found them is not in the build at all, and the player's download is the
+  same file. The stride round before it
+  came in **0.16 kB smaller** than the round before *that*, which is the only bundle line here that
   reads as a saving: it deleted five hand-written phase advances and wrote one, and a rule that
   lives in the one function everybody already calls is cheaper than the same rule remembered in
   five places. The gait module, a round ago, cost **0.16 kB and no CSS**, which is what a page of
