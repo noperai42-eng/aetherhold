@@ -550,9 +550,9 @@ export const PRINCIPLES: Principle[] = [
   {
     id: 'nobody-starves-beside-a-full-pantry',
     claim:
-      'A settler who cannot walk to a meal is brought one. Lying on the floor at zero food for ' +
-      'hours while the colony holds weeks of meals is a feeding failure, not the hard setting ' +
-      'being hard.',
+      'A settler who cannot walk to a meal is brought one, by somebody who can. Lying on the ' +
+      'floor at zero food for hours while a colonist is on their feet and the colony holds weeks ' +
+      'of meals is a feeding failure, not the hard setting being hard.',
     // Found by the first thirty-day grid, not designed in. It named runs for
     // several rounds without naming a cause, because it asked how *low* anybody
     // got and the answer to that is zero in almost every colony ever played,
@@ -568,8 +568,20 @@ export const PRINCIPLES: Principle[] = [
     // populations. Settlers on their feet touch zero for one to six hours,
     // walking, and the spell ends in `eating`. Settlers on the floor sit at zero
     // for up to a full day with meals in store the whole time, and the spell
-    // ends when they get up or die. Nothing in the sim carries food to a downed
-    // settler.
+    // ends when they get up or die.
+    //
+    // The round that first shipped that measurement guessed at the cause and
+    // wrote the guess down as fact — "nothing in the sim carries food to a
+    // downed settler" — which was false. `jobs.ts` has `tryFeedPatient`, and an
+    // emergency feeding lane above the work board in both assignment entry
+    // points. A second probe asked which gate was shut instead of assuming
+    // there was no door, and split seed 1312's 88.2 h on the floor four ways:
+    // 49.6 h with the whole colony downed, 31.0 h with a meal already walking
+    // over, 0.3 h of assignment cadence, and 7.2 h where every settler on their
+    // feet was mid-job. Only that last slice was a decision the colony got
+    // wrong: both entry points return early on a settler who already has a job,
+    // so from the floor "everyone is busy" and "everyone is unconscious" read
+    // the same. `sendSomebodyToFeed` closes it.
     //
     // Still open rather than enforced: the diagnosis is a measurement now, but
     // the fix is not written, and a promise that fails on every grid teaches
@@ -601,23 +613,43 @@ export const PRINCIPLES: Principle[] = [
       // whole reason this principle spent four rounds saying nothing useful is
       // that somebody once drew a bar around a story instead of a reading.
       //
-      // So: the floor, not the level. Five days of food still stands in for "the
-      // colony is not short", because a colony genuinely out of food is a
-      // different and honest failure.
-      const stranded = s.runs.filter((m) => m.floorStarveHours >= 1 && m.endFoodDays >= 5);
-      // Printed either way. On a grid where nobody starves on the floor this is
-      // the only sign left that settlers still hit zero on their feet, and a
-      // number that only appears on failures is a number nobody tunes.
+      // Then the grid moved once more, and this time it was the fix that moved
+      // it. `sendSomebodyToFeed` shipped, the probe's busy-hands slice went to
+      // zero settler-ticks on the seed it was written from — and the count here
+      // went *up* again, seven to nine, with the floor column barely stirring
+      // (153.2 h summed across fifteen runs to 131.3). Not a regression: the
+      // column is mostly not measuring what the fix touches. Half of seed 1312's
+      // hours on the floor were hours with the entire colony unconscious, and no
+      // rule on the work board reaches a settlement with nobody left standing.
+      // Widen the bar and it reads a wipe as a hauling failure.
+      //
+      // So the bar moves in one more notch, to the narrowest of the three
+      // spells: at zero, on the floor, **with somebody still on their feet**.
+      // That is hands available and a meal not arriving, which is the only
+      // version of this promise the colony can be held to. The floor hours ride
+      // along in the detail rather than the check, because how bad the run got
+      // is still worth reading beside how much of it was anyone's fault.
+      //
+      // Five days of food still stands in for "the colony is not short", because
+      // a colony genuinely out of food is a different and honest failure.
+      const stranded = s.runs.filter((m) => m.strandedStarveHours >= 1 && m.endFoodDays >= 5);
+      // Printed either way. On a grid where nobody starves within reach of help
+      // these are the only sign left that settlers still hit zero — on their
+      // feet, or on the floor of a colony past saving — and a number that only
+      // appears on failures is a number nobody tunes.
       const onFeet = Math.max(0, ...s.runs.map((m) => m.starveHours));
-      const walked = `longest spell at zero on their feet anywhere: ${onFeet.toFixed(1)} h`;
+      const onFloor = Math.max(0, ...s.runs.map((m) => m.floorStarveHours));
+      const walked =
+        `longest spell at zero on their feet anywhere: ${onFeet.toFixed(1)} h; ` +
+        `on the floor, help or none: ${onFloor.toFixed(1)} h`;
       return stranded.length === 0
-        ? { verdict: 'holds', detail: `nobody starved on the floor beside a stocked larder — ${walked}` }
+        ? { verdict: 'holds', detail: `nobody starved within reach of help beside a stocked larder — ${walked}` }
         : {
             verdict: 'broken',
             detail: `${stranded.length} of ${s.runs.length} runs — ${stranded
               .map(
                 (m) =>
-                  `${m.difficulty}/${m.seed} left a downed settler at zero for ${m.floorStarveHours.toFixed(1)} h on ${m.endFoodDays.toFixed(0)} days of food`,
+                  `${m.difficulty}/${m.seed} left a downed settler at zero for ${m.strandedStarveHours.toFixed(1)} h with somebody on their feet, on ${m.endFoodDays.toFixed(0)} days of food`,
               )
               .join(', ')} (${walked})`,
           };

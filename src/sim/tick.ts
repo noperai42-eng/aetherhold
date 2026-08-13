@@ -16,6 +16,7 @@ import { tickHealth } from './health';
 import {
   assignJob,
   assignNeedsOnly,
+  sendSomebodyToFeed,
   planAhead,
   startQueued,
   tickGroundSleep,
@@ -140,6 +141,13 @@ export function stepWorld(world: World, streams: Streams): void {
   // reads flames and writes jobs, so it has to sit ahead of the per-pawn loop
   // below — the flee job it forms is executed further down this same tick.
   tickFireSafety(world);
+  // The other emergency that pulls a settler off whatever they were doing, and
+  // it sits here for the same reason: it reads the colony and writes a job, and
+  // the job it writes is executed further down this same tick. After the fire
+  // pass rather than before, because a settler running out of the flames is not
+  // the one to send for a meal — `sendSomebodyToFeed` skips a live `flee`, and
+  // it can only skip one that has already been formed.
+  sendSomebodyToFeed(world);
   // Straight after the fires, so a cell that stopped burning this tick is already
   // clear to build on, and before the combat pass, so a wall the colony means to
   // put back is not laid down under a raider who has not moved yet.

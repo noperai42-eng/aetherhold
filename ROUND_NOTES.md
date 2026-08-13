@@ -4,6 +4,184 @@ One round, one measured gap, one fix. Newest first.
 
 ---
 
+## 2026-08-12 — Somebody drops what they are doing and carries the meal over
+
+**Track A: a measured fix.** In `src/sim/**`, so the fingerprint moved and the sixty-day grid was
+re-run. This one is meant to move a column, and the column it is meant to move is `floorH`.
+
+### The correction that started it
+
+The round below shipped a sentence I had not measured: **"nothing in the sim carries food to a
+downed settler."** It is false. `jobs.ts` has had `tryFeedPatient` the whole time, wired into the
+`doctor` work case and into an emergency lane that sits *above* the work board in both assignment
+entry points, with a comment naming this exact failure. The probe found the population; I supplied
+the cause from the shape of the reading, wrote it into the principle, the architecture note, the
+round notes and the commit message, and it took writing the fix to notice.
+
+Everything measured in that round stands — the two disjoint populations, the durations, the
+recruits eliminated, the pantry stocked throughout. One causal sentence was invented, and the
+correction is left in place under the original rather than quietly edited out.
+
+### The measurement
+
+`scripts/probe-feed.ts` — outside `src/sim` and `src/eval`, so it does not move the fingerprint —
+asks the question the first probe did not: not *is there a door* but *which gate is shut, and for
+how long*. On every tick where a downed settler sits at zero, it asks every other settler why they
+are not the one carrying a meal, taking the **first** blocking reason in the order the sim checks
+them, so the tally reads as "what would have to change" rather than "what was also true".
+
+Seed 1312, sixty days, before the fix — 88.2 h with a settler starving on the floor:
+
+| slice | hours | what it is |
+|---|---|---|
+| the whole colony on the floor | 49.6 | nobody conscious to carry anything |
+| a meal already on its way | 31.0 | the system working, slowly |
+| every settler on their feet was mid-job | **7.2** | the defect |
+| somebody standing free, no meal moving | 0.3 | the assignment cadence |
+
+Four slices, one of them a decision the colony got wrong. Both entry points return early on
+`pawn.jobId !== null`, so **from the floor, a colony that is merely busy is indistinguishable from a
+colony that is unconscious.** Across all three harsh seeds the tallies agree: tens of thousands of
+`is downed themselves`, then `is mid-job` in the hundreds to low thousands, and `is asleep` never
+once — which is why the fix does not wake anybody.
+
+### The change
+
+`sendSomebodyToFeed(world)`, in `jobs.ts`, called from `stepWorld` right after the fire pass. It is
+`firesafety.ts`'s `sendSomebody` with the fire swapped for hunger — colony-level, because "who goes"
+is one decision with one answer, and the precedent for cancelling a working settler's job to save a
+life is already in the codebase and it is a fire. After the fire pass rather than before, because a
+settler running out of the flames is not the one to send for a meal, and a live `flee` can only be
+skipped once it has been formed.
+
+What it will not do is the load-bearing half:
+
+- never wakes a sleeper — the probe found not one tick in three seeds where the only hands available
+  were in bed, and `firesafety.ts` wakes people because the bed is on fire;
+- never touches `flee`, `rescue`, `feedPatient`, `caravan` or `campaign`;
+- skips anybody the player has spoken for — drafted, manual, possessed, doctoring off — and anybody
+  running on empty themselves, or two die instead of one;
+- looks for the food **before** it cancels anything, so an empty larder does not also cost the
+  colony a half-built wall.
+
+### The same probe, after
+
+Re-run on the same seed, with one extra tally: on every tick that still reads "the only hands up
+were all mid-job", *why did the interrupt decline*. The colony's history diverges the moment the
+first meal is carried differently, so this is a different sixty days and the totals are not
+subtractable — 92.6 h on the floor rather than 88.2, 49.3 h of it a fully floored colony.
+
+The busy-hands slice reads **4.3 h**, and the breakdown of it is the part worth keeping:
+
+| why the pass declined | settler-ticks |
+|---|---|
+| is hungry themselves | 1018 |
+| is on a job nobody is pulled off (`feedPatient`) | 96 |
+| **nothing — the pass should have sent them** | **0** |
+
+Zero. What is left of that slice is a colony where everybody still standing is themselves under the
+hunger line — a famine, not a dispatch failure — plus a settler already carrying a meal to a
+*different* patient. Neither is something to fix by sending somebody anyway.
+
+### The grid disagreed, and it was right about the instrument
+
+The sixty-day grid came back with `nobody-starves-beside-a-full-pantry` broken on **nine** runs of
+fifteen, up from seven, and the floor column up rather than down: 186.4 h summed across the fifteen
+unmanaged colonies before, 197.4 h after; worst single run 35.9 h → 58.4 h. The round's headline,
+measured against the round's own column, failed.
+
+Two things are true at once and it took some care to keep them apart. The fix is right — the probe's
+busy-hands slice reads zero settler-ticks, and the twenty-day run pinned in `colony-eval` lost its
+floor spell entirely. And a sim change re-rolls every colony's history, so post-fix runs on the same
+seeds are **not paired samples**; a column moving six per cent across fifteen re-rolled sixty-day
+histories is noise wearing a number's clothes. The health columns say the same thing from the other
+side — survivors 9.33 → 9.27 per colony, mean food 0.56 → 0.57, days of food in store 17.0 → 17.6,
+buried 1.4 → 1.9 — a fix that cancels working settlers' jobs cost the colony nothing measurable, and
+bought nothing measurable on the column it was aimed at.
+
+The count going up is the finding, and it is about the column. `floorStarveHours` counts hours at
+zero on the floor *including the hours when the entire colony is on the floor* — 49.3 of seed 1312's
+92.6, on the probe. Nothing on the work board reaches a settlement with nobody conscious in it. The
+column scores a wipe as a hauling failure, so it can never be tuned to zero, so it cannot tell the
+next round anything.
+
+So the instrument grew a third spell rather than the second being stretched, and the promise moved
+onto it:
+
+| column | at zero, and | what a fix could do |
+|---|---|---|
+| `starveHours` | on their feet | walk home sooner — still unmeasured, printed and unjudged |
+| `floorStarveHours` | on the floor | nothing, if nobody is standing |
+| `strandedStarveHours` | on the floor, **with somebody standing** | carry the meal over |
+
+Same shape as [the wait column learning to tell a decision from a road](ARCHITECTURE.md#a-bar-derived-off-the-wrong-ring):
+the promise was unreadable because its column mixed something the player can change with something
+they cannot. The other two hours ride in the detail line on every verdict, passing ones included.
+
+The re-run is a clean paired comparison, which is the one thing the previous grid could not be: no
+`src/sim` file moved, so every colony lived the exact same sixty days and only the instrument
+changed. Nine runs, same histories, both columns:
+
+| run | on the floor | with hands free |
+|---|---|---|
+| settler/20260729 | 5.3 | 1.6 |
+| settler/7 | 15.5 | 4.2 |
+| settler/99001 | 21.6 | 6.6 |
+| settler/424242 | 12.9 | 3.9 |
+| harsh/20260729 | 58.4 | **10.5** |
+| harsh/7 | 18.9 | 7.3 |
+| harsh/1312 | 20.1 | 3.1 |
+| harsh/99001 | 16.7 | 4.7 |
+| harsh/424242 | 27.9 | 3.6 |
+| **sum** | **197.3** | **45.5** |
+
+**Three-quarters of the hours the old column counted were hours with nobody conscious to carry
+anything.** The worst run in the grid drops from 58.4 h to 10.5 h; the promise still breaks on the
+same nine runs, because the bar is one hour and every one of them clears it — but it now names a
+quantity somebody could go and reduce instead of a quantity that includes the colony dying.
+
+What is left in that 45.5 h is not yet split, and next round is where that happens: the pass fires at
+0.14 food and the eval latches at 0.02, so some of it is a meal legitimately in transit — the probe
+put that slice at 31.0 h of the pre-fix reading, the largest non-wipe one. A column that excluded
+ticks with a `feedPatient` job already targeting the patient would name dispatch alone.
+
+That also cost the `colony-eval` pin its run: harsh/424242 over twenty days no longer has a floor
+spell at all, which is the pin doing its job — it failed the day the defect under it was fixed.
+Re-pointed off `scripts/probe-starve-pin.ts`, which walks the short grid a unit test can afford and
+prints all three columns per candidate.
+
+### Verified
+
+- `npx tsc --noEmit` — clean.
+- Sixty-day grid, fingerprint `4952c293` → `2edb0102`, 39 colonies in 2218 s. **21 principles hold,
+  8 break**, unchanged in membership from the round before — this round moved a number inside a
+  broken principle rather than closing one.
+- `tests/feeding.test.ts` — eight new tests. Seven gate assertions, one each so a failure names
+  which gate moved, and one experience test: three settlers all mid-job, one on the floor at zero,
+  nothing touched by the test, and the patient eats. That last one was run with the call to
+  `sendSomebodyToFeed` commented out first — it fails with the patient still at 0.00, so it is
+  load-bearing rather than decorative.
+- `npm test` — **1852 tests green**, 13 skipped, 97 of 99 files, in 865 s. Run *after* the grid
+  rather than beside it: last round's three timeouts were the grid stealing the machine, and on a
+  quiet one the same three files finish in a quarter of the wall clock and pass.
+- `npm run build` — clean, 920 kB bundle.
+
+### Next
+
+The settlers who are **on their feet** and starving. The grid reads 102.1 h in that column — better
+than four days of somebody upright at zero food — and no principle fires on it at all, because the
+one that watches food is now pointed at the floor. It is the same shape of gap this round started
+from: a number the build prints and nobody judges.
+
+One known softness to carry in with it: `upright` counts a **drafted** settler, and
+`sendSomebodyToFeed` skips drafted settlers on purpose. On the fifteen sweep runs that is harmless —
+`p.drafted = on` has exactly one writer, `orders.ts`, and nothing drafts anybody without a player or
+a steward — but a managed run mid-raid can book an hour of "hands free" that no rule was ever going
+to spend. Worth excluding when the column is next touched, not worth invalidating a finished grid
+for.
+
+---
+
 ## 2026-08-12 — Nobody starves beside a full pantry, and it took a duration to say who
 
 **Track A: the instrument.** No game code changed — the client bundle comes out byte-identical.
@@ -40,6 +218,12 @@ Recruits are out: every settler who joined mid-run arrived at 0.45 food or bette
 in already starving. The reservation theory is not needed either — the pantry was stocked for the
 whole of every spell in both columns. What is left is the plain one. **Nothing in the sim carries
 food to a downed settler.** They lie at zero next to weeks of meals until they get up or die.
+
+> **Correction, one round later.** That last sentence is false and was never measured — the probe
+> found the population, and I supplied the cause. `jobs.ts` has had `tryFeedPatient` and an
+> emergency feeding lane the whole time. The round above measures which gate was shut. Everything
+> else in this entry stands; the sentence is left in place with this note under it rather than
+> quietly edited out.
 
 ### The change
 

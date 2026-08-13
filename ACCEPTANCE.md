@@ -14,21 +14,27 @@ Four sections: [the killer feature](#the-killer-feature),
 and [what still wants a human](#what-still-wants-a-human) — which is the long one, and is
 ordered to match `PLAYTEST.md` rather than by importance.
 
-Last run — 2026-08-12, the starvation-instrument round, which edited `src/eval/**` and therefore
-re-ran the sixty-day grid — fingerprint `4e7e7e91` → `4952c293`, 39 colonies, 3037 s. **Every
-pre-existing column came back identical on all 15 sweep runs**, and the client bundle hash did not
-move, which together say the round read the world and changed nothing in it. The one number that
-moved is the one it went after: `nobody-starves-beside-a-full-pantry` stopped asking how *low* a
-settler got and started asking how *long* one lay downed at zero beside a stocked pantry — and
-found a colony the old bar had been reading as fine.
+Last run — 2026-08-12, the feeding round: a fix in `src/sim/**` *and* a third starvation column, so
+the sixty-day grid was re-run — fingerprint `4952c293` → `2edb0102`, 39 colonies, 2218 s. A downed
+settler at zero food is now somebody's job: `sendSomebodyToFeed` pulls the nearest free colonist off
+their work and walks a meal over. The column that grades it was rebuilt in the same round, because
+the old one could not tell **a colony that was failing to feed somebody** from **a colony where
+nobody was left conscious to carry anything** — of the 197.3 h the grid spends downed at zero, only
+45.5 h have anybody on their feet, and the worst single run drops from 58.4 h to 10.5 h. Survivors,
+mean food and end-of-run larder all held (9.33 → 9.27, 0.56 → 0.57, 17.0 → 17.6 days), so the
+interruption costs the colony nothing it was otherwise banking.
 
 - `npx tsc --noEmit` clean.
-- `npm test` — **96 of 98 files, 1843 tests green**, 13 skipped, in 2248 s (run alongside the grid,
-  which is the wall clock rather than the work).
-  **Three** of those are the newest and they are the starvation columns: two that the principle can
-  tell a settler walking home hungry from one on the floor, and one on a named run that pins both
-  columns nonzero *and unequal* — a new metric wired to nothing stays zero and passes every
-  assertion anyone would think to write about its shape.
+- `npm test` — **97 of 99 files, 1852 tests green**, 13 skipped, in 865 s (run after the grid this
+  time; the three files that timed out last round were losing the machine to it, not failing).
+  **Eight** of those are the newest and they are the feeding pass: seven gate assertions one apiece,
+  so a failure names which gate moved, and one experience test — three settlers mid-job, one on the
+  floor at zero, nothing else touched, and the patient eats. It was run once with the call commented
+  out and fails there, which is the difference between a test and a decoration.
+  **Three** more are the starvation columns: two that the principle can tell a settler walking home
+  hungry from one on the floor, and one on a named run that pins all three columns nonzero *and
+  unequal* — a new metric wired to nothing stays zero and passes every assertion anyone would think
+  to write about its shape.
 - The stride round, one below: **1840 tests** green in 1184 s.
   **Four** of those are the newest and they are the stride's one writer.
   **Two** are in `tests/gait.test.ts` and they replaced a weaker one. It used to read

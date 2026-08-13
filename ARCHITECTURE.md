@@ -1241,9 +1241,12 @@ food at the time. Two populations, disjoint:
 | lying downed | 0.39–1.05 d | 89–100% | 100% | getting up, or not |
 
 Recruits are eliminated — every mid-run joiner arrived at 0.45 food or better. The reservation is
-not needed — the pantry was stocked for the whole of both columns. **Nothing in the sim carries
-food to a downed settler**, and that is a game defect this document is recording rather than a
-measurement fault. The measurement fault is that four rounds of grids could not see it.
+not needed — the pantry was stocked for the whole of both columns. So there is a game defect under
+the second row, and this document recorded it as **"nothing in the sim carries food to a downed
+settler"**, which was wrong. See [the gate was shut, not
+missing](#the-gate-was-shut-not-missing) — the behaviour exists and one gate in front of it was
+closed. The correction is worth leaving visible: the probe measured two populations and I wrote
+down a cause it had not measured.
 
 So `RunMeasure` grew two columns and not one: `starveHours` for the longest unbroken spell at the
 line **on their feet**, `floorStarveHours` for the longest **on the floor**. Disjoint by state
@@ -1268,6 +1271,109 @@ deliberately does not fire on it, and prints it on every verdict including the p
 a number that only appears on failures is a number nobody tunes, and the reason this promise spent
 four rounds saying nothing useful is that a bar once got drawn around a plausible story instead of
 a reading.
+
+## The gate was shut, not missing
+
+The section above ends with a sentence I wrote and did not measure: *nothing in the sim carries food
+to a downed settler*. The probe had found the population — settlers at zero on the floor, for hours,
+beside a stocked pantry — and I supplied the cause from the shape of the reading. It was wrong.
+`jobs.ts` has had `tryFeedPatient` for a long time, wired into the `doctor` work case and into an
+emergency lane that sits **above** the work board in both assignment entry points, with a comment
+naming this exact failure.
+
+So the second probe asked a different question: not *is there a door* but *which gate is shut, and
+for how long*. `scripts/probe-feed.ts` walks a run a tick at a time and, on every tick where a downed
+settler is at zero, asks every other settler why they are not the one carrying a meal — first
+blocking reason only, in the order the sim checks them, so the tally reads as "what would have to
+change" rather than "what was also true". Seed 1312's 92-ish hours, before the fix:
+
+| slice | hours | what it is |
+|---|---|---|
+| the whole colony on the floor | 49.6 | nobody conscious to carry anything |
+| a meal already on its way | 31.0 | the system working, slowly |
+| every settler on their feet was mid-job | **7.2** | the defect |
+| somebody standing free, no meal moving | 0.3 | the assignment cadence |
+
+Four slices, and only one of them is a decision the colony got wrong. `assignJob` and
+`assignNeedsOnly` both return early on `pawn.jobId !== null`, so **from the floor, a colony that is
+merely busy is indistinguishable from a colony that is unconscious**. The emergency lane was real and
+it was behind a door that only opens for a settler who happens to be between jobs.
+
+`sendSomebodyToFeed` is the fix, and it is deliberately not a new mechanism: it is `firesafety.ts`'s
+`sendSomebody` with the fire swapped for hunger. Colony-level rather than per-settler, because "who goes" is one decision with one answer and
+asking it once from above is not the same question as thirteen settlers each asking what to do next.
+It runs in `stepWorld` immediately after the fire pass — after, because a settler running out of the
+flames is not the one to send for a meal, and `sendSomebodyToFeed` can only skip a `flee` job that
+has already been formed.
+
+What it will not do is the load-bearing half. It never wakes a sleeper: across three seeds the probe
+found not one tick where the only hands available were in bed, so waking somebody buys nothing and
+costs a night's rest — `firesafety.ts` wakes people because the bed is on fire. It never touches a
+`flee`, `rescue`, `feedPatient`, `caravan` or `campaign`, because swapping one rescue for another
+loses a life rather than saving one and calling a trade party home cancels the trip for everybody. It
+skips anybody the player has already spoken for — drafted, taken off the board by hand, possessed,
+doctoring switched off. And it looks for the food *before* it cancels anything, so a colony with an
+empty larder does not also lose the half-built wall: that is a different failure and it should not
+cost work in progress.
+
+Re-running the probe afterwards asks the follow-up question the first version could not: on a tick
+that *still* reads "the only hands up were all mid-job", why did the pass decline? On seed 1312, of
+the settler-ticks left in that slice, 1018 are settlers under the hunger line themselves and 96 are
+settlers already carrying a meal to a different patient. **Zero** are "nothing — the pass should
+have sent them". What survives the fix is a famine and a queue, not a dispatch failure, and neither
+is mended by sending somebody anyway.
+
+## The column a fix can move
+
+Then the sixty-day grid returned and said the fix had made the promise **worse**:
+`nobody-starves-beside-a-full-pantry` went from seven broken runs of fifteen to nine, and the floor
+column went up rather than down — 186.4 h summed across the fifteen unmanaged colonies before,
+197.4 h after.
+
+Not a regression, and worth being careful about why not. Two of the three readings had already been
+established on a tick-by-tick probe: the busy-hands slice the fix targets went to **zero**
+settler-ticks, and the pinned twenty-day run's floor column went to zero outright. A sim change also
+reshuffles every colony's history — the same seed after a fix is a different sixty days, not a paired
+sample — so a summed column moving six per cent across fifteen re-rolled runs is not evidence of
+anything much in either direction, and the colony-health columns confirm it from the other side
+(survivors 9.33 → 9.27, mean food 0.56 → 0.57, days of food in store 17.0 → 17.6).
+
+The count going up is the real finding, and it is about the instrument. `floorStarveHours` counts
+every hour a settler spends at zero on the floor, **including the hours when the whole colony is on
+the floor** — half of seed 1312's total, on the probe. No rule on the work board can reach a
+settlement where nobody is conscious; that is a wipe, and a column that scores a wipe as a hauling
+failure will keep breaking however well the hauling works. It cannot be tuned towards zero, so it
+cannot tell the next round anything.
+
+So `RunMeasure` grew a third spell rather than the second being widened, and the three are a
+progression from "how bad did it get" to "whose fault was it":
+
+| column | at zero, and | what a fix could do about it |
+|---|---|---|
+| `starveHours` | on their feet | walk home sooner — an unmeasured population, printed and unjudged |
+| `floorStarveHours` | on the floor | nothing, if nobody is standing |
+| `strandedStarveHours` | on the floor, **with somebody standing** | carry the meal over |
+
+The promise is now drawn on the third. The other two ride along in the detail line on every verdict
+including the passing ones, for the reason [the instrument was sampling
+breakfast](#the-instrument-was-sampling-breakfast) gives: a number that only appears on failures is a
+number nobody tunes.
+
+The grid that added the column moved no `src/sim` file, so every colony lived the identical sixty
+days and the two columns can be read side by side on the same histories. Across the nine runs that
+break the promise, 197.3 h on the floor at zero contain 45.5 h with somebody upright — **three
+quarters of what the old column counted was a colony with nobody conscious to carry anything**. The
+worst run goes from 58.4 h to 10.5 h. It still breaks on nine runs of fifteen, because a one-hour bar
+catches all of them, and that is the point: the number it names is now one somebody could go and
+reduce.
+
+The top column has meanwhile grown teeth of its own and still nobody has looked: the longest spell at
+zero **on their feet** anywhere on the grid is 102.1 h, four days, against the 26.3 h of the round
+that first printed it. Whatever that is, it is not a walk home from a far field, and no principle
+fires on it. This is the same move as [the wait column learning to tell a decision from a
+road](#a-bar-derived-off-the-wrong-ring) — twice now, a promise has been
+unreadable not because the colony was fine but because the column mixed a thing the player can
+change with a thing they cannot.
 
 ## A floor is terrain, not a building
 

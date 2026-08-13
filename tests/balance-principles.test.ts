@@ -53,6 +53,7 @@ function run(difficulty: Difficulty, over: Partial<RunMeasure> = {}): RunMeasure
     worstFood: 0.4,
     starveHours: 0,
     floorStarveHours: 0,
+    strandedStarveHours: 0,
     meanFood: 0.6,
     upkeepShare: 0.42,
     endFoodDays: 20,
@@ -473,17 +474,28 @@ describe('the balance principles, read against grids that are known wrong', () =
   });
 
   it('separates a settler starving from a colony being out of food', () => {
-    // A downed settler at zero with weeks of meals in the larder is the failure:
-    // they cannot walk to a meal and nothing carries them one.
+    // A downed settler at zero with weeks of meals in the larder and somebody
+    // standing over them is the failure: they cannot walk to a meal, and the
+    // colonist who could carry one did not.
     const stranded = sweep([
-      run('calm', { worstFood: 0.0, floorStarveHours: 6.2, endFoodDays: 24.5 }),
+      run('calm', {
+        worstFood: 0.0,
+        floorStarveHours: 6.2,
+        strandedStarveHours: 6.2,
+        endFoodDays: 24.5,
+      }),
     ]);
     expect(verdictOf(stranded, 'nobody-starves-beside-a-full-pantry')).toBe('broken');
     expect(detailOf(stranded, 'nobody-starves-beside-a-full-pantry')).toContain('calm/1');
 
     // A colony that has actually eaten everything is not this finding.
     const empty = sweep([
-      run('harsh', { worstFood: 0.0, floorStarveHours: 6.2, endFoodDays: 0.5 }),
+      run('harsh', {
+        worstFood: 0.0,
+        floorStarveHours: 6.2,
+        strandedStarveHours: 6.2,
+        endFoodDays: 0.5,
+      }),
     ]);
     expect(verdictOf(empty, 'nobody-starves-beside-a-full-pantry')).toBe('holds');
   });
@@ -508,12 +520,42 @@ describe('the balance principles, read against grids that are known wrong', () =
     expect(detailOf(walked, 'nobody-starves-beside-a-full-pantry')).toContain('5.8');
   });
 
+  it('does not call a colony that was wiped out a feeding failure', () => {
+    // The case that made the check unreadable for one more round. Ninety hours
+    // on the floor at zero, weeks of food in the larder, and every single
+    // colonist unconscious — there is nobody left to carry the meal, so no rule
+    // on the work board can move this number. Counting it here made the promise
+    // break harder the round its actual defect was fixed, which is a promise
+    // teaching the next round the wrong lesson.
+    const wiped = sweep([
+      run('harsh', {
+        worstFood: 0.0,
+        floorStarveHours: 89.6,
+        strandedStarveHours: 0,
+        endFoodDays: 22,
+      }),
+    ]);
+    expect(verdictOf(wiped, 'nobody-starves-beside-a-full-pantry')).toBe('holds');
+
+    // Still reported, for the same reason the walk is: ninety hours on the floor
+    // is a colony in serious trouble and the grid should say so somewhere, it is
+    // just not *this* trouble.
+    expect(detailOf(wiped, 'nobody-starves-beside-a-full-pantry')).toContain('89.6');
+  });
+
   it('reports the hours a downed settler waited, not how low they got', () => {
     // The detail has to carry the quantity a fix would move. `0.00` is where
     // every hunger bar bottoms out and says nothing about whether the colony is
     // broken; *how long they stayed there on the floor* is the whole finding, and
     // it is what the next grid will be compared on.
-    const s = sweep([run('harsh', { worstFood: 0.0, floorStarveHours: 18.4, endFoodDays: 22 })]);
+    const s = sweep([
+      run('harsh', {
+        worstFood: 0.0,
+        floorStarveHours: 18.4,
+        strandedStarveHours: 18.4,
+        endFoodDays: 22,
+      }),
+    ]);
     const detail = detailOf(s, 'nobody-starves-beside-a-full-pantry');
     expect(detail).toContain('18.4');
     expect(detail).toContain('h');

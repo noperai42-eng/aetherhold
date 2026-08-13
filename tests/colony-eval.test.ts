@@ -167,25 +167,38 @@ describe('colony survives its first week', () => {
     }
   });
 
-  // The two starvation columns, on a run chosen because it contains both things
-  // they exist to tell apart. Twenty days on the hard setting, seed 424242: one
-  // settler spends most of a day on the floor at zero with the larder stocked,
-  // and a different settler spends most of a working day at zero on their feet
-  // and then eats.
+  // The three starvation columns, on a run chosen because it contains all three
+  // things they exist to tell apart. Twenty days on the hard setting, seed 1312:
+  // somebody spends half a working day at zero on their feet and then eats,
+  // somebody else spends the best part of a day on the floor at zero with the
+  // larder stocked, and only *part* of that floor time has a colonist upright to
+  // fetch the meal — the rest is a colony where everybody is unconscious.
   //
-  // A run where both came back zero would pass any assertion about the shape of
-  // these numbers, which is the way a new column quietly dies — wired to nothing
-  // and green forever. So this pins them **nonzero**, on a named run, with the
-  // walk and the collapse separated.
-  it('tells a settler walking home hungry from one starving on the floor', () => {
-    const r = runColony({ seed: 424242, days: 20, difficulty: 'harsh', playPastFounding: true });
+  // A run where all three came back zero would pass any assertion about the shape
+  // of these numbers, which is the way a new column quietly dies — wired to
+  // nothing and green forever. So this pins them **nonzero**, on a named run.
+  //
+  // It is meant to fail when the sim gets better, and it has: the run pinned here
+  // before was harsh/424242, whose floor spell went to zero the day
+  // `sendSomebodyToFeed` shipped. Re-point it off `scripts/probe-starve-pin.ts`,
+  // which prints all three columns for the short runs a unit test can afford.
+  it('tells a walk home from a wait on the floor from a wait with hands free', () => {
+    const r = runColony({ seed: 1312, days: 20, difficulty: 'harsh', playPastFounding: true });
     const last = r.snapshots[r.snapshots.length - 1]!;
-    expect(last.floorStarveHours, 'nobody was left down and hungry — has feeding been fixed?')
-      .toBeGreaterThan(1);
     expect(last.starveHours, 'nobody walked home hungry').toBeGreaterThan(1);
+    expect(last.floorStarveHours, 'nobody was left down and hungry').toBeGreaterThan(1);
+    expect(
+      last.strandedStarveHours,
+      'nobody was left down and hungry while somebody could still walk — has feeding been fixed?',
+    ).toBeGreaterThan(1);
     // Disjoint, not nested: the floor spell must not be counted in the walk. If
     // one collapse could fill both columns the pair would say one thing twice.
     expect(last.starveHours).not.toBe(last.floorStarveHours);
+    // And the narrow column is inside the wide one, which is the whole reason
+    // there are two of them: hours on the floor with nobody upright to help are
+    // hours no rule on the work board can reach, and the promise is drawn on the
+    // remainder. Equal would mean the split is measuring nothing.
+    expect(last.strandedStarveHours).toBeLessThan(last.floorStarveHours);
   });
 
   // The opening week is tuned to be kind. The check that the game is still a

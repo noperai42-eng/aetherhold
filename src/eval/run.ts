@@ -81,6 +81,19 @@ export interface DaySnapshot {
    */
   floorStarveHours: number;
   /**
+   * The longest unbroken spell any settler has spent at or below the starving
+   * line, on the floor, **with somebody still on their feet**, in in-game hours.
+   *
+   * The narrowest of the three and the only one that names a promise the colony
+   * can actually keep. `floorStarveHours` turned out to be dominated by runs
+   * where *everybody* was down — half of one 60-day seed's hours, on a
+   * tick-by-tick probe — and no rule on the work board can reach a colony that
+   * is entirely unconscious; a column that big cannot tell a hauling failure
+   * from a wipe. This one asks whether there were hands, and a meal did not
+   * arrive anyway.
+   */
+  strandedStarveHours: number;
+  /**
    * Share of a *free* settler's day spent eating, sleeping or relaxing rather
    * than working, run to date.
    *
@@ -406,8 +419,12 @@ export function runColony(opts: EvalOptions = {}): EvalReport {
   // needs no closing bookkeeping — the spell simply stops growing.
   const starveSince = new Map<number, number>();
   const floorStarveSince = new Map<number, number>();
+  const strandedSince = new Map<number, number>();
   let longestStarve = 0;
   let longestFloorStarve = 0;
+  let longestStranded = 0;
+  /** Ids down and at zero this tick. Reused rather than allocated 4 800×/day. */
+  const flooredHungry: number[] = [];
   let biggestBand = 0;
   // Every raider ever seen standing, and how many of them were carrying. Counted
   // by id because a raider is only in `world.pawns` while the fight lasts, and
@@ -506,6 +523,8 @@ export function runColony(opts: EvalOptions = {}): EvalReport {
       // One pass for all of it, because this runs 4 800 times a game day and the
       // sweep runs it across fifteen colonies.
       let band = 0;
+      let upright = 0;
+      flooredHungry.length = 0;
       for (const p of world.pawns) {
         if (p.dead) continue;
         if (p.faction === 'raider') {
@@ -537,7 +556,9 @@ export function runColony(opts: EvalOptions = {}): EvalReport {
           const from = floor.get(p.id) ?? world.tick;
           floor.set(p.id, from);
           longestFloorStarve = Math.max(longestFloorStarve, world.tick - from + 1);
+          flooredHungry.push(p.id);
         } else floorStarveSince.delete(p.id);
+        if (!p.downed) upright++;
         if (p.downed) {
           if (!onFloor.has(p.id)) {
             onFloor.add(p.id);
@@ -555,6 +576,28 @@ export function runColony(opts: EvalOptions = {}): EvalReport {
         freeTicks++;
         if (UPKEEP_ACTIVITIES.has(p.activity)) upkeepTicks++;
       }
+      // The third spell, and the only one of the three that is a promise the
+      // colony can keep. `floorStarveHours` turned out to be dominated by runs
+      // where *everybody* was on the floor — 49.6 of seed 1312's 88 hours, on a
+      // tick-by-tick probe — and no feeding rule can reach a colony that is
+      // entirely unconscious. So this one asks the narrower question: at zero,
+      // on the floor, **with somebody still standing**. That is hands available
+      // and a meal not arriving, and it is the only version of the reading a fix
+      // to the work board can move.
+      //
+      // Latched out here rather than inside the pawn loop because "is anybody
+      // upright" is not known until the loop has finished, and the loop stays a
+      // single pass — `flooredHungry` is empty on all but a handful of ticks.
+      if (upright > 0) {
+        for (const id of flooredHungry) {
+          const from = strandedSince.get(id) ?? world.tick;
+          strandedSince.set(id, from);
+          longestStranded = Math.max(longestStranded, world.tick - from + 1);
+        }
+      }
+      for (const id of strandedSince.keys()) {
+        if (upright === 0 || !flooredHungry.includes(id)) strandedSince.delete(id);
+      }
       if (band > biggestBand) biggestBand = band;
     }
     snapshots.push(
@@ -563,6 +606,7 @@ export function runColony(opts: EvalOptions = {}): EvalReport {
         freeTicks,
         longestStarve,
         longestFloorStarve,
+        longestStranded,
       }),
     );
     if (foundedOn === null && hasWon(world)) foundedOn = day;
@@ -610,6 +654,7 @@ function snapshot(
     freeTicks: number;
     longestStarve: number;
     longestFloorStarve: number;
+    longestStranded: number;
   },
 ): DaySnapshot {
   const colonists = livingColonists(world);
@@ -640,6 +685,7 @@ function snapshot(
     avgFood: round(bellies / n),
     starveHours: round(hoursOf(time.longestStarve)),
     floorStarveHours: round(hoursOf(time.longestFloorStarve)),
+    strandedStarveHours: round(hoursOf(time.longestStranded)),
     upkeepShare: round3(time.upkeepTicks / Math.max(1, time.freeTicks)),
     avgMood: round(mood / n),
     avgHp: round(hp / n),

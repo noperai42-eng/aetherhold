@@ -933,6 +933,93 @@ function tryFeedPatient(world: World, pawn: Pawn): boolean {
 }
 
 /**
+ * Jobs a settler is not pulled off, whatever is happening at home.
+ *
+ * Two kinds. Getting out of a fire and carrying somebody else out of one are
+ * already the emergency — swapping one rescue for another loses a life rather
+ * than saving one. And a trade party or a war party is not in the colony: their
+ * job is a march that has already been paid for in packed goods, and calling one
+ * of them back to fetch a meal cancels the trip for everybody.
+ */
+const NEVER_INTERRUPTED: JobKind[] = ['flee', 'rescue', 'feedPatient', 'caravan', 'campaign'];
+
+/**
+ * Somebody is dying of hunger on the floor and nobody is idle enough to notice.
+ *
+ * `assignJob` has had an emergency lane above the work board for a long time, and
+ * its comment says rescue outranks comfort. It does — for a settler who is
+ * *between jobs*. Both entry points return early on `pawn.jobId !== null`, so a
+ * colony where everybody happens to be carrying something reads, from the floor,
+ * exactly like a colony where everybody is unconscious.
+ *
+ * Measured before it was written, on the three harsh seeds the starvation
+ * principle names: of 88 hours that seed 1312 spent with a settler starving on
+ * the floor, 49.6 were a colony that was *itself* entirely floored, 31.0 already
+ * had a meal walking over, 0.3 was the assignment cadence — and **7.2 hours were
+ * settlers on their feet, every one of them mid-job**. That last slice is the
+ * only part of the total that is a decision the colony got wrong, and it is the
+ * only part this changes.
+ *
+ * Colony-level rather than per-settler for the same reason `sendSomebody` in
+ * `firesafety.ts` is: "who goes" is one decision with one answer, and asking it
+ * once from above is not the same question as thirteen settlers each asking what
+ * to do next. This is modelled on that function deliberately, down to cancelling
+ * the chosen settler's job — the precedent for interrupting work to save a life
+ * is already in the codebase, and it is a fire.
+ */
+export function sendSomebodyToFeed(world: World): void {
+  // The common case by an enormous margin, and it costs one pass over the pawns.
+  // Everything below only runs on a tick where somebody is actually dying.
+  if (!dyingPatient(world, -1)) return;
+
+  let patient: Pawn | null = null;
+  for (const p of world.pawns) {
+    if (p.dead || !p.downed || p.faction !== 'colony') continue;
+    if (p.needs.food > PATIENT_EMERGENCY_FOOD) continue;
+    // Already claimed. One meal per patient, and the settler carrying it is not
+    // pulled off by the next tick asking the same question.
+    if (world.jobs.some((j) => j.kind === 'feedPatient' && j.targetPawnId === p.id)) continue;
+    if (patient && patient.needs.food <= p.needs.food) continue;
+    patient = p;
+  }
+  if (!patient) return;
+
+  let best: Pawn | null = null;
+  let bestD = Infinity;
+  for (const p of world.pawns) {
+    if (p.id === patient.id || p.dead || p.downed || p.drafted) continue;
+    if (p.faction !== 'colony' || p.playerControlled) continue;
+    // Every gate the idle lane applies, applied identically. A player who
+    // switched doctoring off, or took this settler off the board by hand, has
+    // answered this question already; a settler who is themself running on empty
+    // deals with that first, or two die instead of one.
+    if (p.manual || p.priorities.doctor <= 0 || p.needs.food <= HUNGRY) continue;
+    // Asleep is deliberately left out of the interruptible set. Nobody is woken
+    // for this: the probe found not one tick in three seeds where the only hands
+    // available were in bed, so waking them buys nothing and costs the rest need
+    // a night — and `firesafety.ts` wakes people because the bed is on fire.
+    if (p.activity === 'sleeping') continue;
+    const busy = world.jobs.find((j) => j.id === p.jobId);
+    if (busy && NEVER_INTERRUPTED.includes(busy.kind)) continue;
+    const d = dist(p.x, p.y, patient.x, patient.y);
+    if (d >= bestD) continue;
+    if (!reachable(world, p, Math.round(patient.x), Math.round(patient.y), true)) continue;
+    best = p;
+    bestD = d;
+  }
+  if (!best) return;
+  // Nothing to carry. Checked before the job is cancelled, so a colony with an
+  // empty pantry does not also lose whatever the settler was in the middle of —
+  // that is a different failure and it should not cost a half-built wall.
+  if (!findFoodStack(world, best)) return;
+
+  if (best.jobId !== null) cancelJob(world, best.jobId);
+  if (tryFeedPatient(world, best)) {
+    msg(world, `${best.name} drops everything to get food to ${patient.name}.`, 'bad');
+  }
+}
+
+/**
  * Raw food per settler above which nobody bothers re-sowing. Ripe cells are still
  * picked — the plot is not the problem, the walk is: a settler turning soil for a
  * pantry that already holds a fortnight of dinners is a settler not mining, and
