@@ -2,25 +2,37 @@
  * Somebody drops what they are doing and carries the meal over.
  *
  * The defect these assertions exist to stop was measured, not imagined. A probe
- * walked three harsh seeds a tick at a time and asked, on every tick where a
- * downed settler sat at zero food, why each other settler was not the one
- * carrying a meal. Seed 1312's 88.2 hours split four ways: 49.6 h with the whole
- * colony on the floor, 31.0 h with a meal already walking over, 0.3 h of
- * assignment cadence — and 7.2 h where every settler still on their feet was
- * mid-job. `assignJob` and `assignNeedsOnly` both return early on a settler who
- * already has a job, so from the floor a colony that is merely busy is
+ * walked the run a tick at a time and asked, on every tick where a downed settler
+ * sat at zero food, why each other settler was not the one carrying a meal.
+ * `assignJob` and `assignNeedsOnly` both return early on a settler who already
+ * has a job, so from the floor a colony that is merely busy was
  * indistinguishable from one that is unconscious.
+ *
+ * The numbers that first justified this file came off a probe that was driving
+ * the steward, and the fifteen sweep runs the grid reports are unmanaged — a
+ * different colony living a different sixty days. Re-measured with it off, on the
+ * three harsh seeds the starvation principles name:
+ *
+ *     seed        total   colony floored   meal moving   all mid-job   free
+ *     20260729   222.9 h          168.3 h        35.2 h        17.7 h  0.8 h
+ *     7           94.2 h           70.7 h        19.8 h         2.1 h  0.6 h
+ *     424242     118.0 h           95.4 h        13.5 h         8.8 h  0.1 h
+ *
+ * `sendSomebodyToFeed` closed the mid-job column, and then the probe said what
+ * was left: of 6036 settler-ticks where the pass looked at somebody upright and
+ * declined to send them, **6035 declined because the rescuer was hungry**. One
+ * tick in six thousand was anything else. See `RESCUER_KEEPS`.
  *
  * The first block is the gate list, one assertion each, so a failure names which
  * gate moved. The last block is the whole thing running inside `stepWorld` with
- * nobody touching it: the measured shape of the failure, and the patient eats.
+ * nobody touching it: the measured shape of both failures, and the patient eats.
  */
 
 import { describe, expect, it } from 'vitest';
 
 import { buildingAt } from '../src/sim/grid';
 import { createJob, sendSomebodyToFeed } from '../src/sim/jobs';
-import { makeStreams, stepWorldN } from '../src/sim/tick';
+import { makeStreams, stepWorld, stepWorldN } from '../src/sim/tick';
 import { addItem } from '../src/sim/world';
 import { Rng } from '../src/sim/rng';
 import { terrainAt, type Job, type Pawn, type World } from '../src/sim/types';
@@ -184,7 +196,13 @@ describe('a settler starving on the floor', () => {
       ['possessed', (p) => (p.playerControlled = true)],
       ['doctoring switched off', (p) => (p.priorities.doctor = 0)],
       ['asleep', (p) => (p.activity = 'sleeping')],
-      ['running on empty themselves', (p) => (p.needs.food = 0.2)],
+      // 0.2 until the round that measured this gate. It was standing in for
+      // "running on empty" against a bar of `HUNGRY`, which is 0.34 — most of a
+      // working day still in hand — and on three unmanaged sixty-day seeds that
+      // bar was the reason 6035 of 6036 declined settler-ticks declined. The bar
+      // is `RESCUER_KEEPS` now, so the number here has to mean what the label
+      // says: 0.1 is a settler somebody should be fetching a meal *to*.
+      ['running on empty themselves', (p) => (p.needs.food = 0.1)],
       ['on the floor themselves', (p) => starving(p)],
     ];
     for (const [what, make] of cases) {
@@ -223,6 +241,45 @@ describe('a settler starving on the floor', () => {
     expect(feedJobs(world)).toHaveLength(1);
   });
 
+  it('is worth a hungry settler’s lunch break, because the errand starts at the pantry', () => {
+    const { world } = empty();
+    const spot = clearing(world);
+    const patient = starving(settler(world, spot.x, spot.y));
+    const worker = settler(world, spot.x + 2, spot.y);
+    // Hungry by the ordinary bar and nowhere near the emergency one. This settler
+    // used to work straight through a colleague at 0.00, and the reason given was
+    // that they would deal with their own crisis first — but they have most of a
+    // day in hand, and the job they are being sent on begins by picking up food.
+    worker.needs.food = 0.3;
+    const job = busyWith(world, worker);
+    addItem(world, 'meal', 5, spot.x + 1, spot.y);
+
+    sendSomebodyToFeed(world);
+
+    expect(world.jobs.some((j) => j.id === job.id), 'kept working').toBe(false);
+    const feeds = feedJobs(world);
+    expect(feeds, 'nobody was sent').toHaveLength(1);
+    expect(feeds[0].targetPawnId).toBe(patient.id);
+  });
+
+  it('is not worth the lunch break of a settler who is nearly the next patient', () => {
+    const { world } = empty();
+    const spot = clearing(world);
+    starving(settler(world, spot.x, spot.y));
+    const worker = settler(world, spot.x + 2, spot.y);
+    // Exactly on the line. The gate is `<=`, so this settler stays put: below it
+    // they are inside the band the sim already calls an emergency, and sending
+    // them is the trade the old comment warned about — two down instead of one.
+    worker.needs.food = 0.14;
+    const job = busyWith(world, worker);
+    addItem(world, 'meal', 5, spot.x + 1, spot.y);
+
+    sendSomebodyToFeed(world);
+
+    expect(worker.jobId).toBe(job.id);
+    expect(feedJobs(world)).toHaveLength(0);
+  });
+
   it('is not noticed at all while they still have something to eat on', () => {
     const { world } = empty();
     const spot = clearing(world);
@@ -259,5 +316,38 @@ describe('the colony left to run itself', () => {
     // carried out on the same tick it is written.
     expect(patient.dead).toBe(false);
     expect(patient.needs.food).toBeGreaterThan(0.2);
+  });
+
+  it('feeds the settler on the floor in a colony where everybody is hungry', () => {
+    const { world, streams } = empty();
+    const spot = clearing(world);
+    const patient = starving(settler(world, spot.x, spot.y));
+    // The measured shape of the *second* failure, and the one the busy-hands fix
+    // could not reach: a hard winter where nobody is comfortable. Every hand is
+    // between the emergency line and the ordinary one — upright, working, hours
+    // in reserve — and under the old bar not one of them qualified to carry a
+    // meal twenty paces. The patient is at zero the whole time.
+    for (let i = 0; i < 3; i++) {
+      const p = settler(world, spot.x + 2 + i, spot.y + 1);
+      p.needs.food = 0.25;
+      busyWith(world, p);
+    }
+    addItem(world, 'meal', 20, spot.x + 1, spot.y);
+
+    // How soon, not whether. Given long enough the old colony got there too — the
+    // workers ate, cleared the bar, and *then* noticed the floor — so a test that
+    // only asks whether the patient was ever fed passes on both sides of this
+    // change and pins nothing. Every tick at zero is hit points off, and the
+    // measured gap is the whole finding: 176 ticks before, 49 after, on this
+    // exact colony. A hundred sits between them and is not near either.
+    let fedAt = -1;
+    for (let t = 0; t < 900 && fedAt < 0; t++) {
+      stepWorld(world, streams);
+      if (patient.needs.food > 0.2) fedAt = t;
+    }
+
+    expect(patient.dead, 'died in a colony with meals and hands').toBe(false);
+    expect(fedAt, 'never fed at all').toBeGreaterThanOrEqual(0);
+    expect(fedAt, 'nobody was sent while it still mattered').toBeLessThan(100);
   });
 });

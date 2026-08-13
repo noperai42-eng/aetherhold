@@ -75,9 +75,15 @@ export interface DaySnapshot {
    * This is the column the starvation promise is actually about, and it is
    * disjoint from the one above rather than a subset of it: a settler on their
    * feet at zero is walking towards a meal under their own power and arrives; a
-   * downed settler is waiting for one to be brought, and nothing in the sim
-   * brings it. Kept apart so one long collapse cannot fill both columns and
-   * leave the walk invisible.
+   * downed settler is waiting for one to be brought. Kept apart so one long
+   * collapse cannot fill both columns and leave the walk invisible.
+   *
+   * This used to end "and nothing in the sim brings it", which was a guess
+   * written down as fact and is false: `jobs.ts` has `tryFeedPatient` and an
+   * emergency lane above the work board in both assignment entry points. The
+   * question was never whether the colony has the behaviour — it is which gate
+   * in front of it is shut, and `strandedStarveHours` below is the reading that
+   * asks it.
    */
   floorStarveHours: number;
   /**
@@ -93,6 +99,26 @@ export interface DaySnapshot {
    * arrive anyway.
    */
   strandedStarveHours: number;
+  /**
+   * The longest unbroken spell any settler has spent at or below the starving
+   * line, on the floor, with somebody upright, **and nobody carrying them a
+   * meal**, in in-game hours.
+   *
+   * The column above turned out to be mostly the promise being kept. A probe that
+   * walked the three harsh seeds a tick at a time found the reachable hours —
+   * everything that is not a colony lying entirely unconscious — running 60% to
+   * 84% "a `feedPatient` job is already live for this patient", and on
+   * harsh/20260729 the longest stranded spell of 10.48 h held 37% of its
+   * settler-ticks with a rescuer already walking. A rescuer walking is what the
+   * colony is supposed to do; timing the walk and calling it a failure would have
+   * a fix chasing pathfinding.
+   *
+   * So this one breaks the moment somebody is sent, which leaves exactly the
+   * question the work board answers: hands up, a meal in store, and nobody has
+   * even been told to go. There is no honest reading of that except a decision
+   * the colony got wrong.
+   */
+  unfedStarveHours: number;
   /**
    * Share of a *free* settler's day spent eating, sleeping or relaxing rather
    * than working, run to date.
@@ -420,9 +446,11 @@ export function runColony(opts: EvalOptions = {}): EvalReport {
   const starveSince = new Map<number, number>();
   const floorStarveSince = new Map<number, number>();
   const strandedSince = new Map<number, number>();
+  const unfedSince = new Map<number, number>();
   let longestStarve = 0;
   let longestFloorStarve = 0;
   let longestStranded = 0;
+  let longestUnfed = 0;
   /** Ids down and at zero this tick. Reused rather than allocated 4 800×/day. */
   const flooredHungry: number[] = [];
   let biggestBand = 0;
@@ -588,15 +616,42 @@ export function runColony(opts: EvalOptions = {}): EvalReport {
       // Latched out here rather than inside the pawn loop because "is anybody
       // upright" is not known until the loop has finished, and the loop stays a
       // single pass — `flooredHungry` is empty on all but a handful of ticks.
+      // The fourth spell, and the narrowest yet: the third one minus every tick a
+      // rescuer was already carrying. `strandedStarveHours` was meant to name a
+      // feeding failure and mostly does not — a tick-by-tick probe of the three
+      // harsh seeds found 37% of its settler-ticks on seed 20260729 had a
+      // `feedPatient` job live against that exact patient, and across the run
+      // totals the meal-already-moving slice ran 60–84% of the reachable hours.
+      // Somebody walking a meal over is this promise being kept, and a column
+      // that counts the walk cannot tell a slow colony from an unwilling one.
+      //
+      // One job per patient by construction — `sendSomebodyToFeed` skips a
+      // patient who already has one — so this is a set membership, not a count.
+      const carried = new Set<number>();
+      if (flooredHungry.length > 0) {
+        for (const j of world.jobs) {
+          if (j.kind === 'feedPatient' && j.targetPawnId != null) carried.add(j.targetPawnId);
+        }
+      }
       if (upright > 0) {
         for (const id of flooredHungry) {
           const from = strandedSince.get(id) ?? world.tick;
           strandedSince.set(id, from);
           longestStranded = Math.max(longestStranded, world.tick - from + 1);
+          if (carried.has(id)) continue;
+          const ufrom = unfedSince.get(id) ?? world.tick;
+          unfedSince.set(id, ufrom);
+          longestUnfed = Math.max(longestUnfed, world.tick - ufrom + 1);
         }
       }
       for (const id of strandedSince.keys()) {
         if (upright === 0 || !flooredHungry.includes(id)) strandedSince.delete(id);
+      }
+      // Breaks on everything the wide latch breaks on, and also the moment
+      // somebody is sent. That extra break is the point: a spell that survives
+      // dispatch is not measuring dispatch.
+      for (const id of unfedSince.keys()) {
+        if (upright === 0 || !flooredHungry.includes(id) || carried.has(id)) unfedSince.delete(id);
       }
       if (band > biggestBand) biggestBand = band;
     }
@@ -607,6 +662,7 @@ export function runColony(opts: EvalOptions = {}): EvalReport {
         longestStarve,
         longestFloorStarve,
         longestStranded,
+        longestUnfed,
       }),
     );
     if (foundedOn === null && hasWon(world)) foundedOn = day;
@@ -655,6 +711,7 @@ function snapshot(
     longestStarve: number;
     longestFloorStarve: number;
     longestStranded: number;
+    longestUnfed: number;
   },
 ): DaySnapshot {
   const colonists = livingColonists(world);
@@ -686,6 +743,7 @@ function snapshot(
     starveHours: round(hoursOf(time.longestStarve)),
     floorStarveHours: round(hoursOf(time.longestFloorStarve)),
     strandedStarveHours: round(hoursOf(time.longestStranded)),
+    unfedStarveHours: round(hoursOf(time.longestUnfed)),
     upkeepShare: round3(time.upkeepTicks / Math.max(1, time.freeTicks)),
     avgMood: round(mood / n),
     avgHp: round(hp / n),

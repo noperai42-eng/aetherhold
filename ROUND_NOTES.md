@@ -4,6 +4,141 @@ One round, one measured gap, one fix. Newest first.
 
 ---
 
+## 2026-08-13 — The rescuer who was excused for being peckish
+
+**Track A: a measured fix**, plus the instrument that had to exist before the fix could be judged.
+Both `src/sim/jobs.ts` and `src/eval/run.ts` moved, so the fingerprint moved and the sixty-day grid
+was re-run.
+
+### The column the round below asked for
+
+The last entry's *Next* was to split the stranded column: some of those hours are a meal legitimately
+walking over, and a column that excluded them would name **dispatch alone**. `unfedStarveHours` is
+that column — the stranded spell (at zero, on the floor, with somebody upright) minus every tick a
+`feedPatient` job already names that patient. `scripts/probe-unfed.ts` mirrors the shipped latch line
+for line and reproduced `strandedStarveHours` exactly on both seeds it was checked against, 10.48 and
+7.25, which is the only reason to believe the narrower reading beside it.
+
+Pre-fix, on four unmanaged sixty-day seeds:
+
+| run | stranded | unfed | of stranded ticks, a meal was already moving |
+|---|---|---|---|
+| harsh/20260729 | 10.48 h | **7.95 h** | 37 % |
+| harsh/7 | 7.25 h | **3.27 h** | 61 % |
+| harsh/424242 | 6.68 h | **2.26 h** | 47 % |
+| settler/99001 | 6.63 h | **1.30 h** | 90 % |
+
+Between a third and nine tenths of the column was a colony that *had* answered and was too slow. That
+is a real problem and it is not the one this promise is about.
+
+### One tick in six thousand
+
+The busy-hands slice was supposed to be the target. It was not. Re-running `scripts/probe-feed.ts`
+unmanaged on the three worst harsh seeds and tallying, in order, every gate `sendSomebodyToFeed`
+checks before sending somebody: **of 6036 settler-ticks where the pass looked at an upright colonist
+and declined to send them to somebody lying at 0.00, 6035 declined on the rescuer's own hunger.** One
+tick in six thousand was anything else. The pass was working. It was being asked the wrong question.
+
+The gate read `p.needs.food <= HUNGRY`, and `HUNGRY` is 0.34 — at `FOOD_DRAIN`, most of a working day
+still in hand. The comments defending it said a settler who is themself starving deals with that
+first or two die instead of one, which is true, and 0.34 is not starving. The errand *begins* at the
+food stack, and nothing takes hit points off until zero.
+
+### The change
+
+```ts
+const RESCUER_KEEPS = PATIENT_EMERGENCY_FOOD;   // 0.14
+```
+
+The same line, deliberately: a settler is excused from carrying a meal exactly when they are the
+person somebody should be carrying one *to*. Three call sites — `sendSomebodyToFeed`, `assignJob`'s
+`canRescue`, `assignNeedsOnly`. On the synthetic colony in `tests/feeding.test.ts`, time-to-first-meal
+for a settler on the floor went **176 ticks → 49**.
+
+### The grid
+
+Fingerprint `ce4d9a8f` → `8b19f4e1`, 39 colonies in 3016 s. Fifteen unmanaged sweep runs, sixty days:
+
+| | before | after |
+|---|---|---|
+| on the floor at zero, worst / summed | 58.39 h / 197.4 h | **35.14 h / 164.5 h** |
+| stranded, worst / summed | 10.48 h / 48.4 h | **8.04 h / 36.4 h** |
+| unfed, worst / summed | — | 4.72 h / 14.2 h |
+| upright at zero, worst / summed | 7.92 h / 39.4 h | **9.79 h / 52.3 h** |
+| downs · buried · survivors | 757 · 29 · 138 | **704 · 28 · 141** |
+
+The upright column going **up** is the honest cost, and it is the cost the change asks for: rescuers
+now spend their own margin on the errand. 0.14 is about 4.1 in-game hours of walking and the widest
+crossing of the map is 6.2 h, `feedPatient` is in `NEVER_INTERRUPTED`, and the carrier takes one meal
+and does not eat it — so a rescuer sent from just above the line to a patient at the far end can
+arrive empty. The enforced bar on that column is twelve hours and the worst run is 9.79, so it holds,
+with less room than it had. Against that: 53 fewer downs, one fewer burial, three more survivors, and
+the worst wait on the floor cut by 40 %.
+
+`nobody-starves-beside-a-full-pantry` now reads the narrow column, because its claim — *"is brought
+one, by somebody who can"* — is about being **sent**. It went from 9 of 15 runs at worst 10.5 h to
+**7 of 15 at worst 4.7 h**. Like-for-like on the old column the count is unchanged at 9: the fix
+shortened the waits, it did not end them. The bar stays at one hour and stays open.
+
+### The steward default, for the third time
+
+`runColony` opens `const useSteward = opts.steward ?? true`. `--steward` is opt-in on
+`npm run measure` and `measurements.json` records `steward: false`, so **the managed colony has no
+grid coverage at all** — and every probe that forgets the flag measures the one arm nothing else
+measures. It cost a round in `probe-upright.ts`, it put a contaminated four-way split into
+`principles.ts` and `tests/feeding.test.ts` (both corrected here), and this round it surfaced as an
+arithmetic impossibility: `probe-starve-pin.ts` read harsh/424242 at **155.7 h** upright at zero over
+twenty days against the grid's 6.5 h over sixty, which no monotone longest-spell latch can do. Two
+colonies, not one latch. Run unmanaged, the same seed reads 6.5 h at twenty days — the grid's number
+exactly, since the worst spell happens early and never gets worse.
+
+The probe and the pinned fixture both say `steward: false` out loud now, with the reason.
+
+### The pin moved, again
+
+`tests/colony-eval.test.ts` pins all four columns nonzero on a named run so a new column cannot die
+wired to nothing and green forever. It is meant to fail when the sim gets better and it did, on
+`expected 12.56 to be less than 12.56`: harsh/1312's floor and stranded columns **converged**, because
+feeding people sooner kept that colony conscious and it never went fully dark. Re-pointed off the
+probe to **harsh/99001, 20 days, unmanaged** — feet 1.9, floor 18.2, stranded 8.0, unfed 4.7 — which
+is the grid's own worst run for both columns the promise is drawn on, and catches their exact
+sixty-day readings (8.04 and 4.72) inside twenty days.
+
+### Verified
+
+- `npx tsc --noEmit` — clean.
+- Sixty-day grid, `ce4d9a8f` → `8b19f4e1`, 39 colonies in 3016 s.
+- `tests/feeding.test.ts` — three new, 8 → 11. A settler at 0.30 is worth the lunch break; a settler
+  at 0.14 exactly is not, because the gate is `<=` and they are nearly the next patient; and an
+  experience test that steps a whole colony of hungry settlers tick by tick and asserts the one on
+  the floor is fed inside 100 ticks. That bar was measured, not guessed — a throwaway probe put the
+  old gate at 176 ticks and the new one at 49, and 100 sits between them and near neither. The first
+  version of that test asserted a food level after 900 ticks and **passed on the old code**, which is
+  a decoration, not a test.
+- `tests/balance-principles.test.ts` — one new pair. Nine hours stranded with a meal moving must read
+  `holds`; the same nine hours with nobody sent must read `broken` **and quote 8.6, not 9.0**. Both
+  fail on the old check. That file is hand-written cases rather than one per principle, so a check
+  can ship with none.
+- `npm test` — 98 of 100 files, **1866 green**, 13 skipped, 861 s. `npm run build` — clean.
+
+### Next
+
+How slow the carry is. The split says between a third and nine tenths of the stranded column is a
+meal already in motion, and nothing measures whether that motion is fast enough — a per-tick latch
+cannot, it wants a per-delivery clock from `feedPatient` created to fed. That is also the instrument
+the deferred `stalledDays` replacement wants.
+
+Then the rescuer's own margin, if the upright column keeps climbing. The clean fix is for the carrier
+to take two meals and eat one at the stack; the cheap one is a floor on `RESCUER_KEEPS` that scales
+with the distance to the patient. Neither is worth writing off one grid.
+
+Carried forward unchanged: `starveHours` counts a **drafted** settler as upright, and
+`sendSomebodyToFeed` skips drafted settlers on purpose. Harmless on the fifteen unmanaged sweep runs —
+nothing drafts anybody without a player or a steward — but worth excluding when either column is next
+touched.
+
+---
+
 ## 2026-08-13 — The settler who slept through starving
 
 **Track A: a measured fix.** One deleted early return in `src/sim/jobs.ts`. In `src/sim/**`, so the

@@ -167,23 +167,49 @@ describe('colony survives its first week', () => {
     }
   });
 
-  // The three starvation columns, on a run chosen because it contains all three
-  // things they exist to tell apart. Twenty days on the hard setting, seed 1312:
-  // somebody spends half a working day at zero on their feet and then eats,
-  // somebody else spends the best part of a day on the floor at zero with the
-  // larder stocked, and only *part* of that floor time has a colonist upright to
-  // fetch the meal — the rest is a colony where everybody is unconscious.
+  // The four starvation columns, on a run chosen because it contains all four
+  // things they exist to tell apart. Twenty days on the hard setting, seed 99001,
+  // **unmanaged**: somebody spends a couple of hours at zero on their feet and
+  // then eats; somebody else spends the better part of a day on the floor at zero
+  // with the larder stocked; only *part* of that floor time has a colonist
+  // upright to fetch the meal, the rest being a colony where everybody is
+  // unconscious; and only part of *that* is time nobody was carrying a meal over.
   //
-  // A run where all three came back zero would pass any assertion about the shape
+  // A run where all four came back zero would pass any assertion about the shape
   // of these numbers, which is the way a new column quietly dies — wired to
   // nothing and green forever. So this pins them **nonzero**, on a named run.
   //
-  // It is meant to fail when the sim gets better, and it has: the run pinned here
-  // before was harsh/424242, whose floor spell went to zero the day
-  // `sendSomebodyToFeed` shipped. Re-point it off `scripts/probe-starve-pin.ts`,
-  // which prints all three columns for the short runs a unit test can afford.
+  // It is meant to fail when the sim gets better, and it has, twice. harsh/424242
+  // went first, its floor spell falling to zero the day `sendSomebodyToFeed`
+  // shipped. Then harsh/1312 went the day `RESCUER_KEEPS` shipped, and not by
+  // collapsing: its floor and stranded columns *converged*, both 12.56 h, because
+  // feeding people sooner kept enough of that colony conscious that it never went
+  // fully dark. Re-point off `scripts/probe-starve-pin.ts`, which prints all four
+  // columns for the short runs a unit test can afford and flags the rows that
+  // satisfy this test's own conjunction.
+  //
+  // `steward: false` is load-bearing and is the reason harsh/424242 was ever
+  // pinned here. `runColony` opens `opts.steward ?? true`, so leaving the flag off
+  // silently plays a *managed* colony — an arm the grid does not measure at all,
+  // since `--steward` is opt-in on `npm run measure` and `measurements.json`
+  // records `steward: false`. Run this seed managed and the upright column reads
+  // 155.7 h; unmanaged it reads 1.9. Both are real. Only one is the colony these
+  // starvation principles judge.
+  //
+  // The numbers below are the worst readings in the whole sixty-day grid for the
+  // two columns the promise is drawn on, and the twenty-day pin catches them
+  // exactly: stranded 8.0 h and unfed 4.7 h here against 8.04 and 4.72 at sixty
+  // days. The wider columns keep growing after day twenty (floor 18.2 → 35.1,
+  // feet 1.9 → 6.9), which is the shape you want — the pin is a prefix of the
+  // grid's own worst run, not a lookalike.
   it('tells a walk home from a wait on the floor from a wait with hands free', () => {
-    const r = runColony({ seed: 1312, days: 20, difficulty: 'harsh', playPastFounding: true });
+    const r = runColony({
+      seed: 99001,
+      days: 20,
+      difficulty: 'harsh',
+      playPastFounding: true,
+      steward: false,
+    });
     const last = r.snapshots[r.snapshots.length - 1]!;
     expect(last.starveHours, 'nobody walked home hungry').toBeGreaterThan(1);
     expect(last.floorStarveHours, 'nobody was left down and hungry').toBeGreaterThan(1);
@@ -191,14 +217,21 @@ describe('colony survives its first week', () => {
       last.strandedStarveHours,
       'nobody was left down and hungry while somebody could still walk — has feeding been fixed?',
     ).toBeGreaterThan(1);
+    expect(
+      last.unfedStarveHours,
+      'nobody was left down and hungry with hands free and no meal moving — has dispatch been fixed?',
+    ).toBeGreaterThan(1);
     // Disjoint, not nested: the floor spell must not be counted in the walk. If
     // one collapse could fill both columns the pair would say one thing twice.
     expect(last.starveHours).not.toBe(last.floorStarveHours);
-    // And the narrow column is inside the wide one, which is the whole reason
-    // there are two of them: hours on the floor with nobody upright to help are
-    // hours no rule on the work board can reach, and the promise is drawn on the
-    // remainder. Equal would mean the split is measuring nothing.
+    // And each narrow column is strictly inside the wider one, which is the whole
+    // reason there are four of them. Hours on the floor with nobody upright to
+    // help are hours no rule on the work board can reach; hours with a meal
+    // already walking over are hours the colony *did* answer, slowly. The promise
+    // is drawn on what is left. Equal at any step would mean that step is
+    // measuring nothing.
     expect(last.strandedStarveHours).toBeLessThan(last.floorStarveHours);
+    expect(last.unfedStarveHours).toBeLessThan(last.strandedStarveHours);
   });
 
   // The opening week is tuned to be kind. The check that the game is still a

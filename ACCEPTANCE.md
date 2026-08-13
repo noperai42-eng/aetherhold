@@ -14,42 +14,62 @@ Four sections: [the killer feature](#the-killer-feature),
 and [what still wants a human](#what-still-wants-a-human) — which is the long one, and is
 ordered to match `PLAYTEST.md` rather than by importance.
 
-Last run — 2026-08-13, the sleep round: one deleted early return in `src/sim/jobs.ts`, so the
-sixty-day grid was re-run — fingerprint `2edb0102` → `ce4d9a8f`, 39 colonies, 2157 s. The grid's
-whole **on their feet at zero** column was one settler, asleep. `tickGroundSleep` handed anybody
-lying on a bed cell back to "the sleep job", which at that call site does not exist — both `tick.ts`
-call sites are reached with `jobId === null` — so a settler who collapsed onto an occupied bunk was
-ticked by nothing: rest frozen at 0.00 for five days, the `rest > 0.9` wake unreachable, and the need
-pass skipped because `tick.ts` `continue`s past it for a sleeper. Sleeping rough now rests wherever
-it happens and wakes on the sleep job's own rule, `rest > 0.9` **or** `food < 0.12 && rest > 0.5`.
-**Fourteen of fifteen sweep runs came back byte-identical** — the guard could only fire for a settler
-sleeping rough on a bed cell, and in sixty days across fifteen colonies that happened once — so this
-is the first paired sample the grid has produced: harsh/424242's longest upright spell at zero,
-102.12 h → **7.23 h**, everything else untouched. That column is judged from this round on, by
-`on-their-feet-at-zero-is-a-walk-home`, **enforced** at twelve in-game hours — twice the widest
-crossing of a 192-cell map at `WALK_SPEED`, so the bar is drawn off the map rather than off the grid.
+Last run — 2026-08-13, the rescuer round: one constant in `src/sim/jobs.ts` and one latch in
+`src/eval/run.ts`, so the sixty-day grid was re-run — fingerprint `ce4d9a8f` → `8b19f4e1`, 39
+colonies, 3016 s. `strandedStarveHours` named the right population and still could not name a defect:
+between a third and nine tenths of it, seed by seed, was a settler somebody **had** answered, with
+the meal still walking over. `unfedStarveHours` is that column minus every tick a `feedPatient` job
+already names the patient, and with it in hand the defect was one tally away — **of 6036
+settler-ticks where the feeding pass looked at an upright colonist and declined to send them to
+somebody lying at 0.00, 6035 declined on the rescuer's own hunger.** One tick in six thousand was
+anything else; the pass was working, it was being asked the wrong question. The gate read `HUNGRY`,
+0.34, most of a working day still in hand, for an errand that *begins* at the food stack. It now
+reads `RESCUER_KEEPS = PATIENT_EMERGENCY_FOOD`, 0.14 — deliberately the same constant, so a settler
+is excused from carrying a meal exactly when they are the person somebody should be carrying one to.
+Worst wait on the floor 58.39 h → **35.14 h**, stranded 10.48 h → **8.04 h**, 53 fewer downs, one
+fewer burial, three more survivors. `nobody-starves-beside-a-full-pantry` reads the narrow column now
+and goes 9 of 15 runs at worst 10.5 h → **7 of 15 at worst 4.7 h**; like-for-like on the old column
+the count is unchanged at 9, so the fix shortened the waits and did not end them, and the one-hour
+bar was left where it was rather than tuned until the grid went green. The cost is one column up and
+it is the one the change asks for — rescuers now spend their own margin on the errand, so the longest
+spell **upright** at zero went 7.92 h → **9.79 h** against `on-their-feet-at-zero-is-a-walk-home`'s
+enforced twelve. It holds, with less room than it had.
 
 - `npx tsc --noEmit` clean.
-- `npm test` — **98 of 100 files, 1862 tests green**, 13 skipped, in 935 s. Run twice: once on the
-  fresh grid and again after the new principle and its two cases went in.
-  **Two** are in `tests/balance-principles.test.ts` and they are the new check's own: that the bar
-  catches the 102.1 h reading it was written from, and that it leaves a 7.9 h walk home alone while
-  still printing it. That file is hand-written cases rather than one per principle, so a check can
-  ship with none — which is a check nobody has watched fire.
-  **Eight** of those are the newest and they are `tests/sleep.test.ts`: seven waking-rule assertions
-  one apiece, so a failure names which rule moved, and one experience test — a settler dropped on
-  somebody's bunk at zero rest and zero food, a meal two cells away, half a day of `stepWorld` with
-  nothing touched, and they wake up and eat it. Run against the pre-fix files it fails on the first
-  assertion — `still asleep half a day later` — which is the difference between a test and a
-  decoration.
-  **Eight** from the round before are the feeding pass: seven gate assertions and one experience
-  test — three settlers mid-job, one on the floor at zero, nothing else touched, and the patient
-  eats. It too was run with the call commented out first, which is the difference between a test and
-  a decoration.
-  **Three** more are the starvation columns: two that the principle can tell a settler walking home
-  hungry from one on the floor, and one on a named run that pins all three columns nonzero *and
-  unequal* — a new metric wired to nothing stays zero and passes every assertion anyone would think
-  to write about its shape.
+- `npm test` — **98 of 100 files, 1866 tests green**, 13 skipped, in 861 s.
+  **Three** of the four new ones are in `tests/feeding.test.ts`, sitting either side of the moved
+  line: a settler on 0.30 food is worth the lunch break because the errand starts at the pantry
+  anyway, one on 0.14 exactly is not — the gate is `<=` and they are nearly the next patient — and one
+  experience test, a colony where *everybody* is hungry and the settler on the floor is still fed
+  inside 100 ticks. That bar was measured rather than guessed: a throwaway probe put the old gate at
+  176 ticks and the new one at 49, so 100 sits between them and near neither. The first version of it
+  asserted a food level after 900 ticks and **passed on the old code**, which is a decoration, not a
+  test.
+  **One** is in `tests/balance-principles.test.ts`: the principle must not count a settler a meal is
+  already walking over. Both halves fail on the old check — the sweep is handed the same nine-hour
+  stranded spell twice and has to answer *holds* or *broken* off the unfed column alone.
+  The named-run pin in `tests/colony-eval.test.ts` moved for the second time, and again because a fix
+  worked: harsh/1312's floor and stranded columns **converged** at 12.56 h, feeding sooner having kept
+  the colony conscious enough never to go fully dark. It pins harsh/99001 now — feet 1.9, floor 18.2,
+  stranded 8.0, unfed 4.7 over twenty days, the widest margins any candidate offered, and the grid's
+  own worst run on both columns the promise is drawn from. Chosen off `scripts/probe-starve-pin.ts`,
+  whose `fits` column is the test's own conjunction, so the choice is a lookup rather than an
+  argument.
+  Probe and fixture both say `steward: false` out loud now, with the reason. `runColony` defaults it
+  to **true** while `--steward` is opt-in on `npm run measure`, so the managed colony has no grid
+  coverage at all, and any probe that forgets the flag is reading the one arm nothing else reads. It
+  has cost three rounds. The tell this time was arithmetic: 155.7 h upright at zero over twenty days
+  against the grid's 6.5 h over sixty for the same seed, which no monotone longest-spell latch can do.
+- `npm run build` clean — 113 modules, 920 kB, 263 kB gzipped.
+- The sleep round, one below: **1862 tests** green in 935 s, and the grid's first paired sample —
+  fourteen of fifteen sweep runs byte-identical, harsh/424242's longest upright spell at zero
+  102.12 h → **7.23 h**, from deleting one early return that handed a settler sleeping rough on a bed
+  cell back to a sleep job which does not exist at that call site. Eight of its tests are
+  `tests/sleep.test.ts`: seven waking-rule assertions one apiece, so a failure names which rule moved,
+  and one experience test that fails on the pre-fix files at its first assertion. The upright column
+  is judged from that round on, by `on-their-feet-at-zero-is-a-walk-home`, **enforced** at twelve
+  in-game hours — twice the widest crossing of a 192-cell map at `WALK_SPEED`, so the bar is drawn off
+  the map rather than off the grid.
 - The stride round, one below: **1840 tests** green in 1184 s.
   **Four** of those are the newest and they are the stride's one writer.
   **Two** are in `tests/gait.test.ts` and they replaced a weaker one. It used to read

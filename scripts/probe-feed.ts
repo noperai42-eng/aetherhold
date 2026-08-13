@@ -30,6 +30,14 @@ import { reachable } from '../src/sim/jobs';
 const seed = Number(process.argv[2] ?? 1312);
 const difficulty = (process.argv[3] ?? 'harsh') as Difficulty;
 const days = Number(process.argv[4] ?? 60);
+/**
+ * Off by default, and it did not used to be. The fifteen sweep runs the grid
+ * reports are **unmanaged**; a probe that drives the steward measures a different
+ * colony living a different sixty days, and every number this file printed before
+ * this flag existed was that other colony's. See `scripts/probe-upright.ts`,
+ * where the same import sent a round chasing a latch bug that was not there.
+ */
+const steward = process.argv[5] === 'steward';
 
 /** The line `run.ts` and the starvation principle both call starving. */
 const STARVING = 0.02;
@@ -67,7 +75,7 @@ const NEVER_INTERRUPTED = ['flee', 'rescue', 'feedPatient', 'caravan', 'campaign
 for (let day = 1; day <= days; day++) {
   for (let i = 0; i < TICKS_PER_DAY; i++) {
     stepWorld(world, streams);
-    stewardTick(world, world.tick);
+    if (steward) stewardTick(world, world.tick);
 
     const living = livingColonists(world);
     const patients = living.filter((p) => p.downed && p.needs.food <= STARVING);

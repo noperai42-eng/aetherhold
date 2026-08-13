@@ -1923,7 +1923,12 @@ What you do about it:
   are rested — that is what bed rest *is*. They still get up for a raid or an empty stomach.
 - **Feed them.** A settler below 30% food builds immunity at less than half rate. Starving
   and sick is how the race is actually lost, and it is almost always what killed the
-  settler you lost.
+  settler you lost. The colony does this part itself: a settler who is **down and below 14%
+  food** is dying rather than merely hungry, and somebody who can still walk takes a meal
+  over ahead of whatever they were doing. The only settler excused from that errand is one
+  who is below 14% themselves — the same line, so a settler is let off carrying a meal
+  exactly when they are the person somebody should be carrying one to. Everybody else gives
+  up their lunch break, because the errand starts at the pantry anyway.
 - **Warm the room they are lying in.** A body spending everything it has on staying warm
   builds immunity at 0.7×, so a cold bed is barely better than no bed. That is what makes a
   campfire a medical building.

@@ -575,13 +575,24 @@ export const PRINCIPLES: Principle[] = [
     // downed settler" — which was false. `jobs.ts` has `tryFeedPatient`, and an
     // emergency feeding lane above the work board in both assignment entry
     // points. A second probe asked which gate was shut instead of assuming
-    // there was no door, and split seed 1312's 88.2 h on the floor four ways:
-    // 49.6 h with the whole colony downed, 31.0 h with a meal already walking
-    // over, 0.3 h of assignment cadence, and 7.2 h where every settler on their
-    // feet was mid-job. Only that last slice was a decision the colony got
-    // wrong: both entry points return early on a settler who already has a job,
-    // so from the floor "everyone is busy" and "everyone is unconscious" read
-    // the same. `sendSomebodyToFeed` closes it.
+    // there was no door, and split the hours on the floor four ways: the whole
+    // colony downed, a meal already walking over, assignment cadence, and every
+    // settler on their feet mid-job. Only that last slice was a decision the
+    // colony got wrong: both entry points return early on a settler who already
+    // has a job, so from the floor "everyone is busy" and "everyone is
+    // unconscious" read the same. `sendSomebodyToFeed` closes it.
+    //
+    // That split first shipped with a bug of its own, worth naming because it
+    // has now cost two rounds: the probe imported `stewardTick` and drove it, so
+    // every number it printed came from a *managed* colony. The fifteen sweep
+    // runs behind this grid are unmanaged — a probe that runs the steward is
+    // measuring a different colony living a different sixty days. Re-run without
+    // it on the three harsh seeds these starvation principles are calibrated
+    // from, the shape survives and the weights move (hours on the floor):
+    //
+    //   harsh/20260729  222.9 — 168.3 wipe, 35.2 meal moving, 17.7 busy, 0.8 free
+    //   harsh/7          94.2 —  70.7 wipe, 19.8 meal moving,  2.1 busy, 0.6 free
+    //   harsh/424242    118.0 —  95.4 wipe, 13.5 meal moving,  8.8 busy, 0.1 free
     //
     // Still open rather than enforced: the diagnosis is a measurement now, but
     // the fix is not written, and a promise that fails on every grid teaches
@@ -635,26 +646,47 @@ export const PRINCIPLES: Principle[] = [
       // along in the detail rather than the check, because how bad the run got
       // is still worth reading beside how much of it was anyone's fault.
       //
+      // And then a fourth spell, because "hands available and a meal not
+      // arriving" turned out to be two claims wearing one number. A probe that
+      // asks, of every stranded tick, whether a `feedPatient` job already names
+      // that patient found that most of them do — 37% of the stranded
+      // settler-ticks on harsh/20260729, 61% on harsh/7, 47% on harsh/424242,
+      // and 90% on settler/99001, measured pre-fix on the unmanaged grid seeds
+      // this file is calibrated from. Those are hours a settler
+      // spent at zero on the floor while somebody was already walking a meal
+      // over. The colony answered; it was slow. That is a different failure from
+      // nobody being sent, and this promise — "is brought one, by somebody who
+      // can" — is about being sent.
+      //
+      // So the check reads `unfedStarveHours`: the stranded spell minus every
+      // tick a meal was already moving. Pre-fix that column stood at 7.95, 3.27,
+      // 2.26 and 1.30 h against stranded's 10.48, 7.25, 6.68 and 6.63. The wider
+      // column rides along in the detail. How slow the carry itself is stays
+      // unjudged here — that wants a per-delivery clock rather than a per-tick
+      // latch, and nobody has written one, so nothing pretends to read it.
+      //
       // Five days of food still stands in for "the colony is not short", because
       // a colony genuinely out of food is a different and honest failure.
-      const stranded = s.runs.filter((m) => m.strandedStarveHours >= 1 && m.endFoodDays >= 5);
+      const unfed = s.runs.filter((m) => m.unfedStarveHours >= 1 && m.endFoodDays >= 5);
       // Printed either way. On a grid where nobody starves within reach of help
       // these are the only sign left that settlers still hit zero — on their
       // feet, or on the floor of a colony past saving — and a number that only
       // appears on failures is a number nobody tunes.
       const onFeet = Math.max(0, ...s.runs.map((m) => m.starveHours));
       const onFloor = Math.max(0, ...s.runs.map((m) => m.floorStarveHours));
+      const carried = Math.max(0, ...s.runs.map((m) => m.strandedStarveHours));
       const walked =
         `longest spell at zero on their feet anywhere: ${onFeet.toFixed(1)} h; ` +
-        `on the floor, help or none: ${onFloor.toFixed(1)} h`;
-      return stranded.length === 0
+        `on the floor, help or none: ${onFloor.toFixed(1)} h; ` +
+        `on the floor with hands up, meal moving or not: ${carried.toFixed(1)} h`;
+      return unfed.length === 0
         ? { verdict: 'holds', detail: `nobody starved within reach of help beside a stocked larder — ${walked}` }
         : {
             verdict: 'broken',
-            detail: `${stranded.length} of ${s.runs.length} runs — ${stranded
+            detail: `${unfed.length} of ${s.runs.length} runs — ${unfed
               .map(
                 (m) =>
-                  `${m.difficulty}/${m.seed} left a downed settler at zero for ${m.strandedStarveHours.toFixed(1)} h with somebody on their feet, on ${m.endFoodDays.toFixed(0)} days of food`,
+                  `${m.difficulty}/${m.seed} left a downed settler at zero for ${m.unfedStarveHours.toFixed(1)} h with somebody on their feet and no meal on its way, on ${m.endFoodDays.toFixed(0)} days of food`,
               )
               .join(', ')} (${walked})`,
           };

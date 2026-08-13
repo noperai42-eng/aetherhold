@@ -81,6 +81,16 @@ export interface RunMeasure {
    * `strandH` is how much of that was hands available and a meal not arriving.
    */
   strandedStarveHours: number;
+  /**
+   * And narrowed once more, to spells where nobody had been sent yet.
+   *
+   * `strandH` counts the walk: a probe of the three harsh seeds found 60–84% of
+   * its reachable hours had a `feedPatient` job already live against that
+   * patient. `unfedH` breaks the moment somebody is dispatched, so it is hands
+   * up, food in store, and nobody told to go — the only one of the four columns
+   * with no innocent reading.
+   */
+  unfedStarveHours: number;
   /** how well fed the colony was on an average day, 0..1 */
   meanFood: number;
   /**
@@ -577,6 +587,7 @@ export function measure(r: EvalReport): RunMeasure {
     starveHours: last?.starveHours ?? 0,
     floorStarveHours: last?.floorStarveHours ?? 0,
     strandedStarveHours: last?.strandedStarveHours ?? 0,
+    unfedStarveHours: last?.unfedStarveHours ?? 0,
     meanFood: mean(r.snapshots.map((s) => s.avgFood)),
     upkeepShare: last?.upkeepShare ?? 0,
     endFoodDays: last?.foodDays ?? 0,
@@ -649,7 +660,7 @@ export function armedShareOf(rs: RunMeasure[]): number {
 /** A fixed-width grid, because a balance pass is read by eye. */
 export function formatSweep(sweep: Sweep): string {
   const cols =
-    'setting        seed  verdict     days  1st  threats  band  downs  buried  alive  kills  rung  worstFood  floorH strandH  fed  upkeep  foodDays  raiders  rifles     trips  spare   tree  idle   wait  unsent   steel  spent        roads  hands';
+    'setting        seed  verdict     days  1st  threats  band  downs  buried  alive  kills  rung  worstFood  floorH strandH unfedH  fed  upkeep  foodDays  raiders  rifles     trips  spare   tree  idle   wait  unsent   steel  spent        roads  hands';
   const lines: string[] = [`balance grid · ${sweep.days} days · ${sweep.seeds.length} seeds`, cols];
   for (const d of sweep.difficulties) {
     const rs = on(sweep, d);
@@ -671,6 +682,7 @@ export function formatSweep(sweep: Sweep): string {
           pad(m.worstFood.toFixed(2), 11),
           pad(m.floorStarveHours.toFixed(1), 8),
           pad(m.strandedStarveHours.toFixed(1), 8),
+          pad(m.unfedStarveHours.toFixed(1), 7),
           pad(m.meanFood.toFixed(2), 5),
           pad(`${Math.round(m.upkeepShare * 100)}%`, 8),
           pad(m.endFoodDays.toFixed(1), 10),
@@ -721,6 +733,7 @@ export function formatSweep(sweep: Sweep): string {
         pad(avg(rs, (m) => m.worstFood).toFixed(2), 11),
         pad(avg(rs, (m) => m.floorStarveHours).toFixed(1), 8),
         pad(avg(rs, (m) => m.strandedStarveHours).toFixed(1), 8),
+        pad(avg(rs, (m) => m.unfedStarveHours).toFixed(1), 7),
         pad(avg(rs, (m) => m.meanFood).toFixed(2), 5),
         pad(`${(avg(rs, (m) => m.upkeepShare) * 100).toFixed(1)}%`, 8),
         pad(avg(rs, (m) => m.endFoodDays).toFixed(1), 10),

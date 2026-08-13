@@ -54,6 +54,7 @@ function run(difficulty: Difficulty, over: Partial<RunMeasure> = {}): RunMeasure
     starveHours: 0,
     floorStarveHours: 0,
     strandedStarveHours: 0,
+    unfedStarveHours: 0,
     meanFood: 0.6,
     upkeepShare: 0.42,
     endFoodDays: 20,
@@ -482,6 +483,7 @@ describe('the balance principles, read against grids that are known wrong', () =
         worstFood: 0.0,
         floorStarveHours: 6.2,
         strandedStarveHours: 6.2,
+        unfedStarveHours: 6.2,
         endFoodDays: 24.5,
       }),
     ]);
@@ -494,6 +496,7 @@ describe('the balance principles, read against grids that are known wrong', () =
         worstFood: 0.0,
         floorStarveHours: 6.2,
         strandedStarveHours: 6.2,
+        unfedStarveHours: 6.2,
         endFoodDays: 0.5,
       }),
     ]);
@@ -553,12 +556,51 @@ describe('the balance principles, read against grids that are known wrong', () =
         worstFood: 0.0,
         floorStarveHours: 18.4,
         strandedStarveHours: 18.4,
+        unfedStarveHours: 18.4,
         endFoodDays: 22,
       }),
     ]);
     const detail = detailOf(s, 'nobody-starves-beside-a-full-pantry');
     expect(detail).toContain('18.4');
     expect(detail).toContain('h');
+  });
+
+  it('does not call a meal already walking over a settler nobody was sent to', () => {
+    // The split this round is named for. Both of these runs left somebody at zero
+    // on the floor for nine hours with hands up and a stocked larder, and until
+    // there were two columns the grid could not tell them apart. In the first, a
+    // `feedPatient` job named that patient for all but a few minutes of it: the
+    // colony *did* answer, and it was slow. Slow is a real problem and it is not
+    // this promise, which says a settler who cannot walk to a meal "is brought
+    // one, by somebody who can" — a claim about being sent.
+    const carried = sweep([
+      run('harsh', {
+        worstFood: 0.0,
+        floorStarveHours: 9.0,
+        strandedStarveHours: 9.0,
+        unfedStarveHours: 0.4,
+        endFoodDays: 22,
+      }),
+    ]);
+    expect(verdictOf(carried, 'nobody-starves-beside-a-full-pantry')).toBe('holds');
+    // Reported anyway, same rule as the walk and the wipe: nine hours down at
+    // zero waiting on a carry is a colony worth looking at, just not here.
+    expect(detailOf(carried, 'nobody-starves-beside-a-full-pantry')).toContain('9.0');
+
+    // Same nine hours, nobody ever sent. That is the failure, and the detail has
+    // to quote the column the check actually read — a broken verdict reporting
+    // the wider number would send the next round after the carry speed.
+    const nobody = sweep([
+      run('harsh', {
+        worstFood: 0.0,
+        floorStarveHours: 9.0,
+        strandedStarveHours: 9.0,
+        unfedStarveHours: 8.6,
+        endFoodDays: 22,
+      }),
+    ]);
+    expect(verdictOf(nobody, 'nobody-starves-beside-a-full-pantry')).toBe('broken');
+    expect(detailOf(nobody, 'nobody-starves-beside-a-full-pantry')).toContain('8.6');
   });
 
   it('catches a settler upright at zero for longer than the valley is wide', () => {

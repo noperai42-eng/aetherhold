@@ -1353,6 +1353,7 @@ progression from "how bad did it get" to "whose fault was it":
 | `starveHours` | on their feet | walk home sooner — an unmeasured population, printed and unjudged |
 | `floorStarveHours` | on the floor | nothing, if nobody is standing |
 | `strandedStarveHours` | on the floor, **with somebody standing** | carry the meal over |
+| `unfedStarveHours` | on the floor, somebody standing, **and no meal on its way** | send somebody — [a round later](#a-rescuer-excused-for-being-peckish) |
 
 The promise is now drawn on the third. The other two ride along in the detail line on every verdict
 including the passing ones, for the reason [the instrument was sampling
@@ -1437,6 +1438,62 @@ cells a tick, nothing in `TERRAIN_SPEED` is slower than bare grass, so the wides
 192-cell map is 6.2 h at a dead walk and twelve is that twice with the detours. It is enforced, not
 open, because there is nothing unsettled left in it: the defect under it was found, measured and
 closed, and the pin exists to go red if that settler ever lies down again.
+
+## A rescuer excused for being peckish
+
+The third column named the right population and still could not name a defect. `strandedStarveHours`
+counts hours at zero on the floor with somebody upright, and some of those hours are a settler who
+*was* answered — the meal is walking over, it is simply not there yet. Between a third and nine
+tenths of the column, seed by seed, turned out to be exactly that. A column that scores a colony
+which answered slowly the same as a colony which never answered cannot tell dispatch from distance,
+and dispatch is the only one of the two a rule on the work board can fix.
+
+So the split, and the same shape as the split above it: `unfedStarveHours` is the stranded spell
+minus every tick a `feedPatient` job already names that patient. It is strictly inside the column it
+came from on every run, which is what makes the pair readable — the gap between them *is* the travel
+time, and the two numbers now separate "nobody was sent" from "somebody was sent and the map is
+wide."
+
+With the narrow column in hand the defect was one tally away. `sendSomebodyToFeed` walks the upright
+settlers and checks a short list of gates before picking a carrier; counting which gate turned each
+candidate away, **6035 of 6036 rejections were the would-be rescuer's own hunger**. One tick in six
+thousand was anything else — the pass was not broken, it was answering a question nobody should have
+asked it. The gate read `p.needs.food <= HUNGRY`, and `HUNGRY` is 0.34: at `FOOD_DRAIN`, most of a
+working day still in hand. The errand *begins* at the food stack, and nothing in the sim takes hit
+points off a settler until their bar reaches zero.
+
+```ts
+const RESCUER_KEEPS = PATIENT_EMERGENCY_FOOD;   // 0.14
+```
+
+Deliberately the same constant, not a new number tuned until the grid went green: a settler is
+excused from carrying a meal **exactly when they are the person somebody should be carrying one to**.
+The threshold that decides who counts as an emergency and the threshold that decides who is too far
+gone to help are one fact about this colony, and writing them as one line means they cannot drift
+apart later. Three call sites read it — `sendSomebodyToFeed`, `assignJob`'s `canRescue`, and
+`assignNeedsOnly`.
+
+The cost is visible in the column above, and it is the cost the change asks for rather than a
+surprise. 0.14 is about 4.1 in-game hours of walking; the widest crossing of a 192-cell map is 6.2 h;
+`feedPatient` is in `NEVER_INTERRUPTED`; and the carrier picks up one meal and never eats it. A
+rescuer dispatched from just above the line to a patient at the far end can therefore arrive empty,
+and across the grid the longest spell **upright** at zero rose from 7.92 h to 9.79 h against an
+enforced bar of twelve. Everything the errand exists for moved the other way — 53 fewer downs, one
+fewer burial, three more survivors, worst wait on the floor down 40 %. A colony that spends its
+walkers' margin on its fallen is the trade this rule is making, and the enforced bar is what stops it
+from spending more than it has.
+
+### The arm nothing measures
+
+`runColony` opens with `const useSteward = opts.steward ?? true`, but `--steward` is opt-in on
+`npm run measure` and `measurements.json` records `steward: false` for every cell — so the **managed**
+colony has no grid coverage at all, and any ad-hoc probe that forgets the flag is measuring the one
+arm nothing else measures. It has now cost three rounds. The tell that finally made it unmissable was
+an arithmetic impossibility: a twenty-day probe read 155.7 h upright at zero where the sixty-day grid
+read 6.5 h for the same seed, and no monotone longest-spell latch can shrink as the run gets longer.
+Two colonies, not one broken latch. Probes and pinned fixtures under `scripts/` and `tests/` now pass
+`steward: false` explicitly with the reason written beside it; the default itself is left alone,
+because the client is the caller it is correct for.
 
 ## A floor is terrain, not a building
 

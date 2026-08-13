@@ -893,6 +893,24 @@ const FEED_PATIENT_BELOW = 0.55;
  */
 export const PATIENT_EMERGENCY_FOOD = 0.14;
 
+/**
+ * How little a would-be rescuer can have left and still be sent.
+ *
+ * The same line, deliberately: a settler is excused from carrying a meal exactly
+ * when they are the person somebody should be carrying one *to*. It used to be
+ * `HUNGRY`, and the comments defending that said a settler who is themself
+ * starving deals with that first or two die instead of one — which is true, and
+ * 0.34 is not starving. At `FOOD_DRAIN` it is most of a working day in hand, the
+ * errand begins at the food stack, and nothing takes hit points off until zero.
+ *
+ * Measured before it was moved, on the three unmanaged harsh seeds the starvation
+ * principles name: of 6036 settler-ticks where the feeding pass looked at an
+ * upright colonist and declined to send them to somebody lying at 0.00, **6035
+ * declined on this gate**. One tick in six thousand was anything else. The pass
+ * was working; it was being asked the wrong question.
+ */
+const RESCUER_KEEPS = PATIENT_EMERGENCY_FOOD;
+
 /** Is somebody bleeding out from hunger on the floor right now? */
 export function dyingPatient(world: World, exceptId: number): boolean {
   return world.pawns.some(
@@ -991,8 +1009,10 @@ export function sendSomebodyToFeed(world: World): void {
     // Every gate the idle lane applies, applied identically. A player who
     // switched doctoring off, or took this settler off the board by hand, has
     // answered this question already; a settler who is themself running on empty
-    // deals with that first, or two die instead of one.
-    if (p.manual || p.priorities.doctor <= 0 || p.needs.food <= HUNGRY) continue;
+    // deals with that first, or two die instead of one — and `RESCUER_KEEPS` is
+    // where "running on empty" actually starts, which is not where this gate used
+    // to stand.
+    if (p.manual || p.priorities.doctor <= 0 || p.needs.food <= RESCUER_KEEPS) continue;
     // Asleep is deliberately left out of the interruptible set. Nobody is woken
     // for this: the probe found not one tick in three seeds where the only hands
     // available were in bed, so waking them buys nothing and costs the rest need
@@ -2193,7 +2213,11 @@ export function assignJob(world: World, pawn: Pawn): void {
   // themself starving deals with that first, or two die instead of one. Exhaustion
   // is not in that class: an empty rest need costs mood, never consciousness, so
   // carrying one meal across the room before bed is always the better trade.
-  const canRescue = pawn.priorities.doctor > 0 && pawn.needs.food > HUNGRY;
+  //
+  // Hunger is not in that class either, until it is nearly the same crisis. This
+  // read `> HUNGRY` for a long time and excused a settler at 0.33 — most of a day
+  // in hand — from an errand for somebody at 0.00. See `RESCUER_KEEPS`.
+  const canRescue = pawn.priorities.doctor > 0 && pawn.needs.food > RESCUER_KEEPS;
   if (canRescue && dyingPatient(world, pawn.id) && tryFeedPatient(world, pawn)) return;
   if (tryNeedJob(world, pawn)) return;
   // A settler on a morale break still looks after themselves — the need jobs
@@ -2228,7 +2252,7 @@ export function assignNeedsOnly(world: World, pawn: Pawn): boolean {
   if (
     !pawn.manual &&
     pawn.priorities.doctor > 0 &&
-    pawn.needs.food > HUNGRY &&
+    pawn.needs.food > RESCUER_KEEPS &&
     dyingPatient(world, pawn.id) &&
     tryFeedPatient(world, pawn)
   ) {
