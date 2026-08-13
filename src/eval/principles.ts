@@ -613,6 +613,11 @@ export const PRINCIPLES: Principle[] = [
       // whole reason this principle spent four rounds saying nothing useful is
       // that somebody once drew a bar around a story instead of a reading.
       //
+      // There is a measurement now, and it belongs to a different promise:
+      // `on-their-feet-at-zero-is-a-walk-home` judges that column, off a probe
+      // that found a settler asleep on somebody else's bunk with nothing ticking
+      // her rest. This check stays pointed at the floor.
+      //
       // Then the grid moved once more, and this time it was the fix that moved
       // it. `sendSomebodyToFeed` shipped, the probe's busy-hands slice went to
       // zero settler-ticks on the seed it was written from — and the count here
@@ -652,6 +657,64 @@ export const PRINCIPLES: Principle[] = [
                   `${m.difficulty}/${m.seed} left a downed settler at zero for ${m.strandedStarveHours.toFixed(1)} h with somebody on their feet, on ${m.endFoodDays.toFixed(0)} days of food`,
               )
               .join(', ')} (${walked})`,
+          };
+    },
+  },
+  {
+    id: 'on-their-feet-at-zero-is-a-walk-home',
+    claim:
+      'A settler on their feet with nothing left in them is on their way to a meal. That is a ' +
+      'spell measured in hours — long enough to hurt, short enough to end. Days of it means ' +
+      'something is holding them, and whatever it is, it is not the walk.',
+    // The column above printed this number for three rounds without judging it,
+    // on the honest grounds that nobody had measured what those settlers were
+    // doing. Then it grew to 102.1 h — four days upright at zero — and somebody
+    // went and looked.
+    //
+    // It was not a population. Sorted by run, the grid held 102.1 h in one place
+    // and 7.92 h in second, and inside that one run it was very nearly one
+    // settler. `scripts/probe-upright.ts` walks the run and asks, of every
+    // upright settler at zero, what is the first thing stopping them eating:
+    // 27 524 settler-ticks came back `is asleep`, with reachable food throughout
+    // and a larder averaging 187 units. `tickGroundSleep` was handing anybody
+    // lying on a bed cell back to "the sleep job", which at that call site does
+    // not exist — both `tick.ts` call sites are reached with `jobId === null` —
+    // so a settler who collapsed onto an occupied bunk was ticked by nothing at
+    // all. Rest frozen at 0.00 across five days, and `tick.ts` `continue`s past
+    // the need pass for a sleeper, so hunger never got a look either.
+    //
+    // Twelve hours, and the bar comes off the map rather than off the grid.
+    // `WALK_SPEED` is 0.155 cells a tick and no terrain in `TERRAIN_SPEED` is
+    // slower than bare grass, so the widest crossing there is — 192 cells, edge
+    // to edge — is 6.2 in-game hours at a dead walk. Twelve is that twice, with
+    // the detours. A settler who has been upright and empty for longer than it
+    // takes to cross the whole valley and come back is not walking anywhere.
+    //
+    // The grid it shipped on agrees without having set it: the longest spell
+    // anywhere is 7.92 h, on a run that did not change. Enforced rather than
+    // open, because the design question here is not unsettled — this is a pin on
+    // a defect that has been found, measured and closed, and the whole point of
+    // it is to go red if that settler ever lies down again.
+    enforced: true,
+    check: (s) => {
+      if (s.runs.length === 0) return { verdict: 'untested', detail: 'no runs in the grid' };
+      // Longest unbroken spell, not hours summed: the spell is the reading that
+      // separates a walk from a settler nothing is ticking, and `run.ts` already
+      // ends it the moment they eat or go down.
+      const A_WALK_AND_BACK = 12;
+      const stuck = s.runs.filter((m) => m.starveHours >= A_WALK_AND_BACK);
+      const worst = s.runs.reduce((a, m) => (m.starveHours > a.starveHours ? m : a));
+      const held = `longest anywhere: ${worst.starveHours.toFixed(1)} h — ${worst.difficulty}/${worst.seed}`;
+      return stuck.length === 0
+        ? { verdict: 'holds', detail: `every spell upright at zero ended like a walk ends — ${held}` }
+        : {
+            verdict: 'broken',
+            detail: `${stuck.length} of ${s.runs.length} runs — ${stuck
+              .map(
+                (m) =>
+                  `${m.difficulty}/${m.seed} left a settler upright at zero for ${m.starveHours.toFixed(1)} h`,
+              )
+              .join(', ')}`,
           };
     },
   },

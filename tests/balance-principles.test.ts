@@ -561,6 +561,31 @@ describe('the balance principles, read against grids that are known wrong', () =
     expect(detail).toContain('h');
   });
 
+  it('catches a settler upright at zero for longer than the valley is wide', () => {
+    // The reading the promise was written from: 102.1 h on one run, four days of
+    // somebody on their feet with nothing in them, while the run in second place
+    // read 7.9. Walking cannot produce that number — the widest crossing of the
+    // map is 6.2 h at `WALK_SPEED` — so whatever is holding them, it is not the
+    // walk. It was a settler asleep on somebody else's bunk with nothing ticking
+    // her rest, and this is the pin that goes red if she ever lies down again.
+    const asleep = sweep([run('harsh', { starveHours: 102.1, endFoodDays: 13 })]);
+    expect(verdictOf(asleep, 'on-their-feet-at-zero-is-a-walk-home')).toBe('broken');
+    expect(detailOf(asleep, 'on-their-feet-at-zero-is-a-walk-home')).toContain('102.1');
+  });
+
+  it('lets a walk across the valley and back stay a walk', () => {
+    // The other half, and the reason the bar is drawn at twice the map rather
+    // than just above the worst run on the grid: a settler who bottoms out at the
+    // far end of the valley and eats when they get home is the sim working, and a
+    // bar tightened to the last grid's high-water mark would call it a defect the
+    // first time somebody hunted a little further out.
+    const walked = sweep([run('harsh', { starveHours: 7.9, endFoodDays: 13 })]);
+    expect(verdictOf(walked, 'on-their-feet-at-zero-is-a-walk-home')).toBe('holds');
+    // Named even when it holds, same as the columns it sits beside: the longest
+    // walk on the grid is the number the next round would be compared on.
+    expect(detailOf(walked, 'on-their-feet-at-zero-is-a-walk-home')).toContain('7.9');
+  });
+
   it('says untested rather than broken when the grid was too short to look', () => {
     // The failure mode that would quietly rot the whole harness: a ten-day grid
     // reaches no rungs and takes no casualties, and every principle about the

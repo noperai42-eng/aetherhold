@@ -14,23 +14,38 @@ Four sections: [the killer feature](#the-killer-feature),
 and [what still wants a human](#what-still-wants-a-human) — which is the long one, and is
 ordered to match `PLAYTEST.md` rather than by importance.
 
-Last run — 2026-08-12, the feeding round: a fix in `src/sim/**` *and* a third starvation column, so
-the sixty-day grid was re-run — fingerprint `4952c293` → `2edb0102`, 39 colonies, 2218 s. A downed
-settler at zero food is now somebody's job: `sendSomebodyToFeed` pulls the nearest free colonist off
-their work and walks a meal over. The column that grades it was rebuilt in the same round, because
-the old one could not tell **a colony that was failing to feed somebody** from **a colony where
-nobody was left conscious to carry anything** — of the 197.3 h the grid spends downed at zero, only
-45.5 h have anybody on their feet, and the worst single run drops from 58.4 h to 10.5 h. Survivors,
-mean food and end-of-run larder all held (9.33 → 9.27, 0.56 → 0.57, 17.0 → 17.6 days), so the
-interruption costs the colony nothing it was otherwise banking.
+Last run — 2026-08-13, the sleep round: one deleted early return in `src/sim/jobs.ts`, so the
+sixty-day grid was re-run — fingerprint `2edb0102` → `ce4d9a8f`, 39 colonies, 2157 s. The grid's
+whole **on their feet at zero** column was one settler, asleep. `tickGroundSleep` handed anybody
+lying on a bed cell back to "the sleep job", which at that call site does not exist — both `tick.ts`
+call sites are reached with `jobId === null` — so a settler who collapsed onto an occupied bunk was
+ticked by nothing: rest frozen at 0.00 for five days, the `rest > 0.9` wake unreachable, and the need
+pass skipped because `tick.ts` `continue`s past it for a sleeper. Sleeping rough now rests wherever
+it happens and wakes on the sleep job's own rule, `rest > 0.9` **or** `food < 0.12 && rest > 0.5`.
+**Fourteen of fifteen sweep runs came back byte-identical** — the guard could only fire for a settler
+sleeping rough on a bed cell, and in sixty days across fifteen colonies that happened once — so this
+is the first paired sample the grid has produced: harsh/424242's longest upright spell at zero,
+102.12 h → **7.23 h**, everything else untouched. That column is judged from this round on, by
+`on-their-feet-at-zero-is-a-walk-home`, **enforced** at twelve in-game hours — twice the widest
+crossing of a 192-cell map at `WALK_SPEED`, so the bar is drawn off the map rather than off the grid.
 
 - `npx tsc --noEmit` clean.
-- `npm test` — **97 of 99 files, 1852 tests green**, 13 skipped, in 865 s (run after the grid this
-  time; the three files that timed out last round were losing the machine to it, not failing).
-  **Eight** of those are the newest and they are the feeding pass: seven gate assertions one apiece,
-  so a failure names which gate moved, and one experience test — three settlers mid-job, one on the
-  floor at zero, nothing else touched, and the patient eats. It was run once with the call commented
-  out and fails there, which is the difference between a test and a decoration.
+- `npm test` — **98 of 100 files, 1862 tests green**, 13 skipped, in 935 s. Run twice: once on the
+  fresh grid and again after the new principle and its two cases went in.
+  **Two** are in `tests/balance-principles.test.ts` and they are the new check's own: that the bar
+  catches the 102.1 h reading it was written from, and that it leaves a 7.9 h walk home alone while
+  still printing it. That file is hand-written cases rather than one per principle, so a check can
+  ship with none — which is a check nobody has watched fire.
+  **Eight** of those are the newest and they are `tests/sleep.test.ts`: seven waking-rule assertions
+  one apiece, so a failure names which rule moved, and one experience test — a settler dropped on
+  somebody's bunk at zero rest and zero food, a meal two cells away, half a day of `stepWorld` with
+  nothing touched, and they wake up and eat it. Run against the pre-fix files it fails on the first
+  assertion — `still asleep half a day later` — which is the difference between a test and a
+  decoration.
+  **Eight** from the round before are the feeding pass: seven gate assertions and one experience
+  test — three settlers mid-job, one on the floor at zero, nothing else touched, and the patient
+  eats. It too was run with the call commented out first, which is the difference between a test and
+  a decoration.
   **Three** more are the starvation columns: two that the principle can tell a settler walking home
   hungry from one on the floor, and one on a named run that pins all three columns nonzero *and
   unequal* — a new metric wired to nothing stays zero and passes every assertion anyone would think

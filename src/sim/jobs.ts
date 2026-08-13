@@ -29,7 +29,6 @@ import { iceBears } from './ice';
 import {
   FIRE_CLEAR,
   adjacentStandCells,
-  buildingAt,
   dist,
   fireAt,
   isWalkable,
@@ -3880,11 +3879,32 @@ export function tickMoraleBreak(world: World, pawn: Pawn, rng: Rng): void {
   pawn.path = findPath(world, px, py, tx, ty, { goals: new Set([packCell(world, tx, ty)]) });
 }
 
-export function tickGroundSleep(world: World, pawn: Pawn): void {
-  const bed = buildingAt(world, Math.round(pawn.x), Math.round(pawn.y));
-  if (bed && isBed(bed.kind)) return; // handled by the sleep job
+/**
+ * A settler asleep with no job: not tucked into a bunk, just stopped.
+ *
+ * Both callers reach this with `pawn.jobId === null`, which is the whole reason
+ * it exists — a settler in a bed is in a `sleep` *job*, and that job ticks their
+ * rest and decides when they get up. This is the other case: `tryNeedJob` sets
+ * `activity = 'sleeping'` where they stand when they are past `rest < 0.12` and
+ * there is no free bed, because walking on is how a settler dies of tiredness.
+ *
+ * It used to hand a sleeper lying on a bed cell back to "the sleep job", which
+ * there is none of at this call site. A settler who dropped on a bunk somebody
+ * else was already in therefore had their rest ticked by nothing at all: it never
+ * moved, so the `0.9` wake never came, and `tick.ts` sends a sleeping settler
+ * straight here and `continue`s, so the need pass never looked at them either.
+ * Asleep, at zero food, on a bed, until the run ended. On harsh/424242 that was
+ * 126.7 h for one settler and the whole of the grid's on-their-feet starvation
+ * column — a colony with a full pantry and a settler quietly starving in it.
+ *
+ * The stomach clause is the one the `sleep` job already has, and it is here for
+ * the same reason: sleeping through starvation is not a decision a settler would
+ * make. `rest > 0.5` keeps it from yo-yoing somebody straight back off their feet
+ * — they get up hungry once they have enough in them to walk to the pantry.
+ */
+export function tickGroundSleep(pawn: Pawn): void {
   pawn.needs.rest = Math.min(1, pawn.needs.rest + REST_GAIN_GROUND);
-  if (pawn.needs.rest > 0.9) {
+  if (pawn.needs.rest > 0.9 || (pawn.needs.food < 0.12 && pawn.needs.rest > 0.5)) {
     pawn.activity = 'idle';
     // Charged on waking rather than per tick on the floor, so it is one night
     // rough rather than a mood that sinks the longer they manage to sleep.

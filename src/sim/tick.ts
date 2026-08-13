@@ -294,7 +294,7 @@ export function stepWorld(world: World, streams: Streams): void {
     // AI never *picks* work for it — moving cancels the job, which is the override.
     if (pawn.playerControlled) {
       if (pawn.jobId !== null) tickJob(world, pawn, streams.combat);
-      else if (pawn.activity === 'sleeping') tickGroundSleep(world, pawn);
+      else if (pawn.activity === 'sleeping') tickGroundSleep(pawn);
       continue;
     }
     // Drafted settlers are driven by the combat pass.
@@ -310,7 +310,7 @@ export function stepWorld(world: World, streams: Streams): void {
       continue;
     }
     if (pawn.activity === 'sleeping') {
-      tickGroundSleep(world, pawn);
+      tickGroundSleep(pawn);
       continue;
     }
     // Looking after themselves outranks the stack, and is checked here rather

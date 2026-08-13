@@ -1375,6 +1375,69 @@ road](#a-bar-derived-off-the-wrong-ring) — twice now, a promise has been
 unreadable not because the colony was fine but because the column mixed a thing the player can
 change with a thing they cannot.
 
+## An early return that names another owner is a claim about the caller
+
+The column above — settlers **on their feet** and at zero food, 102.1 h across the grid, printed and
+unjudged — turned out not to be a population at all. It is one run. Second place is 7.92 h. And
+inside that run it is very nearly one settler: `scripts/probe-upright.ts` walks harsh/424242 tick by
+tick, asks of every starving upright settler *what is the first thing stopping them eating*, and puts
+27 524 of the settler-ticks under one answer, `is asleep`, with free food standing reachable
+throughout and a larder averaging 187 units.
+
+There are two ways to be asleep in Aetherhold and only one of them can be woken by an empty stomach.
+The `sleep` **job** ticks `REST_GAIN_BED`, checks `food < 0.12 && rest > 0.5` every tick, and gets
+the settler up for a raid. `tryNeedJob` also has a last resort: past `rest < 0.12` with every bunk
+taken, *drop where you stand* — `activity = 'sleeping'`, no job, "rather than walk until you die".
+That case is ticked by `tickGroundSleep`, and `tickGroundSleep` opened with
+
+```ts
+const bed = buildingAt(world, Math.round(pawn.x), Math.round(pawn.y));
+if (bed && isBed(bed.kind)) return; // handled by the sleep job
+```
+
+which is true of a settler in a sleep job and false of every settler that function is ever called
+with. Both call sites in `tick.ts` are reached only with `jobId === null`. So a settler who collapsed
+onto a cell that happens to hold somebody else's bunk was ticked by **nothing**: rest never climbed,
+the `rest > 0.9` wake never fired, and `tick.ts` sends a jobless sleeper straight to
+`tickGroundSleep` and `continue`s, so the need pass never looked at them either. `scripts/probe-sleep.ts`
+on the same seed: three spells, 197.5 h between them, 137.6 h of it at or below zero food, **100 % of
+it lying on a bed**, rest reading `0.00 -> 0.00` across five days. One settler was asleep from day 56
+until the run ended.
+
+The guard was not wrong about beds. It was wrong about who calls it, and it said so in a comment
+instead of an assertion, which is why it survived. An early return of the form *somebody else has
+this* is a claim about the caller, and the sim has no way to check one; the same shape read the other
+way is [the gate that was shut, not missing](#the-gate-was-shut-not-missing) — there the door
+existed and the probe found it closed, here the door named an owner who was not in the room.
+
+The fix deletes the guard, which is the whole change: sleeping rough now rests at `REST_GAIN_GROUND`
+whatever cell it happens on, and wakes on `rest > 0.9` **or** `food < 0.12 && rest > 0.5` — the sleep
+job's own rule, so both ways of sleeping answer hunger the same way. The `rest > 0.5` half is
+load-bearing: waking somebody at zero rest sends them straight back down, and a settler yo-yoing
+between the bunk and the pantry gets neither. The rough-night mood hit moved to the wake, so it is
+one charge for one night rather than a mood that sinks the longer they manage to sleep.
+
+Measured on the seed after (unmanaged, same seed — a different sixty days, so not a paired sample):
+sleeping rough 197.5 h → 13.4 h, at-zero-food 137.6 h → **0.0 h**, longest upright spell 102.1 h →
+7.2 h, and `is asleep` is gone from the blocking tally entirely. The surviving spell reads
+`rest 0.12 -> 0.90` — somebody sleeping, and then getting up.
+
+And then the grid did something no grid here has done before: **fourteen of the fifteen runs came back
+byte-identical**. Every column, every seed, every difficulty — untouched — and harsh/424242 alone
+moved, 102.12 h to 7.23 h. The last three rounds all had to argue that a summed column moving a few
+per cent across re-rolled histories is noise; this one gets a paired sample by accident, because the
+deleted guard could only fire for a settler sleeping rough *on a bed cell* and in sixty days across
+fifteen colonies that happened on exactly one of them. The bug was as rare as it was total. Its own
+run's stranded column went the other way, 3.6 h → 6.68 h, which is the honest cost of the divergence:
+Sela gets up on day 56 now, and what she does afterwards is a different history.
+
+The column is judged from this round on. `on-their-feet-at-zero-is-a-walk-home` fires at twelve
+in-game hours, and the bar is drawn off the map rather than off the grid — `WALK_SPEED` is 0.155
+cells a tick, nothing in `TERRAIN_SPEED` is slower than bare grass, so the widest crossing on a
+192-cell map is 6.2 h at a dead walk and twelve is that twice with the detours. It is enforced, not
+open, because there is nothing unsettled left in it: the defect under it was found, measured and
+closed, and the pin exists to go red if that settler ever lies down again.
+
 ## A floor is terrain, not a building
 
 `sim/floors.ts` is small because the decision it encodes does the work. A cell holds at most

@@ -4,6 +4,156 @@ One round, one measured gap, one fix. Newest first.
 
 ---
 
+## 2026-08-13 — The settler who slept through starving
+
+**Track A: a measured fix.** One deleted early return in `src/sim/jobs.ts`. In `src/sim/**`, so the
+fingerprint moved and the sixty-day grid was re-run.
+
+### It was not a population
+
+Last round handed this one its target: 102.1 h in the **on their feet** starvation column, four days
+of somebody upright at zero food, printed by every verdict and judged by nothing. The obvious read is
+a colony-wide walk-home problem. It is not. Sorted by run, the grid's upright column is 102.1 h in
+one place and **7.92 h** in second place. One run, harsh/424242, and inside it very nearly one
+settler.
+
+`scripts/probe-upright.ts` — outside `src/sim` and `src/eval`, so it does not move the fingerprint —
+walks the run tick by tick and asks of every upright settler at or below zero food *what is the first
+thing stopping them eating*, in the order the sim would check. 27 524 settler-ticks came back under a
+single answer: **`is asleep`**, with reachable food the whole time and a larder averaging 187 units.
+
+### The false lead, kept
+
+The first reading of that probe reported a 154.5 h spell against only 20.3 h of ticks in trouble,
+which is arithmetically impossible unless the latch is leaking. I had a mechanism ready —
+`settlements.ts` and `holdings.ts` both lift pawns off `world.pawns` for caravans and campaigns, and
+a latch keyed on "still starving" never clears for somebody who is no longer on the list — and it was
+wrong. `scripts/probe-absent.ts` ran the shipped latch and a corrected one that clears on absence
+over the same world: **both read 102.1 h**. No leak.
+
+The bug was in my probe. It called `stewardTick`, and the fifteen sweep runs the grid measures are
+**unmanaged** — `measurements.json` keeps `steward` and `sweep` as separate top-level keys. A probe
+that runs the steward is measuring a different colony living a different sixty days. The steward is
+now opt-in in `probe-upright.ts` with the reason in its doc comment, and the negative result stays in
+`probe-absent.ts` so nobody re-derives it.
+
+### The defect
+
+Two ways to sleep, one of them deaf to hunger. The `sleep` **job** ticks rest and checks
+`food < 0.12 && rest > 0.5` every tick. `tryNeedJob`'s last resort — past `rest < 0.12` with every
+bunk taken, drop where you stand, no job — is ticked by `tickGroundSleep`, which opened with
+
+```ts
+if (bed && isBed(bed.kind)) return; // handled by the sleep job
+```
+
+true of a settler in a sleep job, and false of every settler that function is ever called with: both
+`tick.ts` call sites are reached only with `jobId === null`. A settler who collapsed onto somebody
+else's bunk was therefore ticked by **nothing** — rest never climbed, the `rest > 0.9` wake never
+fired, and `tick.ts` sends a jobless sleeper there and `continue`s, so the need pass never saw them.
+
+`scripts/probe-sleep.ts`, same seed, before:
+
+| settler | spell | rest | food at end | on a bed |
+|---|---|---|---|---|
+| Sela Ashdown | 126.7 h from day 56 | 0.00 → 0.00 | 0.00 | 100 % |
+| Ivet Stonehearth | 57.2 h from day 58 | 0.03 → 0.03 | 0.00 | 100 % |
+| Sela Ashdown | 13.6 h from day 46 | 0.12 → 0.12 | 0.29 | 100 % |
+
+197.5 h of sleeping rough, 137.6 h of it at or below zero food, all of it on a bed. Sela was asleep
+when the run ended.
+
+### The change
+
+Delete the guard. Sleeping rough now gains `REST_GAIN_GROUND` wherever it happens, and wakes on
+`rest > 0.9` **or** `food < 0.12 && rest > 0.5` — the sleep job's own rule, so both ways of sleeping
+answer an empty stomach the same way. The `rest > 0.5` half is load-bearing: waking somebody at zero
+rest sends them straight back down, and a settler yo-yoing between bunk and pantry gets neither. The
+rough-night mood hit moved from per-tick to the wake, so it is one charge for one night rather than a
+penalty that deepens the longer they manage to sleep.
+
+### The same probes, after
+
+Same seed, unmanaged. A sim change re-rolls the history, so this is a different sixty days and the
+totals are not subtractable — but the shape is unambiguous:
+
+| | before | after |
+|---|---|---|
+| sleeping rough | 197.5 h | 13.4 h |
+| of that, at or below zero food | 137.6 h | **0.0 h** |
+| longest upright-at-zero spell | 102.1 h | 7.2 h |
+| `is asleep` as a blocking reason | 27 524 ticks | **gone** |
+
+The one surviving spell reads `rest 0.12 -> 0.90`: somebody sleeping, and then getting up. What is
+left in the upright column on that seed is 3820 ticks of a meal already walking and 3585 ticks of a
+hunter out on the moor — both of them a settler doing something, which is a different question.
+
+### The grid handed over a paired sample
+
+Fingerprint `2edb0102` → `ce4d9a8f`, 39 colonies in 2157 s — and **fourteen of the fifteen sweep runs
+came back byte-identical**. Every column, every seed, every difficulty. Only harsh/424242 moved:
+
+| run | upright at zero | on the floor | stranded |
+|---|---|---|---|
+| harsh/424242, before | **102.12 h** | 27.86 h | 3.60 h |
+| harsh/424242, after | **7.23 h** | 27.86 h | 6.68 h |
+| every other run | unchanged | unchanged | unchanged |
+
+Three rounds running I have had to argue that a summed column moving a few per cent across re-rolled
+sixty-day histories is noise wearing a number's clothes. This one is a paired sample by accident: the
+deleted guard could only fire for a settler sleeping rough *on a bed cell*, and in sixty days across
+fifteen colonies that happened on exactly one of them. The bug was as rare as it was total.
+
+The stranded column on that run went the other way, 3.60 h → 6.68 h. That is the honest cost of the
+divergence rather than a regression — Sela gets up on day 56 now, and what she does with the rest of
+the run is a history the old grid never had. The grid-wide worst upright spell is now **7.92 h**, on
+settler/99001, a run that did not change at all.
+
+### The column is judged now
+
+`on-their-feet-at-zero-is-a-walk-home`, in the fingerprint-exempt `principles.ts`, so it went in
+after the grid and `npm run balance` re-ran alone. Twelve in-game hours, and the bar comes off the
+map rather than off the grid: `WALK_SPEED` is 0.155 cells a tick, nothing in `TERRAIN_SPEED` is
+slower than bare grass, so the widest crossing on a 192-cell map is 6.2 h at a dead walk and twelve is
+that twice with the detours. A settler upright and empty for longer than it takes to cross the whole
+valley and come back is not walking anywhere.
+
+**Enforced**, against the file's usual convention of leaving a new bar open for one grid. That
+convention is for bars around genuinely unsettled design questions; this is a pin on a defect that
+has been found, measured and closed, and its whole job is to go red if that settler ever lies down
+again. It reads `holds — longest anywhere: 7.9 h — settler/99001`.
+
+### Verified
+
+- `npx tsc --noEmit` — clean.
+- Sixty-day grid, `2edb0102` → `ce4d9a8f`, 39 colonies in 2157 s. **22 principles hold, 8 break** —
+  the new one is the twenty-second and the broken eight are unchanged in membership.
+- `tests/sleep.test.ts` — eight new tests. Seven waking-rule assertions, one each so a failure names
+  which rule moved, and one experience test: a settler dropped on somebody's bunk at zero rest and
+  zero food, a meal two cells away, half a day of `stepWorld` with nothing touched — they wake and
+  they eat. Run against the pre-fix `jobs.ts` and `tick.ts` it fails on the first assertion,
+  `still asleep half a day later`, which is the difference between a test and a decoration.
+- `tests/balance-principles.test.ts` — two more, because that file is hand-written cases rather than
+  one per principle, and a new check shipped with none at all is a check nobody has seen fire: one
+  that the bar catches 102.1 h, one that it lets a 7.9 h walk home alone and prints it anyway.
+- `npm test` — **1862 tests green**, 13 skipped, 98 of 100 files, in 935 s. Run twice: once on the
+  fresh grid and again after the principle and its two cases went in.
+- `npm run build` — clean.
+
+### Next
+
+The 45.5 h stranded column, split. The pass fires at 0.14 food and the eval latches at 0.02, so some
+of that is a meal legitimately walking over — the probe put that slice at 31.0 h of a pre-fix
+reading, the largest non-wipe one. A column that excluded ticks with a `feedPatient` job already
+targeting the patient would name dispatch alone, and only then is there a number worth enforcing.
+
+Carried forward unchanged: `starveHours` counts a **drafted** settler as upright, and
+`sendSomebodyToFeed` skips drafted settlers on purpose. Harmless on the fifteen unmanaged sweep runs —
+nothing drafts anybody without a player or a steward — but worth excluding when either column is next
+touched.
+
+---
+
 ## 2026-08-12 — Somebody drops what they are doing and carries the meal over
 
 **Track A: a measured fix.** In `src/sim/**`, so the fingerprint moved and the sixty-day grid was
