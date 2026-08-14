@@ -723,7 +723,22 @@ describe('two days in a colony nobody is watching', () => {
     // exactly eight by dusk on day one and twenty-four by dusk on day two, so a
     // one-day budget was not testing the loop turning over, it was testing
     // whether the first batch happened to finish before the light went.
-    stepWorldN(world, makeStreams(world), 9600);
+    //
+    // Stepped in blocks so the log can be read as it goes. `world.messages` keeps
+    // the last eighty lines and drops the rest (`LOG_KEEP`, `world.ts`), and two
+    // days of a colony this size is several hundred lines — the Steward announces
+    // the fence on the first morning and it is long gone by dusk on the second.
+    // Reading the log once at the end asked "is the fence line still on the last
+    // page", which is a claim about how quiet the colony was afterwards. A block
+    // is 400 ticks, twenty seconds of colony, and nothing this settlement does
+    // fills eighty lines inside that. `stepWorldN` is a bare loop over
+    // `stepWorld`, so these are the same two days, tick for tick.
+    const streams = makeStreams(world);
+    let announced = false;
+    for (let t = 0; t < 9600; t += 400) {
+      stepWorldN(world, streams, 400);
+      announced ||= world.messages.some((m) => /colony stakes out a fence/i.test(m.text));
+    }
 
     // More than one batch of eight, which is the part that matters: the board
     // cleared and the Steward marked again, so this is a loop that turns over
@@ -742,7 +757,7 @@ describe('two days in a colony nobody is watching', () => {
     // the field is `beds`. Asserting on the last one turns "did it fence the yard"
     // into "did it fence the yard *most recently*", which is a claim about how busy
     // the colony was on the second afternoon.
-    expect(world.messages.some((m) => /colony stakes out a fence/i.test(m.text))).toBe(true);
+    expect(announced).toBe(true);
   });
 
   it('buries somebody it lost, start to finish, without being told', () => {

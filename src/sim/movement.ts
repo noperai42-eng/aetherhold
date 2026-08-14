@@ -38,6 +38,16 @@ export const PLAYER_RUN = 0.27;
 export const BODY_RADIUS = 0.34;
 
 /**
+ * Ticks of going nowhere before a body gives up on the route it is holding.
+ *
+ * Exported because `walkTo` has to tell this drop apart from the other one — a
+ * wall raised across a live route, which wants a fresh path — and the only
+ * evidence it has is whether the counter got this far. Two copies of the number
+ * would mean a tune here silently turning every wedge back into a re-path loop.
+ */
+export const STUCK_LIMIT = 25;
+
+/**
  * Gait phase per cell of ground covered — the unit `animPhase` is counted in.
  *
  * The sim never reads `animPhase`. It is here, rather than in the client, so that
@@ -216,7 +226,7 @@ export function followPath(world: World, pawn: Walker, speed: number, latch = tr
   const moved = Math.hypot(pawn.x - before.x, pawn.y - before.y);
   if (moved < step * 0.35) {
     pawn.stuck++;
-    if (pawn.stuck > 25) {
+    if (pawn.stuck > STUCK_LIMIT) {
       pawn.path = null;
       pawn.stuck = 0;
       return false;

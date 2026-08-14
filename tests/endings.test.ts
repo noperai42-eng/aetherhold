@@ -30,6 +30,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { dayNumber } from '../src/sim/clock';
+import { RELATIONS_PER_LAPSE } from '../src/sim/commissions';
 import {
   BERTHS_WORTH,
   ENDING_DAYS,
@@ -94,10 +95,24 @@ const VIEW = {
  * imported across test files is a fixture that gets tuned for one file and
  * silently changes what another one was asserting.
  *
- * The one thing it does differently is the pantry. Those two files hold a
- * colony together for four days; this one holds it for sixteen, and a founding
- * charter that lapses on day nine because the meals ran out would look exactly
- * like the ending mechanism dropping its clock.
+ * The two things it does differently are the pantry and the standing. Those two
+ * files hold a colony together for four days; this one holds it for sixteen, and
+ * a founding charter that lapses on day nine because the meals ran out would
+ * look exactly like the ending mechanism dropping its clock.
+ *
+ * Standing is the same confound wearing different clothes, and it cost a day to
+ * find: at exactly `NEED_RELATIONS` the ally charter is one lapsed commission
+ * from unmet, and a lapse is ordinary colony life rather than a failure —
+ * `commissions.ts` says so where it happens, a colony that cannot spare the
+ * goods "has not failed at anything, and the standing it loses is smaller than
+ * one visit's worth". Sixteen days is long enough for a runner to come in, wait
+ * out its fortnight and go home empty, and the four points that costs put the
+ * charter under the line for as long as it takes the next caravan to arrive.
+ * The hold restarts, and the assertion at the end can only say the ending never
+ * landed. So the fixture stands a colony that is properly allied rather than one
+ * balanced on the threshold, the same way it stocks a pantry nobody could eat
+ * through. It does not move any rung: the economy road counts the settlements
+ * over the line, and this one was already over it.
  *
  * Built once and handed out as a deep copy. Nineteen thousand ticks of real
  * loop is twelve seconds, and fifteen tests each paying it is four minutes to
@@ -105,6 +120,9 @@ const VIEW = {
  * is plain JSON by construction — that is `save.ts`'s whole premise, and the
  * round-trip test below is what keeps it true.
  */
+/** Allied with room to lose a few letters, per the note above. */
+const ALLIED = NEED_RELATIONS + RELATIONS_PER_LAPSE * 4;
+
 let base: World | null = null;
 
 function founded(): World {
@@ -133,7 +151,7 @@ function foundOnce(seed = 4242): World {
     if (!up) throw new Error(`nowhere to stand a turret near ${at.x},${at.y}`);
   }
   world.research.done = RESEARCH_ORDER.slice(0, NEED_RESEARCH).slice();
-  settlementsOf(world)[0]!.relations = NEED_RELATIONS;
+  settlementsOf(world)[0]!.relations = ALLIED;
   world.storyteller.nextThreat = TICKS_PER_DAY * 90;
   world.storyteller.nextScout = TICKS_PER_DAY * 90;
   world.storyteller.nextOutbreak = TICKS_PER_DAY * 90;
@@ -149,7 +167,7 @@ function foundOnce(seed = 4242): World {
 function topOf(world: World, road: 'science' | 'economy' | 'warfare'): void {
   if (road === 'science') world.research.done = RESEARCH_ORDER.slice();
   if (road === 'economy') {
-    for (const s of settlementsOf(world)) s.relations = NEED_RELATIONS;
+    for (const s of settlementsOf(world)) s.relations = ALLIED;
   }
   if (road === 'warfare') {
     for (const h of holdingsOf(world)) h.held = true;

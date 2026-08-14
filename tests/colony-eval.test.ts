@@ -168,7 +168,7 @@ describe('colony survives its first week', () => {
   });
 
   // The four starvation columns, on a run chosen because it contains all four
-  // things they exist to tell apart. Twenty days on the hard setting, seed 99001,
+  // things they exist to tell apart. Twenty days on the hard setting, seed 7,
   // **unmanaged**: somebody spends a couple of hours at zero on their feet and
   // then eats; somebody else spends the better part of a day on the floor at zero
   // with the larder stocked; only *part* of that floor time has a colonist
@@ -179,12 +179,19 @@ describe('colony survives its first week', () => {
   // of these numbers, which is the way a new column quietly dies — wired to
   // nothing and green forever. So this pins them **nonzero**, on a named run.
   //
-  // It is meant to fail when the sim gets better, and it has, twice. harsh/424242
-  // went first, its floor spell falling to zero the day `sendSomebodyToFeed`
-  // shipped. Then harsh/1312 went the day `RESCUER_KEEPS` shipped, and not by
-  // collapsing: its floor and stranded columns *converged*, both 12.56 h, because
-  // feeding people sooner kept enough of that colony conscious that it never went
-  // fully dark. Re-point off `scripts/probe-starve-pin.ts`, which prints all four
+  // It is meant to fail when the sim gets better, and it has, three times.
+  // harsh/424242 went first, its floor spell falling to zero the day
+  // `sendSomebodyToFeed` shipped. Then harsh/1312 went the day `RESCUER_KEEPS`
+  // shipped, and not by collapsing: its floor and stranded columns *converged*,
+  // both 12.56 h, because feeding people sooner kept enough of that colony
+  // conscious that it never went fully dark. harsh/99001 went third, the day
+  // `walkTo` stopped calling a route cut by a new wall the end of the errand: its
+  // floor, stranded and unfed columns all fell to zero together while the walk
+  // home *rose*, 1.9 h to 10.9. That is the whole shape of the change in one row
+  // — the same people get just as hungry, and now they are on their feet when it
+  // happens, because the settler carrying the meal no longer drops the job when
+  // somebody finishes a wall across the path. Re-point off
+  // `scripts/probe-starve-pin.ts`, which prints all four
   // columns for the short runs a unit test can afford and flags the rows that
   // satisfy this test's own conjunction.
   //
@@ -192,19 +199,19 @@ describe('colony survives its first week', () => {
   // pinned here. `runColony` opens `opts.steward ?? true`, so leaving the flag off
   // silently plays a *managed* colony — an arm the grid does not measure at all,
   // since `--steward` is opt-in on `npm run measure` and `measurements.json`
-  // records `steward: false`. Run this seed managed and the upright column reads
-  // 155.7 h; unmanaged it reads 1.9. Both are real. Only one is the colony these
-  // starvation principles judge.
+  // records `steward: false`. Measured on 99001 the day that flag was found: run
+  // managed, its upright column read 155.7 h; unmanaged, 1.9. Both are real. Only
+  // one is the colony these starvation principles judge.
   //
-  // The numbers below are the worst readings in the whole sixty-day grid for the
-  // two columns the promise is drawn on, and the twenty-day pin catches them
-  // exactly: stranded 8.0 h and unfed 4.7 h here against 8.04 and 4.72 at sixty
-  // days. The wider columns keep growing after day twenty (floor 18.2 → 35.1,
-  // feet 1.9 → 6.9), which is the shape you want — the pin is a prefix of the
-  // grid's own worst run, not a lookalike.
+  // The readings this pin was re-pointed on, from the probe: feet 1.3 h, floor
+  // 20.4, stranded 4.1, unfed 2.7 — the four of them nested the way the
+  // assertions below require, with room under each one rather than a hair.
+  // harsh/424242 also still fits and is the spare, but only just: its unfed
+  // column is 1.1 against a threshold of 1, which is a pin that would go on the
+  // next good day the sim has.
   it('tells a walk home from a wait on the floor from a wait with hands free', () => {
     const r = runColony({
-      seed: 99001,
+      seed: 7,
       days: 20,
       difficulty: 'harsh',
       playPastFounding: true,

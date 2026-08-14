@@ -94,7 +94,7 @@ import {
   persuade,
   prisoners,
 } from './prison';
-import { followPath, WALK_SPEED } from './movement';
+import { followPath, STUCK_LIMIT, WALK_SPEED } from './movement';
 import {
   addResearchPoints,
   benchRateScale,
@@ -2350,6 +2350,31 @@ const PLAN_NEVER: ReadonlySet<WorkType> = new Set<WorkType>(['haul', 'scout', 'c
 
 type WalkResult = 'arrived' | 'walking' | 'blocked';
 
+/**
+ * Lay a route to the cell, or to somewhere a body can stand beside it.
+ *
+ * `'blocked'` from here is the real thing: either there is nowhere to aim — the
+ * cell is solid and the caller wanted to stand on it, or nothing around it can be
+ * stood on — or there is nowhere to walk. Thirty job sites read that as the end of
+ * the errand, so nothing else may return it.
+ */
+function layPath(world: World, pawn: Pawn, tx: number, ty: number, exact: boolean): WalkResult {
+  const goals = new Set<number>();
+  if (exact) {
+    if (!isWalkable(world, tx, ty)) return 'blocked';
+    goals.add(packCell(world, tx, ty));
+  } else {
+    for (const c of adjacentStandCells(world, tx, ty)) goals.add(packCell(world, c.x, c.y));
+    if (isWalkable(world, tx, ty)) goals.add(packCell(world, tx, ty));
+    if (goals.size === 0) return 'blocked';
+  }
+  const p = findPath(world, Math.round(pawn.x), Math.round(pawn.y), tx, ty, { goals });
+  if (!p) return 'blocked';
+  if (p.length === 0) return 'arrived';
+  pawn.path = p;
+  return 'walking';
+}
+
 function walkTo(world: World, pawn: Pawn, tx: number, ty: number, exact: boolean): WalkResult {
   const px = Math.round(pawn.x);
   const py = Math.round(pawn.y);
@@ -2361,25 +2386,41 @@ function walkTo(world: World, pawn: Pawn, tx: number, ty: number, exact: boolean
     return 'arrived';
   }
   if (!pawn.path) {
-    const goals = new Set<number>();
-    if (exact) {
-      if (!isWalkable(world, tx, ty)) return 'blocked';
-      goals.add(packCell(world, tx, ty));
-    } else {
-      for (const c of adjacentStandCells(world, tx, ty)) goals.add(packCell(world, c.x, c.y));
-      if (isWalkable(world, tx, ty)) goals.add(packCell(world, tx, ty));
-      if (goals.size === 0) return 'blocked';
-    }
-    const p = findPath(world, px, py, tx, ty, { goals });
-    if (!p) return 'blocked';
-    if (p.length === 0) return 'arrived';
-    pawn.path = p;
+    const laid = layPath(world, pawn, tx, ty, exact);
+    if (laid !== 'walking') return laid;
   }
   pawn.activity = 'walking';
+  // Read before the step, because the counter is reset by the very branch that
+  // needs identifying — see below.
+  const wedged = pawn.stuck;
   const done = followPath(world, pawn, WALK_SPEED);
   if (done) return 'arrived';
-  if (!pawn.path) return 'blocked';
-  return 'walking';
+  if (pawn.path) return 'walking';
+  // `followPath` has thrown the route away, and only it knows which of its two
+  // reasons applied. They want opposite things, so this has to tell them apart.
+  //
+  // A wall went up across the route. The line that drops it says what should
+  // happen next — *re-path rather than tunnel* — and this is the only place that
+  // can happen: `walkTo` lays a path once a tick and has already laid this one,
+  // so without asking again here the drop leaves the caller holding a settler
+  // with no route, which every job in this file reads as the end of the errand.
+  // A settler four cells short of a one-cell wall used to give up rather than
+  // step round it.
+  //
+  // Or the body spent twenty-five ticks going nowhere, which is the backstop for
+  // a settler wedged on a corner that pathfinding is perfectly happy with. Here a
+  // re-path is not a second chance, it is a loop: the search returns the same
+  // route into the same corner, the body wedges again, and the pair of them
+  // trade a full A* every twenty-six ticks until `JOB_TIMEOUT` calls it off
+  // ~1800 ticks later. Measured rather than reasoned about — re-pathing both
+  // drops took `tests/forest.test.ts` from 522s to past a 600s ceiling it never
+  // reached, and timed out ten files that were green before.
+  //
+  // `stuck` is read before the step because the wedge branch zeroes it on the way
+  // out; the wall branch returns before ever touching it. So a non-zero count
+  // here is the wedge, and only the wedge, giving up the errand as it always did.
+  if (wedged >= STUCK_LIMIT) return 'blocked';
+  return layPath(world, pawn, tx, ty, exact);
 }
 
 function pickUp(world: World, pawn: Pawn, item: ItemStack, amount?: number): ItemStack | null {
