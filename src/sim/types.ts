@@ -1115,6 +1115,14 @@ export interface Pawn {
    * Optional so saves written before it existed still load — absent reads as 0.
    */
   frustration?: number;
+  /**
+   * Hostiles only: the building this one has decided to break through rather
+   * than walk round. Held across ticks so the choice does not flip every time
+   * the route is re-read — the moment it commits, the way round stops being the
+   * shorter answer, and a raider re-asking that question would pace the fence
+   * line forever. Optional for the same reason as `frustration`.
+   */
+  breachId?: number;
   /** Fauna only: which species. Absent on people. */
   animal?: AnimalKind;
   /** Fauna only: tick until which it runs from whatever just hurt it. */

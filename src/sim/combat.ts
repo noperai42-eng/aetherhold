@@ -515,6 +515,8 @@ function raiderAI(world: World, pawn: Pawn, rng: Rng): void {
   const givenUp = (pawn.frustration ?? 0) > RAIDER_GIVE_UP;
   const target = givenUp ? null : nearestEnemy(world, pawn);
   if (!target) {
+    // Nobody left to reach, so nothing left worth breaking through to.
+    pawn.breachId = undefined;
     pawn.activity = 'walking';
     if (!pawn.path) findEdgePath(world, pawn);
     if (pawn.path) {
@@ -556,6 +558,91 @@ function raiderAI(world: World, pawn: Pawn, rng: Rng): void {
  * mills about instead of attacking.
  */
 const COVER_SEARCH = 5;
+
+/**
+ * Cells of extra walking a raider will trade for one hit point of whatever is
+ * in the way, before it stops going round and starts going through.
+ *
+ * A fence is three wood and seventy hit points, and until this a raid would walk
+ * the entire length of one to get round it — which quietly made the cheapest
+ * thing on the build bar into a wall the colony never had to pay for. The rule
+ * is the arithmetic a person would do: is the way round worth more than the
+ * timber? Priced against the structure's *current* health rather than by kind,
+ * so nothing needs a special case and a wall somebody has already burned half
+ * through is correctly the tempting one.
+ *
+ * At strict parity the number would be about 0.32 — a raider walks 0.191 cells
+ * a tick at raiding pace and takes roughly 1.7 ticks a hit point off a wall with
+ * a club. This is deliberately a third of that. A raider crossing open ground is
+ * a raider being shot at while it crosses, and a raid that patiently walks the
+ * length of every rail reads as one that does not much want in. At 0.12 a fence
+ * is worth breaking to save eight cells and a wall to save twenty-two, which is
+ * the difference between a rail across the approach and the ring round the goat
+ * pen — and it leaves a walled compound with a gate doing what a walled compound
+ * with a gate is for.
+ */
+const BREACH_CELLS_PER_HP = 0.12;
+
+/**
+ * Steps below which the way round is short enough not to be worth pricing.
+ * Three cells round the end of a rail is not a siege.
+ */
+const BREACH_MIN_STEPS = 10;
+
+/** Close enough to get at it. Breaking a fence means being at the fence. */
+const BREACH_REACH = 1.8;
+
+/**
+ * The first thing on the straight line to the goal that a raider cannot walk
+ * through, when that thing is a building.
+ *
+ * Walks the line rather than searching a radius, because the thing worth
+ * breaking is the thing in the way — a fence two cells off the approach is
+ * somebody else's problem. Terrain ends the walk with nothing: a line stopped
+ * by rock stays stopped whatever gets knocked down behind it, and a raider that
+ * chewed a fence to reach a cliff would be a raider making the player's point
+ * for them.
+ */
+function breachTarget(world: World, pawn: Pawn, gx: number, gy: number): Building | null {
+  const dx = gx - pawn.x;
+  const dy = gy - pawn.y;
+  const len = Math.hypot(dx, dy);
+  if (len < 1) return null;
+  const steps = Math.ceil(len);
+  for (let i = 1; i <= steps; i++) {
+    const t = i / steps;
+    const cx = Math.round(pawn.x + dx * t);
+    const cy = Math.round(pawn.y + dy * t);
+    if (isWalkable(world, cx, cy)) continue;
+    const b = buildingAt(world, cx, cy);
+    return b && b.built ? b : null;
+  }
+  return null;
+}
+
+/**
+ * Whether this raider should stop going round and go through, and what through.
+ *
+ * `detour` is the length of the route it just planned, so the comparison costs
+ * nothing — the expensive half of the question was already answered by the path
+ * search that had to run anyway.
+ */
+function worthBreaching(
+  world: World,
+  pawn: Pawn,
+  gx: number,
+  gy: number,
+  detour: number,
+): Building | null {
+  if (detour < BREACH_MIN_STEPS) return null;
+  const wall = breachTarget(world, pawn, gx, gy);
+  if (!wall) return null;
+  // What the way round actually costs is the walking it adds over the line the
+  // obstacle is standing on, which is the straight-line distance — the route
+  // through would still have to cover that.
+  const extra = detour - dist(pawn.x, pawn.y, gx, gy);
+  return extra > wall.hp * BREACH_CELLS_PER_HP ? wall : null;
+}
 
 /**
  * How often a raider re-reads the ground for a better place to stand, in ticks.
@@ -710,8 +797,38 @@ function raiderFight(world: World, pawn: Pawn, target: Pawn, rng: Rng): boolean 
     if (p) {
       pawn.path = p;
       pawn.pathFailedAt = undefined;
+      // The way round is now measured, so this is the one moment the raider can
+      // honestly compare it to the way through. Committing rewrites the path to
+      // end at the obstacle's doorstep instead of at the colonist's.
+      const wall = worthBreaching(world, pawn, goalX, goalY, p.length);
+      if (wall) {
+        pawn.breachId = wall.id;
+        pawn.path =
+          findPathAdjacent(world, Math.round(pawn.x), Math.round(pawn.y), wall.x, wall.y) ?? p;
+      }
     } else {
       pawn.pathFailedAt = world.tick;
+      // No way round at all is the strongest case there is for going through.
+      // The fallback further down only ever swung at whatever happened to be
+      // under the raider's nose, so a settler fenced in on the far side of the
+      // yard was one the raid could not reach and never tried to: it stood in
+      // the open field facing them until its nerve went. Now it walks to the
+      // rail and takes it down.
+      const wall = breachTarget(world, pawn, goalX, goalY);
+      if (wall) {
+        pawn.breachId = wall.id;
+        pawn.path = findPathAdjacent(world, Math.round(pawn.x), Math.round(pawn.y), wall.x, wall.y);
+      }
+    }
+  }
+  // Committed: swing the moment it is in reach, and walk the path laid to its
+  // doorstep until then. When it falls the id stops resolving and the raider goes
+  // back to walking — now through the hole it made.
+  if (pawn.breachId !== undefined) {
+    const wall = findBuilding(world, pawn.breachId);
+    if (!wall || !wall.built) pawn.breachId = undefined;
+    else if (dist(pawn.x, pawn.y, wall.x, wall.y) <= BREACH_REACH) {
+      if (attackBuilding(world, pawn, wall, rng)) return true;
     }
   }
   if (pawn.path) {
