@@ -146,11 +146,22 @@ describe('a raider and a fence in the way', () => {
     expect(dist(gone.x, gone.y, raider.x, raider.y)).toBeLessThan(3);
   });
 
-  it('goes through the near rail rather than all the way round to the gate', () => {
+  it('goes through the rail it has already burned rather than round to the gate', () => {
     // The case the player actually built: a fenced yard with a way in, on the
     // far side. A route exists, so nothing here is forced — the raider prices
     // the walk against the timber and picks the timber, which is the whole
     // behaviour the fence was silently missing.
+    //
+    // The rail is burned down to a fifth first, and that is not fixture
+    // convenience — it is the arithmetic. Round this pen to the gate and back in
+    // is about nine cells further than the straight line, and nine cells is
+    // cheaper than seventy hit points of standing still: at parity a raider that
+    // chewed a whole fence here would arrive *later* than one that walked. So a
+    // full rail is correctly left alone at this scale, which is the case the
+    // test below pins, and the case for going through is a rail that costs less
+    // than the walk. Priced against current health rather than by kind, so the
+    // one somebody has already burned half through is the tempting one — the
+    // shipped constant of 0.12 hid this by making every rail tempting.
     const world = createWorld(4242);
     banish(world);
     const c = clearing(world, 13, 13);
@@ -158,6 +169,10 @@ describe('a raider and a fence in the way', () => {
     const cy = c.y + 6;
     const held = bait(world, new Rng(3), cx, cy);
     const rails = pen(world, cx, cy, 3, true);
+    // The one standing on the straight line between the raider and the bait,
+    // which is the only one `breachTarget` ever considers.
+    const near = rails.find((b) => b.x === cx - 3 && b.y === cy)!;
+    near.hp = 20;
 
     const rng = new Rng(11);
     const raider = brawler(world, rng, cx - 9, cy);
@@ -168,11 +183,10 @@ describe('a raider and a fence in the way', () => {
     const standing = () => rails.filter((b) => world.buildings.some((q) => q.id === b.id)).length;
     const before = standing();
     fight(world, rng, held.hold, 1200, () => standing() < before);
-    expect(standing()).toBeLessThan(before);
-    // And it went through the side it was already on, not round to the gate and
-    // then through a rail for no reason.
-    const gone = rails.find((b) => !world.buildings.some((q) => q.id === b.id))!;
-    expect(gone.x).toBeLessThan(cx);
+    expect(standing()).toBe(before - 1);
+    // Exactly the burned one: it went through the side it was already on, and it
+    // did not walk round to the gate and take a rail down for no reason.
+    expect(world.buildings.some((q) => q.id === near.id)).toBe(false);
   });
 
   it('walks round a rail that is barely in the way, and leaves it standing', () => {

@@ -571,17 +571,35 @@ const COVER_SEARCH = 5;
  * so nothing needs a special case and a wall somebody has already burned half
  * through is correctly the tempting one.
  *
- * At strict parity the number would be about 0.32 — a raider walks 0.191 cells
- * a tick at raiding pace and takes roughly 1.7 ticks a hit point off a wall with
- * a club. This is deliberately a third of that. A raider crossing open ground is
- * a raider being shot at while it crosses, and a raid that patiently walks the
- * length of every rail reads as one that does not much want in. At 0.12 a fence
- * is worth breaking to save eight cells and a wall to save twenty-two, which is
- * the difference between a rail across the approach and the ring round the goat
+ * Strict time parity: a raider walks 0.191 cells a tick at raiding pace and
+ * takes roughly 1.7 ticks a hit point off a wall with a club, so one hit point
+ * costs what 0.32 cells of walking costs. Above the line the way through is
+ * genuinely faster; below it the raid is knocking a hole in something to arrive
+ * later than it would have by walking.
+ *
+ * This shipped at 0.12 — a third of parity — on the reasoning that a raider
+ * crossing open ground is a raider being shot at while it crosses, so the way
+ * round should be discounted. That argument is the wrong way round. A raider
+ * standing still swinging at a rail is also being shot at, for longer, and it is
+ * not closing the distance while it happens. Under fire, moving beats stationary,
+ * so if the constant leaves parity at all it should leave it upward.
+ *
+ * The grid said the same thing louder. At 0.12 a seventy-hit-point fence was
+ * worth breaking to save eight cells of walking, which is nothing — so raids
+ * stopped routing to the gate and started coming through the siding, and
+ * settler/1312 went from 9 downs over sixty days to 86, two burials to eight,
+ * and from never leaving anybody at zero to leaving somebody there for 47.6
+ * hours. At parity the same colony reads 40 downs and one burial, with the worst
+ * spell upright at zero back to 0.9 h. Four times the downs a free fence used to
+ * cost, which is the difficulty this change was for; not a colony wrecked, which
+ * was not.
+ *
+ * At 0.32 a fence is worth breaking to save twenty-two cells and a hut wall to
+ * save forty-two — a rail thrown across the approach, not the ring round the goat
  * pen — and it leaves a walled compound with a gate doing what a walled compound
  * with a gate is for.
  */
-const BREACH_CELLS_PER_HP = 0.12;
+const BREACH_CELLS_PER_HP = 0.32;
 
 /**
  * Steps below which the way round is short enough not to be worth pricing.

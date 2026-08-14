@@ -43,17 +43,22 @@ for (const pair of pairs) {
     playPastFounding: true,
     steward: false,
   });
-  const n = (v: number, w = 7) => v.toFixed(1).padStart(w);
+  // The four columns are per-day snapshot fields, not report fields, and every
+  // one of them is a running maximum — so the last snapshot is the whole run.
+  // That is exactly how `sweep.ts` builds a `RunMeasure`, and reading them the
+  // same way is the only reason these numbers can be set beside the grid's.
+  const last = r.snapshots.at(-1);
+  const n = (v: number | undefined, w = 7) => (v ?? 0).toFixed(1).padStart(w);
   console.log(
     label.padEnd(16) +
       pair.padEnd(16) +
-      n(r.starveHours) +
-      n(r.floorStarveHours) +
-      n(r.strandedStarveHours) +
-      n(r.unfedStarveHours) +
-      String(r.downs).padStart(7) +
-      String(r.buried).padStart(8) +
-      String(r.survivors).padStart(7) +
+      n(last?.starveHours) +
+      n(last?.floorStarveHours) +
+      n(last?.strandedStarveHours) +
+      n(last?.unfedStarveHours) +
+      String(last?.downs ?? 0).padStart(7) +
+      String(last?.lost ?? 0).padStart(8) +
+      String(last?.alive ?? 0).padStart(7) +
       '  ' +
       r.verdict,
   );

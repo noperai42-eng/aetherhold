@@ -4,6 +4,169 @@ One round, one measured gap, one fix. Newest first.
 
 ---
 
+## 2026-08-14 — The fence that was worth eight cells
+
+**Track A: a measured fix.** The last round shipped two sim changes under one sixty-day grid and the
+grid came back worse. This round is the arithmetic that says which one, and the constant that puts it
+right. One line of `src/sim/combat.ts` moved, so the fingerprint moved and the grid was re-run.
+
+### The thing you cannot do from an aggregate
+
+That grid carried `walkTo` re-pathing a route cut by new geometry *and* raiders taking a fence apart.
+Across fifteen unmanaged runs it read survivors 141 → 110, buried 28 → 40, the unfed column
+14.2 h → 43.9 h, and the enforced promise `on-their-feet-at-zero-is-a-walk-home` broke for the first
+time — settler/1312 left somebody upright at zero for **47.6 h** against a twelve-hour bar. Naming a
+culprit from that is a guess, and I had already guessed once: I generalised "the sim got better" from
+a single seed's pin and the aggregate said otherwise.
+
+`scripts/probe-split.ts` plays *one* colony under *one* tree. Sixty days of a single seed is two
+minutes rather than an hour and a half, so the same seed can be run under each change alone and the
+difference read directly. It takes no flags for the variants — the worktree it is built in *is* the
+variant — and it says `steward: false` out loud, because `runColony` opens `opts.steward ?? true` and
+the grid's fifteen unmanaged runs are the arm every starvation principle is drawn from.
+
+Three trees, sixty days, past founding:
+
+| run | tree | feet | floor | strand | unfed | downs | buried | alive |
+|---|---|---|---|---|---|---|---|---|
+| settler/1312 | base `8e105f8` | 1.9 | 0.0 | 0.0 | 0.0 | 17 | 1 | 11 |
+| settler/1312 | walkTo `d28dcbf` | **0.9** | 0.0 | 0.0 | 0.0 | **9** | 2 | 9 |
+| settler/1312 | head `86c18ac` | **47.6** | 45.7 | 34.4 | 34.4 | **86** | 8 | 5 |
+| calm/7 | base | 0.0 | 0.0 | 0.0 | 0.0 | 4 | 0 | 13 |
+| calm/7 | walkTo | 8.9 | 0.0 | 0.0 | 0.0 | 2 | 0 | 15 |
+| calm/7 | head | 7.2 | 0.0 | 0.0 | 0.0 | 0 | 0 | 8 |
+
+`base` and `head` reproduce their grids exactly, which is the only reason to believe the middle row.
+The re-path **improved** the seed that broke the bar — nine downs against seventeen. The whole
+regression is the fence.
+
+### Which half of the fence change
+
+Two more variants off HEAD: pricing at time parity, and deleting the priced branch so only the
+no-route fallback survives.
+
+| run | variant | feet | floor | strand | unfed | downs | buried | alive |
+|---|---|---|---|---|---|---|---|---|
+| settler/1312 | price 0.32 | **0.9** | 1.8 | 1.8 | 0.0 | 40 | 1 | 8 |
+| settler/1312 | no priced branch | 8.5 | 32.3 | 10.4 | 5.8 | 61 | 5 | 7 |
+| calm/7 | price 0.32 | 2.2 | 0.0 | 0.0 | 0.0 | 1 | 0 | 10 |
+| calm/7 | no priced branch | 0.0 | 0.0 | 0.0 | 0.0 | 2 | 0 | 9 |
+
+Cutting the priced branch entirely is *worse* than pricing it honestly, which answers the obvious
+retreat. The branch stays; the number was wrong.
+
+### The number
+
+```ts
+const BREACH_CELLS_PER_HP = 0.32;   // was 0.12
+```
+
+Cells of extra walking a raider will trade for one hit point of whatever is in the way. A raider
+walks 0.191 cells a tick at raiding pace and takes roughly 1.7 ticks a hit point off a wall with a
+club, so **one hit point costs what 0.32 cells of walking costs**. That is parity: above the line the
+way through genuinely arrives sooner, below it the raid is knocking a hole in something in order to
+turn up late.
+
+It shipped at 0.12 — a third of parity — on the reasoning that a raider crossing open ground is a
+raider being shot at while it crosses, so the detour deserves a discount. That argument is the wrong
+way round. A raider standing still swinging at a rail is also being shot at, for longer, and it is
+not closing the distance while it happens. If the constant leaves parity at all it should leave it
+*upward*.
+
+At 0.12 a seventy-hit-point fence was worth breaking to save **eight cells** of walking, which is
+nothing — so raids stopped routing to the gate and started coming through whichever siding they were
+nearest. At 0.32 a fence is worth breaking to save twenty-two cells and a hut wall to save
+forty-two: a rail thrown across the approach, not the ring round the goat pen.
+
+### Why eight cells cost eighty downs
+
+`raiderAI` resets `pawn.frustration = 0` on any tick the raider acted, and `attackBuilding` returns
+`true` whenever it is in range. So **a raider committed to a breach never loses its nerve.**
+`RAIDER_GIVE_UP` — 800 ticks, four in-game hours — was the valve that ended a raid geometry had
+defeated, and after the breach change geometry stopped ending raids at all. The constant does not
+decide how a breach behaves; it decides how often a raid enters the state it can never leave. That is
+why a third of parity was not a third of the effect.
+
+### The grid
+
+Fingerprint `585b73c4` → `ad0668a1`, 39 colonies in 5252 s. The fifteen unmanaged sixty-day runs,
+with the grid from *before* either change alongside, so the fence reads against the world it was
+added to:
+
+| | before `8b19f4e1` | at 0.12 `585b73c4` | at 0.32 `ad0668a1` |
+|---|---|---|---|
+| upright at zero, worst / summed | 9.8 h / 52.3 h | 47.6 h / 84.1 h | **11.1 h / 40.1 h** |
+| on the floor at zero, worst / summed | 35.1 h / 164.5 h | 45.7 h / 184.2 h | **35.4 h / 123.3 h** |
+| stranded, worst / summed | 8.0 h / 36.4 h | 34.4 h / 55.1 h | **9.8 h / 42.9 h** |
+| unfed, worst / summed | 4.7 h / 14.2 h | 34.4 h / 43.9 h | **6.4 h / 28.3 h** |
+| downs · buried · survivors | 704 · 28 · 141 | 672 · 40 · 110 | **671 · 19 · 122** |
+| peak hands · verdicts | 167 · 9 holding 6 thriving | 128 · 9 / 6 | 135 · 8 holding 7 thriving |
+
+`on-their-feet-at-zero-is-a-walk-home` reads **holds** again — longest spell anywhere 11.1 h,
+harsh/424242. That is the enforced promise the last grid broke and the whole reason this round
+existed. It holds with 0.9 h of room, which is less room than it had before the fence existed, and
+that is worth saying rather than calling it fixed.
+
+The costs, honestly. Against the world before the fence change every worst-case column is slightly
+**up** — 9.8 → 11.1 upright, 8.0 → 9.8 stranded, 4.7 → 6.4 unfed, floor flat at 35.1 → 35.4 — while
+three of the four summed columns are down, sharply for the floor at 164.5 → 123.3. Burials went
+**28 → 19**, a third fewer than before raiders could touch timber at all.
+`nobody-starves-beside-a-full-pantry` went 7 of 15 runs to **5 of 15**, at a worse worst (4.7 → 6.4).
+Fewer colonies fail that promise and the ones that do fail it harder, which is what a defence layer
+that now costs something looks like from the kitchen.
+
+Survivors read 141 → 122, and that is not people dying: peak hands went 167 → 135 on the same run set
+while burials went *down*. Nineteen fewer at the end with nine fewer graves is a headcount that never
+arrived rather than one that was killed — storyteller arrival rolls landing differently once anything
+upstream shifts. The same wobble is in the isolation table above, where calm/7 reads 13 → 15 → 8
+survivors across three trees with zero deaths and zero downs in the last arm. Survivor count on a
+fifteen-run grid is a soft number; graves and the starvation columns are not.
+
+### The test that was passing on a three-cell margin
+
+`tests/breach.test.ts` had a case titled *goes through the near rail rather than all the way round to
+the gate*, and it went red at 0.32. It deserved to. Round that pen to the gate and back in is about
+**nine** cells further than the straight line, against a threshold of 8.4 at the shipped constant: it
+was passing on a three-cell margin and would have passed at almost any number below parity.
+
+Re-fixtured to burn the near rail to `hp = 20` first, and retitled *goes through the rail it has
+already burned rather than round to the gate*. That is not fixture convenience — nine cells is
+cheaper than seventy hit points of standing still, so a **full** rail there is correctly left alone
+(which the next test already pins), and the real case for going through is a rail that costs less
+than the walk. It now tests the property that is scale-independent: priced against the structure's
+*current* health, so the one somebody has already burned half through is the tempting one.
+
+### Verified
+
+- `npx tsc --noEmit` — clean.
+- `npm test` — **1897 passed, 13 skipped, 0 failed** across 102 files in 1676 s, run serially with
+  nothing else on the box. The thirteen skips are the five opt-in grids behind `BALANCE`, `SWEEP`,
+  `LIVE`, `POOL` and `ECO`, which is how they have always run; nothing was skipped to make this
+  green. The first attempt was run *beside* the sixty-day grid and came back with seven failures, all
+  seven `Test timed out in 300000ms` and not one assertion, on a suite that took 2561 s against
+  1090 s alone. That was a scheduling mistake, not a result, and it is recorded here because a
+  timeout list looks exactly like a regression list in a log.
+- Sixty-day grid `585b73c4` → `ad0668a1`, 39 colonies in 5252 s, and `npm run balance` re-judged
+  against it.
+- `tests/breach.test.ts` — four tests, one re-fixtured as above. The other three untouched and green:
+  a pen with no gate gets broken into, a three-cell stub across open ground is walked round and left
+  standing, and the raid comes through the hole it made and reaches the settler behind the fence.
+- `scripts/probe-split.ts` — fixed. It read the four starvation columns and downs/buried/survivors
+  off the `EvalReport`, where they do not exist, and every arm died on `Cannot read properties of
+  undefined`. They are `DaySnapshot` fields, every one a running maximum, so the last snapshot is the
+  whole run — which is exactly how `sweep.ts` builds a `RunMeasure`, and is the only reason these
+  numbers can be set beside the grid's.
+
+### Next
+
+`nobody-starves-beside-a-full-pantry` is the open one, at 5 of 15 and every failing run in hard
+country. And the valve this round leaned on is untested: nothing anywhere pins that a raider which
+*cannot* reach anybody eventually gives up, because `attackBuilding` returning `true` resets
+frustration and `RAIDER_GIVE_UP` never fires for a breacher. A raid that can be made permanent by
+geometry is a bug waiting for a map that does it.
+
+---
+
 ## 2026-08-13 — The rescuer who was excused for being peckish
 
 **Track A: a measured fix**, plus the instrument that had to exist before the fix could be judged.
