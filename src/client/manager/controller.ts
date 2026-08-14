@@ -57,10 +57,18 @@ export type Tool =
   | 'cancel'
   | 'picky';
 
-export interface Selection {
-  type: 'pawn' | 'building';
-  id: number;
-}
+/**
+ * What the player has clicked on.
+ *
+ * `cell` is the one that has no id, and it is the reason this is a union rather
+ * than the pair it used to be: a click that landed on grass, on a woodpile or on
+ * a furrow used to resolve to nothing at all, so the panel went away and the
+ * player learned that most of the map is not a thing. A square is a thing.
+ */
+export type Selection =
+  | { type: 'pawn'; id: number }
+  | { type: 'building'; id: number }
+  | { type: 'cell'; x: number; y: number };
 
 interface Hooks {
   possess(pawnId: number): void;
@@ -68,6 +76,12 @@ interface Hooks {
 
 const PAN_SPEED = 0.55; // cells per second per unit of camera distance
 const ORBIT_SPEED = 1.5;
+/**
+ * Pixels of travel a left press may have and still count as a click rather than
+ * a drag of the map. A hand on a mouse is never perfectly still, and a couple of
+ * pixels of shake should not cost the player the square they aimed at.
+ */
+const CLICK_SLOP = 6;
 
 /**
  * Which floor each floor tool lays.
@@ -92,6 +106,10 @@ export class ManagerController {
   hoverCell: { x: number; y: number } | null = null;
 
   private dragStart: { x: number; y: number } | null = null;
+  /** Where the left button went down with the select tool armed, until it comes up. */
+  private pressed: { x: number; y: number; wx: number; wy: number } | null = null;
+  /** How far the mouse has travelled since it did, in pixels. */
+  private pressTravel = 0;
   /** Held shift at drag start: paints in reverse (erase zone cells). */
   private eraseDrag = false;
   private readonly cam: ManagerCamera;
@@ -106,6 +124,7 @@ export class ManagerController {
     this.tool = tool;
     this.buildKind = kind;
     this.dragStart = null;
+    this.pressed = null;
     this.preview = [];
   }
 
@@ -126,11 +145,38 @@ export class ManagerController {
 
     if (input.clicked(0) && hit) {
       if (this.tool === 'select') {
-        this.selectAt(world, hit.x, hit.y, hit.wx, hit.wy);
+        // Held, not acted on. Whether this press was a click or the start of a
+        // drag is not known until the mouse either moves or comes back up, and
+        // selecting on the way down is what made dragging the map re-select a
+        // different square of grass every few pixels.
+        this.pressed = { x: hit.x, y: hit.y, wx: hit.wx, wy: hit.wy };
+        this.pressTravel = 0;
       } else {
         this.dragStart = { x: hit.x, y: hit.y };
         this.eraseDrag = input.held('ShiftLeft') || input.held('ShiftRight');
       }
+    }
+
+    // Left-drag pans, which is the first thing anybody tries and the one the
+    // select tool had no use for — there is no rubber-band rectangle here, so
+    // the button was doing nothing between press and release.
+    if (this.pressed && input.mouseButtons.has(0)) {
+      this.pressTravel += Math.abs(input.moveX) + Math.abs(input.moveY);
+      if (input.moveX || input.moveY) {
+        const k = this.cam.state.distance * 0.0018;
+        this.cam.pan(-input.moveX * k, input.moveY * k);
+      }
+    }
+
+    if (input.released(0) && this.pressed) {
+      // A press that stayed put is a click on that square. A press that
+      // travelled was the player moving the map, and moving the map is not an
+      // opinion about what is under the cursor when they let go.
+      if (this.pressTravel <= CLICK_SLOP) {
+        const at = this.pressed;
+        this.selectAt(world, at.x, at.y, at.wx, at.wy);
+      }
+      this.pressed = null;
     }
 
     if (this.dragStart && hit) {
@@ -334,7 +380,8 @@ export class ManagerController {
   private cycleColonist(world: World): void {
     const cs = world.pawns.filter((p) => p.faction === 'colony' && !p.dead);
     if (cs.length === 0) return;
-    const at = this.selection?.type === 'pawn' ? cs.findIndex((p) => p.id === this.selection!.id) : -1;
+    const sel = this.selection;
+    const at = sel?.type === 'pawn' ? cs.findIndex((p) => p.id === sel.id) : -1;
     const next = cs[(at + 1) % cs.length]!;
     this.selection = { type: 'pawn', id: next.id };
     this.cam.focusOn(next.x, next.y);
@@ -347,7 +394,11 @@ export class ManagerController {
       return;
     }
     const b = buildingAt(world, cx, cy);
-    this.selection = b ? { type: 'building', id: b.id } : null;
+    // Never null. A click that finds no settler and no building has still found
+    // ground — with a stack on it, a crop coming up in it, an order painted over
+    // it or none of those, all of which are answers, and all of which used to be
+    // the same silence as clicking the sky.
+    this.selection = b ? { type: 'building', id: b.id } : { type: 'cell', x: cx, y: cy };
   }
 
   /**

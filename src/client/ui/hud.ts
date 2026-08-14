@@ -16,6 +16,7 @@ import {
   findPawn,
   livingColonists,
   spendableResource,
+  zoneAt,
 } from '../../sim/world';
 import { describeTarget } from '../../sim/interact';
 import {
@@ -38,13 +39,24 @@ import { HOLD_DAYS, charters, foundingLeft, hasWon } from '../../sim/victory';
 import { roads } from '../../sim/roads';
 import { AILMENTS, COLD_BELOW, comfortAt, worstAilment } from '../../sim/health';
 import { currentTrader, ticksLeft } from '../../sim/trade';
-import { TICKS_PER_DAY } from '../../sim/types';
+import {
+  DESIG_DECONSTRUCT,
+  DESIG_FLOOR_BRIDGE,
+  DESIG_FLOOR_PAVED,
+  DESIG_FLOOR_PLANK,
+  DESIG_HARVEST,
+  DESIG_NONE,
+  DESIG_TILL,
+  TICKS_PER_DAY,
+} from '../../sim/types';
 import { ticksUntilRipe, yieldOf } from '../../sim/husbandry';
 import { animalSex, bodyScale, MATURE_TICKS, maturity } from '../../sim/livestock';
 import { ageOf, ANIMALS, lifeStage } from '../../sim/wildlife';
 import { isPet, keeperOf, PET_HEEL, petName, petOf } from '../../sim/pets';
 import { traitsOf } from '../../sim/traits';
 import { manifestSections } from '../manifest';
+import { buildQueue, plotStatus, shortfall, type QueueRow } from './board';
+import { cellFacts, type CellFacts } from './cell';
 import { courtedFor, partnerOf } from '../../sim/partners';
 import { bondLabel, bondsOf, FRIEND, RIVAL } from '../../sim/social';
 import { memoriesOf } from '../../sim/lifelog';
@@ -113,8 +125,10 @@ import type {
   Message,
   Pawn,
   ResourceKind,
+  Terrain,
   World,
   WorkType,
+  ZoneKind,
 } from '../../sim/types';
 import { type Box, cardChannel, ToastStack } from './toasts';
 import { Minimap } from './minimap';
@@ -363,6 +377,50 @@ const RESOURCE_LABEL: Record<ResourceKind, string> = {
 };
 
 /**
+ * The same vocabulary, in the middle of a sentence.
+ *
+ * `RESOURCE_LABEL` is a column heading and reads like one; a panel that says
+ * "30 raw" about a heap of turnips is the abbreviation escaping the strip it was
+ * cut for. One table with one exception, rather than a second table that can
+ * drift out of step with the first.
+ */
+function resourceWord(kind: ResourceKind): string {
+  return kind === 'rawfood' ? 'raw food' : RESOURCE_LABEL[kind].toLowerCase();
+}
+
+/** The ground, named the way somebody standing on it would name it. */
+const GROUND_LABEL: Record<Terrain, string> = {
+  grass: 'Grass',
+  // Not "tilled": worldgen paints dirt as well, and a panel that calls a river
+  // bank somebody's fieldwork is a panel telling a small lie all game.
+  dirt: 'Bare soil',
+  stone: 'Stone',
+  rock: 'Rock',
+  water: 'Water',
+  sand: 'Sand',
+  plank: 'Plank floor',
+  paved: 'Paved floor',
+  bridge: 'Bridge',
+};
+
+/** What has been ordered done to a cell, as the colony would put it. */
+const ORDER_LABEL: Record<number, string> = {
+  [DESIG_HARVEST]: 'to be cleared',
+  [DESIG_DECONSTRUCT]: 'to be pulled down',
+  [DESIG_TILL]: 'to be broken for soil',
+  [DESIG_FLOOR_PLANK]: 'to be planked',
+  [DESIG_FLOOR_PAVED]: 'to be paved',
+  [DESIG_FLOOR_BRIDGE]: 'to be decked',
+};
+
+/** What a painted zone is for. */
+const ZONE_LABEL: Record<ZoneKind, string> = {
+  stockpile: 'stockpile',
+  growing: 'field',
+  pen: 'pen',
+};
+
+/**
  * A project's material bill, and how much of it is already in the yard.
  *
  * Counted with `spendableResource` rather than the headline stock, because that
@@ -399,6 +457,7 @@ export class Hud {
   private readonly alertPanel: HTMLElement;
   private readonly goalPanel: HTMLElement;
   private readonly worktab: HTMLElement;
+  private readonly boardtab: HTMLElement;
   private readonly researchtab: HTMLElement;
   private readonly tradetab: HTMLElement;
   private readonly tradeBtn: HTMLButtonElement;
@@ -469,6 +528,8 @@ export class Hud {
   private activeGroup = BUILD_GROUPS[0]!.name;
   private toolSig = '';
   private worktabOpen = false;
+  private boardOpen = false;
+  private boardSig = '';
   private researchOpen = false;
   private researchSig = '';
   private tradeOpen = false;
@@ -527,6 +588,12 @@ export class Hud {
     viewBtn.onclick = () => this.hooks.switchView();
     const workBtn = el('button', 'btn', {}, 'Work (P)') as HTMLButtonElement;
     workBtn.onclick = () => this.toggleWorkTab();
+    // What the colony is actually doing with those priorities, as opposed to
+    // what it has been told it may do. Next to the Work button because the two
+    // answer each other: the priorities are the policy, the board is the result.
+    const boardBtn = el('button', 'btn', {}, "Board (')") as HTMLButtonElement;
+    boardBtn.title = 'Everything planned but not built, who is on it, and how the field is doing';
+    boardBtn.onclick = () => this.toggleBoardTab();
     const techBtn = el('button', 'btn', {}, 'Research (L)') as HTMLButtonElement;
     techBtn.title = 'Choose what the colony is working out at the research bench';
     techBtn.onclick = () => this.toggleResearchTab();
@@ -573,7 +640,7 @@ export class Hud {
     backupBtn.onclick = () => this.openBackup();
     const helpBtn = el('button', 'btn', {}, '?') as HTMLButtonElement;
     helpBtn.onclick = () => this.toggleHelp();
-    sys.append(viewBtn, workBtn, techBtn, this.tradeBtn, this.roadBtn, this.chronicleBtn, this.stewardBtn, this.qualityBtn, saveBtn, loadBtn, this.continueBtn, backupBtn, helpBtn);
+    sys.append(viewBtn, workBtn, boardBtn, techBtn, this.tradeBtn, this.roadBtn, this.chronicleBtn, this.stewardBtn, this.qualityBtn, saveBtn, loadBtn, this.continueBtn, backupBtn, helpBtn);
     top.append(this.clock, speeds, res, sys);
     this.root.append(top);
 
@@ -585,6 +652,7 @@ export class Hud {
     this.alertPanel = el('div', 'panel', { id: 'alerts' });
     this.goalPanel = el('div', 'panel', { id: 'goals' });
     this.worktab = el('div', 'panel', { id: 'worktab' });
+    this.boardtab = el('div', 'panel', { id: 'boardtab' });
     this.researchtab = el('div', 'panel', { id: 'researchtab' });
     this.tradetab = el('div', 'panel', { id: 'tradetab' });
     this.roadtab = el('div', 'panel', { id: 'roadtab' });
@@ -597,6 +665,7 @@ export class Hud {
       this.alertPanel,
       this.goalPanel,
       this.worktab,
+      this.boardtab,
       this.researchtab,
       this.tradetab,
       this.roadtab,
@@ -937,6 +1006,7 @@ export class Hud {
       this.syncGoals(world);
       this.syncBuildBar(s);
       this.syncWorkTab(s);
+      this.syncBoardTab(s);
       this.syncResearchTab(s);
       this.syncTradeTab(s);
       // After the shop, which closes this one when a pedlar turns up.
@@ -981,6 +1051,15 @@ export class Hud {
       return;
     }
     this.inspector.style.display = 'block';
+    if (sel.type === 'cell') {
+      const facts = cellFacts(s.world, sel.x, sel.y);
+      if (!facts) {
+        this.inspector.style.display = 'none';
+        return;
+      }
+      this.inspector.innerHTML = groundPanel(s.world, facts);
+      return;
+    }
     if (sel.type === 'pawn') {
       const p = findPawn(s.world, sel.id);
       if (!p) {
@@ -1232,7 +1311,7 @@ export class Hud {
         petRow(s.world, p) +
         `<div class="kv"><span>weapon</span><b>${p.weapon}</b></div>` +
         kit +
-        `<div class="kv"><span>doing</span><b>${jobLabel(s.world, p)}</b></div>` +
+        `<div class="kv"><span>doing</span><b>${errandLine(s.world, p)}</b></div>` +
         sickOf +
         // Resistance is the only number a prisoner has that the player can act
         // on: it is the answer to "is this working, and how much longer". Without
@@ -1300,7 +1379,7 @@ export class Hud {
       // the player clicks on. On a cooler it doubles as the only readout that says
       // whether the thing is actually running.
       `<div class="kv"><span>temperature</span><b>${tempLabel(cellTemp(s.world, b.x, b.y))}</b></div>` +
-      roomRow(s.world, b) +
+      roomRow(s.world, b.x, b.y) +
       (isClimate(b.kind) && b.built
         ? `<div class="kv"><span>running</span><b>${climateStatus(s.world, b)}</b></div>`
         : '') +
@@ -1476,6 +1555,148 @@ export class Hud {
     }
     this.worktab.innerHTML = '';
     this.worktab.append(table, el('div', 'hint', {}, 'Click a cell to cycle 1 (first) → 4 (last) → off.'));
+  }
+
+  /**
+   * The work board: what has been planned and not built, who is on each of it,
+   * and what the field is doing.
+   *
+   * Written because a player who planned six buildings and painted a field got
+   * no confirmation that any of it had been heard. Both were running the whole
+   * time — the crops measurably ripen on day one — so this panel adds nothing to
+   * the simulation and everything to the part the player can see, which is the
+   * only part that was ever broken.
+   *
+   * It prints no order. Construction is dispatched nearest-first per settler and
+   * skipped when the materials are not on the map, so a numbered queue would be
+   * a promise the colony has no intention of keeping. What it prints instead is
+   * why each frame is not finished, which is the thing the player can act on.
+   */
+  private syncBoardTab(s: HudState): void {
+    this.boardtab.style.display = this.boardOpen ? 'block' : 'none';
+    if (!this.boardOpen) return;
+    const rows = buildQueue(s.world);
+    const plot = plotStatus(s.world);
+    const short = shortfall(s.world);
+    // Progress is quantised into twentieths: the bars move every tick and a
+    // signature that tracked them exactly would rebuild the panel sixty times a
+    // second to redraw a bar that has not visibly changed.
+    const sig =
+      rows.map((r) => `${r.buildingId}${r.standing}${r.who ?? ''}${Math.round(r.progress * 20)}`).join('|') +
+      `#${plot ? `${plot.cells}/${plot.sown}/${plot.ripe}/${Math.round(plot.best * 20)}/${plot.hands}/${Math.round(plot.rate * 20)}` : 'none'}` +
+      `#${short.map((n) => `${n.kind}${n.amount}`).join(',')}`;
+    if (sig === this.boardSig) return;
+    this.boardSig = sig;
+
+    this.boardtab.innerHTML = '';
+    this.boardtab.append(el('h3', '', {}, 'Work board'));
+
+    // ---- the field
+    const field = el('div', 'bd-sect');
+    if (!plot) {
+      field.append(el('div', 'bd-head', {}, 'The field'));
+      field.append(
+        el('div', 'bd-empty', {}, 'No ground marked for growing. Press B and drag out a patch of dirt.'),
+      );
+    } else {
+      // Clickable, because the complaint was that the field could not be seen —
+      // and a panel that says "twelve cells, four sown" about a patch of ground
+      // the player still cannot find has answered only half of it.
+      const head = el('div', 'bd-head go', {}, 'The field');
+      head.title = `Go to it — ${plot.x}, ${plot.y}`;
+      head.onclick = () => this.hooks.focus(plot.x, plot.y);
+      head.append(el('span', '', {}, `${plot.cells} cells · ${plot.sown} sown · ${plot.ripe} ripe`));
+      const grown = el('div', 'bd-row plain');
+      grown.append(el('div', 'bd-what', {}, 'fullest crop'), pip('crop', plot.best));
+      field.append(head, grown);
+      // The season is called out by name rather than folded into a percentage.
+      // A plot that has stopped for a week is the single most alarming thing on
+      // this panel, and "it is winter" is the answer — the one the player can
+      // plan around, by filling a pantry or heating a greenhouse.
+      let note: string;
+      if (plot.sown === 0) note = 'Nothing sown yet.';
+      else if (plot.season < 0.05) note = 'Too cold to grow — the crop holds where it is until the thaw.';
+      else if (plot.rate < 0.55) note = `Growing slowly — ${Math.round(plot.rate * 100)}% of its best.`;
+      else note = `Growing well — ${Math.round(plot.rate * 100)}% of its best.`;
+      field.append(el('div', 'bd-note', {}, note));
+      field.append(
+        el(
+          'div',
+          'bd-note dim',
+          {},
+          plot.hands === 0
+            ? 'Nobody is working it.'
+            : `${plot.hands} ${plot.hands === 1 ? 'settler is' : 'settlers are'} out there.`,
+        ),
+      );
+    }
+    this.boardtab.append(field);
+
+    // ---- what is planned
+    const plan = el('div', 'bd-sect');
+    const planHead = el('div', 'bd-head', {}, 'Planned');
+    const underway = rows.filter((r) => r.standing === 'working' || r.standing === 'fetching').length;
+    planHead.append(
+      el('span', '', {}, rows.length === 0 ? '' : `${rows.length} standing · ${underway} under way`),
+    );
+    plan.append(planHead);
+    if (rows.length === 0) {
+      plan.append(
+        el('div', 'bd-empty', {}, 'Nothing planned. Pick something off the bar and click the ground.'),
+      );
+    }
+    for (const r of rows) {
+      const row = el('div', `bd-row s-${r.standing}`);
+      row.title = `Go to it — ${r.x}, ${r.y}`;
+      row.onclick = () => {
+        this.hooks.focus(r.x, r.y);
+        this.hooks.select({ type: 'building', id: r.buildingId });
+      };
+      const what = el('div', 'bd-what');
+      what.append(el('b', '', {}, r.label));
+      what.append(el('span', '', {}, this.standingLine(r)));
+      const x = el('button', 'bd-x', {}, '✕') as HTMLButtonElement;
+      x.title = 'Take this plan back down';
+      x.onclick = (ev) => {
+        ev.stopPropagation();
+        this.hooks.cancelBuilding(r.buildingId);
+        this.boardSig = '';
+      };
+      row.append(what, pip('work', r.progress), x);
+      plan.append(row);
+    }
+    this.boardtab.append(plan);
+
+    // ---- what the whole board is short of
+    if (short.length > 0) {
+      this.boardtab.append(
+        el(
+          'div',
+          'bd-short',
+          {},
+          `Short ${short.map((n) => `${n.amount} ${RESOURCE_LABEL[n.kind].toLowerCase()}`).join(', ')} across everything planned.`,
+        ),
+      );
+    }
+  }
+
+  /** Why one frame is not finished, in words. The facts come from `board.ts`. */
+  private standingLine(r: QueueRow): string {
+    const missing = r.missing
+      ? `${r.missing.amount} ${RESOURCE_LABEL[r.missing.kind].toLowerCase()}`
+      : 'materials';
+    switch (r.standing) {
+      case 'working':
+        return `${r.who} is building it`;
+      case 'fetching':
+        return `${r.who} is fetching ${r.fetching ? RESOURCE_LABEL[r.fetching].toLowerCase() : 'materials'}`;
+      case 'ready':
+        return 'ready — waiting for a free pair of hands';
+      case 'short':
+        return `needs ${missing}, and it is somewhere out there`;
+      case 'stranded':
+        return `needs ${missing} — the colony has none`;
+    }
   }
 
   private syncResearchPip(world: World): void {
@@ -2353,14 +2574,37 @@ export class Hud {
 
   // ------------------------------------------------------------------ overlays
 
+  // The three panels below all hang from the middle of the top bar, so opening
+  // one closes the other two — the same rule the road, shop and story panels
+  // follow in the other corner. Work and Research have shared that slot and
+  // drawn over each other since they were written; the board only made it
+  // impossible to keep ignoring.
+
   toggleWorkTab(): void {
     this.worktabOpen = !this.worktabOpen;
     this.workSig = '';
+    if (this.worktabOpen) {
+      this.boardOpen = false;
+      this.researchOpen = false;
+    }
+  }
+
+  toggleBoardTab(): void {
+    this.boardOpen = !this.boardOpen;
+    this.boardSig = '';
+    if (this.boardOpen) {
+      this.worktabOpen = false;
+      this.researchOpen = false;
+    }
   }
 
   toggleResearchTab(): void {
     this.researchOpen = !this.researchOpen;
     this.researchSig = '';
+    if (this.researchOpen) {
+      this.worktabOpen = false;
+      this.boardOpen = false;
+    }
   }
 
   toggleTradeTab(): void {
@@ -2786,6 +3030,7 @@ export class Hud {
       `<dt>H / K / Y</dt><dd>hunt · tame · pen — a pen holds one animal per six cells, breeds, and pays out milk and down to your farmhands</dd>` +
       `<dt>U / I / O</dt><dd>bridge · plank floor · paved floor — settlers walk quicker on all three, fire will not cross paving, and a bridge is the only one that goes over water</dd>` +
       `<dt>T</dt><dd>draft or undraft · <b>Tab</b> cycle settlers · <b>P</b> work priorities · <b>L</b> research</dd>` +
+      `<dt>'</dt><dd>the work board — everything planned but not built, who is on each of it, and how the field is coming along</dd>` +
       `<dt>M</dt><dd>trade — only while a caravan is standing in the yard</dd>` +
       `<dt>J</dt><dd>the road — send a settler over the ridge to the neighbours</dd>` +
       `<dt>;</dt><dd>the story — everything that has happened here, by day. The corner log only keeps the last few minutes; this keeps the rest.</dd>` +
@@ -2884,7 +3129,7 @@ class ColonistRow {
   update(world: World, p: Pawn, selected: boolean): void {
     this.el.classList.toggle('sel', selected);
     this.el.classList.toggle('downed', p.downed);
-    this.act.textContent = p.downed ? 'downed' : jobLabel(world, p);
+    this.act.textContent = p.downed ? 'downed' : errandLine(world, p);
     this.bars.hp!.style.width = `${Math.max(0, (p.hp / p.maxHp) * 100)}%`;
     this.bars.food!.style.width = `${p.needs.food * 100}%`;
     this.bars.rest!.style.width = `${p.needs.rest * 100}%`;
@@ -2981,6 +3226,21 @@ function ailmentRows(world: World, p: Pawn): string {
     .join('');
 }
 
+/**
+ * A bar with no label beside it, as an element rather than a string of HTML.
+ *
+ * The labelled `bar` below owns a 44px column for its caption, which is right in
+ * a stack of needs and wrong in a queue row where the caption is already the
+ * building's name.
+ */
+function pip(kind: string, value: number): HTMLElement {
+  const b = el('div', `bar ${kind} bd-pip`);
+  const fill = el('i');
+  fill.style.width = `${Math.max(0, Math.min(1, value)) * 100}%`;
+  b.append(fill);
+  return b;
+}
+
 function bar(kind: string, value: number, label: string): string {
   return `<div style="display:flex;align-items:center;gap:6px;margin:2px 0"><span style="width:44px;color:var(--dim);font-size:11px">${label}</span><div class="bar ${kind}" style="flex:1"><i style="width:${Math.max(
     0,
@@ -3055,6 +3315,95 @@ function jobLabel(world: World, p: Pawn): string {
   // settler is in rather than as the thing the player has to go and fix.
   if (p.activity === 'breaking') return 'stopped working';
   return p.activity;
+}
+
+/**
+ * What a settler will do when they get where they are going.
+ *
+ * `JOB_LABEL` says what they are doing; this says what the walk is *for*, which
+ * is a different sentence and the one a player watching somebody cross the yard
+ * actually wants. Present tense and second clause, so it reads on after
+ * "walking to the cook stove — ".
+ *
+ * Every kind has an entry rather than a default, so a new job kind is a compile
+ * error here instead of a settler who silently walks off to do "something".
+ */
+const JOB_AIM: Record<Job['kind'], string> = {
+  haulToStockpile: 'to put it in the store',
+  haulToBlueprint: 'to carry materials over',
+  build: 'to raise it',
+  deconstruct: 'to take it down',
+  mine: 'to cut stone out of it',
+  chop: 'to fell it',
+  cook: 'to cook a meal',
+  fish: 'to fish',
+  till: 'to break the ground',
+  floor: 'to lay the floor',
+  sow: 'to sow it',
+  harvestCrop: 'to pull the crop',
+  forage: 'to strip the fruit off it',
+  eat: 'to eat',
+  sleep: 'to sleep',
+  recreate: 'to sit down a while',
+  doctor: 'to treat them',
+  feedPatient: 'to feed them',
+  craft: 'to make something',
+  research: 'to work it out',
+  firefight: 'to beat the flames out',
+  hunt: 'to shoot it',
+  tame: 'to settle it',
+  gatherAnimal: 'to take what it has grown',
+  scout: 'to have a look',
+  capture: 'to lock them up',
+  feedPrisoner: 'to feed them',
+  recruit: 'to talk them round',
+  flee: 'to get clear of the fire',
+  rescue: 'to carry them clear',
+  bury: 'to bury them',
+  caravan: 'to trade',
+  campaign: 'to fight',
+  moveTo: 'because you told them to',
+};
+
+/**
+ * The place a settler is walking to, named the way the player would name it.
+ *
+ * Building, then item, then person, then the ground itself — the order runs from
+ * the most specific thing the job knows to the least. The bare-cell case checks
+ * the zones before it gives up and prints a coordinate, because "the plot" is an
+ * answer and "(38, 24)" is a map reference the player then has to go and find.
+ */
+function errandPlace(world: World, job: Job): string {
+  const b = findBuilding(world, job.buildingId);
+  // Not for `haulToBlueprint` mid-fetch: the job's building is where the load is
+  // going, and the settler is walking to the woodpile. The stage says which.
+  const heading = job.kind === 'haulToBlueprint' && job.stage !== 'deliver' ? null : b;
+  if (heading) return `the ${defOf(heading.kind).label.toLowerCase()}`;
+  const it = findItem(world, job.itemId);
+  if (it) return `${it.amount} ${it.kind}`;
+  const target = findPawn(world, job.targetPawnId ?? null);
+  if (target) return target.name;
+  const zone = zoneAt(world, job.tx, job.ty)?.kind;
+  if (zone === 'growing') return 'the plot';
+  if (zone === 'stockpile') return 'the store';
+  if (zone === 'pen') return 'the pen';
+  return `(${job.tx}, ${job.ty})`;
+}
+
+/**
+ * One line for a settler on the move: where they are going and what for.
+ *
+ * Falls back to `jobLabel` whenever they are not walking, because "sowing" is
+ * already the whole truth about somebody kneeling in the plot and "walking to
+ * the plot to sow it" would be a lie about them. The test is the live path
+ * rather than `activity`, which reads `walking` for a tick or two after the last
+ * step lands.
+ */
+function errandLine(world: World, p: Pawn): string {
+  if (p.dead || p.downed || p.jobId === null || !p.path) return jobLabel(world, p);
+  const job = world.jobs.find((j) => j.id === p.jobId);
+  if (!job) return jobLabel(world, p);
+  return `walking to ${errandPlace(world, job)} — ${JOB_AIM[job.kind]}`;
 }
 
 function carriedLabel(world: World, p: Pawn): string {
@@ -3152,14 +3501,93 @@ function isClimate(kind: Building['kind']): boolean {
 }
 
 /**
+ * The panel for a square of ground.
+ *
+ * Headed by whatever is actually on it. A player who clicks the woodpile in the
+ * corner of the house wants to be told about the woodpile, not handed a page
+ * about plank flooring with the wood filed three rows down — so a stack takes
+ * the title and the ground it lies on drops to the sub line. With nothing lying
+ * there, the ground *is* the answer and takes the title back.
+ *
+ * The rows underneath are the questions a square can be asked, in the order the
+ * ground stops being the point: what else is here, what is it for, what has been
+ * ordered done to it, whether anyone can walk over it, and what it is like to
+ * stand there. The last two rows are the same ones a building prints, on purpose
+ * — the air and the room are properties of the cell, and clicking the floor
+ * beside a heater should answer the same question as clicking the heater.
+ */
+function groundPanel(world: World, c: CellFacts): string {
+  const top = c.items[0];
+  const ground = GROUND_LABEL[c.terrain];
+  const head = top ? `${top.amount} ${resourceWord(top.kind)}` : ground;
+  const sub = top ? `on ${ground.toLowerCase()} · (${c.x}, ${c.y})` : `(${c.x}, ${c.y})`;
+  const rest = c.items
+    .slice(1)
+    .map((s) => `<div class="kv"><span>also here</span><b>${s.amount} ${resourceWord(s.kind)}</b></div>`)
+    .join('');
+  // Freshness only where there is any to lose. A row reading "100% fresh" over
+  // every plank of wood on the map is a row nobody reads twice — and the stacks
+  // that do rot are the ones a player has to make a decision about today.
+  const keeping =
+    top && top.rot > 0.05
+      ? `<div class="kv"><span>keeping</span><b class="${top.rot > 0.6 ? 'bad' : ''}">` +
+        `${Math.round((1 - top.rot) * 100)}% fresh</b></div>`
+      : '';
+  const order = ORDER_LABEL[c.desig];
+  return (
+    `<h3>${escapeHtml(head)}</h3><div class="sub">${sub}</div>` +
+    rest +
+    keeping +
+    (c.zone
+      ? `<div class="kv"><span>zone</span><b>${ZONE_LABEL[c.zone.kind]} · ${c.zone.cells} cells</b></div>`
+      : '') +
+    groundRows(c) +
+    (c.desig !== DESIG_NONE && order ? `<div class="kv"><span>ordered</span><b>${order}</b></div>` : '') +
+    (c.walkable ? '' : `<div class="kv"><span>blocks movement</span><b>yes</b></div>`) +
+    `<div class="kv"><span>temperature</span><b>${tempLabel(cellTemp(world, c.x, c.y))}</b></div>` +
+    roomRow(world, c.x, c.y)
+  );
+}
+
+/**
+ * What is growing here, and how fast.
+ *
+ * Only on ground the colony has marked for growing, or ground with something
+ * already coming up in it — every other square in the valley would otherwise
+ * carry two rows about a crop nobody planted.
+ *
+ * The season gets said by name rather than folded into the rate, for the same
+ * reason it is called out on the work board: a furrow that has not moved in a
+ * week has an answer the player can plan around, and "12% of its best" is not it.
+ */
+function groundRows(c: CellFacts): string {
+  if (c.zone?.kind !== 'growing' && c.crop === null) return '';
+  const what =
+    c.crop === null
+      ? c.sowable
+        ? 'nothing sown yet'
+        : 'nothing will grow here'
+      : c.crop >= 1
+        ? 'ripe — ready to pull'
+        : `${Math.round(c.crop * 100)}% grown`;
+  const crop = `<div class="kv"><span>crop</span><b class="${c.crop !== null && c.crop >= 1 ? 'good' : ''}">${what}</b></div>`;
+  if (c.crop === null || c.crop >= 1) return crop;
+  const speed =
+    c.season < 0.05
+      ? '<b class="bad">too cold — it holds where it is until the thaw</b>'
+      : `<b>${Math.round(c.rate * 100)}% of its best</b>`;
+  return `${crop}<div class="kv"><span>growing</span>${speed}</div>`;
+}
+
+/**
  * The room a building stands in, said the way the player would say it.
  *
  * Walls and doors are boundaries rather than floor, so they read "outdoors" —
  * which is right, and is also the fastest way to learn that the room is the
  * space, not the shell.
  */
-function roomRow(world: World, b: Building): string {
-  const room = roomAt(world, b.x, b.y);
+function roomRow(world: World, x: number, y: number): string {
+  const room = roomAt(world, x, y);
   if (!room) return `<div class="kv"><span>room</span><b>outdoors</b></div>`;
   const doors = room.doorEdges === 1 ? '1 door' : `${room.doorEdges} doors`;
   return (

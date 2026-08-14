@@ -351,9 +351,13 @@ export class App {
       const p = findPawn(this.world, sel.id);
       const pos = at ?? (p ? { x: p.x, y: p.y } : null);
       this.view.fx.setSelection(pos ? { x: pos.x, y: pos.y, radius: 1 } : null);
-    } else {
+    } else if (sel.type === 'building') {
       const b = this.world.buildings.find((q) => q.id === sel.id) ?? null;
       this.view.fx.setSelection(b ? { x: b.x, y: b.y, radius: 1.1 } : null);
+    } else {
+      // Tight to the square, because that is exactly what is selected — a ring
+      // the size of a building's would claim the cells either side of it.
+      this.view.fx.setSelection({ x: sel.x, y: sel.y, radius: 0.62 });
     }
 
     const hover = this.manager.hoverCell;
@@ -466,6 +470,10 @@ export class App {
     if (this.input.pressed('Space')) this.setSpeed(this.speed === 0 ? 1 : 0);
     if (this.mode === 'manager') {
       if (this.input.pressed('KeyP')) this.hud.toggleWorkTab();
+      // The apostrophe, because every letter on the board is spoken for — the
+      // panel keys have already spilled onto punctuation once, and ' sits beside
+      // the ; that opens the story. Same row, same hand, same kind of thing.
+      if (this.input.pressed('Quote')) this.hud.toggleBoardTab();
       if (this.input.pressed('KeyL')) this.hud.toggleResearchTab();
       // M for merchant. T is the draft key in both views and cannot be shared —
       // one press must not both arm a settler and open a shop. Gated on somebody

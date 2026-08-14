@@ -229,18 +229,25 @@ body {
   letter-spacing: 0.2px;
   /* A long name wraps rather than pushing the activity out of the card. */
   min-width: 0;
+  flex: 0 1 auto;
 }
 
 /*
  * The activity is the half of this row that changes, so it wins the space:
  * a two-line name is legible, "stopped work…" is not.
+ *
+ * It wraps rather than clipping because a walking settler now says where they
+ * are going and what for — "walking to the cook stove — to cook a meal" — which
+ * is three times the width of "cooking" and the whole point of the line. Short
+ * labels still sit on one line at the right, so the cards only grow while
+ * somebody is actually crossing the map.
  */
 .colonist .act {
   color: var(--dim);
   font-size: 11px;
   text-align: right;
-  white-space: nowrap;
-  flex: none;
+  flex: 1 1 auto;
+  min-width: 0;
 }
 
 .bars {
@@ -1027,6 +1034,161 @@ body {
   color: var(--dim);
   font-size: 11px;
   margin-top: 6px;
+}
+
+/* ---------- work board ----------
+ *
+ * Same slot as the work and research panels, under the middle of the top bar —
+ * they take it in turns, which is why opening any one of the three closes the
+ * other two. Narrower than the research tree because every row is one line of
+ * prose and a bar, and a 660px column would put the bar a hand's width from the
+ * name it belongs to.
+ */
+#boardtab {
+  position: absolute;
+  top: calc(var(--topbar-h, 44px) + 8px);
+  left: 50%;
+  transform: translateX(-50%);
+  width: 430px;
+  max-height: calc(100vh - 200px);
+  overflow-y: auto;
+  padding: 10px 12px;
+  display: none;
+}
+
+#boardtab h3 {
+  margin: 0 0 8px;
+  font-size: 13px;
+  letter-spacing: 0.3px;
+}
+
+.bd-sect {
+  margin-bottom: 10px;
+}
+
+.bd-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 11px;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  color: var(--dim);
+  border-bottom: 1px solid var(--edge);
+  padding-bottom: 3px;
+  margin-bottom: 5px;
+}
+
+.bd-head span {
+  text-transform: none;
+  letter-spacing: 0;
+  font-family: var(--mono);
+}
+
+/* The heading that takes the camera to the thing it names. */
+.bd-head.go {
+  cursor: pointer;
+}
+
+.bd-head.go:hover {
+  color: var(--fg);
+}
+
+.bd-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 4px;
+  border-radius: 2px;
+  cursor: pointer;
+}
+
+/* The field's own rows are a readout, not a place to click. */
+.bd-row.plain {
+  cursor: default;
+}
+
+.bd-row:not(.plain):hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.bd-what {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 12px;
+}
+
+.bd-what b {
+  font-weight: 600;
+}
+
+/* The reason under the name, which is the line the panel exists to print. */
+.bd-what span {
+  display: block;
+  color: var(--dim);
+  font-size: 11px;
+}
+
+.bd-pip {
+  flex: 0 0 64px;
+}
+
+.bar.work > i {
+  background: #b99a5e;
+}
+
+.bar.crop > i {
+  background: #7fc98c;
+}
+
+/* Somebody has it in hand: the row is quiet, because it needs nothing. A frame
+   the colony cannot supply is the opposite, and says so in the bad colour. */
+.bd-row.s-stranded .bd-what span {
+  color: var(--bad);
+}
+
+.bd-row.s-short .bd-what span {
+  color: #cf9a4a;
+}
+
+.bd-x {
+  flex: 0 0 auto;
+  background: none;
+  border: 0;
+  color: var(--dim);
+  cursor: pointer;
+  font-size: 12px;
+  line-height: 1;
+  padding: 2px 4px;
+  opacity: 0.5;
+}
+
+.bd-x:hover {
+  color: var(--bad);
+  opacity: 1;
+}
+
+.bd-note {
+  font-size: 11px;
+  margin-top: 3px;
+}
+
+.bd-note.dim {
+  color: var(--dim);
+}
+
+.bd-empty,
+.bd-short {
+  font-size: 11px;
+  color: var(--dim);
+  padding: 4px 2px;
+}
+
+.bd-short {
+  border-top: 1px solid var(--edge);
+  padding-top: 6px;
+  color: #cf9a4a;
 }
 
 /* ---------- research ---------- */
