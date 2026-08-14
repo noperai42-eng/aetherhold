@@ -582,6 +582,31 @@ rather than what it computes. Each is a numbered step in `PLAYTEST.md`:
   being fed 16.5 of stride per cell against the 7.5 its rig assumed, so their legs have just
   slowed to under half of what anybody has ever seen them run at. That is the correct number and
   it is the largest single change to how this game moves. Nobody has looked at any of it yet.
+- **§9qq** — click on the dirt. `tests/select.test.ts` pins that every square answers, that a
+  settler and a building still win over the ground they stand on, that a stack somebody is
+  carrying is left out of the count, and that a drag moves the map without repainting the panel.
+  What it cannot pin is the thing the complaint was actually about: a player clicked a rock, a
+  woodpile and a furrow, got nothing back three times, and concluded the game had not modelled
+  any of them. The panel now says something for all of it. Whether what it says is worth having
+  read — whether four different kinds of square produce four *useful* answers rather than four
+  paragraphs of terrain trivia — is the question, and no assertion about field names can reach it.
+- **§9rr** — ask who is building your wall. `tests/board.test.ts` pins the contents and the
+  order. The order it *shows* against the order you watch happen in the yard is the part that
+  needs eyes, because the board re-sorts as jobs are claimed and a queue that reshuffles while
+  you read it is worse than no queue.
+- **§9ss** — put a fence in front of a raid. `tests/breach.test.ts` pins that a raider with no
+  route takes apart what stands in its line, that it leaves alone the fence that is not in its
+  way, and that the hole it makes is walkable. Whether it *reads* as a raid choosing a way in or
+  as an animal chewing furniture is the whole difference between a defence layer and a nuisance,
+  and it is not a thing three assertions can say.
+- **§9tt** — build a wall across somebody's errand. `tests/repath.test.ts` pins both halves — the
+  settler steps round new geometry, and a body that is genuinely wedged still gives up rather
+  than re-pathing forever. The half worth watching is the one the numbers already argued: 145 of
+  177 emergency feedings on one harsh seed used to end with the carrier upright, the meal in the
+  world and the patient on the floor. The colony was never short of food or of hands; it kept
+  putting the plate down, and it did so silently, which is why it took a probe to find. Whether
+  the fixed version reads as a settler solving a problem, or as one milling about near a wall,
+  is the part left.
 - **§9m** — walk into the haze. Whether the edge of the known world reads as weather or as
   a missing chunk of the level is not a thing a test can be shown.
 - **§9n** — read the map in the corner. Whether one pixel a cell is legible, and whether

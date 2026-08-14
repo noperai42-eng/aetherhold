@@ -1703,6 +1703,93 @@ Pinned by `tests/gait.test.ts` (the arithmetic, and that only one place in the s
 distance into stride), `tests/sim-units.test.ts` (that a jammed body stops striding and a rescued
 one is charged nothing), and `tests/fps-view.test.ts` (the body you drive). None of them can see.
 
+## 9qq. Click on the dirt (~3 minutes)
+
+This step exists because a player said the same thing twice — "I still can't select every square",
+then "even items in the house are not selectable, or planted areas and such" — and both times the
+answer was that the manager resolved a click to a settler or a building and to nothing else.
+
+Click, in this order: **a rock face**, **a stack of wood on the floor of the house**, **a cell in
+a growing zone**, and **a patch of open grass nobody has touched**. **Expect** a panel every time.
+Not the same panel — expect the rock to name the terrain and, if somebody has marked it, the order
+standing on it; expect the woodpile to name the kind and the count; expect the furrow to say
+whether anything is sown and how far on it is; and expect the grass to say what it is and that it
+is walkable. The old behaviour is unmistakable: the panel simply went away and stayed away.
+
+**Then click a settler, and then the building they are standing in.** **Expect** those to still
+win. Ground is the fallback, not the answer — a fix that let the grass shadow the two panels that
+already worked would cost more than the bug it fixed.
+
+**Then press and drag** on open ground and let go. **Expect** the map to move and **expect the
+panel not to change**. Selection resolves on release with a few pixels of slop, so a pan is not
+also an opinion about whatever square your hand started on.
+
+What a square reports is pinned by `tests/select.test.ts`, including the stack somebody is
+carrying being left out of the count — a hauler crossing the yard is not a yard with steel in it.
+Whether the panel is *readable* is this step.
+
+## 9rr. Ask who is building your wall (~3 minutes)
+
+Lay down a dozen blueprints — a stretch of wall, a couple of beds, a bench — and then open the
+build queue rather than watching the yard.
+
+**Expect** the plans in the order the colony will actually take them, and **expect a name against
+the ones somebody has picked up**. The thing this replaces is a player putting plans on the map
+and watching them sit there with no way to tell the difference between *not yet* and *never*.
+
+**Now pause and read it again.** **Expect** the same list. Then unpause, let one finish, and
+**expect it to leave the queue** rather than lingering as a done row.
+
+The queue's contents are pinned by `tests/board.test.ts`. Whether the order it shows matches the
+order you *watch* happen in the yard is the part that needs eyes, and it is the part most likely
+to be subtly wrong: the board re-sorts as jobs are claimed.
+
+## 9ss. Put a fence in front of a raid (~6 minutes)
+
+Ring a stretch of your yard in plain wooden fence — three wood a panel — and wait for a raid, or
+bring one on from the debug bar if it is there.
+
+**Expect them to break it.** A raider that cannot reach anybody now takes apart the piece of
+geometry standing in the straight line to its target. Until this shipped, a fence was a mountain:
+they routed round it, and if there was no round they stood in the field facing the rail until
+their nerve went. Three wood bought a wall the colony never paid for, and a settler fenced in was
+a settler no raid could reach.
+
+**Then watch a raider walk *past* a fence that is not in its way** — the goat pen, if it is off to
+one side. **Expect it to leave that one alone.** A raid that breaks every fence it passes is
+vandalism, and it would turn every pen into a liability.
+
+**And expect the hole to be a real hole**: once a panel is down, expect the raid to come through
+the gap rather than resume standing in the field. A breach nobody walks through is scenery.
+
+Pinned by `tests/breach.test.ts`. What no test can tell you is whether it *reads* as a raid
+choosing a way in, or as an animal chewing furniture.
+
+## 9tt. Build a wall across somebody's errand (~4 minutes)
+
+Short, mean, and worth doing once. Find a settler walking a long way with something to do at the
+end of it — hauling to a stockpile is easiest to spot — and drop a one-cell wall blueprint right
+on the path in front of them, on open ground with plenty of room either side. Let somebody build
+it while the first settler is still walking.
+
+**Expect them to step round it and carry on.** What this replaces is the settler stopping, giving
+up the errand entirely and wandering off to something else, which is what happened for as long as
+this game has existed: a route cut by new geometry was reported to the work board as *blocked*,
+and every job in the colony reads blocked as cancelled.
+
+**The version of this that matters is the meal.** Get somebody down and starving with a full
+larder — 9cc sets that up — and then build across the rescuer's route. **Expect the meal to
+arrive.** On sixty harsh days of seed 99001, 145 emergency feedings used to end with the carrier
+alive, upright, the meal still in the world and the patient still on the floor, against 32 that
+reached a mouth. The colony was never short of food or of hands. It kept putting the plate down.
+
+**Then check the other half of it**, which is the one this could plausibly break: wedge a settler
+somewhere they genuinely cannot get out of and **expect them to give up** rather than re-path
+forever. Twenty-five ticks of going nowhere still ends the errand, and it has to, or a stuck body
+loops.
+
+Pinned by `tests/repath.test.ts`.
+
 ## 10. Save it, break it, load it
 
 Press **Save** in the top bar. Now do something destructive and obvious — pause, mash a few
