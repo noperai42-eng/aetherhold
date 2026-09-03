@@ -31,11 +31,20 @@
 import { describe, expect, it } from 'vitest';
 
 import { buildingAt } from '../src/sim/grid';
-import { createJob, sendSomebodyToFeed } from '../src/sim/jobs';
+import { NEVER_INTERRUPTED, createJob, putDownWorkToEat, sendSomebodyToFeed } from '../src/sim/jobs';
+import { ANIMALS } from '../src/sim/wildlife';
 import { makeStreams, stepWorld, stepWorldN } from '../src/sim/tick';
 import { addItem } from '../src/sim/world';
 import { Rng } from '../src/sim/rng';
-import { terrainAt, type Job, type Pawn, type World } from '../src/sim/types';
+import {
+  TICKS_PER_DAY,
+  terrainAt,
+  type ItemStack,
+  type Job,
+  type Pawn,
+  type ResourceKind,
+  type World,
+} from '../src/sim/types';
 import { createWorld, makePawn } from '../src/sim/worldgen';
 
 /**
@@ -298,7 +307,221 @@ describe('a settler starving on the floor', () => {
   });
 });
 
+/**
+ * The reflexive case, and the one this file did not cover.
+ *
+ * Everything above is about somebody *else* dropping what they are doing. The
+ * same early return sits in front of the settler's own stomach: `assignJob` quits
+ * at its first line on a settler who already has a job, so needs only ever jumped
+ * the queue for an idle one. `tick.ts` closed the near half of that a round ago —
+ * a settler with a job *queued* is never idle, and that starved seed 20260729 flat
+ * to zero. This is the far half: one job that simply runs a long time.
+ *
+ * Measured on settler/7, sixty days, unmanaged. Pell Verrow (#2605) stood at zero
+ * food for twelve hours and eighteen minutes ending day 35, with a mean of a
+ * hundred and five units of food in the larder throughout. `probe-upright` asks,
+ * of every upright settler at zero, what the first thing stopping them eating is,
+ * in the need pass's own order — 2906 of those ticks answered `is mid-job (hunt)`.
+ * A hunt is allowed `JOB_TIMEOUT * 2`, so that was one hunt well inside its own
+ * allowance, and that single spell is the whole of the
+ * `on-their-feet-at-zero-is-a-walk-home` break: 12.3 h against a twelve-hour bar.
+ */
+describe('a settler starving on their feet', () => {
+  it('puts the hunt down when there is food at home to walk to', () => {
+    const { world } = empty();
+    const spot = clearing(world);
+    const hunter = settler(world, spot.x, spot.y);
+    hunter.needs.food = 0;
+    const job = busyWith(world, hunter, 'hunt');
+    addItem(world, 'meal', 5, spot.x + 1, spot.y);
+
+    expect(putDownWorkToEat(world, hunter)).toBe(true);
+
+    // Idle, not eating. The rule hands the settler back to the need pass rather
+    // than writing the meal itself, so there is one place that decides what a
+    // hungry settler eats and it is `tryNeedJob`.
+    expect(world.jobs.some((j) => j.id === job.id)).toBe(false);
+    expect(hunter.jobId).toBe(null);
+  });
+
+  it('keeps hunting when the larder is empty, because that is what ends the famine', () => {
+    const { world } = empty();
+    const spot = clearing(world);
+    const hunter = settler(world, spot.x, spot.y);
+    hunter.needs.food = 0;
+    const job = busyWith(world, hunter, 'hunt');
+
+    // No meal anywhere. This is the safety of the whole rule: ungated it would
+    // cancel, every tick, the only work in the colony that produces food — and a
+    // cancel that buys no lunch is a settler standing in the yard starving.
+    expect(putDownWorkToEat(world, hunter)).toBe(false);
+    expect(hunter.jobId).toBe(job.id);
+  });
+
+  it('finishes the job when they are merely hungry', () => {
+    const { world } = empty();
+    const spot = clearing(world);
+    const hunter = settler(world, spot.x, spot.y);
+    // Above the emergency line and below the ordinary one — the band where a
+    // settler would like lunch. `HUNGRY` is 0.34 and would have stopped the work
+    // here; the line is `PATIENT_EMERGENCY_FOOD`, where `tickNeeds` stops healing
+    // them and starts taking hit points off. Interrupting real work for lunch is
+    // how a colony gets nothing done.
+    hunter.needs.food = 0.3;
+    const job = busyWith(world, hunter, 'hunt');
+    addItem(world, 'meal', 5, spot.x + 1, spot.y);
+
+    expect(putDownWorkToEat(world, hunter)).toBe(false);
+    expect(hunter.jobId).toBe(job.id);
+  });
+
+  it('does not walk out of a fire, or off a march, to find lunch', () => {
+    for (const kind of NEVER_INTERRUPTED) {
+      const { world } = empty();
+      const spot = clearing(world);
+      const worker = settler(world, spot.x, spot.y);
+      worker.needs.food = 0;
+      const job = busyWith(world, worker, kind);
+      addItem(world, 'meal', 5, spot.x + 1, spot.y);
+
+      // The same list, honoured and not restated. The colony already holds that a
+      // fire, a rescue and a march outrank fetching somebody a meal, and none of
+      // those arguments get weaker when the hungry one is doing the carrying.
+      expect(putDownWorkToEat(world, worker), kind).toBe(false);
+      expect(worker.jobId, kind).toBe(job.id);
+    }
+  });
+
+  it('does not put the meal down to go and get the meal', () => {
+    const { world } = empty();
+    const spot = clearing(world);
+    const eater = settler(world, spot.x, spot.y);
+    eater.needs.food = 0;
+    addItem(world, 'meal', 5, spot.x + 2, spot.y);
+    const job = busyWith(world, eater, 'eat');
+
+    // Without this the settler cancels the walk to the pantry every tick, is
+    // re-sent to the pantry every tick, and never arrives — starving with their
+    // hand on the door.
+    expect(putDownWorkToEat(world, eater)).toBe(false);
+    expect(eater.jobId).toBe(job.id);
+  });
+
+  /**
+   * What a cancel costs when the settler's hands are full.
+   *
+   * The rule shipped without this gate and cost three colonies their founding.
+   * `cancelJob` does not pause a job, it undoes one: cargo goes on the ground
+   * where they stand, unreserved. A hauler two steps from a blueprint who dips
+   * below the line puts the timber down in the yard, and the delivery is not
+   * delayed but refunded — somebody walks it again from wherever it landed.
+   * `calm/1312` and `settler/20260729` both founded inside sixty days with the
+   * rule backed out and never founded with it in, and both come back once the
+   * gate is here. Founding is gated on things that get built.
+   */
+  function holding(world: World, p: Pawn, kind: ResourceKind): ItemStack {
+    const stack = addItem(world, kind, 5, Math.round(p.x), Math.round(p.y))!;
+    stack.carriedBy = p.id;
+    p.carryingItemId = stack.id;
+    return stack;
+  }
+
+  it('finishes the delivery it is already carrying rather than dropping it in the yard', () => {
+    const { world } = empty();
+    const spot = clearing(world);
+    const hauler = settler(world, spot.x, spot.y);
+    hauler.needs.food = 0;
+    const job = busyWith(world, hauler, 'haulToBlueprint');
+    const timber = holding(world, hauler, 'wood');
+    addItem(world, 'meal', 5, spot.x + 3, spot.y);
+
+    expect(putDownWorkToEat(world, hauler)).toBe(false);
+    expect(hauler.jobId).toBe(job.id);
+    // The timber is the point: still in their hands, still spoken for, still on
+    // its way somewhere. A test that only checked `jobId` would pass against a
+    // version that cancelled and re-issued.
+    expect(hauler.carryingItemId).toBe(timber.id);
+    expect(timber.carriedBy).toBe(hauler.id);
+  });
+
+  it('does put down food it is carrying, because that is the errand', () => {
+    const { world } = empty();
+    const spot = clearing(world);
+    const hauler = settler(world, spot.x, spot.y);
+    hauler.needs.food = 0;
+    busyWith(world, hauler, 'haulToStockpile');
+    const meal = holding(world, hauler, 'meal');
+
+    // Deliberately the only food in the colony, and `findFoodStack` cannot see
+    // it — that call skips carried stacks. Without carried food standing in for
+    // the errand, a settler starving with a meal in their arms fails the gate
+    // that asks whether there is anything to eat, which is the wrong answer to
+    // the most literal version of the question.
+    expect(putDownWorkToEat(world, hauler)).toBe(true);
+    expect(hauler.carryingItemId).toBe(null);
+    expect(meal.carriedBy).toBe(null);
+    expect(meal.reservedBy).toBe(null);
+    expect(meal.x).toBe(Math.round(hauler.x));
+  });
+
+  it('does not put a person down to go and eat', () => {
+    const { world } = empty();
+    const spot = clearing(world);
+    const warden = settler(world, spot.x, spot.y);
+    warden.needs.food = 0;
+    const captive = settler(world, spot.x, spot.y);
+    warden.carryingPawnId = captive.id;
+    // `haulToStockpile`, not `rescue`: `NEVER_INTERRUPTED` would answer this one
+    // on its own and the gate would never be reached. The pin is for the shoulder
+    // itself, whatever job put somebody on it.
+    const job = busyWith(world, warden, 'haulToStockpile');
+    addItem(world, 'meal', 5, spot.x + 3, spot.y);
+
+    expect(putDownWorkToEat(world, warden)).toBe(false);
+    expect(warden.jobId).toBe(job.id);
+    expect(warden.carryingPawnId).toBe(captive.id);
+  });
+});
+
 describe('the colony left to run itself', () => {
+  it('eats mid-hunt rather than starving upright with a full larder', () => {
+    const { world, streams } = empty();
+    const spot = clearing(world);
+    const hunter = settler(world, spot.x, spot.y);
+    hunter.needs.food = 0;
+    // The measured shape: a real quarry, so the hunt is a job that genuinely runs
+    // for hours rather than a job that finishes on its first tick. Placed well
+    // off, and healthy, so nothing about this test depends on the hunt going well.
+    const quarry = makePawn(world, new Rng(9), 'fauna', spot.x + 12, spot.y + 12, {
+      name: ANIMALS.mossback.label,
+      weapon: 'none',
+    });
+    quarry.animal = 'mossback';
+    quarry.hp = ANIMALS.mossback.hp;
+    quarry.maxHp = ANIMALS.mossback.hp;
+    createJob(world, hunter, 'hunt', quarry.x, quarry.y, { targetPawnId: quarry.id });
+    addItem(world, 'meal', 20, spot.x + 1, spot.y);
+
+    // How soon, not whether — the hunt ends eventually and the settler eats after
+    // it either way, so a test that only asks whether they ever ate passes on both
+    // sides of this change and pins nothing. The window is the twelve hours
+    // `on-their-feet-at-zero-is-a-walk-home` allows a settler upright at zero, and
+    // the bar inside it is measured on this exact colony: **767 ticks before the
+    // rule, 68 after** — nearly four hours against twenty minutes. Two hours sits
+    // between them and is near neither.
+    const HOUR = TICKS_PER_DAY / 24;
+    let ateAt = -1;
+    for (let t = 0; t < 12 * HOUR && ateAt < 0; t++) {
+      stepWorld(world, streams);
+      if (hunter.needs.food > 0.2) ateAt = t;
+    }
+
+    expect(hunter.dead, 'starved upright beside a full larder').toBe(false);
+    expect(ateAt, 'never ate at all inside the twelve-hour bar').toBeGreaterThanOrEqual(0);
+    expect(ateAt, 'finished the hunt first, which is the defect').toBeLessThan(2 * HOUR);
+  });
+
+
   it('feeds the settler on the floor while every other settler is working', () => {
     const { world, streams } = empty();
     const spot = clearing(world);

@@ -923,6 +923,83 @@ export function dyingPatient(world: World, exceptId: number): boolean {
   );
 }
 
+/**
+ * Put the work down and go and eat, if that is what this settler should do.
+ *
+ * Needs only ever jumped the queue for an **idle** settler: `assignJob` returns at
+ * its first line when `pawn.jobId !== null`, so a settler already on a job was
+ * never asked whether they were hungry until that job ended. `tick.ts` fixed the
+ * near half of this a round ago — a settler with a job *queued* steps straight
+ * from one task to the next and is never idle, and that starved seed 20260729 flat
+ * to zero. The far half is a single job that simply runs for a long time.
+ *
+ * Measured on settler/7: Pell Verrow (#2605) stood at zero food for twelve hours
+ * and eighteen minutes, ending day 35, with a mean of a hundred and five units of
+ * food in the larder the whole time. Not drafted, not asleep, no path problem —
+ * `probe-upright` names the first blocking reason per tick, and 2906 of them were
+ * `is mid-job (hunt)`. A hunt is allowed `JOB_TIMEOUT * 2`, so those 2906 ticks
+ * were one hunt comfortably inside its own allowance, and that spell alone is the
+ * whole of the `on-their-feet-at-zero-is-a-walk-home` break: 12.3 h against a
+ * twelve-hour bar. The colony was not short of food. It was short of a rule that
+ * lets a hunter stop hunting.
+ *
+ * Two gates, and both are load-bearing.
+ *
+ * `PATIENT_EMERGENCY_FOOD` rather than `HUNGRY`, by the argument that already
+ * moved `RESCUER_KEEPS` onto it: 0.34 is a settler who would like lunch, and
+ * interrupting real work for lunch is how a colony gets nothing done. 0.14 is
+ * where `tickNeeds` stops healing them and starts taking hit points off. Below it
+ * the job is no longer the most important thing this person is doing.
+ *
+ * And the errand has to actually exist. `findFoodStack` is the same call
+ * `tryNeedJob` makes one tick later, so a cancel here is only ever paid for by an
+ * `eat` job there — never by a settler standing in the yard. It is also the safety
+ * of the whole rule: **a colony with an empty larder needs its hunters hunting**,
+ * and an ungated version would cancel, every tick, the only work that ends the
+ * famine.
+ *
+ * `NEVER_INTERRUPTED` is honoured rather than restated, because the colony should
+ * not hold two opinions about which errands survive an emergency. It already says
+ * a fire, a rescue and a march outrank fetching a meal for somebody on the floor,
+ * and none of those arguments get weaker when the hungry person is the one
+ * carrying. Everything else is work, and work waits.
+ *
+ * A third gate, and it cost three colonies their founding to find. `cancelJob`
+ * does not pause a job, it undoes one: cargo goes on the ground where the settler
+ * stands, unreserved, and the timber that was two steps from a blueprint has to
+ * be walked all over again by whoever picks it up next. Preempting a hauler is
+ * therefore not a small delay but a refund, and the founding is gated on things
+ * that get built — `calm/1312` and `settler/20260729` both stop founding inside
+ * sixty days on this alone, and both come back when it is gated. A haul is
+ * bounded by `JOB_TIMEOUT`; they finish it and the need pass has them next tick.
+ *
+ * Food already in their hands is the one case the drop was always right for: put
+ * it down and it is a stack they can eat, which is the errand. That also stands
+ * in for `findFoodStack`, which cannot see it — it skips carried stacks, so a
+ * settler starving with a meal in their arms would otherwise fail the gate that
+ * asks whether there is anything to eat.
+ *
+ * A shouldered person is nobody's cargo and is never put down for a meal; the
+ * warden carrying them is under `rescue` anyway, which `NEVER_INTERRUPTED`
+ * already covers, so this is the belt to that brace.
+ */
+export function putDownWorkToEat(world: World, pawn: Pawn): boolean {
+  if (pawn.needs.food > PATIENT_EMERGENCY_FOOD) return false;
+  const job = world.jobs.find((j) => j.id === pawn.jobId);
+  if (!job || job.kind === 'eat') return false;
+  if (NEVER_INTERRUPTED.includes(job.kind)) return false;
+  if (pawn.carryingPawnId != null) return false;
+  const held =
+    pawn.carryingItemId === null
+      ? null
+      : (world.items.find((s) => s.id === pawn.carryingItemId) ?? null);
+  const holdingFood = held !== null && (held.kind === 'meal' || held.kind === 'rawfood');
+  if (held !== null && !holdingFood) return false;
+  if (!holdingFood && !findFoodStack(world, pawn)) return false;
+  cancelJob(world, job.id);
+  return true;
+}
+
 function tryFeedPatient(world: World, pawn: Pawn): boolean {
   let worst: Pawn | null = null;
   for (const p of world.pawns) {
@@ -958,7 +1035,7 @@ function tryFeedPatient(world: World, pawn: Pawn): boolean {
  * job is a march that has already been paid for in packed goods, and calling one
  * of them back to fetch a meal cancels the trip for everybody.
  */
-const NEVER_INTERRUPTED: JobKind[] = ['flee', 'rescue', 'feedPatient', 'caravan', 'campaign'];
+export const NEVER_INTERRUPTED: JobKind[] = ['flee', 'rescue', 'feedPatient', 'caravan', 'campaign'];
 
 /**
  * Somebody is dying of hunger on the floor and nobody is idle enough to notice.

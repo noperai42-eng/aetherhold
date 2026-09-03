@@ -18,6 +18,7 @@ import {
   assignNeedsOnly,
   sendSomebodyToFeed,
   planAhead,
+  putDownWorkToEat,
   startQueued,
   tickGroundSleep,
   tickJob,
@@ -301,6 +302,12 @@ export function stepWorld(world: World, streams: Streams): void {
     if (pawn.drafted) continue;
 
     if (pawn.jobId !== null) {
+      // A settler on a long job is never idle, and the need pass only ever asked
+      // idle settlers whether they were hungry. Below the line where hunger starts
+      // taking hit points off, the job is not the most important thing they are
+      // doing — put it down and be idle, so the need pass picks them up next tick.
+      // See `putDownWorkToEat`: it only fires when there is food to walk to.
+      if (putDownWorkToEat(world, pawn)) continue;
       tickJob(world, pawn, streams.combat);
       // Line the next one up while this one runs, so a settler steps straight
       // from a felled tree to the next task instead of standing in the yard
