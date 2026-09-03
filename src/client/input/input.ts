@@ -14,6 +14,8 @@
 const TAP_SLOP = 9;
 /** A finger held longer than this is not a tap even if it never moved. */
 const TAP_MS = 700;
+/** Fingers closer together than this are too short a lever to read a twist off. */
+const TWIST_SPREAD = 60;
 
 export class Input {
   readonly down = new Set<string>();
@@ -51,12 +53,14 @@ export class Input {
   panY = 0;
   /** Pinch this frame as a ratio: >1 fingers spread, <1 pinched, 1 nothing happened. */
   zoomScale = 1;
+  /** Two-finger twist this frame, in radians, clockwise positive. Zero if neither. */
+  twist = 0;
   /** An on-screen trigger is held. Pointer lock is the mouse's version of this. */
   virtualFire = false;
 
   private readonly touches = new Map<number, { x: number; y: number }>();
   private touchStart: { x: number; y: number; at: number } | null = null;
-  private pinchPrev: { x: number; y: number; d: number } | null = null;
+  private pinchPrev: { x: number; y: number; d: number; a: number } | null = null;
 
   private readonly el: HTMLElement;
   private readonly handlers: Array<[EventTarget, string, EventListener]> = [];
@@ -173,7 +177,20 @@ export class Input {
       if (this.pinchPrev && now) {
         this.panX += now.x - this.pinchPrev.x;
         this.panY += now.y - this.pinchPrev.y;
-        if (this.pinchPrev.d > 8 && now.d > 8) this.zoomScale *= now.d / this.pinchPrev.d;
+        if (this.pinchPrev.d > 8 && now.d > 8) {
+          this.zoomScale *= now.d / this.pinchPrev.d;
+          // Wrapped to the short way round, or a twist across the -pi/pi seam
+          // would read as most of a turn the other way. Only counted while the
+          // fingers are far enough apart to have an angle worth trusting: two
+          // fingertips 10px apart swing through a lot of degrees on very little
+          // movement, and the whole gesture would fight the pinch it rides on.
+          if (now.d > TWIST_SPREAD) {
+            let da = now.a - this.pinchPrev.a;
+            if (da > Math.PI) da -= 2 * Math.PI;
+            else if (da < -Math.PI) da += 2 * Math.PI;
+            this.twist += da;
+          }
+        }
       }
       this.pinchPrev = now;
     });
@@ -210,13 +227,24 @@ export class Input {
     });
   }
 
-  /** Where the fingers are, as one point and one spread. Null under two fingers. */
-  private gesture(): { x: number; y: number; d: number } | null {
+  /**
+   * Where the fingers are, as one point, one spread and one angle. Null under
+   * two fingers.
+   *
+   * The angle is of the line between the first two fingers, which is what a
+   * twist changes. Taken from the same pair as the spread on purpose: with three
+   * fingers down the centroid still moves the camera, but the pair that decides
+   * zoom has to be the pair that decides rotation or a third finger landing
+   * would swap one gesture's reference without swapping the other's.
+   */
+  private gesture(): { x: number; y: number; d: number; a: number } | null {
     const pts = [...this.touches.values()];
     if (pts.length < 2) return null;
     const x = pts.reduce((t, p) => t + p.x, 0) / pts.length;
     const y = pts.reduce((t, p) => t + p.y, 0) / pts.length;
-    return { x, y, d: Math.hypot(pts[0]!.x - pts[1]!.x, pts[0]!.y - pts[1]!.y) };
+    const dx = pts[1]!.x - pts[0]!.x;
+    const dy = pts[1]!.y - pts[0]!.y;
+    return { x, y, d: Math.hypot(dx, dy), a: Math.atan2(dy, dx) };
   }
 
   private on(target: EventTarget, type: string, fn: EventListener): void {
@@ -300,6 +328,7 @@ export class Input {
     this.panX = 0;
     this.panY = 0;
     this.zoomScale = 1;
+    this.twist = 0;
   }
 
   dispose(): void {

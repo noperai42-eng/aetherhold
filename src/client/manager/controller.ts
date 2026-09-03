@@ -249,8 +249,8 @@ export class ManagerController {
    * What a hand on the glass means, which is the one thing `Input` cannot know:
    * it depends on which tool is armed.
    *
-   * Two fingers are always the camera — drag to pan, pinch to zoom — so there is
-   * a way to move the map that never changes meaning. One finger is the tool: a
+   * Two fingers are always the camera — drag to pan, pinch to zoom, twist to
+   * turn — so there is a way to move the map that never changes meaning. One finger is the tool: a
    * tap is a click, and a drag is the rectangle drag, except with the select tool
    * where there is no rectangle to drag and the finger pans instead. That is the
    * same split a mouse has (left button acts, middle button moves), reached with
@@ -268,6 +268,12 @@ export class ManagerController {
     // Spreading the fingers pulls the map closer, which is the opposite sign to
     // the distance the camera keeps.
     if (input.zoomScale !== 1) this.cam.zoom(1 / input.zoomScale);
+    // Twisting turns the valley under the fingers rather than turning the camera
+    // around it, so the sign is flipped the way the pan's is: the ground follows
+    // the hand. This is Q and E reached with two fingers — the last camera
+    // control that had no gesture, and the one a player misses first, because an
+    // isometric view puts a wall in front of whatever you are trying to look at.
+    if (input.twist) this.cam.orbit(-input.twist, 0);
 
     if (this.tool === 'select') {
       if (input.dragging && (input.moveX || input.moveY)) {

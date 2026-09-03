@@ -166,6 +166,63 @@ describe('Input reads fingers', () => {
     });
   });
 
+  it('reads two fingers turning about their centre as a twist', () => {
+    withBrowser((el) => {
+      const input = reader(el);
+      el.fire('pointerdown', touchEvent(1, 400, 400));
+      el.fire('pointerdown', touchEvent(2, 500, 400));
+      // A quarter turn clockwise about (450, 400), spread unchanged.
+      el.fire('pointermove', touchEvent(1, 450, 350));
+      el.fire('pointermove', touchEvent(2, 450, 450));
+
+      expect(input.twist).toBeCloseTo(Math.PI / 2, 1);
+      // Turning about a fixed centre is neither a pan nor a pinch.
+      expect(input.zoomScale).toBeCloseTo(1, 1);
+      expect(Math.abs(input.panX) + Math.abs(input.panY)).toBeLessThan(1);
+    });
+  });
+
+  it('does not read a twist off a pinch', () => {
+    withBrowser((el) => {
+      const input = reader(el);
+      el.fire('pointerdown', touchEvent(1, 400, 400));
+      el.fire('pointerdown', touchEvent(2, 500, 400));
+      el.fire('pointermove', touchEvent(1, 350, 400));
+      el.fire('pointermove', touchEvent(2, 550, 400));
+
+      expect(input.zoomScale).toBeCloseTo(2, 1);
+      expect(input.twist).toBeCloseTo(0, 4);
+    });
+  });
+
+  it('ignores the angle between fingertips that are almost touching', () => {
+    // Two fingers 20px apart swing through half a radian on 5px of travel, and
+    // that half radian would ride on top of every pinch the player makes.
+    withBrowser((el) => {
+      const input = reader(el);
+      el.fire('pointerdown', touchEvent(1, 400, 400));
+      el.fire('pointerdown', touchEvent(2, 420, 400));
+      el.fire('pointermove', touchEvent(1, 410, 390));
+      el.fire('pointermove', touchEvent(2, 410, 410));
+
+      expect(input.twist).toBe(0);
+    });
+  });
+
+  it('forgets the twist when the frame is read', () => {
+    withBrowser((el) => {
+      const input = reader(el);
+      el.fire('pointerdown', touchEvent(1, 400, 400));
+      el.fire('pointerdown', touchEvent(2, 500, 400));
+      el.fire('pointermove', touchEvent(1, 450, 350));
+      el.fire('pointermove', touchEvent(2, 450, 450));
+      expect(input.twist).not.toBe(0);
+
+      input.endFrame();
+      expect(input.twist).toBe(0);
+    });
+  });
+
   it('gives up on the drag when a second finger lands', () => {
     withBrowser((el) => {
       const input = reader(el);
@@ -256,6 +313,7 @@ function fakeInput(opts: Partial<Record<string, unknown>> = {}): Input {
     panX: 0,
     panY: 0,
     zoomScale: 1,
+    twist: 0,
     pressed: () => false,
     held: () => false,
     clicked: () => false,
@@ -335,6 +393,36 @@ describe('the manager under a finger', () => {
 
     ctl.update(world, fakeInput({ zoomScale: 1 / 1.5 }), 0.05);
     expect(cam.state.distance).toBeGreaterThan(closer);
+  });
+
+  it('turns the valley when two fingers twist', () => {
+    const { world, cam, ctl } = game();
+    const start = cam.state.yaw;
+
+    ctl.update(world, fakeInput({ twist: 0.4 }), 0.05);
+    const turned = cam.state.yaw;
+    expect(turned).not.toBeCloseTo(start, 3);
+
+    // And back the other way, so a twist is a control rather than a ratchet.
+    ctl.update(world, fakeInput({ twist: -0.4 }), 0.05);
+    expect(cam.state.yaw).toBeCloseTo(start, 3);
+  });
+
+  it('turns the ground with the hand, the way the pan does', () => {
+    // A twist that turned the *camera* clockwise would slide the valley the
+    // other way under the fingers, which reads as the map fighting you.
+    //
+    // Which sign that is cannot be reasoned out from `orbit` alone — it depends
+    // on how yaw lands on the screen through the projection. Measured in a
+    // browser instead: a fixed world point ten cells north of the camera's
+    // target, projected before and after `orbit(-0.5, 0)`, swings +0.505 rad
+    // clockwise in screen terms. So a clockwise finger — which is a rising
+    // `atan2(dy, dx)`, because screen y points down — has to reach `orbit` with
+    // its sign flipped, and this test is what holds that flip in place.
+    const { world, cam, ctl } = game();
+    const start = cam.state.yaw;
+    ctl.update(world, fakeInput({ twist: 0.4 }), 0.05);
+    expect(cam.state.yaw).toBeLessThan(start);
   });
 
   it('plants one building where a tap lands', () => {
