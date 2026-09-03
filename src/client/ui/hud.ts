@@ -3341,6 +3341,19 @@ export class Hud {
 
 // ---------------------------------------------------------------- colonist row
 
+/*
+ * Five coloured bars with nothing beside them told the player how full each
+ * settler was of something, but not of what. The words cost a line of height
+ * each and buy the card its meaning back.
+ */
+const NEEDS: ReadonlyArray<readonly [string, string]> = [
+  ['hp', 'Health'],
+  ['food', 'Food'],
+  ['rest', 'Rest'],
+  ['rec', 'Fun'],
+  ['mood', 'Mood'],
+];
+
 class ColonistRow {
   readonly el: HTMLElement;
   private readonly name: HTMLElement;
@@ -3356,12 +3369,12 @@ class ColonistRow {
     this.act = el('span', 'act');
     row1.append(this.name, this.act);
     const bars = el('div', 'bars');
-    for (const key of ['hp', 'food', 'rest', 'rec', 'mood']) {
+    for (const [key, label] of NEEDS) {
       const b = el('div', `bar ${key}`);
       const fill = el('i');
       b.append(fill);
       this.bars[key] = fill;
-      bars.append(b);
+      bars.append(el('span', 'barlabel', {}, label), b);
     }
     this.tags = el('div', 'taglist');
     this.el.append(row1, bars, this.tags);

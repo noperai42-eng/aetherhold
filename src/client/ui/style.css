@@ -250,11 +250,24 @@ body {
   min-width: 0;
 }
 
+/*
+ * A label column and a bar column. The labels are the narrowest thing that
+ * still reads as a word, because the card is 208px wide on the desk and the
+ * bar has to stay long enough to show a quarter-full from a half-full.
+ */
 .bars {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: 3px 6px;
   margin-top: 5px;
+}
+
+.barlabel {
+  font-size: 9px;
+  letter-spacing: 0.3px;
+  text-transform: uppercase;
+  color: var(--dim);
 }
 
 .bar {

@@ -120,7 +120,10 @@ describe('the phone layout cannot reach a desk', () => {
 });
 
 describe('every destination on the bar raises something', () => {
-  const keys = [...HUD.matchAll(/\['(\w+)', '[^']+'\],/g)].map((m) => m[1]!);
+  // Sliced to the SHEETS table: hud.ts has other `['key', 'Label']` tables.
+  const start = HUD.indexOf('const SHEETS');
+  const table = HUD.slice(start, HUD.indexOf('];', start));
+  const keys = [...table.matchAll(/\['(\w+)', '[^']+'\]/g)].map((m) => m[1]!);
 
   it('finds the five sheets declared in hud.ts', () => {
     expect(keys).toEqual(['build', 'crew', 'events', 'info', 'more']);
