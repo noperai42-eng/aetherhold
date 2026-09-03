@@ -145,3 +145,26 @@ describe('every destination on the bar raises something', () => {
     }
   });
 });
+
+describe('the phone is never told about hardware it has not got', () => {
+  it('routes every shortcut in a button label through the key helper', () => {
+    // `Work (P)` on a phone is an instruction for a keyboard the reader does not
+    // have, and it is the label a hurried edit will re-hardcode: the parenthesis
+    // is the right answer on every other machine, so it looks correct in the
+    // source and wrong only on the one screen nobody is testing on.
+    const hard = [...HUD.matchAll(/'([A-Za-z][A-Za-z ]* \([A-Za-z;'`]\))'/g)].map((m) => m[1]!);
+    expect(hard, 'these labels name a key without asking the layout first').toEqual([]);
+  });
+
+  it('keeps the keyboard tables out of the phone help card', () => {
+    // The card is the first thing a new player reads. On a phone the keyboard
+    // half is forty lines naming keys, a wheel and two mouse buttons — none of
+    // which exist — before anything says what the five words along the bottom
+    // of their screen do.
+    expect(HUD).toMatch(/const controls = this\.phone\s*\?\s*bar\s*:/);
+    // And the desk keeps them: a phone-shaped card everywhere is the same bug
+    // pointed the other way.
+    expect(HUD).toContain('KEYS_COLONY');
+    expect(HUD).toContain('KEYS_FPS');
+  });
+});

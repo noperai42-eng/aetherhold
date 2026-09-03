@@ -2696,3 +2696,30 @@ body {
   color: var(--ink);
   box-shadow: inset 0 2px 0 var(--edge-strong);
 }
+
+/* ---- the help card, and the setup card behind it ---- */
+
+/*
+ * The card is a document rather than a sheet, so it keeps its own layout — what
+ * changes is the two-column term list, which spends 132px of a 390-wide screen
+ * on a word, and the row of buttons at the foot, which is the only place in the
+ * game a player has to press something before they can play at all.
+ */
+#hud.phone .card dl {
+  grid-template-columns: 1fr;
+  gap: 0 0;
+}
+
+#hud.phone .card dt {
+  margin-top: 8px;
+}
+
+#hud.phone .card dd {
+  margin-bottom: 2px;
+}
+
+#hud.phone .card .acts .btn {
+  min-height: 46px;
+  padding-left: 14px;
+  padding-right: 14px;
+}

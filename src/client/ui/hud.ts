@@ -354,6 +354,38 @@ function saveGuideOff(off: boolean): void {
 }
 
 const SPEEDS = [0, 1, 2, 3];
+/**
+ * The keyboard half of the help card, which is every line that names a key, a
+ * wheel or a mouse button. Lifted out of `buildHelp` so the phone can leave it
+ * out — see the comment there. Two constants rather than one because the card
+ * puts a heading between them.
+ */
+const KEYS_COLONY =
+  `<dt>WASD / arrows</dt><dd>pan · <b>wheel</b> zoom · <b>Q/E</b> rotate · <b>R/F</b> tilt</dd>` +
+  `<dt>Left click</dt><dd>select settler or building</dd>` +
+  `<dt>Right click</dt><dd>order the selected settler to move (drafts them)</dd>` +
+  `<dt>1 – 9, 0</dt><dd>pick a blueprint, then drag to place</dd>` +
+  `<dt>Z / C / X / ⌫</dt><dd>stockpile · chop/mine · deconstruct · cancel (hold Shift to erase)</dd>` +
+  `<dt>B / N</dt><dd>grow zone · till soil — broken ground ripens a crop a quarter faster</dd>` +
+  `<dt>H / K / Y</dt><dd>hunt · tame · pen — a pen holds one animal per six cells, breeds, and pays out milk and down to your farmhands</dd>` +
+  `<dt>U / I / O</dt><dd>bridge · plank floor · paved floor — settlers walk quicker on all three, fire will not cross paving, and a bridge is the only one that goes over water</dd>` +
+  `<dt>T</dt><dd>draft or undraft · <b>Tab</b> cycle settlers · <b>P</b> work priorities · <b>L</b> research</dd>` +
+  `<dt>'</dt><dd>the work board — everything planned but not built, who is on each of it, and how the field is coming along</dd>` +
+  `<dt>M</dt><dd>trade — only while a caravan is standing in the yard</dd>` +
+  `<dt>J</dt><dd>the road — send a settler over the ridge to the neighbours</dd>` +
+  `<dt>;</dt><dd>the story — everything that has happened here, by day. The corner log only keeps the last few minutes; this keeps the rest.</dd>` +
+  `<dt>\`</dt><dd>send a Picky — a little pink goblin runs to the cell you click and says whether it got there. Nobody going somewhere? Ask one.</dd>` +
+  `<dt>Space</dt><dd>pause · <b>-</b> and <b>=</b> slow down / speed up — manager only</dd>` +
+  `<dt>G</dt><dd>possess the selected settler</dd>`;
+
+const KEYS_FPS =
+  `<dt>V</dt><dd>switch view, any time, no reload</dd>` +
+  `<dt>WASD / Shift</dt><dd>walk / run — <b>A</b> and <b>D</b> step sideways, they do not turn</dd>` +
+  `<dt>Mouse or ← →</dt><dd>turn · <b>↑ ↓</b> look up and down · click once to grab the mouse</dd>` +
+  `<dt>E</dt><dd>interact: mine rock, chop trees, beds, food, stoves, blueprints, fires, wounded</dd>` +
+  `<dt>Click</dt><dd>attack — only while drafted</dd>` +
+  `<dt>Esc</dt><dd>release the mouse</dd>`;
+
 
 /**
  * The phone's bottom bar, in order. Five is the ceiling: a sixth destination on
@@ -629,38 +661,39 @@ export class Hud {
     this.researchPip.style.display = 'none';
     res.append(this.researchPip);
 
+    const key = this.key.bind(this);
     const sys = el('div', '', { id: 'sysbtns' });
     this.qualityBtn = el('button', 'btn', {}, 'Quality: high') as HTMLButtonElement;
     this.qualityBtn.onclick = () => this.cycleQuality();
-    const viewBtn = el('button', 'btn strong', {}, 'Step inside (V)') as HTMLButtonElement;
+    const viewBtn = el('button', 'btn strong', {}, key('Step inside', 'V')) as HTMLButtonElement;
     viewBtn.title = 'Possess a settler and walk the base yourself';
     viewBtn.onclick = () => this.hooks.switchView();
-    const workBtn = el('button', 'btn', {}, 'Work (P)') as HTMLButtonElement;
+    const workBtn = el('button', 'btn', {}, key('Work', 'P')) as HTMLButtonElement;
     workBtn.onclick = () => this.toggleWorkTab();
     // What the colony is actually doing with those priorities, as opposed to
     // what it has been told it may do. Next to the Work button because the two
     // answer each other: the priorities are the policy, the board is the result.
-    const boardBtn = el('button', 'btn', {}, "Board (')") as HTMLButtonElement;
+    const boardBtn = el('button', 'btn', {}, key('Board', "'")) as HTMLButtonElement;
     boardBtn.title = 'Everything planned but not built, who is on it, and how the field is doing';
     boardBtn.onclick = () => this.toggleBoardTab();
-    const techBtn = el('button', 'btn', {}, 'Research (L)') as HTMLButtonElement;
+    const techBtn = el('button', 'btn', {}, key('Research', 'L')) as HTMLButtonElement;
     techBtn.title = 'Choose what the colony is working out at the research bench';
     techBtn.onclick = () => this.toggleResearchTab();
     // Hidden between caravans. A button that is only ever live for half a day
     // every five days is itself the notification that somebody is here.
-    this.tradeBtn = el('button', 'btn strong', {}, 'Trade (M)') as HTMLButtonElement;
+    this.tradeBtn = el('button', 'btn strong', {}, key('Trade', 'M')) as HTMLButtonElement;
     this.tradeBtn.title = 'Deal with the caravan standing in the yard';
     this.tradeBtn.style.display = 'none';
     this.tradeBtn.onclick = () => this.toggleTradeTab();
     // Always live, unlike the shop button: the neighbours are there whether or
     // not anybody is standing in the yard, and finding out who they are is half
     // of what the panel is for.
-    this.roadBtn = el('button', 'btn', {}, 'Road (J)') as HTMLButtonElement;
+    this.roadBtn = el('button', 'btn', {}, key('Road', 'J')) as HTMLButtonElement;
     this.roadBtn.title = 'Send a settler over the ridge to trade with the neighbours';
     this.roadBtn.onclick = () => this.toggleRoadTab();
     // The colony's memory. Next to the Road button because both are things you
     // open, read and close, rather than instruments that sit on screen.
-    this.chronicleBtn = el('button', 'btn', {}, 'Story (;)') as HTMLButtonElement;
+    this.chronicleBtn = el('button', 'btn', {}, key('Story', ';')) as HTMLButtonElement;
     this.chronicleBtn.title =
       'Everything that has happened to this colony, newest first. Semicolon — the key beside L.';
     this.chronicleBtn.onclick = () => this.toggleChronicleTab();
@@ -908,6 +941,20 @@ export class Hud {
       bar.append(b);
     }
     return bar;
+  }
+
+  /**
+   * A button's label, with its keyboard shortcut on the machines that have one.
+   *
+   * "Work (P)" is an instruction for hardware a phone player does not have, and
+   * it is the label a hurried edit will re-hardcode: the parenthesis is right on
+   * every other machine, so it reads as correct in the source and is wrong only
+   * on the one screen nobody is testing on. A touch laptop keeps the key —
+   * there the parenthesis is the only place the shortcut is written down outside
+   * the help card.
+   */
+  private key(label: string, k: string): string {
+    return this.phone ? label : `${label} (${k})`;
   }
 
   /** Raise one sheet, or none. A no-op on a desk, where every panel is already up. */
@@ -1267,7 +1314,7 @@ export class Hud {
             'button',
             'btn',
             {},
-            p.hunted ? 'Call off' : p.tame ? 'Slaughter (H)' : 'Hunt this (H)',
+            p.hunted ? 'Call off' : this.key(p.tame ? 'Slaughter' : 'Hunt this', 'H'),
           ) as HTMLButtonElement;
           hunt.onclick = () => this.hooks.setHunted(p.id, !p.hunted);
           acts.append(hunt);
@@ -1280,7 +1327,7 @@ export class Hud {
             'button',
             'btn',
             {},
-            p.tameTarget ? 'Leave wild' : 'Tame (K)',
+            p.tameTarget ? 'Leave wild' : this.key('Tame', 'K'),
           ) as HTMLButtonElement;
           tame.onclick = () => this.hooks.setTamed(p.id, !p.tameTarget);
           acts.append(tame);
@@ -1448,7 +1495,7 @@ export class Hud {
       if (p.faction === 'colony') {
         this.inspector.append(this.stackPanel(s.world, p));
         const acts = el('div', 'acts');
-        const draft = el('button', 'btn', {}, p.drafted ? 'Undraft (T)' : 'Draft (T)') as HTMLButtonElement;
+        const draft = el('button', 'btn', {}, this.key(p.drafted ? 'Undraft' : 'Draft', 'T')) as HTMLButtonElement;
         draft.onclick = () => this.hooks.setDraft(p.id, !p.drafted);
         const hand = el(
           'button',
@@ -1457,7 +1504,7 @@ export class Hud {
           p.manual ? 'On the board' : 'Take over',
         ) as HTMLButtonElement;
         hand.onclick = () => this.hooks.setManual(p.id, !p.manual);
-        const poss = el('button', 'btn', {}, 'Possess (G)') as HTMLButtonElement;
+        const poss = el('button', 'btn', {}, this.key('Possess', 'G')) as HTMLButtonElement;
         poss.onclick = () => this.hooks.possess(p.id);
         acts.append(draft, hand, poss);
         this.inspector.append(acts);
@@ -1506,7 +1553,7 @@ export class Hud {
       recipeRows(s.world, b) +
       `<div class="kv"><span>blocks movement</span><b>${def.solid ? 'yes' : 'no'}</b></div>`;
     const acts = el('div', 'acts');
-    const cancel = el('button', 'btn', {}, b.built ? 'Deconstruct (X)' : 'Cancel') as HTMLButtonElement;
+    const cancel = el('button', 'btn', {}, b.built ? this.key('Deconstruct', 'X') : 'Cancel') as HTMLButtonElement;
     cancel.onclick = () => this.hooks.cancelBuilding(b.id);
     acts.append(cancel);
     this.inspector.append(acts);
@@ -3193,41 +3240,46 @@ export class Hud {
     const glass = touchy
       ? `<h2>On glass</h2><dl>` +
         `<dt>One finger</dt><dd>tap to select · drag to move the map — or to paint, when a tool is picked</dd>` +
-        `<dt>Two fingers</dt><dd>drag to pan · pinch to zoom — always the camera, whatever is armed</dd>` +
+        `<dt>Two fingers</dt><dd>drag to pan · pinch to zoom · twist to turn — always the camera, ` +
+        `whatever is armed</dd>` +
         `<dt>The bottom bar</dt><dd>every order lives there; <b>Select</b> and <b>Cancel</b> are under <b>Orders</b></dd>` +
         `<dt>Inside a body</dt><dd>the thumb pad walks · drag the world to look · <b>E</b>, <b>Fire</b>, ` +
         `<b>T</b> and <b>Colony</b> run down the right</dd>` +
         `</dl>`
       : '';
+
+    // On a phone the keyboard tables above are not merely useless, they are the
+    // first thing a new player reads: forty lines naming keys, a wheel and two
+    // mouse buttons, none of which exist, before anything says what the five
+    // words along the bottom of their screen do. So the phone gets its own two
+    // sections and skips those entirely — same card, same code, different half.
+    const bar =
+      `<h2>The bar along the bottom</h2><dl>` +
+      `<dt>Build</dt><dd>every blueprint and every order, sorted by kind. Pick one, then drag ` +
+      `across the ground to place it. <b>Select</b> and <b>Cancel</b> live under <b>Orders</b>.</dd>` +
+      `<dt>Crew</dt><dd>your settlers, what each is doing, and how they are holding up</dd>` +
+      `<dt>Events</dt><dd>what is still wrong, over what just happened</dd>` +
+      `<dt>Details</dt><dd>whatever you last tapped. It comes up on its own when you tap a ` +
+      `settler, an animal or a square, and goes away again when you tap empty ground.</dd>` +
+      `<dt>More</dt><dd>stepping inside a settler, work priorities, research, the road over the ` +
+      `ridge, the story so far, and saving</dd>` +
+      `</dl>` +
+      `<p>Pressing the one you are already on puts it away and gives you the whole valley back.</p>` +
+      `<h2>Moving the valley</h2><dl>` +
+      `<dt>One finger</dt><dd>tap to select · drag to paint, once a tool is picked</dd>` +
+      `<dt>Two fingers</dt><dd>drag to pan · pinch to zoom · twist to turn — always the camera, ` +
+      `whatever is armed. Turning is how you get a look behind a wall.</dd>` +
+      `<dt>Inside a body</dt><dd>the thumb pad walks · drag the world to look · <b>E</b>, ` +
+      `<b>Fire</b>, <b>T</b> and <b>Colony</b> run down the right</dd>` +
+      `</dl>`;
+
+    const controls = this.phone
+      ? bar
+      : `<h2>Colony view</h2><dl>` + KEYS_COLONY + `</dl><h2>First person</h2><dl>` + KEYS_FPS + `</dl>` + glass;
     card.innerHTML =
       `<h1>AETHERHOLD</h1><p>Three settlers, one clearing, and whatever comes out of the treeline. ` +
       `You can run the colony from above or step inside any settler's body — it is the same world either way.</p>` +
-      `<h2>Colony view</h2><dl>` +
-      `<dt>WASD / arrows</dt><dd>pan · <b>wheel</b> zoom · <b>Q/E</b> rotate · <b>R/F</b> tilt</dd>` +
-      `<dt>Left click</dt><dd>select settler or building</dd>` +
-      `<dt>Right click</dt><dd>order the selected settler to move (drafts them)</dd>` +
-      `<dt>1 – 9, 0</dt><dd>pick a blueprint, then drag to place</dd>` +
-      `<dt>Z / C / X / ⌫</dt><dd>stockpile · chop/mine · deconstruct · cancel (hold Shift to erase)</dd>` +
-      `<dt>B / N</dt><dd>grow zone · till soil — broken ground ripens a crop a quarter faster</dd>` +
-      `<dt>H / K / Y</dt><dd>hunt · tame · pen — a pen holds one animal per six cells, breeds, and pays out milk and down to your farmhands</dd>` +
-      `<dt>U / I / O</dt><dd>bridge · plank floor · paved floor — settlers walk quicker on all three, fire will not cross paving, and a bridge is the only one that goes over water</dd>` +
-      `<dt>T</dt><dd>draft or undraft · <b>Tab</b> cycle settlers · <b>P</b> work priorities · <b>L</b> research</dd>` +
-      `<dt>'</dt><dd>the work board — everything planned but not built, who is on each of it, and how the field is coming along</dd>` +
-      `<dt>M</dt><dd>trade — only while a caravan is standing in the yard</dd>` +
-      `<dt>J</dt><dd>the road — send a settler over the ridge to the neighbours</dd>` +
-      `<dt>;</dt><dd>the story — everything that has happened here, by day. The corner log only keeps the last few minutes; this keeps the rest.</dd>` +
-      `<dt>\`</dt><dd>send a Picky — a little pink goblin runs to the cell you click and says whether it got there. Nobody going somewhere? Ask one.</dd>` +
-      `<dt>Space</dt><dd>pause · <b>-</b> and <b>=</b> slow down / speed up — manager only</dd>` +
-      `<dt>G</dt><dd>possess the selected settler</dd>` +
-      `</dl><h2>First person</h2><dl>` +
-      `<dt>V</dt><dd>switch view, any time, no reload</dd>` +
-      `<dt>WASD / Shift</dt><dd>walk / run — <b>A</b> and <b>D</b> step sideways, they do not turn</dd>` +
-      `<dt>Mouse or ← →</dt><dd>turn · <b>↑ ↓</b> look up and down · click once to grab the mouse</dd>` +
-      `<dt>E</dt><dd>interact: mine rock, chop trees, beds, food, stoves, blueprints, fires, wounded</dd>` +
-      `<dt>Click</dt><dd>attack — only while drafted</dd>` +
-      `<dt>Esc</dt><dd>release the mouse</dd>` +
-      `</dl>` +
-      glass +
+      controls +
       `<h2>How a run ends</h2>` +
       `<p>Badly, if everybody dies. Well, if you can meet all five <b>charters</b> at once — eight ` +
       `settlers, twelve days of food, two turrets, six research projects, and an ally over the ridge ` +
@@ -3241,7 +3293,8 @@ export class Hud {
       `<p style="margin-top:12px">Orders you give from above become jobs your body can carry out. ` +
       `Walk somewhere yourself and you have overridden the order — that is intended.</p>` +
       `<p><b>Save</b> keeps a colony you choose to keep. The game also autosaves every minute and ` +
-      `whenever you close the tab — <b>Continue</b> in the top bar picks that one up.</p>` +
+      `whenever you close the tab — <b>Continue</b> ${this.phone ? 'under <b>More</b>' : 'in the top bar'} ` +
+      `picks that one up.</p>` +
       `<p>Saves live in the browser, filed under the exact address you played at, so a colony ` +
       `does not follow you to a different link or a different device. <b>Backup</b> hands you the ` +
       `whole colony as text — copy it, keep it, and paste it back in anywhere to carry on from ` +
@@ -3252,14 +3305,20 @@ export class Hud {
       `If you would rather work it out yourself, the <b>✕</b> on that header hides the list, ` +
       `and <b>Hide / Show next steps</b> below does the same thing from here. The charters, ` +
       `the milestones in the log and everything they send stay either way.</p>` +
-      `<p>The settler list, the details panel and the log all have a <b>⠿</b> in the corner: ` +
-      `drag it to move the panel, click it to fold the panel away, and drag the bottom-right ` +
-      `corner of the details panel or the log to resize it. Where you leave them is remembered.</p>`;
+      (this.phone
+        ? `<p>Nothing here moves or folds: on a phone each panel is a sheet that comes up over ` +
+          `the valley when you ask for it and goes away when you are done. On a larger screen ` +
+          `they are all on at once, and every one of them can be dragged where you want it.</p>`
+        : `<p>The settler list, the details panel and the log all have a <b>⠿</b> in the corner: ` +
+          `drag it to move the panel, click it to fold the panel away, and drag the bottom-right ` +
+          `corner of the details panel or the log to resize it. Where you leave them is remembered.</p>`);
     const acts = el('div', 'acts');
     const close = el('button', 'btn', {}, 'Play') as HTMLButtonElement;
     close.onclick = () => overlay.classList.remove('on');
+    // Nothing to reset on a phone: no panel there was ever anywhere else.
     const reset = el('button', 'btn', {}, 'Reset panels') as HTMLButtonElement;
     reset.onclick = () => this.resetPanels();
+    if (this.phone) reset.style.display = 'none';
     this.guideBtn = el(
       'button',
       'btn',
