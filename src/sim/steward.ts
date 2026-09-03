@@ -45,7 +45,9 @@ import { DRAW, GENERATOR_OUTPUT, conducts, isElectrical, isSource, powerNetworks
 import { regionAt } from './regions';
 import { indoors, roomIndex, type Room } from './rooms';
 import { REC_SPOTS } from './recreation';
-import { available, buildingUnlocked, setProject } from './research';
+import { foodDays } from './alerts';
+import { COLD_BELOW } from './health';
+import { RESEARCH, available, buildingUnlocked, setProject, type ResearchId } from './research';
 import { addCellToZone, addZone, livingColonists, countResource, msg, removeBuilding, hostiles } from './world';
 import {
   DESIG_FLOOR_PLANK,
@@ -1097,7 +1099,268 @@ export function stewardOn(world: World): boolean {
 }
 
 /**
- * Keep a project on the bench.
+ * Days of food below which the bench should care about the pantry.
+ *
+ * Deliberately not `alerts.ts`'s four-day warning, and the gap between them is
+ * the point. An alert is *act today* — sow something, go hunting, cook what is
+ * in the store — and a colony four days from empty cannot be helped by anything
+ * a settler starts reading this afternoon. The bench works on a horizon of days
+ * to a week, so the question it should be asked is the slower one: is the pantry
+ * thin enough that a third more out of every meal, for ever, is worth an
+ * afternoon now?
+ *
+ * A fortnight, because the sixty-day grid ends hard country somewhere between
+ * five and twenty days of food and the quiet valley between forty and sixty. So
+ * this is the number that has harsh colonies studying preserves and leaves calm
+ * ones free to study whatever comes next — which is the whole behaviour, visible
+ * in one constant.
+ */
+const LEAN_DAYS = 15;
+
+/** Stores this far under the floor is a colony that wants sharper tools. */
+const SPENT_STORES = 0.5;
+
+/**
+ * How badly the colony has to want a thing before it reorders its own work.
+ *
+ * A want with no floor under it is not a preference, it is a tiebreak — and it
+ * wins every tie, because the thing it is bidding against scores exactly zero.
+ * `available[0]` has no want on it at all; it is there because the tree is
+ * ordered. So *any* reading above nothing took the bench.
+ *
+ * calm/99001 is the whole argument, and it took a tick-by-tick probe to see it
+ * because the grid only reports endings. Day eight, thirteen days and change of
+ * food in the store, nobody hurt, nobody cold: `hunger` read **0.05**, and five
+ * percent was enough to put eleven thousand points of salting in front of the
+ * tree. Day eleven, fourteen and a half days of food, it read 0.02 and bought
+ * fifteen thousand points of raised beds. That colony finished its sixty days
+ * with five projects done against sixteen, seven hands against thirteen, and one
+ * trade party past the near ring against ten. Nothing was ever wrong with it. It
+ * was simply never quite comfortable, and a scorer with no floor under it reads
+ * "not quite comfortable" as "drop everything".
+ *
+ * One settler in three, because three is what a colony is founded with — the
+ * smallest share that is a fact about a settlement rather than about one person
+ * having a bad week. `fieldmedicine` and `weaving` are shares of the colony
+ * outright, so it means precisely that. `hunger` measures a fortnight, so it
+ * means ten days of food left, which is where a colony starts planning around
+ * its pantry instead of merely noticing it.
+ *
+ * Applied here rather than in `pickProject` so one number means one thing
+ * everywhere: below the floor there is no want, so the log line names no
+ * pressure, the research panel prints no reason, and the bench works down the
+ * tree. One behaviour, described the same way in three places.
+ */
+const WORTH_THE_BENCH = 1 / 3;
+
+/**
+ * A reason to study something *now*.
+ *
+ * Mirrors `Ambition` on purpose, down to the `says` line: an id, what the colony
+ * says when it takes the work up, and one function that reads the world and
+ * answers how badly. Anything not in this table wants nothing on its own, which
+ * is not the same as never being chosen — see `wantOf`.
+ */
+interface Want {
+  id: ResearchId;
+  /**
+   * Present tense, and it names the pressure rather than the project. The player
+   * should be able to read the line in the log and agree with the choice without
+   * opening the research panel.
+   */
+  says: string;
+  /** 0 is "no reason today"; 1 is "this is the worst thing about this colony". */
+  want(world: World): number;
+}
+
+const clamp01 = (v: number): number => Math.max(0, Math.min(1, v));
+
+/** How thin the pantry is, on the bench's horizon rather than the alert bar's. */
+function hunger(world: World): number {
+  return clamp01((LEAN_DAYS - foodDays(world)) / LEAN_DAYS);
+}
+
+/** Whether the last raid drew blood. Nothing before the first raid. */
+function bloodied(world: World): boolean {
+  const st = world.storyteller;
+  return st.threatsFired > 0 && (st.unbloodied ?? 1) === 0;
+}
+
+/**
+ * What the colony is short of, project by project.
+ *
+ * Seven entries against nineteen projects, and the emptiness is deliberate:
+ * a want belongs here only where there is a signal the colony already keeps for
+ * its own reasons and where the project genuinely answers it. `apprenticeship`
+ * is the clearest omission and the clearest case — its whole design is that it
+ * is worth taking *early* and worth nothing late, which is a judgement about the
+ * calendar and not about any pressure the colony is under. A scorer for it would
+ * be a number invented to look like a measurement.
+ */
+const WANTS: Want[] = [
+  {
+    id: 'toolmaking',
+    says: 'The colony puts somebody on toolmaking — the stores go down faster than they come in.',
+    want: (world) =>
+      clamp01(
+        Math.max(
+          (WOOD_FLOOR * SPENT_STORES - countResource(world, 'wood')) / (WOOD_FLOOR * SPENT_STORES),
+          (STEEL_FLOOR * SPENT_STORES - countResource(world, 'steel')) / (STEEL_FLOOR * SPENT_STORES),
+        ),
+      ),
+  },
+  {
+    id: 'preserves',
+    says: 'The colony takes up preserving — the pantry will not last the month as it is.',
+    want: hunger,
+  },
+  {
+    id: 'soilbeds',
+    // Only with something planted. A colony with no plot gets nothing at all from
+    // a faster plot, however hungry it is, and a want that fires anyway would
+    // send a starving colony to read about drainage instead of about salt.
+    says: 'The colony studies its beds — the plot has to come in faster than this.',
+    want: (world) => (growingCells(world).length > 0 ? hunger(world) : 0),
+  },
+  {
+    id: 'fieldmedicine',
+    says: 'The colony turns to field medicine — there are more people to treat than hands to treat them.',
+    want: (world) => {
+      const living = livingColonists(world);
+      if (living.length === 0) return 0;
+      // Down counts whole and ill counts half: one is somebody bleeding on the
+      // floor and the other is somebody who will be at work tomorrow.
+      const hurt = living.reduce((n, p) => n + (p.downed ? 1 : (p.ailments?.length ?? 0) > 0 ? 0.5 : 0), 0);
+      return clamp01(hurt / living.length);
+    },
+  },
+  {
+    id: 'stonecutting',
+    // Wanted for the stone wall it unlocks, so it wants a timber perimeter to
+    // replace. A colony with nothing built to keep anybody out is not short of
+    // masonry; it is short of a wall, and that is the Steward's other half.
+    says: 'The colony sends for stone — timber did not hold the last time.',
+    want: (world) =>
+      bloodied(world) && world.buildings.some((b) => b.built && (b.kind === 'fence' || b.kind === 'wall')) ? 1 : 0,
+  },
+  {
+    id: 'rifling',
+    says: 'The colony works on its barrels — the last raid cost more than it should have.',
+    want: (world) => (bloodied(world) ? 1 : 0),
+  },
+  {
+    id: 'weaving',
+    // `COLD_BELOW` and not "below comfortable", which is the difference between a
+    // pressure and a weather report. `comfortAt` puts a clear night outdoors near
+    // −0.46 with nothing on, so every colony ever founded is *below comfortable*
+    // on its first night — a want reading 1.0 in every game on day eight is a
+    // constant wearing a measurement's clothes, and it cost two grid colonies
+    // their founding by putting twenty-two thousand points of coats in front of
+    // the six-thousand-point axe. `COLD_BELOW` is the line health.ts already draws
+    // and already charges for: past it the immune system starts paying.
+    says: 'The colony gets to work on coats — somebody is out there cold.',
+    want: (world) => {
+      const living = livingColonists(world);
+      if (living.length === 0) return 0;
+      return clamp01(living.filter((p) => (p.comfort ?? 0) < COLD_BELOW).length / living.length);
+    },
+  },
+];
+
+/**
+ * A project is worth what it is worth, or what the best thing behind it is worth
+ * — whichever is larger.
+ *
+ * This is the part that makes need-driven picking work at all. Every want in the
+ * table above is on a project some colony cannot yet reach: parkas are two
+ * projects deep and stone is behind toolmaking, so a colony freezing to death
+ * would score `weaving` at 1.0, find it unavailable, and study something else
+ * for ever. So a want propagates *down* its prerequisites — the cold colony sees
+ * `tanning` scoring what the parka scores, takes it, and arrives at the parka
+ * next pass, which is what a person planning would have done.
+ *
+ * The tree is nineteen nodes and acyclic, so this is a memoised walk and not
+ * worth being cleverer about.
+ */
+export interface Wanted {
+  /** The best want reachable from here, this project's own included. */
+  score: number;
+  /**
+   * Which project that want is actually *on* — the same id when the colony wants
+   * this thing for itself, and the one further up when this is the prerequisite
+   * standing in for it. Null when nothing wants this at all. It is what lets the
+   * log say "somebody is out there cold" over a settler sitting down to study
+   * tanning, which is the sentence that makes the choice legible.
+   */
+  because: ResearchId | null;
+}
+
+export function researchWants(world: World): Map<ResearchId, Wanted> {
+  const raw = new Map<ResearchId, number>();
+  // Below the floor is not a small want; it is no want at all. See
+  // `WORTH_THE_BENCH` — a pressure nobody would change their plans over is a
+  // reading, not a reason, and the tree is what a colony does when it has none.
+  for (const w of WANTS) {
+    const score = w.want(world);
+    raw.set(w.id, score >= WORTH_THE_BENCH ? score : 0);
+  }
+
+  const leadsTo = new Map<ResearchId, ResearchId[]>();
+  for (const def of Object.values(RESEARCH)) {
+    for (const need of def.needs) {
+      const list = leadsTo.get(need);
+      if (list) list.push(def.id);
+      else leadsTo.set(need, [def.id]);
+    }
+  }
+
+  const out = new Map<ResearchId, Wanted>();
+  const scoreOf = (id: ResearchId): Wanted => {
+    const seen = out.get(id);
+    if (seen !== undefined) return seen;
+    const own = raw.get(id) ?? 0;
+    let best: Wanted = { score: own, because: own > 0 ? id : null };
+    // Written before the recursion so a malformed tree cannot hang the sim.
+    out.set(id, best);
+    for (const next of leadsTo.get(id) ?? []) {
+      const up = scoreOf(next);
+      // Strictly greater, so a want on this project beats an equal one behind it
+      // and the colony is told about the thing it is doing now.
+      if (up.score > best.score) best = { score: up.score, because: up.because };
+    }
+    out.set(id, best);
+    return best;
+  };
+  for (const def of Object.values(RESEARCH)) scoreOf(def.id);
+  return out;
+}
+
+/**
+ * The colony's argument for each project, in its own words.
+ *
+ * The log line the Steward writes when it takes something up scrolls away inside
+ * an afternoon, and the research panel is where a player goes to ask "why is
+ * *that* on the bench". A colony that is freezing and studying tanning looks
+ * exactly like a colony that has lost the plot until the panel says the word
+ * cold. Projects nothing argues for are absent rather than present and empty,
+ * so the caller can ask the map and get a straight answer.
+ *
+ * Read-only, and derived entirely from `researchWants` — one walk of the tree
+ * for a whole panel, which is why it hands back a map rather than answering one
+ * project at a time.
+ */
+export function researchReasons(world: World): Map<ResearchId, string> {
+  const out = new Map<ResearchId, string>();
+  for (const [id, w] of researchWants(world)) {
+    if (w.because === null) continue;
+    const says = WANTS.find((x) => x.id === w.because)?.says;
+    if (says !== undefined) out.set(id, says);
+  }
+  return out;
+}
+
+/**
+ * Keep a project on the bench, and keep the right one on it.
  *
  * `setProject` had exactly two callers in the whole game: the eval harness, and
  * a human clicking the Research panel. So an unattended colony left
@@ -1106,11 +1369,23 @@ export function stewardOn(world: World): boolean {
  * everything gated behind it was dead content. Ninety days on three seeds:
  * `research done 0`.
  *
- * The order is `available`, which is `RESEARCH_ORDER` with the prerequisites
- * already filtered out — the order the tree was designed in, and the only one
- * that exists in the sim. The eval harness keeps its own opinionated plan and is
- * welcome to it; two orders in the shipped game would be two things to keep in
- * step for no gain.
+ * That was fixed by taking `available(world)[0]`, which is `RESEARCH_ORDER` with
+ * the prerequisites filtered out. It made the bench work and it made every
+ * colony identical: a settlement under siege with a timber wall studied Tanning
+ * because the list said Tanning, and a player watching it could tell the colony
+ * was reading from a curriculum rather than looking out of the window.
+ *
+ * So the order is now the *tiebreak* rather than the rule. `researchWants` reads
+ * the colony, the highest want wins, and ties fall through to `RESEARCH_ORDER`
+ * exactly as before — which is worth stating plainly, because it means a colony
+ * with nothing pressing behaves precisely as it did before this change. The
+ * comparison is strict `>` for that reason.
+ *
+ * Not scaled by cost. A cheap project that answers nothing still loses to an
+ * expensive one that answers the worst thing about the colony, because the
+ * horizon of a want is the rest of the run and not this week. Where nothing is
+ * pressing, `RESEARCH_ORDER` is already roughly cheapest-first, so the cheap
+ * ordering survives exactly where it is the only thing to go on.
  *
  * Only ever fills a hole, never overrides: if the player has chosen something,
  * `current` is not null and this does nothing. The player who wants a *different*
@@ -1127,10 +1402,32 @@ export function pickProject(world: World): boolean {
   if (world.research.current !== null) return false;
   // A project with nowhere to work on it is a HUD bar that never moves.
   if (!world.buildings.some((b) => b.built && b.kind === 'lab')) return false;
-  const next = available(world)[0];
+  const open = available(world);
+  let next = open[0];
   if (!next) return false;
+  const wants = researchWants(world);
+  let best = wants.get(next.id)?.score ?? 0;
+  for (const def of open) {
+    const w = wants.get(def.id)?.score ?? 0;
+    if (w > best) {
+      best = w;
+      next = def;
+    }
+  }
+  // The pressure's own words when there is one, and the plain line when the
+  // colony is comfortable enough to simply work down the tree.
+  const because = wants.get(next.id)?.because;
+  const said = because ? WANTS.find((w) => w.id === because)?.says : undefined;
+  msg(
+    world,
+    said === undefined
+      ? `The colony takes up ${next.label} at the research bench.`
+      : because === next.id
+        ? said
+        : `${said} They need ${next.label} first.`,
+    'info',
+  );
   setProject(world, next.id);
-  msg(world, `The colony takes up ${next.label} at the research bench.`, 'info');
   return true;
 }
 

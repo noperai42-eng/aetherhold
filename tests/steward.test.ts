@@ -20,10 +20,11 @@ import { makeStreams, stepWorldN } from '../src/sim/tick';
 import { makePawn } from '../src/sim/pawn';
 import { Rng } from '../src/sim/rng';
 import { isSleepHours } from '../src/sim/clock';
+import { foodDays } from '../src/sim/alerts';
 import { freeGraves, unburiedDead } from '../src/sim/graves';
 import { DRAW, GENERATOR_OUTPUT, conducts, isElectrical, isSource, powerNetworks } from '../src/sim/power';
 import { REC_SPOTS } from '../src/sim/recreation';
-import { available, setProject } from '../src/sim/research';
+import { RESEARCH_ORDER, available, setProject } from '../src/sim/research';
 import {
   DESIG_HARVEST,
   DESIG_NONE,
@@ -47,6 +48,8 @@ import {
   boundsOf,
   heart,
   pickProject,
+  researchReasons,
+  researchWants,
   setSteward,
   stewardOn,
   tickSteward,
@@ -94,6 +97,25 @@ function setStock(world: World, kind: ResourceKind, amount: number): void {
 function wellStocked(world: World): void {
   setStock(world, 'wood', 400);
   setStock(world, 'steel', 300);
+}
+
+/**
+ * A colony with nothing pressing: fed for a season, stocked, whole and warm,
+ * and nobody has ever shot at it.
+ *
+ * The research tests below need this because the Steward now studies what the
+ * colony is short of. A fixture that says nothing about food or wounds is not
+ * neutral — it is a *starving* one, and it will pick the pantry every time. This
+ * is the fixture that asks "what does it do when there is no pressure", and the
+ * answer has to be the old behaviour: work down the tree in order.
+ */
+function atEase(world: World): void {
+  wellStocked(world);
+  setStock(world, 'meal', 300);
+  for (const p of livingColonists(world)) {
+    p.comfort = 0;
+    p.ailments = [];
+  }
 }
 
 /**
@@ -565,6 +587,10 @@ describe('what the colony decides to do next', () => {
 
   it('puts a project on the bench, because nothing else in the game ever did', () => {
     const world = createWorld(33);
+    // Nothing pressing, on purpose: tree order is now the *tiebreak* rather than
+    // the rule, and this is the case that pins it still being the tiebreak. A
+    // colony with a want behind it is the test below.
+    atEase(world);
     // No bench, no project: a chosen project with nowhere to work on it is a HUD
     // bar that never moves.
     expect(pickProject(world)).toBe(false);
@@ -631,6 +657,143 @@ describe('what the colony decides to do next', () => {
     tickSteward(world);
     expect(world.research.current).not.toBeNull();
     expect(world.research.current).not.toBe(first);
+  });
+
+  it('studies the pantry before the tree, when the pantry is the problem', () => {
+    const world = createWorld(37);
+    atEase(world);
+    addBuilding(world, 'lab', HOME_X + 1, HOME_Y + 1, true);
+    // Toolmaking behind them, so the next thing on the list is Tanning — which
+    // has nothing whatever to do with the reason this colony is in trouble.
+    world.research.done.push('toolmaking');
+    expect(available(world)[0]!.id).toBe('tanning');
+
+    setStock(world, 'meal', 0);
+    setStock(world, 'rawfood', 0);
+
+    expect(pickProject(world)).toBe(true);
+    expect(world.research.current).toBe('preserves');
+    // The player is told the pressure, not the project — the project is on the
+    // HUD already, and the reason is the thing that was missing.
+    expect(world.messages.at(-1)!.text).toMatch(/pantry/i);
+  });
+
+  /**
+   * The half that makes need-driven picking work at all.
+   *
+   * Almost every answer to an emergency sits two or three projects deep, and a
+   * colony that could only study what it wants *today* would find the answer
+   * unavailable and go back to working down the list — for ever, while the thing
+   * it needed stayed one rung out of reach.
+   */
+  it('takes the first step of a road it cannot walk yet', () => {
+    const world = createWorld(38);
+    atEase(world);
+    addBuilding(world, 'lab', HOME_X + 1, HOME_Y + 1, true);
+    // Everybody is cold. The answer is Weaving, and Weaving is not on offer: it
+    // sits behind Tanning, which nothing in this colony is asking for.
+    for (const p of livingColonists(world)) p.comfort = -1;
+    expect(available(world).some((d) => d.id === 'weaving')).toBe(false);
+
+    expect(pickProject(world)).toBe(true);
+    expect(world.research.current).toBe('tanning');
+    // And the line names the cold, not the hides, because the cold is why.
+    expect(world.messages.at(-1)!.text).toMatch(/cold/i);
+    expect(world.messages.at(-1)!.text).toMatch(/Tanning/);
+  });
+
+  /**
+   * The bill for getting the previous test wrong.
+   *
+   * The first version of the cold want asked whether anybody was below
+   * *comfortable*, and every colony ever founded is below comfortable on its
+   * first night out — nobody owns a coat yet. So the want read 1.0 on day eight
+   * of every game, the road to parkas is twenty-two thousand points and the axe
+   * that speeds every job in the colony is six thousand, and two seeds in the
+   * sixty-day grid stopped founding at all. A want that fires in every game is
+   * not a pressure, and this is the pin that says so: a cold night on its own is
+   * weather, and the colony gets on with the tree.
+   */
+  it('does not chase coats on the first cold night of every colony ever founded', () => {
+    const world = createWorld(38);
+    atEase(world);
+    addBuilding(world, 'lab', HOME_X + 1, HOME_Y + 1, true);
+    // A clear night outdoors with nothing on: unpleasant, and nothing worse.
+    // Below zero, and above the line health.ts starts charging anybody at.
+    for (const p of livingColonists(world)) p.comfort = -0.2;
+
+    expect(pickProject(world)).toBe(true);
+    expect(world.research.current).toBe(available(world)[0]!.id);
+    expect(world.research.current).not.toBe('tanning');
+  });
+
+  /**
+   * The second bill, from the same round, and the deeper of the two.
+   *
+   * A want bids against `available[0]`, which has no want on it — it is there
+   * because the tree is ordered. So with no floor under the scores, *any*
+   * reading above nothing took the bench. calm/99001 spent day eight at
+   * thirteen days of food with nobody hurt and nobody cold, scored the pantry at
+   * five percent, and bought eleven thousand points of salting with it; three
+   * days later two percent bought fifteen thousand points of raised beds. It
+   * finished sixty days on five projects against sixteen and one trade party
+   * past the near ring against ten, having never once been in trouble.
+   *
+   * So: a pressure the colony would not change its plans over does not change
+   * its plans. One settler in three is the line, and a pantry a fortnight less a
+   * day is nowhere near it.
+   */
+  it('does not rebuild the curriculum around a pantry that is merely not full', () => {
+    const world = createWorld(41);
+    atEase(world);
+    addBuilding(world, 'lab', HOME_X + 1, HOME_Y + 1, true);
+    // Toolmaking behind them, so the tree's own answer is Tanning — and
+    // Preserves is sitting right there for anything that reads the pantry.
+    world.research.done.push('toolmaking');
+    expect(available(world)[0]!.id).toBe('tanning');
+
+    setStock(world, 'rawfood', 0);
+    setStock(world, 'meal', 52);
+    // Thinner than full and thicker than a worry: about thirteen days, against a
+    // fortnight's horizon. The colony notices; it does not reorganise.
+    expect(foodDays(world)).toBeGreaterThan(11);
+    expect(foodDays(world)).toBeLessThan(15);
+
+    expect(pickProject(world)).toBe(true);
+    expect(world.research.current).toBe('tanning');
+    // And nothing is offered as a reason, because there was not one.
+    expect(researchReasons(world).get('preserves')).toBeUndefined();
+  });
+
+  /**
+   * What the research panel reads. The log line is written once, on the morning
+   * the Steward takes the work up, and it is gone by lunch — a player who opens
+   * the panel that evening and finds Tanning on the bench while the colony
+   * freezes needs the reason to still be there.
+   */
+  it('can say why any project is worth having, in the colony’s own words', () => {
+    const world = createWorld(40);
+    atEase(world);
+    for (const p of livingColonists(world)) p.comfort = -1;
+
+    const why = researchReasons(world);
+    // On the project the colony actually wants...
+    expect(why.get('weaving')).toMatch(/cold/i);
+    // ...and on the one it has to go through to get there, in the same words,
+    // because that is the sentence that explains the choice it is making today.
+    expect(why.get('tanning')).toBe(why.get('weaving'));
+    // Nothing whatever to do with the cold, so it is absent rather than blank.
+    expect(why.has('cartography')).toBe(false);
+  });
+
+  it('scores nothing at all when nothing is wrong', () => {
+    const world = createWorld(39);
+    atEase(world);
+    const wants = researchWants(world);
+    // Every project in the tree, including the twelve no want ever names.
+    expect(wants.size).toBe(RESEARCH_ORDER.length);
+    const pressing = [...wants].filter(([, w]) => w.score > 0).map(([id]) => id);
+    expect(pressing).toEqual([]);
   });
 
   it('can be stood down, and says so', () => {
@@ -784,6 +947,33 @@ describe('two days in a colony nobody is watching', () => {
     expect(grave!.occupant).toBe(dead.id);
     expect(world.messages.some((m) => /digs graves/i.test(m.text))).toBe(true);
     expect(world.messages.some((m) => new RegExp(`${dead.name} has been laid to rest`).test(m.text))).toBe(true);
+  });
+
+  it('goes looking for stone after timber failed to keep a raid out', () => {
+    const world = createWorld(41);
+    world.tick = NOON;
+    atEase(world);
+    addBuilding(world, 'lab', HOME_X + 1, HOME_Y + 1, true);
+    // The cabin is timber, which is the colony's own evidence about what its
+    // walls are made of — worldgen raises forty-three wall segments and not one
+    // block of stone.
+    expect(world.buildings.some((b) => b.built && b.kind === 'wall')).toBe(true);
+    // And a raid has been through and cost somebody. `unbloodied` is the run of
+    // raids that hurt nobody, so zero is "the last one drew blood".
+    world.storyteller.threatsFired = 1;
+    world.storyteller.unbloodied = 0;
+    // Toolmaking behind them, so left to the tree this colony would spend the
+    // next fortnight learning to cure hides.
+    world.research.done.push('toolmaking');
+    expect(available(world)[0]!.id).toBe('tanning');
+
+    // Three in-game hours of ordinary colony, nothing marked by a player. The
+    // next threat on this seed is nine thousand ticks out, so the bench is being
+    // chosen in peacetime — the colony is acting on a memory, not a siege.
+    stepWorldN(world, makeStreams(world), 600);
+
+    expect(world.research.current).toBe('stonecutting');
+    expect(world.messages.some((m) => /timber did not hold/i.test(m.text))).toBe(true);
   });
 
   it('restocks its own woodpile instead of burning the last of it', () => {
