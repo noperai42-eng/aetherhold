@@ -42,8 +42,8 @@ import { adjacentStandCells, buildingAt, dist, isWalkable } from './grid';
 import { canPlace, designate } from './orders';
 import { planBlueprint } from './stranded';
 import { DRAW, GENERATOR_OUTPUT, conducts, isElectrical, isSource, powerNetworks } from './power';
-import { planAnnex, planPartition } from './annex';
-import { unhoused } from './quarters';
+import { BUNK_DEEP, planBunkhouse, planPartition } from './annex';
+import { QUARTERS_MAX_CELLS, sharedBunks, unhoused } from './quarters';
 import { regionAt } from './regions';
 import { indoors, roomIndex, type Room } from './rooms';
 import { REC_SPOTS } from './recreation';
@@ -170,16 +170,6 @@ export const MAX_BANKS = 2;
 
 /** Blueprints one ambition may mark in a single pass. Keeps a fence growing in stages. */
 const BATCH = 8;
-
-/**
- * Largest room the Steward will treat as somebody's quarters rather than a hall.
- *
- * An annex is six cells. The slack is for a room the player walled themselves —
- * a closet, a porch, a corner of the barn — which should get a bed and become
- * somebody's if it is the right size for one. Past this it is a space with a
- * purpose of its own, and dropping a bunk in the middle of it is vandalism.
- */
-const QUARTERS_MAX_CELLS = 12;
 
 /** Is the colony's own plan clear enough for the Steward to add to it? */
 export function boardClear(world: World): boolean {
@@ -522,6 +512,62 @@ function bedlessRooms(world: World): Room[] {
 }
 
 /**
+ * Walls the next room could lean on, in the order they should be tried.
+ *
+ * Three filters, and every one of them was bought:
+ *
+ *  - **Inside the yard.** The first cut took every enclosed room on the map
+ *    under `QUARTERS_MAX_CELLS`. This map generates caves, a cave is a small
+ *    enclosed room, and so the Steward spent seed 4242 walling bedrooms onto
+ *    rock formations out in the wilderness: forty days, no private rooms, and a
+ *    room lost on day 13 to the connectivity watchdog cleaning up after it.
+ *  - **Not inside the hall.** A partitioned corner is a small enclosed room too,
+ *    and hanging the next room off *it* is carving the hall again — with none of
+ *    `planPartition`'s `HALL_FLOOR_LEFT` guard, because this code does not know
+ *    it is standing in the shared room. The bunkhouse is a thing in the yard.
+ *  - **Nearest first.** Growing away from the hall takes care of itself: each
+ *    room is hung off the last, so the row walks outward whether or not anybody
+ *    sorts for it. Sorting furthest-first only picked the wildest cave.
+ *
+ * The hall stays on the list, at the end, because it is where the first room in
+ * the yard has to come from — there is nothing else standing to lean on yet.
+ */
+function bunkhouseHosts(world: World, h: Room): Room[] {
+  const idx = roomIndex(world);
+  let hx0 = Infinity;
+  let hy0 = Infinity;
+  let hx1 = -Infinity;
+  let hy1 = -Infinity;
+  for (const packed of h.cells) {
+    const x = packed % world.width;
+    const y = (packed - x) / world.width;
+    if (x < hx0) hx0 = x;
+    if (x > hx1) hx1 = x;
+    if (y < hy0) hy0 = y;
+    if (y > hy1) hy1 = y;
+  }
+  const cx = (hx0 + hx1) / 2;
+  const cy = (hy0 + hy1) / 2;
+  // The fence ring plus the depth of one room: a host further out than this
+  // could not have a room hung off it without crossing the boundary anyway.
+  const reach = (hx1 - hx0 + hy1 - hy0) / 2 + YARD_MARGIN + BUNK_DEEP + 2;
+  const small: { room: Room; d: number }[] = [];
+  for (const room of idx.rooms.values()) {
+    if (room.id === h.id) continue;
+    if (room.size > QUARTERS_MAX_CELLS) continue;
+    const c = room.cells[0]!;
+    const x = c % world.width;
+    const y = (c - x) / world.width;
+    if (x >= hx0 && x <= hx1 && y >= hy0 && y <= hy1) continue;
+    const d = dist(cx, cy, x, y);
+    if (d > reach) continue;
+    small.push({ room, d });
+  }
+  small.sort((a, b) => a.d - b.d || a.room.id - b.room.id);
+  return [...small.map((s) => s.room), h];
+}
+
+/**
  * One pass of growing the compound a room at a time.
  *
  * Furnishing comes before building, always. A colony that raised four shells and
@@ -536,18 +582,26 @@ function bedlessRooms(world: World): Room[] {
  * is the colony running power to its rooms, and it costs nothing here.
  */
 function growQuarters(world: World): number {
+  // A spare bunk in the hall is a bed this colony already owns, and the settlers
+  // will carry it next door themselves — see `moveBedJob` in jobs.ts. Marking a
+  // blueprint on top of that would have the colony fell twenty planks for a
+  // second bed and then leave the first one standing in the hall with nobody in
+  // it, which is how a barracks becomes a furniture warehouse.
+  const spare = sharedBunks(world).length > 0;
   for (const room of bedlessRooms(world)) {
-    if (!affordsBuilding(world, 'bed')) break;
-    const cells = freeCells(world, room);
     let n = 0;
-    // Against a wall, like the hall's own beds, so the doorway stays walkable.
-    for (const cell of cells.reverse()) {
-      if (planBlueprint(world, 'bed', cell.x, cell.y)) {
-        n++;
-        break;
+    if (!spare) {
+      if (!affordsBuilding(world, 'bed')) break;
+      const cells = freeCells(world, room);
+      // Against a wall, like the hall's own beds, so the doorway stays walkable.
+      for (const cell of cells.reverse()) {
+        if (planBlueprint(world, 'bed', cell.x, cell.y)) {
+          n++;
+          break;
+        }
       }
+      if (n === 0) continue;
     }
-    if (n === 0) continue;
     if (buildingUnlocked(world, 'lamp') && affordsBuilding(world, 'lamp')) {
       for (const cell of freeCells(world, room)) {
         if (planBlueprint(world, 'lamp', cell.x, cell.y)) {
@@ -556,15 +610,28 @@ function growQuarters(world: World): number {
         }
       }
     }
+    // Nothing marked and nothing to mark: an empty room waiting on a bunk being
+    // carried to it is not work for the Steward, it is work already under way.
+    if (n === 0) continue;
     return n;
   }
 
   const h = heart(world);
   if (!h) return 0;
   if (!affordsBuilding(world, 'wall')) return 0;
-  // Inside first, outside second. A corner of the hall always exists; ground
-  // between the host wall and the fence usually does not — see `planPartition`.
-  const plan = planPartition(world, h) ?? planAnnex(world, h);
+  // Inside first, outside second — see `planPartition`, and do not swap these.
+  // Tried the other way round on seed 4242: the yard annex is the shape that
+  // *usually does not fit*, so leading with it meant the colony spent its passes
+  // failing to place a room outside while the corner it could always have had
+  // went uncut, and finished forty days with none instead of two.
+  //
+  // What is new is what happens when the hall has given up all the floor it can
+  // spare. `planPartition` stops at `HALL_FLOOR_LEFT` — measured at two or three
+  // bedrooms and then nothing for the rest of the run — and a colony of eight
+  // that can only ever house three is not housing anybody, it is running a
+  // lottery. A bunkhouse room leans on the last bunkhouse room, so past that
+  // ceiling every room the colony finishes is somewhere the next one can go.
+  const plan = planPartition(world, h) ?? planBunkhouse(world, bunkhouseHosts(world, h));
   if (!plan) return 0;
 
   // The door goes in **first**, and it is not a stylistic choice.

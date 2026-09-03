@@ -58,6 +58,7 @@ import {
   TIRED,
 } from './needs';
 import { indoors } from './rooms';
+import { bedlessTarget, emptyQuarters, sharedBunks } from './quarters';
 import { partnerOf } from './partners';
 import { bondPet } from './pets';
 import {
@@ -171,6 +172,7 @@ import {
 } from './types';
 import {
   MAX_STACK,
+  addBuilding,
   addItem,
   cancelJob,
   countResource,
@@ -465,6 +467,47 @@ function stableToHold(world: World, job: Job): boolean {
  * and the map-coverage test has to ask the same question the job system asks
  * rather than a lookalike that could drift from it.
  */
+/**
+ * Carry a spare bunk out of the hall into a finished room that has none.
+ *
+ * Nearest room to the settler, and then the nearest spare bunk to *that room* —
+ * not to the settler. The walk that matters is the loaded one, and a colony that
+ * picked the bunk nearest the carrier would have somebody shoulder a bed at the
+ * near end of the hall and walk it the length of the compound.
+ */
+function moveBedJob(world: World, pawn: Pawn): boolean {
+  // Bunks first, and the order is the cheap guard: `sharedBunks` is one pass
+  // over the buildings, `emptyQuarters` walks every cell of every small room.
+  // A colony whose beds are all in rooms of their own — the state this whole
+  // feature is trying to reach — pays only the first of those.
+  const bunks = sharedBunks(world);
+  if (bunks.length === 0) return false;
+  const rooms = emptyQuarters(world);
+  if (rooms.length === 0) return false;
+
+  let best: { bed: Building; x: number; y: number } | null = null;
+  let bestD = Infinity;
+  for (const spot of rooms) {
+    if (isCellTargeted(world, spot.x, spot.y)) continue;
+    if (!reachable(world, pawn, spot.x, spot.y, false)) continue;
+    for (const bed of bunks) {
+      if (isBuildingTargeted(world, bed.id)) continue;
+      // Not out from under a sleeper — they would wake on the floor of a room
+      // they have never been in. Re-checked on arrival too; somebody can lie
+      // down while the carrier is walking over.
+      if (world.pawns.some((q) => q.activity === 'sleeping' && Math.floor(q.x) === bed.x && Math.floor(q.y) === bed.y)) continue;
+      if (!reachable(world, pawn, bed.x, bed.y, true)) continue;
+      const d = dist(bed.x, bed.y, spot.x, spot.y) + dist(pawn.x, pawn.y, bed.x, bed.y) * 0.25;
+      if (d >= bestD) continue;
+      bestD = d;
+      best = { bed, x: spot.x, y: spot.y };
+    }
+  }
+  if (!best) return false;
+  createJob(world, pawn, 'moveBed', best.x, best.y, { buildingId: best.bed.id });
+  return true;
+}
+
 export function reachable(world: World, pawn: Pawn, tx: number, ty: number, adjacent: boolean): boolean {
   const sx = Math.round(pawn.x);
   const sy = Math.round(pawn.y);
@@ -1836,6 +1879,12 @@ function tryWorkType(world: World, pawn: Pawn, work: WorkType): boolean {
         createJob(world, pawn, 'deconstruct', b.x, b.y, { buildingId: b.id });
         return true;
       }
+      // A bunk out of the hall and into a room that has none. Above the
+      // blueprints on purpose: the room is already standing and empty, and a
+      // colony that leaves it empty while it raises the next shell has built
+      // somewhere nobody lives. It is also the cheaper of the two ways to fill
+      // it — the alternative is twenty planks for a second bed.
+      if (moveBedJob(world, pawn)) return true;
       // Then the same order painted on bare floor, which is the other half of
       // what the X tool means. Walked over the designation array rather than over
       // a list of floors, because there is no list of floors — a floor is a cell,
@@ -3746,6 +3795,64 @@ export function tickJob(world: World, pawn: Pawn, rng: Rng): void {
         return finishJob(world, pawn, job);
       }
       return;
+    }
+
+    case 'moveBed': {
+      // Taking the bunk out of the hall, not building a second one.
+      //
+      // The colony starts with every bed in the main building, which is the
+      // right way to start — a roof is what keeps people alive and eight bunks
+      // under one is a colony that has solved that. What it is not is somewhere
+      // to live, and the answer is not to fell another twenty planks for a
+      // second bed the moment a room exists. The bed already exists. Somebody
+      // picks it up and carries it next door.
+      //
+      // **The bed is never off the map.** It stands in the hall for the whole
+      // walk and moves the instant the carrier arrives, rather than being
+      // removed on uproot and rebuilt on delivery. That is a lie about the
+      // furniture and a deliberate one: a bed held in a settler's arms is a bed
+      // that vanishes for good the moment the job is cancelled — a raid, a
+      // collapse, a path that stopped existing — and a colony that loses a bunk
+      // every time somebody is interrupted mid-errand is worse off than one
+      // whose wardrobe teleports the last two cells.
+      const bed = findBuilding(world, job.buildingId);
+      if (!bed || !bed.built || bed.kind !== 'bed') return cancelJob(world, job.id);
+      // Re-checked on arrival like every other job that walks somewhere: between
+      // the order and the walk the room may have been given a bed by somebody
+      // else, or walled in, or stopped being a room at all.
+      if (!bedlessTarget(world, job.tx, job.ty)) return cancelJob(world, job.id);
+      // Not out from under a sleeper. They would wake up on the floor of a room
+      // they have never been in.
+      if (world.pawns.some((q) => q.activity === 'sleeping' && Math.floor(q.x) === bed.x && Math.floor(q.y) === bed.y)) {
+        return cancelJob(world, job.id);
+      }
+
+      if (job.stage === 'goto') {
+        const r = walkTo(world, pawn, bed.x, bed.y, false);
+        if (r === 'blocked') return cancelJob(world, job.id);
+        if (r !== 'arrived') return;
+        pawn.activity = 'working';
+        pawn.animPhase += 0.35;
+        // Half what taking it apart would cost. Lifting a bunk off the floor is
+        // not deconstruction, and charging the full work would make moving it
+        // dearer than the planks it saves.
+        job.progress += workRate(pawn, 'construction') * 1.8;
+        if (job.progress >= defOf('bed').work * 0.5) job.stage = 'carry';
+        return;
+      }
+
+      const r = walkTo(world, pawn, job.tx, job.ty, true);
+      if (r === 'blocked') return cancelJob(world, job.id);
+      if (r !== 'arrived') return;
+      const owner = bed.ownerId;
+      removeBuilding(world, bed);
+      const moved = addBuilding(world, 'bed', job.tx, job.ty, true);
+      // The claim travels with the bunk. `tickQuarters` would hand the room out
+      // again within the half-second anyway, but not to the same settler
+      // necessarily, and somebody who has just carried their own bed across the
+      // yard should not find a neighbour asleep in it.
+      if (moved && owner !== undefined) moved.ownerId = owner;
+      return finishJob(world, pawn, job);
     }
 
     case 'feedPrisoner': {

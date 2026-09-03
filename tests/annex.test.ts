@@ -10,7 +10,15 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { ANNEX_DEEP, ANNEX_WIDE, PARTITION_DEEP, planAnnex, planPartition } from '../src/sim/annex';
+import {
+  ANNEX_DEEP,
+  ANNEX_WIDE,
+  BUNK_DEEP,
+  PARTITION_DEEP,
+  planAnnex,
+  planBunkhouse,
+  planPartition,
+} from '../src/sim/annex';
 import { createWorld } from '../src/sim/worldgen';
 import { heart } from '../src/sim/steward';
 import { buildingAt } from '../src/sim/grid';
@@ -357,5 +365,105 @@ describe('a hall the colony can actually live in (experience)', () => {
     expect(bed.ownerId, 'nobody moved into the room the colony built').not.toBeUndefined();
     expect(unhoused(w).map((q) => q.id)).not.toContain(bed.ownerId);
     expect(hasPrivacy(w, pawn) || bed.ownerId !== pawn.id).toBe(true);
+  });
+});
+
+/**
+ * Raise a plan's shell for real, so the next plan has something to lean on.
+ *
+ * The door goes in as a door and not as a wall: `rooms.ts` counts a door as a
+ * boundary, so the box encloses either way, but a room with a wall where its
+ * doorway should be is a sealed pocket and the thing under test would be a
+ * different thing.
+ */
+function raise(w: ReturnType<typeof world>, a: ReturnType<typeof planAnnex>): void {
+  for (const c of a!.walls) if (!buildingAt(w, c.x, c.y)) addBuilding(w, 'wall', c.x, c.y, true);
+  if (!buildingAt(w, a!.door.x, a!.door.y)) addBuilding(w, 'door', a!.door.x, a!.door.y, true);
+}
+
+describe('the bunkhouse (functional)', () => {
+  it('plans a room two deep when it is given the depth to do it', () => {
+    const w = world();
+    const a = planAnnex(w, heart(w)!, 'wall', BUNK_DEEP);
+    // Not asserted to exist — off the *cabin* the fence line usually refuses two
+    // deep, and that is `ANNEX_DEEP`'s whole reason for being 1. What is asserted
+    // is that when the geometry does fit, it is the size that was asked for.
+    if (a) expect(a.floor).toHaveLength(ANNEX_WIDE * BUNK_DEEP);
+  });
+
+  it('hangs the next room off a room that is already up', () => {
+    const w = world();
+    const first = planBunkhouse(w, [heart(w)!])!;
+    expect(first, 'nowhere to put the first room at all').not.toBeNull();
+    raise(w, first);
+    const room = roomAt(w, first.floor[0]!.x, first.floor[0]!.y)!;
+    expect(room, 'the shell we just raised is not a room').not.toBeNull();
+
+    const second = planBunkhouse(w, [room, heart(w)!])!;
+    expect(second, 'the row stopped at one room').not.toBeNull();
+    // The point of a row: the second room's floor is somewhere else entirely.
+    const firstFloor = new Set(first.floor.map((c) => `${c.x},${c.y}`));
+    for (const c of second.floor) expect(firstFloor.has(`${c.x},${c.y}`)).toBe(false);
+  });
+
+  it('makes the neighbours pay for one wall between them', () => {
+    // The whole economy of a bunkhouse. A free-standing hut is a full ring; a
+    // room hung off the last one gets a side for nothing, and the colony is
+    // spending planks it felled by hand.
+    const w = world();
+    const first = planBunkhouse(w, [heart(w)!])!;
+    raise(w, first);
+    const room = roomAt(w, first.floor[0]!.x, first.floor[0]!.y)!;
+    const second = planBunkhouse(w, [room, heart(w)!])!;
+
+    const ring = new Set<string>();
+    for (const c of second.floor) {
+      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) {
+        const k = `${c.x + dx},${c.y + dy}`;
+        if (!second.floor.some((f) => f.x === c.x + dx && f.y === c.y + dy)) ring.add(k);
+      }
+    }
+    const raised = new Set(second.walls.map((c) => `${c.x},${c.y}`));
+    raised.add(`${second.door.x},${second.door.y}`);
+    const shared = [...ring].filter((k) => !raised.has(k));
+    expect(shared.length, 'the second room paid for its own four sides').toBeGreaterThan(0);
+    for (const k of shared) {
+      const [x, y] = k.split(',').map(Number) as [number, number];
+      expect(encloses(w, x, y), 'leaning on something that is not a wall').toBe(true);
+    }
+  });
+
+  it('tries every host for a proper room before it settles for a shallow one', () => {
+    // Deep-first across all hosts, not host-first across both depths: a six-cell
+    // room round the far side is worth more than a three-cell slot next door.
+    const w = world();
+    const h = heart(w)!;
+    const deep = planAnnex(w, h, 'wall', BUNK_DEEP);
+    const got = planBunkhouse(w, [h]);
+    if (deep) expect(got!.floor).toHaveLength(ANNEX_WIDE * BUNK_DEEP);
+    else expect(got!.floor).toHaveLength(ANNEX_WIDE * ANNEX_DEEP);
+  });
+});
+
+describe('the bunkhouse (experience)', () => {
+  it('gives a colony somewhere to put a row of rooms on the map it starts on', () => {
+    // Not the geometry but the promise: the ceiling that carving the hall runs
+    // into — `HALL_FLOOR_LEFT`, measured at two or three bedrooms and then
+    // nothing — is not a ceiling the row has, because every room it finishes is
+    // somewhere the next one can lean.
+    const w = world();
+    const h = heart(w)!;
+    const hosts = [h];
+    let built = 0;
+    for (let i = 0; i < 4; i++) {
+      const plan = planBunkhouse(w, hosts);
+      if (!plan) break;
+      raise(w, plan);
+      const room = roomAt(w, plan.floor[0]!.x, plan.floor[0]!.y);
+      if (!room) break;
+      built++;
+      hosts.unshift(room);
+    }
+    expect(built, 'the colony could not lay a row at all').toBeGreaterThan(2);
   });
 });

@@ -36,6 +36,8 @@
  */
 
 import { isBed } from './buildings';
+import { buildingAt } from './grid';
+import { canPlace } from './orders';
 import { roomAt, roomIndex } from './rooms';
 import { livingColonists } from './world';
 import type { Building, Pawn, World } from './types';
@@ -50,6 +52,16 @@ import type { Building, Pawn, World } from './types';
  * to solve rather than a colony on its way down.
  */
 export const MOOD_NO_PRIVACY = -0.05;
+
+/**
+ * Largest room the colony will treat as somebody's quarters rather than a hall.
+ *
+ * A bunkhouse room is six cells. The slack is for a room the player walled
+ * themselves — a closet, a porch, a corner of the barn — which should get a bed
+ * and become somebody's if it is the right size for one. Past this it is a space
+ * with a purpose of its own, and dropping a bunk in the middle of it is vandalism.
+ */
+export const QUARTERS_MAX_CELLS = 12;
 
 /** Only run the pass twice a second — nobody moves house faster than that. */
 export const QUARTERS_INTERVAL = 30;
@@ -170,4 +182,85 @@ export function tickQuarters(world: World): void {
   for (const p of livingColonists(world)) {
     p.privacyMood = housed.has(p.id) || !anyRooms ? 0 : MOOD_NO_PRIVACY;
   }
+}
+
+/**
+ * Bunks standing in a room with another bunk — the hall, whatever it is called.
+ *
+ * Defined by the company they keep rather than by being in `heart(world)`, and
+ * that is not just to dodge an import cycle. What makes a bed a *spare* is that
+ * taking it away leaves the room it came from still a room people sleep in and
+ * still nobody's in particular. A bed alone in a room is somebody's bedroom by
+ * this module's one rule, and carrying it off would be evicting them.
+ */
+export function sharedBunks(world: World): Building[] {
+  const idx = roomIndex(world);
+  const byRoom = new Map<number, Building[]>();
+  for (const b of world.buildings) {
+    if (!b.built || !isBed(b.kind)) continue;
+    const id = idx.cellRoom[b.y * world.width + b.x];
+    if (id === undefined || id < 0) continue;
+    const list = byRoom.get(id);
+    if (list) list.push(b);
+    else byRoom.set(id, [b]);
+  }
+  const out: Building[] = [];
+  for (const list of byRoom.values()) {
+    if (list.length < 2) continue;
+    for (const b of list) if (isOwnable(b)) out.push(b);
+  }
+  return out;
+}
+
+/**
+ * Is this cell a finished room waiting for its bed?
+ *
+ * The question a settler asks on arrival, and the same one the colony asked
+ * when it sent them — a room can be given a bed by somebody else, or walled in,
+ * or stop being a room at all, while a bunk is being carried across the yard.
+ */
+export function bedlessTarget(world: World, x: number, y: number): boolean {
+  const idx = roomIndex(world);
+  const id = idx.cellRoom[y * world.width + x];
+  if (id === undefined || id < 0) return false;
+  const room = idx.rooms.get(id);
+  if (!room || room.size > QUARTERS_MAX_CELLS) return false;
+  for (const b of world.buildings) {
+    if (!b.built || !isBed(b.kind)) continue;
+    if (idx.cellRoom[b.y * world.width + b.x] === id) return false;
+  }
+  return canPlace(world, 'bed', x, y) === 'ok';
+}
+
+/**
+ * Every empty room that is the right size to be somebody's, and where the bed
+ * would go in it.
+ *
+ * Against a wall, like the hall's own bunks, so the doorway stays walkable — a
+ * six-cell room with a bed in the middle of it is a room you cannot cross.
+ */
+export function emptyQuarters(world: World): { x: number; y: number }[] {
+  const idx = roomIndex(world);
+  const out: { x: number; y: number }[] = [];
+  for (const room of idx.rooms.values()) {
+    if (room.size > QUARTERS_MAX_CELLS) continue;
+    let spot: { x: number; y: number } | null = null;
+    let taken = false;
+    for (const packed of room.cells) {
+      const x = packed % world.width;
+      const y = (packed - x) / world.width;
+      // `buildingAt` and not a scan of `world.buildings`: this runs per cell of
+      // per room, and a linear find inside it made the whole thing quadratic in
+      // the size of the compound — measured at 11 % on the colony-eval suite,
+      // on the one file that already sits nearest the timeout.
+      const b = buildingAt(world, x, y);
+      if (b && b.built && isBed(b.kind)) {
+        taken = true;
+        break;
+      }
+      if (!spot && canPlace(world, 'bed', x, y) === 'ok') spot = { x, y };
+    }
+    if (!taken && spot) out.push(spot);
+  }
+  return out;
 }

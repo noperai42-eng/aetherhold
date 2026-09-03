@@ -66,7 +66,7 @@ export const ANNEX_DEEP = 1;
 export interface Annex {
   /** Which side of the host it leans on — for the log line, and for tests. */
   side: 'north' | 'south' | 'east' | 'west';
-  /** The floor. `ANNEX_WIDE * ANNEX_DEEP` cells, nothing standing on them. */
+  /** The floor. `ANNEX_WIDE` by the plan's depth, nothing standing on them. */
   floor: { x: number; y: number }[];
   /** Cells that must carry a wall. Excludes the shared host wall and the door. */
   walls: { x: number; y: number }[];
@@ -142,7 +142,12 @@ function hostBox(world: World, room: Room): { x0: number; y0: number; x1: number
  * builds in batches; without that stability it would leave three walls standing
  * in three different places.
  */
-export function planAnnex(world: World, room: Room, kind: BuildingKind = 'wall'): Annex | null {
+export function planAnnex(
+  world: World,
+  room: Room,
+  kind: BuildingKind = 'wall',
+  deep: number = ANNEX_DEEP,
+): Annex | null {
   const b = hostBox(world, room);
 
   for (const s of SIDES) {
@@ -159,7 +164,7 @@ export function planAnnex(world: World, room: Room, kind: BuildingKind = 'wall')
     });
 
     for (let start = lo; start + ANNEX_WIDE - 1 <= hi; start++) {
-      const plan = tryAt(world, s, at, start, kind);
+      const plan = tryAt(world, s, at, start, kind, deep);
       if (plan) return plan;
     }
   }
@@ -173,10 +178,11 @@ function tryAt(
   at: (t: number, d: number) => { x: number; y: number },
   start: number,
   kind: BuildingKind,
+  deep: number,
 ): Annex | null {
   const t0 = start - 1;
   const t1 = start + ANNEX_WIDE;
-  const dWall = ANNEX_DEEP + 1;
+  const dWall = deep + 1;
 
   // The host must actually be walled behind the whole span. An annex hung off a
   // gap in the shell is not a room, it is an alcove of the great outdoors, and
@@ -370,4 +376,46 @@ function cutAt(
   if (kept.length === walls.length) return null;
 
   return { side, floor, walls: kept, door };
+}
+
+/**
+ * How deep a bunkhouse room is — the other half of the 3×2 the colony asked for.
+ *
+ * `ANNEX_DEEP` is 1 because an annex hung off the *cabin* has `YARD_MARGIN` and
+ * the fence line to argue with, and two deep put its outer wall on the ring. A
+ * bunkhouse room hung off another bunkhouse room is already out in the yard with
+ * the lane in front of it, so the constraint that forced one deep is not there
+ * and the room can be the size a room should be: six cells, a bed and a lamp and
+ * somewhere to stand that is not the foot of the bed.
+ */
+export const BUNK_DEEP = 2;
+
+/**
+ * The next room in the bunkhouse — a box sharing a wall with one already up.
+ *
+ * There is no separate bunkhouse building and there is no bunkhouse in the save.
+ * A bunkhouse is what a row of rooms *is* once each one has been hung off the
+ * last, and that is the whole trick: the first room leans on the cabin, the
+ * second leans on the first, and every wall after the first room is a divider
+ * two rooms are paying half of.
+ *
+ * It also lifts the ceiling that carving the hall ran into. `planPartition` eats
+ * the shared room until `HALL_FLOOR_LEFT` stops it, which measured at two or
+ * three bedrooms and then nothing for the rest of the run; a row that grows off
+ * its own far end has no such number in it, because every room it finishes is
+ * somewhere the next one can lean.
+ *
+ * Hosts are tried in the order given — the caller owns the policy, this owns the
+ * geometry — and the deeper room is tried against *every* host before the
+ * shallow one is tried against any. A proper six-cell room round the far side is
+ * worth more than a three-cell slot next door.
+ */
+export function planBunkhouse(world: World, hosts: Room[], kind: BuildingKind = 'wall'): Annex | null {
+  for (const deep of [BUNK_DEEP, ANNEX_DEEP]) {
+    for (const room of hosts) {
+      const plan = planAnnex(world, room, kind, deep);
+      if (plan) return plan;
+    }
+  }
+  return null;
 }

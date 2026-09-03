@@ -777,6 +777,12 @@ export type JobKind =
   | 'rescue'
   /** Carry a body to an empty grave and lay it in. */
   | 'bury'
+  /**
+   * Take a bunk out of the shared hall and set it up in a room of somebody's
+   * own. Not a deconstruct and a rebuild — see the case in `jobs.ts` for why
+   * the bed is never off the map while it is being carried.
+   */
+  | 'moveBed'
   /** Walk to the edge of the map with a pack, and leave it. See `settlements.ts`. */
   | 'caravan'
   /**
