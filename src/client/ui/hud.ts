@@ -54,6 +54,7 @@ import { animalSex, bodyScale, MATURE_TICKS, maturity } from '../../sim/livestoc
 import { ageOf, ANIMALS, lifeStage } from '../../sim/wildlife';
 import { isPet, keeperOf, PET_HEEL, petName, petOf } from '../../sim/pets';
 import { traitsOf } from '../../sim/traits';
+import { isPhoneLayout } from './layout-mode';
 import { manifestSections } from '../manifest';
 import { buildQueue, plotStatus, shortfall, type QueueRow } from './board';
 import { cellFacts, type CellFacts } from './cell';
@@ -353,6 +354,22 @@ function saveGuideOff(off: boolean): void {
 }
 
 const SPEEDS = [0, 1, 2, 3];
+
+/**
+ * The phone's bottom bar, in order. Five is the ceiling: a sixth destination on
+ * a 390-wide screen is a target narrower than the thumb pressing it.
+ *
+ * `more` is where everything the desk keeps in the top bar goes — the view
+ * switch, the work board, research, the road, the story, saving. It is a
+ * drawer rather than a fifth peer, and it is labelled as one.
+ */
+const SHEETS: ReadonlyArray<readonly [string, string]> = [
+  ['build', 'Build'],
+  ['crew', 'Crew'],
+  ['events', 'Events'],
+  ['info', 'Details'],
+  ['more', 'More'],
+];
 const RESOURCE_ROW: ResourceKind[] = [
   'wood',
   'steel',
@@ -457,6 +474,21 @@ export class Hud {
   private readonly root: HTMLElement;
   private readonly hooks: HudHooks;
 
+  /**
+   * Whether this is the phone presentation — see `layout-mode.ts`. Read once and
+   * never recomputed: the layout must not rearrange itself under a moving thumb.
+   */
+  private readonly phone: boolean;
+  /** The bottom bar, phone only. Built always so the DOM is the same one. */
+  private readonly tabbar: HTMLElement;
+  /** The top bar's button row — the More drawer on a phone, see the constructor. */
+  private readonly sysbtns: HTMLElement;
+  private readonly sheetBtns = new Map<string, HTMLButtonElement>();
+  /** Which sheet is up, or '' for none — the world with nothing over it. */
+  private sheet = '';
+  /** What `syncInspector` last saw selected, so the sheet only opens on a change. */
+  private lastSel = '';
+
   private readonly clock: HTMLElement;
   private readonly speedBtns: HTMLButtonElement[] = [];
   private readonly resources = new Map<ResourceKind, HTMLElement>();
@@ -557,6 +589,8 @@ export class Hud {
   constructor(root: HTMLElement, hooks: HudHooks) {
     this.root = root;
     this.hooks = hooks;
+    this.phone = isPhoneLayout();
+    if (this.phone) this.root.classList.add('phone');
 
     this.managerLayer = el('div', 'managerlayer');
     this.fpsLayer = el('div', '', { id: 'fpshud' });
@@ -658,6 +692,13 @@ export class Hud {
     sys.append(viewBtn, workBtn, boardBtn, techBtn, this.tradeBtn, this.roadBtn, this.chronicleBtn, this.stewardBtn, this.qualityBtn, saveBtn, loadBtn, this.continueBtn, backupBtn, helpBtn);
     top.append(this.clock, speeds, res, sys);
     this.root.append(top);
+    // On a phone the system row is the More drawer, which stands above the tab
+    // bar rather than in the top bar. It has to leave the bar to get there: the
+    // bar is a `.panel`, `.panel` carries `backdrop-filter`, and a filtered
+    // element is a containing block for `position: fixed` — a drawer anchored to
+    // the bottom of the *bar* lands 243px above the top of the screen. Moved
+    // rather than duplicated, so there is still one row of buttons in one DOM.
+    this.sysbtns = sys;
 
     // ---- manager-only furniture ----
     this.colonists = el('div', '', { id: 'colonists' });
@@ -687,6 +728,17 @@ export class Hud {
       this.chronicletab,
     );
     this.buildBuildBar();
+    this.tabbar = this.buildTabBar();
+    if (this.phone) this.managerLayer.append(this.sysbtns);
+    this.managerLayer.append(this.tabbar);
+    // A tile is an order you then draw on the ground, so the sheet it was
+    // pressed in is in the way the moment it has been pressed. Bound once on the
+    // bar rather than on every tile: the tiles are rebuilt, the bar is not.
+    if (this.phone) {
+      this.buildbar.addEventListener('click', (e) => {
+        if ((e.target as HTMLElement | null)?.closest('.tile')) this.setSheet('');
+      });
+    }
     // The four panels that sit on top of the world. The bar stays where it is:
     // it is the control surface, and the bottom of the screen is where it belongs.
     this.makeMovable(this.colonists, 'colonists', 'Settlers');
@@ -772,6 +824,10 @@ export class Hud {
    * grabbed the handle rather than a colonist card inside it".
    */
   private makeMovable(panel: HTMLElement, id: string, name: string): void {
+    // Nothing is movable on a phone. There is no room to move a panel *to*, the
+    // grip is smaller than the thumb that would grab it, and a stored position
+    // from a desk session would drop a sheet somewhere off the side of the glass.
+    if (this.phone) return;
     panel.classList.add('movable');
     panel.dataset.name = name;
     this.movable.set(id, panel);
@@ -829,7 +885,41 @@ export class Hud {
     });
   }
 
-  /** Move a panel, keeping it inside the window whatever the player does. */
+  // ------------------------------------------------------------- the phone bar
+
+  /**
+   * Five destinations along the bottom edge, phone only.
+   *
+   * The panels these open are the same panels the desk layout has, in the same
+   * DOM, drawn by the same code — what the bar changes is `data-sheet` on the
+   * HUD root, and the stylesheet does the rest. So there is no second HUD to
+   * keep in step, which is the same rule the thumb pad follows in a body.
+   *
+   * Pressing the destination you are already at goes back to the world. That is
+   * the only way out on a screen with no room for a close button on every sheet,
+   * and it matches what the tab is: a toggle, not a page.
+   */
+  private buildTabBar(): HTMLElement {
+    const bar = el('div', 'panel', { id: 'tabbar' });
+    for (const [key, label] of SHEETS) {
+      const b = el('button', 'sheetbtn', {}, label) as HTMLButtonElement;
+      b.onclick = () => this.setSheet(this.sheet === key ? '' : key);
+      this.sheetBtns.set(key, b);
+      bar.append(b);
+    }
+    return bar;
+  }
+
+  /** Raise one sheet, or none. A no-op on a desk, where every panel is already up. */
+  private setSheet(name: string): void {
+    if (!this.phone || name === this.sheet) return;
+    this.sheet = name;
+    if (name === '') delete this.root.dataset.sheet;
+    else this.root.dataset.sheet = name;
+    for (const [key, b] of this.sheetBtns) b.classList.toggle('on', key === name);
+  }
+
+    /** Move a panel, keeping it inside the window whatever the player does. */
   private place(id: string, panel: HTMLElement, x: number, y: number): void {
     const r = panel.getBoundingClientRect();
     const left = Math.max(0, Math.min(innerWidth - r.width, x));
@@ -1061,6 +1151,20 @@ export class Hud {
 
   private syncInspector(s: HudState): void {
     const sel = s.selection;
+    // On a phone the details panel is a sheet, and a sheet nobody raised is a
+    // sheet nobody sees. Tapping a settler *is* the request to read about them,
+    // so the tap raises it — and dropping the selection puts it away again,
+    // because a Details sheet with nothing in it is just the world covered up.
+    // Keyed on the selection so this fires on the change and not sixty times a
+    // second, which would fight the player's own press on the bar.
+    if (this.phone) {
+      const key = sel ? `${sel.type}:${sel.type === 'cell' ? `${sel.x},${sel.y}` : sel.id}` : '';
+      if (key !== this.lastSel) {
+        this.lastSel = key;
+        if (key !== '') this.setSheet('info');
+        else if (this.sheet === 'info') this.setSheet('');
+      }
+    }
     if (!sel) {
       this.inspector.style.display = 'none';
       return;
@@ -2611,6 +2715,15 @@ export class Hud {
       this.boardOpen = false;
       this.researchOpen = false;
     }
+    // A phone has one slot, not two: these open full width over the world,
+    // so the corner rule that keeps them out of each other's way on a desk
+    // has to cover all six here. The sheet goes down with them.
+    if (this.phone && this.worktabOpen) {
+      this.tradeOpen = false;
+      this.roadOpen = false;
+      this.chronicleOpen = false;
+      this.setSheet('');
+    }
   }
 
   toggleBoardTab(): void {
@@ -2619,6 +2732,15 @@ export class Hud {
     if (this.boardOpen) {
       this.worktabOpen = false;
       this.researchOpen = false;
+    }
+    // A phone has one slot, not two: these open full width over the world,
+    // so the corner rule that keeps them out of each other's way on a desk
+    // has to cover all six here. The sheet goes down with them.
+    if (this.phone && this.boardOpen) {
+      this.tradeOpen = false;
+      this.roadOpen = false;
+      this.chronicleOpen = false;
+      this.setSheet('');
     }
   }
 
@@ -2629,11 +2751,29 @@ export class Hud {
       this.worktabOpen = false;
       this.boardOpen = false;
     }
+    // A phone has one slot, not two: these open full width over the world,
+    // so the corner rule that keeps them out of each other's way on a desk
+    // has to cover all six here. The sheet goes down with them.
+    if (this.phone && this.researchOpen) {
+      this.tradeOpen = false;
+      this.roadOpen = false;
+      this.chronicleOpen = false;
+      this.setSheet('');
+    }
   }
 
   toggleTradeTab(): void {
     this.tradeOpen = !this.tradeOpen;
     this.tradeSig = '';
+    // A phone has one slot, not two: these open full width over the world,
+    // so the corner rule that keeps them out of each other's way on a desk
+    // has to cover all six here. The sheet goes down with them.
+    if (this.phone && this.tradeOpen) {
+      this.worktabOpen = false;
+      this.boardOpen = false;
+      this.researchOpen = false;
+      this.setSheet('');
+    }
   }
 
   toggleRoadTab(): void {
@@ -2644,6 +2784,15 @@ export class Hud {
       this.tradeOpen = false;
       this.chronicleOpen = false;
     }
+    // A phone has one slot, not two: these open full width over the world,
+    // so the corner rule that keeps them out of each other's way on a desk
+    // has to cover all six here. The sheet goes down with them.
+    if (this.phone && this.roadOpen) {
+      this.worktabOpen = false;
+      this.boardOpen = false;
+      this.researchOpen = false;
+      this.setSheet('');
+    }
   }
 
   toggleChronicleTab(): void {
@@ -2653,6 +2802,15 @@ export class Hud {
     if (this.chronicleOpen) {
       this.tradeOpen = false;
       this.roadOpen = false;
+    }
+    // A phone has one slot, not two: these open full width over the world,
+    // so the corner rule that keeps them out of each other's way on a desk
+    // has to cover all six here. The sheet goes down with them.
+    if (this.phone && this.chronicleOpen) {
+      this.worktabOpen = false;
+      this.boardOpen = false;
+      this.researchOpen = false;
+      this.setSheet('');
     }
   }
 

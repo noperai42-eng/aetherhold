@@ -2372,3 +2372,327 @@ body {
   border: 1px solid var(--edge);
   border-radius: 3px;
 }
+
+/* ============================================================ the phone layout
+
+   One HUD, two presentations. Everything below is scoped to `#hud.phone`, which
+   `layout-mode.ts` sets once at startup — so a rule written here cannot reach a
+   desk screen even by accident, and the desktop layout above is protected by
+   the selector rather than by remembering to check. Nothing in this block
+   changes a panel's contents: the same code draws the same text into the same
+   elements, and what moves is where they sit and how big they are to press.
+
+   The shape: the top bar stays (the clock and the speed are the two things you
+   need while watching), five destinations run along the bottom edge, and exactly
+   one sheet is up at a time over the world. A sheet you are not on is faded out
+   rather than un-displayed, because the panels set their own `display` from JS
+   — an alerts panel with nothing in it must stay gone whichever sheet is up. */
+
+#hud.phone {
+  --tabbar-h: 54px;
+  --phone-bottom: calc(var(--tabbar-h) + env(safe-area-inset-bottom, 0px));
+}
+
+/* ---- top bar: one row, scrolled sideways, no system buttons ---- */
+
+/*
+ * Edge to edge and square-cornered, because a floating bar on a 390-wide screen
+ * spends 16px of the only width there is on a margin nobody asked for. The
+ * system buttons move to the More sheet: fourteen of them wrapped to four rows
+ * here, which is a third of the screen given to buttons you press twice a game.
+ */
+#hud.phone #topbar {
+  top: 0;
+  left: 0;
+  right: 0;
+  border-radius: 0;
+  border-top: 0;
+  border-left: 0;
+  border-right: 0;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  scrollbar-width: none;
+  gap: 8px;
+  padding: calc(4px + env(safe-area-inset-top, 0px)) 8px 4px;
+  pointer-events: auto;
+}
+
+#hud.phone #topbar::-webkit-scrollbar {
+  display: none;
+}
+
+#hud.phone #clock {
+  min-width: 0;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+/* The one control that is pressed constantly while the game runs, so it is the
+   one that gets the full target even though it costs the bar its height — and
+   the one that goes first, ahead of the clock. The row scrolls, and a control
+   you have to scroll to is a control you do not reach while a raid is landing;
+   the date and the wood count can be the things that run off the right edge. */
+#hud.phone #speeds {
+  order: -1;
+}
+
+#hud.phone #speeds button {
+  min-width: 44px;
+  min-height: 44px;
+}
+
+/*
+ * Nothing in the row may shrink. A scrolling row whose children are allowed to
+ * flex down does not scroll — the items squeeze to nothing and their text draws
+ * over the neighbour's, which is what the day, the clock and the wood count were
+ * doing to each other at 390 wide. The `margin-left: auto` that pushes the
+ * resources to the far right on a desk goes with it: there is no far right here.
+ */
+#hud.phone #topbar > *,
+#hud.phone #resources > * {
+  flex: 0 0 auto;
+}
+
+#hud.phone #resources {
+  margin-left: 2px;
+  gap: 10px;
+}
+
+/* ---- the map keeps its corner, at a size a phone can spare ---- */
+
+#hud.phone #minimap {
+  top: calc(var(--topbar-h, 52px) + 4px);
+  left: 4px;
+}
+
+/* `minimap.ts` writes the face size inline from its own constant, which is the
+   right size on a desk and a quarter of the width of a phone. Overridden rather
+   than parameterised: the bitmap is drawn at the desk size and scaled down, so
+   the map stays sharp and the module keeps one number. */
+#hud.phone #minimap canvas {
+  width: 96px !important;
+  height: 96px !important;
+}
+
+/* ---- next steps: a banner, not a sheet ----
+
+   The curriculum is the one panel whose whole job is to be read while you are
+   playing rather than when you go looking, so it stays on the glass. It has its
+   own ✕ and it empties itself once the colony is on its feet. */
+#hud.phone #goals {
+  position: fixed;
+  top: calc(var(--topbar-h, 52px) + 4px);
+  left: 112px;
+  right: 4px;
+  width: auto;
+  max-height: 19vh;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  font-size: 12px;
+  padding: 6px 24px 7px 8px;
+}
+
+/* ---- the sheets ---- */
+
+#hud.phone #colonists,
+#hud.phone #inspector,
+#hud.phone #buildbar,
+#hud.phone #log,
+#hud.phone #alerts {
+  position: fixed;
+  left: 0;
+  right: 0;
+  top: auto;
+  width: auto;
+  max-width: none;
+  transform: none;
+  bottom: var(--phone-bottom);
+  max-height: 46vh;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  border-radius: 12px 12px 0 0;
+  border-left: 0;
+  border-right: 0;
+  border-bottom: 0;
+  padding: 10px 12px;
+  /* Faded, not hidden: the panels own their own `display`. An alerts panel with
+     nothing in it sets its own `display: none` and must stay gone whichever
+     sheet is up, so the sheet cannot be the thing that decides `display`. */
+  opacity: 0;
+  pointer-events: none;
+}
+
+#hud.phone[data-sheet='build'] #buildbar,
+#hud.phone[data-sheet='crew'] #colonists,
+#hud.phone[data-sheet='events'] #log,
+#hud.phone[data-sheet='events'] #alerts,
+#hud.phone[data-sheet='info'] #inspector {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+/* The Events sheet is two panels, so it is two bands: what is still true above,
+   what happened below. Split rather than stacked because both scroll. */
+#hud.phone #alerts {
+  bottom: calc(var(--phone-bottom) + 24vh);
+  max-height: 22vh;
+  border-radius: 12px 12px 0 0;
+  padding: 8px 26px 8px 10px;
+}
+
+#hud.phone #log {
+  max-height: 24vh;
+  border-radius: 0;
+}
+
+/* ---- the build sheet ---- */
+
+#hud.phone #buildbar {
+  align-items: stretch;
+  gap: 8px;
+}
+
+/* Eleven tabs wrapped to three rows here, which is 250px of the sheet spent on
+   the index before a single tile is shown. One row that scrolls sideways costs
+   a swipe and gives the tiles the space back. */
+#hud.phone #buildbar .bartabs {
+  justify-content: flex-start;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  scrollbar-width: none;
+  gap: 6px;
+}
+
+#hud.phone #buildbar .bartabs::-webkit-scrollbar {
+  display: none;
+}
+
+#hud.phone .bartab {
+  padding: 10px 12px;
+  font-size: 12px;
+}
+
+#hud.phone #buildbar .barrow {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6px;
+}
+
+#hud.phone .tile {
+  min-height: 58px;
+}
+
+/* ---- the More drawer: everything the desk keeps in the top bar ---- */
+
+#hud.phone #sysbtns {
+  display: none;
+}
+
+#hud.phone[data-sheet='more'] #sysbtns {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: var(--phone-bottom);
+  max-height: 46vh;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 12px;
+  background: var(--panel);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  border-top: 1px solid var(--edge);
+  border-radius: 12px 12px 0 0;
+  pointer-events: auto;
+}
+
+#hud.phone[data-sheet='more'] #sysbtns .btn {
+  min-height: 48px;
+}
+
+/* ---- the six panels that open over everything ---- */
+
+/*
+ * Work, the board, research, the shop, the road and the story are documents, not
+ * instruments: on a desk they hang off the top bar, and here they take the whole
+ * screen between the bar and the tabs. `hud.ts` makes all six mutually exclusive
+ * on a phone for the same reason.
+ */
+#hud.phone #worktab,
+#hud.phone #boardtab,
+#hud.phone #researchtab,
+#hud.phone #tradetab,
+#hud.phone #roadtab,
+#hud.phone #chronicletab {
+  position: fixed;
+  left: 0;
+  right: 0;
+  width: auto;
+  max-width: none;
+  transform: none;
+  top: var(--topbar-h, 52px);
+  bottom: var(--phone-bottom);
+  max-height: none;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  border-radius: 0;
+  border-left: 0;
+  border-right: 0;
+  pointer-events: auto;
+}
+
+/* A tree you scroll rather than a board you plan against — but two columns of
+   330px do not exist here, and one readable column beats two clipped ones. */
+#hud.phone #researchtab .projects {
+  grid-template-columns: 1fr;
+}
+
+#hud.phone #worktab table {
+  font-size: 12px;
+}
+
+#hud.phone #worktab td.p {
+  min-width: 34px;
+  height: 34px;
+}
+
+/* ---- the bottom bar ---- */
+
+#tabbar {
+  display: none;
+}
+
+#hud.phone #tabbar {
+  display: flex;
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: var(--phone-bottom);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+  border-radius: 0;
+  border-left: 0;
+  border-right: 0;
+  border-bottom: 0;
+  pointer-events: auto;
+}
+
+.sheetbtn {
+  flex: 1;
+  min-height: var(--tabbar-h);
+  background: none;
+  border: 0;
+  padding: 0;
+  color: var(--dim);
+  font-family: inherit;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.sheetbtn.on {
+  color: var(--ink);
+  box-shadow: inset 0 2px 0 var(--edge-strong);
+}
