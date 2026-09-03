@@ -24,12 +24,13 @@ import { describe, expect, it } from 'vitest';
 import { ManagerCamera } from '../src/client/manager/camera';
 import { ManagerController } from '../src/client/manager/controller';
 import type { Input } from '../src/client/input/input';
-import { cellFacts } from '../src/client/ui/cell';
-import { canSow } from '../src/sim/farming';
+import { cellFacts, type CellFacts } from '../src/client/ui/cell';
+import { groundPanel } from '../src/client/ui/hud';
+import { CROP_NONE, canSow } from '../src/sim/farming';
 import { buildingAt } from '../src/sim/grid';
 import { designate } from '../src/sim/orders';
 import { addBuilding, addCellToZone, addItem, addZone, livingColonists } from '../src/sim/world';
-import { DESIG_HARVEST, packCell, terrainAt, type World } from '../src/sim/types';
+import { DESIG_HARVEST, packCell, setTerrain, terrainAt, type World } from '../src/sim/types';
 import { createWorld } from '../src/sim/worldgen';
 
 /** Only the fields the controller reads, as `tests/touch.test.ts` fakes them. */
@@ -235,6 +236,86 @@ describe('what a square says about itself', () => {
     expect(cellFacts(world, rock.x, rock.y)!.desig).toBe(DESIG_HARVEST);
     expect(cellFacts(world, -1, 4)).toBeNull();
     expect(cellFacts(world, 4, world.height + 2)).toBeNull();
+  });
+});
+
+/**
+ * The panel's own words, which the facts above do not cover.
+ *
+ * "Why does something that is clearly growing some plants report as bare soil,
+ * even though it shows crop 100% ripe, and it doesn't tell me what crop it is."
+ * Every fact behind that panel was already right and already pinned — `crop` was
+ * 1, `terrain` was dirt — and the player was still told the wrong thing, because
+ * the reading of those facts was the part nobody had ever tested. So these read
+ * the rendered panel, not the struct: they are the only pins in the suite that
+ * can fail on a sentence.
+ */
+describe('what the panel says out loud', () => {
+  /**
+   * A furrow of the colony's crop, grown to `ripeness`.
+   *
+   * On dirt on purpose: "Bare soil" is the label the complaint names, and worked
+   * ground is where a player meets it. Grass would pass the same assertions
+   * against a different word and prove less.
+   */
+  function furrow(ripeness: number): { world: World; c: CellFacts } {
+    const { world, cam } = game();
+    const at = bareGround(world, cam);
+    setTerrain(world, at.x, at.y, 'dirt');
+    const z = addZone(world, 'growing', []);
+    addCellToZone(world, z, at.x, at.y);
+    world.crops[packCell(world, at.x, at.y)] = ripeness;
+    return { world, c: cellFacts(world, at.x, at.y)! };
+  }
+
+  it('heads a ripe furrow with the crop, not with the dirt under it', () => {
+    const { world, c } = furrow(1);
+    const html = groundPanel(world, c);
+
+    // The bug, exactly as reported: the title said "Bare soil" while the third
+    // row of the same panel said the crop was ready to pull.
+    expect(html).toContain('<h3>Fieldroot</h3>');
+    expect(html, 'the ground took the title back off the crop').not.toContain('<h3>Bare soil</h3>');
+    // The ground has not stopped being true — it moved to the sub line, which is
+    // where a stack has always pushed it.
+    expect(html).toContain('on bare soil');
+    expect(html).toContain('ripe — ready to pull');
+  });
+
+  it('names the crop while it is still coming up', () => {
+    const { world, c } = furrow(0.61);
+    const html = groundPanel(world, c);
+    expect(html).toContain('<h3>Fieldroot</h3>');
+    // The label column carries the name, so the row reads as a fact about a
+    // fieldroot rather than about the abstraction "crop".
+    expect(html).toContain('<span>fieldroot</span>');
+    expect(html).toContain('61% grown');
+  });
+
+  it('gives the title back to the ground when nothing is sown', () => {
+    const { world, c } = furrow(0);
+    // A cell inside a plot with no crop in it: `crops` holds 0 for sown, so an
+    // unsown cell is CROP_NONE and `cellFacts` reports null.
+    world.crops[packCell(world, c.x, c.y)] = CROP_NONE;
+    const html = groundPanel(world, cellFacts(world, c.x, c.y)!);
+
+    expect(html).toContain('<h3>Bare soil</h3>');
+    expect(html).not.toContain('Fieldroot');
+    // Nothing to name, so the label stays the abstraction.
+    expect(html).toContain('<span>crop</span>');
+    expect(html).toContain('nothing sown yet');
+  });
+
+  it('lets the harvest on the furrow take the title, and still names what grew there', () => {
+    const { world, c } = furrow(1);
+    addItem(world, 'rawfood', 8, c.x, c.y);
+    const html = groundPanel(world, cellFacts(world, c.x, c.y)!);
+
+    // One square, one answer, and a heap somebody just dropped is the newer
+    // news. The crop is not lost with the title: the label column still has it,
+    // which is the reason the name lives there and not only in the heading.
+    expect(html).toContain('<h3>8 raw food</h3>');
+    expect(html).toContain('<span>fieldroot</span>');
   });
 });
 

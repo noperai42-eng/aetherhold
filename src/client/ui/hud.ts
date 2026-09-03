@@ -403,6 +403,21 @@ const GROUND_LABEL: Record<Terrain, string> = {
   bridge: 'Bridge',
 };
 
+/**
+ * The colony's one crop, named.
+ *
+ * The sim does not name it and does not need to: `farming.ts` keeps a single
+ * number per cell, 0 sown to 1 ripe, and a harvest yields `rawfood` — so there
+ * is nothing there to disambiguate and a species id would be a field that never
+ * varies. But a panel that says "crop: 100%" over a square of turned earth has
+ * told the player everything except what they are looking at, which is the one
+ * thing they asked. Naming it here costs the sim nothing.
+ *
+ * Not applied to `rawfood` itself: the same barrel is filled by hunters, and a
+ * larder that calls a mossback haunch fieldroot is a worse lie than a vague one.
+ */
+const CROP_NAME = 'Fieldroot';
+
 /** What has been ordered done to a cell, as the colony would put it. */
 const ORDER_LABEL: Record<number, string> = {
   [DESIG_HARVEST]: 'to be cleared',
@@ -3518,6 +3533,12 @@ function isClimate(kind: Building['kind']): boolean {
  * the title and the ground it lies on drops to the sub line. With nothing lying
  * there, the ground *is* the answer and takes the title back.
  *
+ * A crop counts as something on it, and for a long time did not: the rule was
+ * only ever implemented for stacks, so a furrow of ripe grain was headed "Bare
+ * soil" while its own third row said "ready to pull". Underneath a stack it
+ * still is bare soil with something lying on it — one square, one answer, and
+ * the stack is the newer news.
+ *
  * The rows underneath are the questions a square can be asked, in the order the
  * ground stops being the point: what else is here, what is it for, what has been
  * ordered done to it, whether anyone can walk over it, and what it is like to
@@ -3525,11 +3546,12 @@ function isClimate(kind: Building['kind']): boolean {
  * — the air and the room are properties of the cell, and clicking the floor
  * beside a heater should answer the same question as clicking the heater.
  */
-function groundPanel(world: World, c: CellFacts): string {
+export function groundPanel(world: World, c: CellFacts): string {
   const top = c.items[0];
   const ground = GROUND_LABEL[c.terrain];
-  const head = top ? `${top.amount} ${resourceWord(top.kind)}` : ground;
-  const sub = top ? `on ${ground.toLowerCase()} · (${c.x}, ${c.y})` : `(${c.x}, ${c.y})`;
+  const head = top ? `${top.amount} ${resourceWord(top.kind)}` : c.crop !== null ? CROP_NAME : ground;
+  const onGround = top || c.crop !== null;
+  const sub = onGround ? `on ${ground.toLowerCase()} · (${c.x}, ${c.y})` : `(${c.x}, ${c.y})`;
   const rest = c.items
     .slice(1)
     .map((s) => `<div class="kv"><span>also here</span><b>${s.amount} ${resourceWord(s.kind)}</b></div>`)
@@ -3568,6 +3590,13 @@ function groundPanel(world: World, c: CellFacts): string {
  * The season gets said by name rather than folded into the rate, for the same
  * reason it is called out on the work board: a furrow that has not moved in a
  * week has an answer the player can plan around, and "12% of its best" is not it.
+ *
+ * Where something is actually growing the crop takes the label column and the
+ * state moves into the value — `fieldroot · 61% grown` rather than `crop · 61%
+ * grown`. It reads as the name of the thing being reported on, which is what
+ * every other label in the panel is, and it is the one place the species is
+ * still said when a harvested stack has taken the title off the furrow. Empty
+ * furrows stay labelled `crop`: there is no fieldroot there to name.
  */
 function groundRows(c: CellFacts): string {
   if (c.zone?.kind !== 'growing' && c.crop === null) return '';
@@ -3579,7 +3608,8 @@ function groundRows(c: CellFacts): string {
       : c.crop >= 1
         ? 'ripe — ready to pull'
         : `${Math.round(c.crop * 100)}% grown`;
-  const crop = `<div class="kv"><span>crop</span><b class="${c.crop !== null && c.crop >= 1 ? 'good' : ''}">${what}</b></div>`;
+  const label = c.crop === null ? 'crop' : CROP_NAME.toLowerCase();
+  const crop = `<div class="kv"><span>${label}</span><b class="${c.crop !== null && c.crop >= 1 ? 'good' : ''}">${what}</b></div>`;
   if (c.crop === null || c.crop >= 1) return crop;
   const speed =
     c.season < 0.05
