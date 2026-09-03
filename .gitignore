@@ -11,6 +11,12 @@ chrome-profile/
 # chunk filenames are content-hashed, so committing it is pure churn.
 .eval/build/
 
+# The same, for the throwaway bundles an A/B probe leaves behind. Attributing a
+# regression means building the tree twice with one constant changed and running
+# both — `.eval/build-nohunt/`, `.eval/build-fix0/` and friends. They are a
+# question being asked, not an artefact worth keeping.
+.eval/build-*/
+
 # `.eval/measurements.json` is deliberately NOT ignored. It is the measured grid
 # that every balance number in ARCHITECTURE.md and ENDGAME.md is quoted from, and
 # reproducing it costs a twenty-minute run — the docs do not make sense without it.
