@@ -32,7 +32,7 @@
  * design — see `AMBITIONS`.
  */
 
-import { defOf } from './buildings';
+import { defOf, isBed } from './buildings';
 import { isSleepHours } from './clock';
 import { canSow, growingCells } from './farming';
 import { canFloor } from './floors';
@@ -42,6 +42,8 @@ import { adjacentStandCells, buildingAt, dist, isWalkable } from './grid';
 import { canPlace, designate } from './orders';
 import { planBlueprint } from './stranded';
 import { DRAW, GENERATOR_OUTPUT, conducts, isElectrical, isSource, powerNetworks } from './power';
+import { planAnnex, planPartition } from './annex';
+import { unhoused } from './quarters';
 import { regionAt } from './regions';
 import { indoors, roomIndex, type Room } from './rooms';
 import { REC_SPOTS } from './recreation';
@@ -168,6 +170,16 @@ export const MAX_BANKS = 2;
 
 /** Blueprints one ambition may mark in a single pass. Keeps a fence growing in stages. */
 const BATCH = 8;
+
+/**
+ * Largest room the Steward will treat as somebody's quarters rather than a hall.
+ *
+ * An annex is six cells. The slack is for a room the player walled themselves —
+ * a closet, a porch, a corner of the barn — which should get a bed and become
+ * somebody's if it is the right size for one. Past this it is a space with a
+ * purpose of its own, and dropping a bunk in the middle of it is vandalism.
+ */
+const QUARTERS_MAX_CELLS = 12;
 
 /** Is the colony's own plan clear enough for the Steward to add to it? */
 export function boardClear(world: World): boolean {
@@ -478,6 +490,127 @@ function gridSpot(world: World, kind: BuildingKind): { x: number; y: number } | 
   return best;
 }
 
+/**
+ * A room the colony has walled and not yet furnished.
+ *
+ * Small, enclosed, not the hall, and with no bed in it. That is a bedroom
+ * waiting to happen, and it is also — deliberately — a shell the *player* walled
+ * off and left empty. The Steward finishing somebody else's room is the same
+ * behaviour as it finishing its own, and there is no reason to tell them apart.
+ *
+ * Blueprints cannot be standing in one of these: `boardClear` is what let this
+ * pass run at all, so anything here is built.
+ */
+function bedlessRooms(world: World): Room[] {
+  const idx = roomIndex(world);
+  const h = heart(world);
+  const out: Room[] = [];
+  for (const room of idx.rooms.values()) {
+    if (h && room.id === h.id) continue;
+    if (room.size > QUARTERS_MAX_CELLS) continue;
+    let taken = false;
+    for (const b of world.buildings) {
+      if (!b.built || !isBed(b.kind)) continue;
+      if (idx.cellRoom[b.y * world.width + b.x] === room.id) {
+        taken = true;
+        break;
+      }
+    }
+    if (!taken) out.push(room);
+  }
+  return out;
+}
+
+/**
+ * One pass of growing the compound a room at a time.
+ *
+ * Furnishing comes before building, always. A colony that raised four shells and
+ * then went looking for a fifth would have four rooms nobody can sleep in and a
+ * woodpile spent; putting the bed in first means every plank the colony lays
+ * turns into somewhere a settler can actually live before the next one is
+ * started. It is also what makes the whole thing resumable — a shell is
+ * recognised by being empty, not by being remembered.
+ *
+ * The lamp goes in with the bed rather than waiting for its own ambition,
+ * because `wiring` will chase it and run conduit out to it on a later pass. That
+ * is the colony running power to its rooms, and it costs nothing here.
+ */
+function growQuarters(world: World): number {
+  for (const room of bedlessRooms(world)) {
+    if (!affordsBuilding(world, 'bed')) break;
+    const cells = freeCells(world, room);
+    let n = 0;
+    // Against a wall, like the hall's own beds, so the doorway stays walkable.
+    for (const cell of cells.reverse()) {
+      if (planBlueprint(world, 'bed', cell.x, cell.y)) {
+        n++;
+        break;
+      }
+    }
+    if (n === 0) continue;
+    if (buildingUnlocked(world, 'lamp') && affordsBuilding(world, 'lamp')) {
+      for (const cell of freeCells(world, room)) {
+        if (planBlueprint(world, 'lamp', cell.x, cell.y)) {
+          n++;
+          break;
+        }
+      }
+    }
+    return n;
+  }
+
+  const h = heart(world);
+  if (!h) return 0;
+  if (!affordsBuilding(world, 'wall')) return 0;
+  // Inside first, outside second. A corner of the hall always exists; ground
+  // between the host wall and the fence usually does not — see `planPartition`.
+  const plan = planPartition(world, h) ?? planAnnex(world, h);
+  if (!plan) return 0;
+
+  // The door goes in **first**, and it is not a stylistic choice.
+  //
+  // An annex shell is eight walls, which is exactly `BATCH`, so marking walls
+  // first used to fill the batch and push the door to the next pass. The walls
+  // went up, and for a day the colony owned a sealed six-cell pocket with no way
+  // into it — which is precisely what `connectivity.ts` exists to repair. The
+  // watchdog did its job and deconstructed the cabin's own north wall to reach
+  // the pocket, the hall stopped being a room, `heart` fell through to a
+  // three-cell cave, and every ambition that measures from the heart quietly
+  // stopped working for the rest of the run. Measured on seed 4242: the hall went
+  // from 99 cells to 3 on day 12 and never came back.
+  //
+  // A doorway is walkable whether or not the door is hung yet, so marking it
+  // first means the room is reachable at every moment of its construction and the
+  // watchdog never has anything to fix.
+  // The door is marked **alone**, and the walls only once it is standing.
+  //
+  // Marking it first in the same batch was not enough. The Steward controls what
+  // is marked; it does not control what gets built, and `construct` takes frames
+  // nearest-first — so the walls went up around a corner whose door was still a
+  // blueprint, and for as long as that lasted the colony owned a sealed pocket.
+  // That is exactly the damage `connectivity.ts` exists to repair, and it repairs
+  // it by deconstructing whatever is nearest: the hall's own wall. Measured on
+  // seed 4242 twice, once through an outside annex and once through an inside
+  // partition — the hall stopped being a room, `heart` fell through to the
+  // six-cell bedroom the colony had just finished, and every ambition that
+  // measures from the heart was working off a broom cupboard from then on.
+  //
+  // One extra pass per room buys an invariant worth having: at no instant is
+  // there a wall of ours standing that a doorway does not already lead through.
+  const standing = buildingAt(world, plan.door.x, plan.door.y);
+  if (!standing) return planBlueprint(world, 'door', plan.door.x, plan.door.y) ? 1 : 0;
+  if (!standing.built) return 0;
+
+  let n = 0;
+  for (const c of plan.walls) {
+    if (n >= BATCH) break;
+    // Already standing — a wall from an earlier batch, or the cabin's own corner.
+    if (buildingAt(world, c.x, c.y)) continue;
+    if (planBlueprint(world, 'wall', c.x, c.y)) n++;
+  }
+  return n;
+}
+
 interface Ambition {
   id: string;
   /** Present tense, for the line in the log the moment the colony starts it. */
@@ -647,6 +780,20 @@ export const AMBITIONS: Ambition[] = [
         if (planBlueprint(world, 'bed', cell.x, cell.y)) return 1;
       }
       return 0;
+    },
+  },
+  {
+    id: 'shelter',
+    says: 'The colony puts up another room — there are people sleeping in the open.',
+    mark(world) {
+      // Immediately below `beds`, and reached only when `beds` marked nothing:
+      // the hall has run out of wall to put a bunk against. That is the moment a
+      // growing colony starts leaving people outdoors, and a night outdoors is
+      // the flu — see `tickGroundSleep`. Everything below this on the list is
+      // something a colony with everybody under a roof can afford to want.
+      const people = livingColonists(world).length;
+      if (builtCount(world, 'bed') + builtCount(world, 'medbed') >= people) return 0;
+      return growQuarters(world);
     },
   },
   {
@@ -910,6 +1057,26 @@ export const AMBITIONS: Ambition[] = [
       }
       if (!best) return 0;
       return planBlueprint(world, 'turret', best.x, best.y) ? 1 : 0;
+    },
+  },
+  {
+    id: 'quarters',
+    says: 'The colony walls off a room of somebody’s own.',
+    mark(world) {
+      // Below the guns and above everything decorative, which is the line
+      // between a colony that is safe and a colony that is somewhere to live.
+      //
+      // It sat under `comfort` first and measured at never: twenty days on seed
+      // 4242 and the Steward was still on the fence — `yard` marked something on
+      // eighteen of them — so not one ambition below the gate was reached at all
+      // and no colony was ever going to see a bedroom. A want the list can never
+      // get to is not a low priority, it is a feature that does not exist.
+      //
+      // Above `wiring` on purpose: a room with a lamp in it is what gives wiring
+      // something to chase, so building the room first is what puts the grid in
+      // the bedrooms rather than only in the yard.
+      if (unhoused(world).length === 0) return 0;
+      return growQuarters(world);
     },
   },
   {

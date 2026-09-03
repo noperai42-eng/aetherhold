@@ -47,6 +47,7 @@ import { tickSocial } from './social';
 import { tickGraves } from './graves';
 import { tickKnowhow } from './knowhow';
 import { tickBeauty } from './beauty';
+import { tickQuarters } from './quarters';
 import { tickSpoilage } from './spoilage';
 import { tickHusbandry } from './husbandry';
 import { SEASON_NEWS, seasonOf, seasonTurned } from './seasons';
@@ -271,6 +272,9 @@ export function stepWorld(world: World, streams: Streams): void {
   // same timing: after the dead are counted, because a body on the bunkhouse
   // floor is part of what the bunkhouse is worth.
   tickBeauty(world);
+  // After beauty, before the need pass reads either: both write a standing mood
+  // slot that `computeMood` only sums.
+  tickQuarters(world);
   // And who has an animal of their own. Third term of the same shape as the two
   // above, and it wants to be after `tickWildlife` as well as before the settler
   // loop: a pet that died this tick has already been mourned and taken off the
@@ -295,7 +299,7 @@ export function stepWorld(world: World, streams: Streams): void {
     // AI never *picks* work for it — moving cancels the job, which is the override.
     if (pawn.playerControlled) {
       if (pawn.jobId !== null) tickJob(world, pawn, streams.combat);
-      else if (pawn.activity === 'sleeping') tickGroundSleep(pawn);
+      else if (pawn.activity === 'sleeping') tickGroundSleep(world, pawn, streams.combat);
       continue;
     }
     // Drafted settlers are driven by the combat pass.
@@ -317,7 +321,7 @@ export function stepWorld(world: World, streams: Streams): void {
       continue;
     }
     if (pawn.activity === 'sleeping') {
-      tickGroundSleep(pawn);
+      tickGroundSleep(world, pawn, streams.combat);
       continue;
     }
     // Looking after themselves outranks the stack, and is checked here rather

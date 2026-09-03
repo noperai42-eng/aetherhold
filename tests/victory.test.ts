@@ -242,8 +242,26 @@ describe('the founding', () => {
     expect(hasWon(world)).toBe(false);
   });
 
+  // Seed 77 rather than seed 31, and the swap is worth a paragraph because the
+  // thing that moved it was not this test.
+  //
+  // 31 held every one of the five charters for the whole hold and then lost a
+  // settler 820 ticks from the end, which resets the founding clock and takes
+  // the win with it. It had been passing on 20 ticks of margin out of 4020 — a
+  // fifth of one percent — and what spent that margin was the day sleeping
+  // outdoors started costing health. The chain is worth knowing: a settler in a
+  // mood break stops working and drops where they stand, which on 31 is the
+  // yard, and a wet night in the yard is now a flu. The mood breaks are not new
+  // — seed 31 has nine of them at HEAD and seven here — and neither is a colony
+  // starving beside forty days of food, which is what actually kills them. Only
+  // the flu is new, and on a knife edge it was enough.
+  //
+  // So this asks a colony that can hold itself together. Of the six seeds walked
+  // for a replacement, 31 was the only one that failed: 4242, 5, 1234, 20260729
+  // and 77 all found Aetherhold with no illness at all. 77 is taken because
+  // nothing else in this file uses it.
   it('does not keep scoring after the run has ended', () => {
-    const { world, streams } = qualifying(31);
+    const { world, streams } = qualifying(77);
     stepWorldN(world, streams, HOLD_TICKS + 80);
     expect(hasWon(world)).toBe(true);
     const founded = world.messages.filter((m) => m.text.includes('Aetherhold is founded')).length;

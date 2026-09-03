@@ -94,6 +94,14 @@ export const MOOD_ATE_COOKED = 0.05;
 export const MOOD_ATE_RAW = -0.05;
 export const MOOD_ATE_AT_TABLE = 0.04;
 export const MOOD_SLEPT_ROUGH = -0.07;
+/**
+ * And a night in the open, which is a different complaint.
+ *
+ * Roughly double, because the floor of the cabin is a bad night and the yard is
+ * a night nobody in the colony should be having. The real price is not this
+ * number though — it is the flu roll in `tickGroundSleep`. See `quarters.ts`.
+ */
+export const MOOD_SLEPT_OUTSIDE = -0.14;
 export const MOOD_GRIEF = -0.16;
 export const MOOD_BREAKTHROUGH = 0.06;
 
@@ -459,6 +467,9 @@ export function computeMood(pawn: Pawn): number {
   // a handsome bunkhouse and a friend in it are worth about the same, and both
   // are small next to a full stomach. See `beauty.ts`.
   m += pawn.roomMood ?? 0;
+  // And whether any of that room is theirs. Same size as the people in it, on
+  // purpose — a bunkhouse is a complaint, not a crisis. See `quarters.ts`.
+  m += pawn.privacyMood ?? 0;
   // And whoever they came home to — positive while that person is alive, and
   // negative for the days after they are not. See `partners.ts`: the one slot
   // carries both because they are the same fact about the settler.
@@ -543,6 +554,9 @@ export function moodBreakdown(pawn: Pawn): MoodFactor[] {
   put(comfort < 0 ? 'cold' : 'too hot', -Math.abs(comfort) * COMFORT_MOOD);
   put((pawn.socialMood ?? 0) < 0 ? 'bad blood here' : 'friends here', pawn.socialMood ?? 0);
   put((pawn.roomMood ?? 0) < 0 ? 'grim surroundings' : 'pleasant surroundings', pawn.roomMood ?? 0);
+  // Named for what is missing rather than for the bunkhouse, because the fix is
+  // a wall and a door and the player should be able to read that off the row.
+  put('no room of their own', pawn.privacyMood ?? 0);
   // Two labels off one number, because the sign is the whole story: the same
   // slot that says "they have somebody" says "they had somebody" once that
   // person is gone, and a row reading "their partner −0.06" would be the game

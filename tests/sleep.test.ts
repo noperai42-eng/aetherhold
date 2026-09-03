@@ -34,6 +34,14 @@ import { Rng } from '../src/sim/rng';
 import { terrainAt, type Pawn, type World } from '../src/sim/types';
 import { createWorld, makePawn } from '../src/sim/worldgen';
 
+/**
+ * A stream for the exposure roll. Fixed, because these tests are about rest and
+ * a settler catching the flu mid-assertion would make them about the weather.
+ */
+function sleepRng(): Rng {
+  return new Rng(99);
+}
+
 /** A world with nobody in it and nothing lying about — see `tests/feeding.test.ts`. */
 function empty(seed = 1337): { world: World; streams: ReturnType<typeof makeStreams> } {
   const world = createWorld(seed);
@@ -87,7 +95,7 @@ describe('a settler asleep with no job', () => {
     addBuilding(world, 'bed', spot.x, spot.y, true);
     const p = sleepingRough(world, spot.x, spot.y, 0.0);
 
-    tickGroundSleep(p);
+    tickGroundSleep(world, p, sleepRng());
 
     expect(p.needs.rest, 'rest stood still on the bunk').toBeGreaterThan(0);
   });
@@ -99,8 +107,8 @@ describe('a settler asleep with no job', () => {
     addBuilding(world, 'bed', spot.x, spot.y, true);
     const onGround = sleepingRough(world, spot.x + 2, spot.y, 0.0);
 
-    tickGroundSleep(onBed);
-    tickGroundSleep(onGround);
+    tickGroundSleep(world, onBed, sleepRng());
+    tickGroundSleep(world, onGround, sleepRng());
 
     expect(onBed.needs.rest).toBe(onGround.needs.rest);
   });
@@ -110,7 +118,7 @@ describe('a settler asleep with no job', () => {
     const spot = clearing(world);
     const p = sleepingRough(world, spot.x, spot.y, 0.9);
 
-    tickGroundSleep(p);
+    tickGroundSleep(world, p, sleepRng());
 
     expect(p.activity).toBe('idle');
   });
@@ -120,7 +128,7 @@ describe('a settler asleep with no job', () => {
     const spot = clearing(world);
     const p = sleepingRough(world, spot.x, spot.y, 0.6, 0.0);
 
-    tickGroundSleep(p);
+    tickGroundSleep(world, p, sleepRng());
 
     expect(p.activity).toBe('idle');
   });
@@ -133,7 +141,7 @@ describe('a settler asleep with no job', () => {
     const spot = clearing(world);
     const p = sleepingRough(world, spot.x, spot.y, 0.2, 0.0);
 
-    tickGroundSleep(p);
+    tickGroundSleep(world, p, sleepRng());
 
     expect(p.activity).toBe('sleeping');
   });
@@ -143,7 +151,7 @@ describe('a settler asleep with no job', () => {
     const spot = clearing(world);
     const p = sleepingRough(world, spot.x, spot.y, 0.6, 0.5);
 
-    tickGroundSleep(p);
+    tickGroundSleep(world, p, sleepRng());
 
     expect(p.activity).toBe('sleeping');
   });
@@ -154,10 +162,10 @@ describe('a settler asleep with no job', () => {
     const p = sleepingRough(world, spot.x, spot.y, 0.2, 0.0);
     const before = p.mood;
 
-    tickGroundSleep(p); // too spent to get up yet — no wake, no charge
+    tickGroundSleep(world, p, sleepRng()); // too spent to get up yet — no wake, no charge
     const asleep = p.mood;
     p.needs.rest = 0.6;
-    tickGroundSleep(p);
+    tickGroundSleep(world, p, sleepRng());
 
     expect(asleep, 'charged while they were still asleep').toBe(before);
     expect(p.mood, 'a rough night cost them nothing').toBeLessThan(before);

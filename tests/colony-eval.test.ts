@@ -203,15 +203,25 @@ describe('colony survives its first week', () => {
   // managed, its upright column read 155.7 h; unmanaged, 1.9. Both are real. Only
   // one is the colony these starvation principles judge.
   //
-  // The readings this pin was re-pointed on, from the probe: feet 1.3 h, floor
-  // 20.4, stranded 4.1, unfed 2.7 — the four of them nested the way the
-  // assertions below require, with room under each one rather than a hair.
-  // harsh/424242 also still fits and is the spare, but only just: its unfed
-  // column is 1.1 against a threshold of 1, which is a pin that would go on the
-  // next good day the sim has.
+  // harsh/7 went fourth, the day the Steward learned to wall people a bedroom,
+  // and it went the way the three before it went — by the colony getting better
+  // rather than by anything breaking. Three of its four columns fell together:
+  // the walk home 1.39 h to 0.74, the floor spell 29.99 to 17.62, the unfed
+  // column 3.59 to 1.67, with only the stranded column steady at 4.85 to 5.15.
+  // Two settlers who used to be buried on that seed were alive on day twenty.
+  // The pin asks for a colony that still starves visibly enough to tell four
+  // causes apart, and harsh/7 is no longer one.
+  //
+  // The readings this pin was re-pointed on, from `scripts/probe-starve-pin.ts`:
+  // feet 3.3 h, floor 25.4, stranded 6.9, unfed 2.3 — the widest margins on the
+  // grid, and the reason harsh/1234 was taken over harsh/31 (2.4 / 20.8 / 5.6 /
+  // 1.8), which also fits and is the spare. harsh/99001 fits as well and is
+  // already carried in `SEEDS`. harsh/424242 is no longer the spare: its unfed
+  // column was 1.1 against a threshold of 1 when that was written, and the
+  // bedrooms took it to 0.0.
   it('tells a walk home from a wait on the floor from a wait with hands free', () => {
     const r = runColony({
-      seed: 7,
+      seed: 1234,
       days: 20,
       difficulty: 'harsh',
       playPastFounding: true,

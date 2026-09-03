@@ -48,6 +48,7 @@ import {
   MOOD_ATE_AT_TABLE,
   MOOD_ATE_COOKED,
   MOOD_ATE_RAW,
+  MOOD_SLEPT_OUTSIDE,
   MOOD_SLEPT_ROUGH,
   moraleScale,
   nudgeMood,
@@ -56,10 +57,12 @@ import {
   REST_GAIN_GROUND,
   TIRED,
 } from './needs';
+import { indoors } from './rooms';
 import { partnerOf } from './partners';
 import { bondPet } from './pets';
 import {
   ailmentsOf,
+  maybeExposureFlu,
   maybeFoodPoisoning,
   needsBedRest,
   tendAilments,
@@ -643,6 +646,18 @@ const SICKBAY_PULL = 40;
  */
 const PARTNER_PULL = 6;
 
+/**
+ * And how much further still to sleep in their own room rather than a spare bunk.
+ *
+ * Larger than `PARTNER_PULL` because this is the whole point of having built the
+ * room, and smaller than `SICKBAY_PULL` because a settler with a fever belongs
+ * in the ward whoever owns what. It reads both ways off one number: their own
+ * bed pulls this much closer, and somebody else's pushes this much further, so a
+ * colony with a bed each never has two people fighting over one room while a
+ * made bed stands empty next door.
+ */
+const OWN_ROOM_PULL = 30;
+
 function findFreeBed(world: World, pawn: Pawn): Building | null {
   const ill = needsBedRest(pawn);
   const mate = partnerOf(world, pawn);
@@ -655,8 +670,11 @@ function findFreeBed(world: World, pawn: Pawn): Building | null {
     if (isBuildingTargeted(world, b.id)) continue;
     const medical = b.kind === 'medbed';
     const near = settled && dist(b.x, b.y, settled.x, settled.y) <= PARTNER_PULL;
+    // Somebody else's room is a last resort, not a forbidden one: a settler who
+    // would otherwise sleep on the floor takes the spare bunk. See `quarters.ts`.
+    const owned = b.ownerId === undefined ? 0 : b.ownerId === pawn.id ? -OWN_ROOM_PULL : OWN_ROOM_PULL;
     const score =
-      dist(pawn.x, pawn.y, b.x, b.y) + (medical === ill ? 0 : SICKBAY_PULL) - (near ? PARTNER_PULL : 0);
+      dist(pawn.x, pawn.y, b.x, b.y) + (medical === ill ? 0 : SICKBAY_PULL) - (near ? PARTNER_PULL : 0) + owned;
     if (score < bestScore && reachable(world, pawn, b.x, b.y, false)) {
       best = b;
       bestScore = score;
@@ -4044,12 +4062,23 @@ export function tickMoraleBreak(world: World, pawn: Pawn, rng: Rng): void {
  * make. `rest > 0.5` keeps it from yo-yoing somebody straight back off their feet
  * — they get up hungry once they have enough in them to walk to the pantry.
  */
-export function tickGroundSleep(pawn: Pawn): void {
+export function tickGroundSleep(world: World, pawn: Pawn, rng: Rng): void {
   pawn.needs.rest = Math.min(1, pawn.needs.rest + REST_GAIN_GROUND);
+
+  // Sleeping on a floor is a bad night. Sleeping in the open is the colony
+  // failing to house somebody, and it is priced in health rather than mood: the
+  // weather roll in `tickComfort` only bites once a settler is properly chilled,
+  // which a summer night in the yard never is, so a colony with no beds could
+  // put people outside all season for a mood point a night. Eight hours lying
+  // still in the weather is not that, and the fix is a roof, which is exactly
+  // what the Steward's `quarters` ambition builds.
+  const exposed = !indoors(world, Math.round(pawn.x), Math.round(pawn.y));
+  if (exposed) maybeExposureFlu(world, pawn, rng);
+
   if (pawn.needs.rest > 0.9 || (pawn.needs.food < 0.12 && pawn.needs.rest > 0.5)) {
     pawn.activity = 'idle';
     // Charged on waking rather than per tick on the floor, so it is one night
     // rough rather than a mood that sinks the longer they manage to sleep.
-    nudgeMood(pawn, MOOD_SLEPT_ROUGH);
+    nudgeMood(pawn, exposed ? MOOD_SLEPT_OUTSIDE : MOOD_SLEPT_ROUGH);
   }
 }

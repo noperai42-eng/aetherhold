@@ -294,6 +294,13 @@ export interface Building {
    * find another — so they share the field rather than inventing a second one.
    */
   occupant?: number | null;
+  /**
+   * bed only: the settler this room belongs to. Ownership is re-derived every
+   * pass by `tickQuarters` — this is remembered so somebody sleeps in the same
+   * room two nights running, not so a claim can outlive the room. Absent on
+   * every bed in a shared hall, and on every save written before bedrooms.
+   */
+  ownerId?: number;
   /** turret only */
   cooldown?: number;
   /**
@@ -977,6 +984,12 @@ export interface Pawn {
    * Optional so older saves still load.
    */
   roomMood?: number;
+  /**
+   * What sleeping in a bunkhouse costs them. Written by `tickQuarters` like
+   * `roomMood` is written by `tickBeauty` — a standing fact about the world
+   * that `computeMood` cannot look up for itself, because it takes a pawn.
+   */
+  privacyMood?: number;
   /**
    * What their partner is worth to them, written by `partners.ts` on the same
    * cadence and for the same reason as `socialMood`. Positive while that person

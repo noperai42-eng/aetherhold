@@ -17,6 +17,7 @@
 import { TICKS_PER_DAY } from './types';
 import { grieve, nudgeMood } from './needs';
 import { cellTemp } from './temperature';
+import { rainfall } from './weather';
 import { insulationOf } from './gear';
 import { cancelJob, msg } from './world';
 import type { Ailment, AilmentKind, Building, Pawn, World } from './types';
@@ -126,6 +127,48 @@ const COMFORT_ADAPT = 1 / 200;
  */
 const COLD_ILL_AT = 0.5;
 const FLU_FROM_COLD_PER_DAY = 1.2;
+
+/**
+ * And the chance per day of catching something by sleeping out in it.
+ *
+ * Two skies, because there are two different ways the yard makes a settler ill
+ * and they do not arrive together. Rain is the one the thermometer cannot see: a
+ * body lying still in a downpour is soaked through by morning, and a mild wet
+ * night is worth more than a cold dry one. Cold is the other, and `tickComfort`
+ * already rolls it for everybody out in the weather — this adds to that roll
+ * rather than replacing it, because eight hours face-down in the open is not the
+ * exposure of eight hours walking through it. Somebody asleep is not moving, not
+ * near a fire, and not going inside when it turns.
+ *
+ * A dry, mild night in the yard is deliberately *not* an illness. It is a bad
+ * night's sleep and it is charged as one, in mood, by `tickGroundSleep`.
+ *
+ * The first cut of this was a single flat rate — two-in-three a night whatever
+ * was overhead, deliberately not routed through the weather at all. Measured on
+ * seed 31 it took a colony of eight down to two in four days with the storyteller
+ * pushed sixty days out, which is not "sick and dying quicker", it is a summer
+ * sky as lethal as a blizzard. The rates below are per day of *that* sky, and
+ * they only ever run while it is actually falling or actually freezing.
+ *
+ * A roof of any kind switches both off entirely.
+ */
+export const FLU_FROM_RAIN_PER_DAY = 2.4;
+export const FLU_FROM_COLD_SLEEP_PER_DAY = 1.6;
+
+/**
+ * Roll for the night in the yard. Called once a tick by `tickGroundSleep` for
+ * anybody asleep on open ground; the caller owns the question of what counts as
+ * open, because it is the one holding the room index.
+ */
+export function maybeExposureFlu(world: World, pawn: Pawn, rng: Rng): void {
+  if (hasAilment(pawn, 'flu')) return;
+  // `comfort` is already this tick's: `tickHealth` runs ahead of the settler
+  // loop, so this reads the air they are lying in rather than yesterday's.
+  const chill = Math.max(0, -(pawn.comfort ?? 0));
+  const rate = FLU_FROM_RAIN_PER_DAY * rainfall(world) + FLU_FROM_COLD_SLEEP_PER_DAY * chill;
+  if (rate <= 0) return;
+  if (rng.chance(perTick(rate))) afflict(world, pawn, 'flu');
+}
 
 /**
  * The same air, through what they are wearing.
