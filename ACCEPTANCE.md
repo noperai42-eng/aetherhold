@@ -4,9 +4,11 @@ What the build promised, and where each promise is actually held down. Rows mark
 **automated** fail the suite if they stop being true; rows marked **manual** need a
 browser and live as a numbered step in [PLAYTEST.md](PLAYTEST.md).
 
-*The other four documents:* [README.md](README.md) is what the game is and how each
+*The other five documents:* [README.md](README.md) is what the game is and how each
 system works, [ARCHITECTURE.md](ARCHITECTURE.md) is how the code is laid out and why,
-[PLAYTEST.md](PLAYTEST.md) is the browser tour these manual rows point into, and
+[PLAYTEST.md](PLAYTEST.md) is the browser tour these manual rows point into,
+[METHODOLOGY.md](METHODOLOGY.md) is the loop that produces the rows below — which
+instrument answers which question, and why a promise needs one — and
 [ENDGAME.md](ENDGAME.md) is what is still missing at the far end of a run.
 
 Four sections: [the killer feature](#the-killer-feature),

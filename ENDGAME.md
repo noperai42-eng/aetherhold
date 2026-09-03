@@ -16,10 +16,12 @@
 > [Costs and risks](#costs-and-risks-stated-plainly) is the current reading and
 > wins any disagreement.
 
-*The other four documents:* [README.md](README.md) is what the game is and how each
+*The other five documents:* [README.md](README.md) is what the game is and how each
 system works, [ARCHITECTURE.md](ARCHITECTURE.md) is how the code is laid out and why,
-[PLAYTEST.md](PLAYTEST.md) is the browser tour, and [ACCEPTANCE.md](ACCEPTANCE.md) is what
-the build promised and which test holds each promise down.
+[PLAYTEST.md](PLAYTEST.md) is the browser tour, [ACCEPTANCE.md](ACCEPTANCE.md) is what
+the build promised and which test holds each promise down, and
+[METHODOLOGY.md](METHODOLOGY.md) is how the measurements this plan argues from are
+taken.
 
 ## Contents
 

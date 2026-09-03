@@ -17,11 +17,12 @@ a letter after it is a side trip into one subject, self-contained and skippable,
 are grouped below rather than listed in the order they happen to sit in the file. Start
 from the group that covers whatever you just changed.
 
-*The other four documents:* [README.md](README.md) is what the game is and how each
+*The other five documents:* [README.md](README.md) is what the game is and how each
 system works, [ARCHITECTURE.md](ARCHITECTURE.md) is how the code is laid out and why,
 [ACCEPTANCE.md](ACCEPTANCE.md) is what the build promised and which test holds each
-promise down, and [ENDGAME.md](ENDGAME.md) is what is still missing at the far end of a
-run.
+promise down, [METHODOLOGY.md](METHODOLOGY.md) is the loop this tour is the last tier of
+— including the `window.aetherhold` console recipes, which are faster than clicking —
+and [ENDGAME.md](ENDGAME.md) is what is still missing at the far end of a run.
 
 ## Contents
 

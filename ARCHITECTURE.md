@@ -3,10 +3,12 @@
 One simulation, two views. That sentence is the whole design; everything below is how the
 code keeps it true.
 
-**The other four documents.** [README.md](README.md) is what the game *is* and why each
+**The other five documents.** [README.md](README.md) is what the game *is* and why each
 system earns its place; this file is how it is built. [PLAYTEST.md](PLAYTEST.md) is the
-hands-on script, [ACCEPTANCE.md](ACCEPTANCE.md) is what has been checked and by whom, and
-[ENDGAME.md](ENDGAME.md) is the plan for what comes after the founding.
+hands-on script, [ACCEPTANCE.md](ACCEPTANCE.md) is what has been checked and by whom,
+[METHODOLOGY.md](METHODOLOGY.md) is how a change gets made and measured — the ladder of
+instruments this file's numbers come off — and [ENDGAME.md](ENDGAME.md) is the plan for
+what comes after the founding.
 
 ## Contents
 

@@ -7,10 +7,12 @@ instant and the world never disagrees with itself.
 
 Original setting and art (all geometry is generated in code). No third-party assets.
 
-**The other four documents.** This file is what the game *is* and why each system earns its
+**The other five documents.** This file is what the game *is* and why each system earns its
 place. [ARCHITECTURE.md](ARCHITECTURE.md) is how it is built.
 [PLAYTEST.md](PLAYTEST.md) is the hands-on script — fifty numbered things to go and try.
 [ACCEPTANCE.md](ACCEPTANCE.md) is what has been checked, by a machine or by a human.
+[METHODOLOGY.md](METHODOLOGY.md) is how it gets changed — the round, the instruments, and
+which one to reach for when the grid goes red.
 [ENDGAME.md](ENDGAME.md) is the plan for what the game becomes after the founding.
 
 ## Contents
