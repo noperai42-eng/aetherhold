@@ -65,7 +65,7 @@ import { roomAt, type Room } from '../../sim/rooms';
 import { BEAUTY_GOOD, beautyLabel, roomBeauty, surroundings } from '../../sim/beauty';
 import { recLabel } from '../../sim/recreation';
 import { STACK_MAX, controlStack } from '../../sim/queue';
-import { stewardOn } from '../../sim/steward';
+import { researchReasons, stewardOn } from '../../sim/steward';
 import {
   PACK_SIZES,
   bestTalker,
@@ -1732,6 +1732,14 @@ export class Hud {
     const r = s.world.research;
     const openable = new Set(available(s.world).map((d) => d.id));
     const short = researchNeeds(s.world);
+    // Why this is on the bench, when there is a foreman to have had a reason.
+    // The Steward says it in the log the morning it takes the work up and the log
+    // scrolls away by lunch; the panel is where a player goes hours later to ask
+    // why the colony is studying tanning while everybody freezes. Nothing here
+    // when the Steward is stood down — the project was then the player's own
+    // choice, and telling them their reasons back is not information.
+    const why =
+      r.current !== null && stewardOn(s.world) ? (researchReasons(s.world).get(r.current) ?? null) : null;
     // Redraw only when something actually moved. The progress number changes every
     // tick, so it is deliberately rounded into the signature. The shortfall is in
     // it because a crate landing in the yard changes nothing else on this panel,
@@ -1739,7 +1747,7 @@ export class Hud {
     // is worse than not showing the bill at all.
     const sig =
       `${r.current}|${r.done.join(',')}|${Math.round(researchFraction(s.world) * 200)}` +
-      `|${short.map((n) => `${n.kind}${n.amount}`).join(',')}`;
+      `|${short.map((n) => `${n.kind}${n.amount}`).join(',')}|${why ?? ''}`;
     if (sig === this.researchSig) return;
     this.researchSig = sig;
 
@@ -1757,6 +1765,7 @@ export class Hud {
       now.innerHTML =
         `<div class="ttl">${escapeHtml(def.label)}<span>${Math.floor(r.progress)} / ${def.cost}</span></div>` +
         `<div class="track"><span style="width:${pct}%"></span></div>` +
+        (why ? `<div class="why">${escapeHtml(why)}</div>` : '') +
         // The bill, and where the colony stands against it. Shown from the moment
         // the project is chosen rather than when the points run out, because the
         // whole point of the third tier is that somebody should already be on the

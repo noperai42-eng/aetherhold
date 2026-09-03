@@ -1352,6 +1352,21 @@ body {
 }
 
 /*
+ * The Steward's reason for the project on the bench. Italic and quiet, sitting
+ * under the progress track: it is the colony talking, not a label on the
+ * project, and it must not compete with the bill underneath it — the bill is
+ * something the player has to act on and this is something they only have to
+ * agree with.
+ */
+#researchtab .now .why {
+  margin: -2px 0 8px;
+  font-size: 11px;
+  line-height: 1.45;
+  font-style: italic;
+  color: var(--dim);
+}
+
+/*
  * The material bill. Chips rather than a sentence, because the only question the
  * player is asking is "which line is short", and a colour answers that from
  * across the room in a way "180 of 180 steel and 4 of 12 parts" does not.
