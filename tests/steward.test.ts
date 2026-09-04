@@ -13,7 +13,8 @@
 import { describe, expect, it } from 'vitest';
 import { HOME_X, HOME_Y, createWorld } from '../src/sim/worldgen';
 import { canSow, growingCells } from '../src/sim/farming';
-import { buildingAt } from '../src/sim/grid';
+import { buildingAt, isWalkable } from '../src/sim/grid';
+import { regionAt } from '../src/sim/regions';
 import { indoors } from '../src/sim/rooms';
 import { addBuilding, addItem, countResource, livingColonists, removeBuilding } from '../src/sim/world';
 import { makeStreams, stepWorldN } from '../src/sim/tick';
@@ -1286,5 +1287,169 @@ describe('the colony sizes its own grid', () => {
     // exhaust, which is the mistake players actually make and not one the colony
     // should be making on their behalf.
     expect(indoors(world, gen.x, gen.y)).toBe(false);
+  });
+});
+
+/**
+ * The other half of the clear-board gate.
+ *
+ * `boardClear` is right to stop the Steward from starting a second thing while
+ * the first is still standing half-built — but it used to stop it from fetching
+ * the timber the first one is waiting for, too, and that is the same gate closing
+ * on the only hand that can open it. Measured on seed 99001 at forty days:
+ * thirty-five frames up, not one plank anywhere on the map, no designations, and
+ * five of the six settlers idle in the yard for the last six days of the run.
+ *
+ * So: over a dirty board, `stores` may run and nothing else may.
+ */
+describe('a board stuck on something the colony has not got', () => {
+  /** A cell near the cabin nothing is standing on and anybody can walk to. */
+  function freeCell(world: World): { x: number; y: number } {
+    for (let r = 3; r < 20; r++) {
+      for (let dx = -r; dx <= r; dx++) {
+        for (const dy of [-r, r]) {
+          const x = HOME_X + dx;
+          const y = HOME_Y + dy;
+          if (isWalkable(world, x, y) && !buildingAt(world, x, y)) return { x, y };
+        }
+      }
+    }
+    throw new Error('nowhere to put a fence post');
+  }
+
+  it('sends people out for wood when a frame is waiting on wood there is none of', () => {
+    const world = createWorld(31);
+    world.tick = NOON;
+    setStock(world, 'wood', 0);
+    setStock(world, 'steel', 300);
+    const spot = freeCell(world);
+    addBuilding(world, 'fence', spot.x, spot.y, false);
+    expect(boardClear(world)).toBe(false);
+
+    const stuck = pass(world);
+    // Trees marked, and not one new blueprint: going and getting it costs the
+    // colony nothing and competes with the player's queue for nothing, which is
+    // exactly why it is the one ambition allowed down here.
+    expect(stuck.ambition).toBe('stores');
+    expect(stuck.designations).toBeGreaterThan(0);
+    expect(stuck.blueprints).toBe(1);
+  });
+
+  it('keeps its hands in its pockets when the wood is there and simply undelivered', () => {
+    const world = createWorld(31);
+    world.tick = NOON;
+    wellStocked(world);
+    const spot = freeCell(world);
+    addBuilding(world, 'fence', spot.x, spot.y, false);
+
+    // Four hundred wood on the ground. Nobody has carried it to the post yet,
+    // which is a haul waiting to happen and not a colony that needs an axe — the
+    // old gate is still the right answer here.
+    expect(pass(world).ambition).toBeUndefined();
+  });
+
+  it('does not mark a second woodlot while somebody is already out with an axe', () => {
+    const world = createWorld(31);
+    world.tick = NOON;
+    setStock(world, 'wood', 0);
+    const spot = freeCell(world);
+    addBuilding(world, 'fence', spot.x, spot.y, false);
+
+    const first = pass(world);
+    expect(first.ambition).toBe('stores');
+    const marked = first.designations;
+
+    // The board is moving. An outstanding designation is a settler already
+    // walking to a tree, and eight more marks on top of that is the Steward
+    // talking over itself.
+    const second = pass(world);
+    expect(second.designations).toBe(marked);
+  });
+
+  it('still refuses every ambition that would spend, over a dirty board', () => {
+    const world = createWorld(31);
+    world.tick = NOON;
+    setStock(world, 'wood', 0);
+    setStock(world, 'steel', 0);
+    const spot = freeCell(world);
+    addBuilding(world, 'fence', spot.x, spot.y, false);
+
+    pass(world);
+    // One frame in, one frame out. Beds, graves, the yard, the grid — everything
+    // below the gate stays below it; the hatch is for the axe only.
+    expect(blueprints(world)).toBe(1);
+    expect(world.stewardLast).toBe('stores');
+  });
+
+  it('marks timber round the people when the heart room is a cupboard nobody is in', () => {
+    const world = createWorld(31);
+    world.tick = NOON;
+    setStock(world, 'wood', 0);
+
+    // The shape a raid leaves behind, built by hand. Take the roof off the
+    // colony — every wall and door it owns — so the cabin stops being an
+    // enclosed room at all, and leave one sealed one-cell pocket standing on the
+    // far side of the valley with a lamp in it. `heart` wants the biggest
+    // enclosed room with something built inside, and now the pocket is the only
+    // one there is. This is seed 99001 at forty days, in miniature: the heart was
+    // a three-cell room at (108,45), the six settlers were a hundred cells away
+    // at (98,95), and the region test threw away all two thousand four hundred
+    // and seventy-one trees in the valley for not connecting to a cupboard.
+    for (const b of world.buildings.slice()) {
+      if (b.built && (b.kind === 'wall' || b.kind === 'door')) removeBuilding(world, b);
+    }
+    let box: { x: number; y: number } | null = null;
+    for (let r = 24; r < 50 && !box; r += 2) {
+      const x = HOME_X - r;
+      const y = HOME_Y + r;
+      clearPatch(world, x - 2, y - 2, x + 2, y + 2);
+      const ring = [-1, 0, 1].flatMap((dx) => [-1, 0, 1].map((dy) => ({ x: x + dx, y: y + dy })));
+      if (ring.every((c) => isWalkable(world, c.x, c.y))) box = { x, y };
+    }
+    expect(box).not.toBeNull();
+    for (const c of [-1, 0, 1].flatMap((dx) => [-1, 0, 1].map((dy) => ({ x: box!.x + dx, y: box!.y + dy })))) {
+      if (c.x === box!.x && c.y === box!.y) continue;
+      addBuilding(world, 'wall', c.x, c.y, true);
+    }
+    addBuilding(world, 'lamp', box!.x, box!.y, true);
+
+    const room = heart(world)!;
+    const b = boundsOf(world, room);
+    const heartRegion = regionAt(world, Math.round((b.x0 + b.x1) / 2), Math.round((b.y0 + b.y1) / 2));
+    // Nobody is in it, and nobody can get into it — which is the whole problem.
+    expect(livingColonists(world).some((p) => regionAt(world, Math.round(p.x), Math.round(p.y)) === heartRegion)).toBe(false);
+
+    const spot = freeCell(world);
+    addBuilding(world, 'fence', spot.x, spot.y, false);
+
+    // Trees marked anyway, because fetching is about where the people are.
+    const stuck = pass(world);
+    expect(stuck.ambition).toBe('stores');
+    expect(stuck.designations).toBeGreaterThan(0);
+  });
+
+  it('gets itself out of the hole: the axes are out before the morning is over', () => {
+    const world = createWorld(31);
+    setStock(world, 'wood', 0);
+    setStock(world, 'steel', 300);
+    setStock(world, 'meal', 200);
+    const spot = freeCell(world);
+    // A firebox rather than a fence post, because thirty wood and ten steel is a
+    // frame this colony cannot pay for by accident — the board stays dirty for
+    // the whole of this run, which is the condition being tested.
+    const gen = addBuilding(world, 'generator', spot.x, spot.y, false)!;
+    expect(countResource(world, 'wood')).toBe(0);
+
+    // Forty minutes of colony, nobody touching it. Measured on this seed: six
+    // trees marked and five settlers on chop jobs inside the first four hundred
+    // ticks, a hundred and thirteen wood on the ground by eight hundred. Without
+    // the hatch the same eight hundred ticks are a firebox frame, an empty
+    // valley floor and six people finding something else to do.
+    const streams = makeStreams(world);
+    for (let t = 0; t < 800; t += 400) stepWorldN(world, streams, 400);
+
+    expect(gen.built).toBe(false);
+    expect(countResource(world, 'wood')).toBeGreaterThan(0);
+    expect(world.messages.some((m) => /sends people out for timber/i.test(m.text))).toBe(true);
   });
 });

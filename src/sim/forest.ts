@@ -47,7 +47,7 @@ import { outdoorGrowth } from './farming';
 import { buildingAt, isWalkable } from './grid';
 import { toolYield } from './research';
 import { Rng } from './rng';
-import { addBuilding } from './world';
+import { addBuilding, itemsAt } from './world';
 import {
   DESIG_NONE,
   TICKS_PER_DAY,
@@ -170,6 +170,12 @@ function canRoot(world: World, x: number, y: number): boolean {
   // would be the sim arguing with the player.
   if (world.cellZone[idx] !== -1) return false;
   if (world.cellDesig[idx] !== DESIG_NONE) return false;
+  // Nor over the colony's goods. A stack is picked up by standing on it, so a
+  // tree rooting through a woodpile takes that wood out of the game while
+  // leaving it on the books — the same trap a wall raised over a stack used to
+  // be, and the reason `shoveItemsClear` exists. A tree has the whole valley to
+  // grow in and can pick another square.
+  if (itemsAt(world, x, y).length > 0) return false;
   // And not on top of anybody. The pathfinder survives this — a body inside a
   // solid cell is explicitly allowed to walk its way out, which is the same
   // recovery a wall raised over someone's head gets — so this is not a trap

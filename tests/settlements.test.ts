@@ -499,15 +499,35 @@ describe('a settler on the road', () => {
     expect(livingColonists(world).length).toBe(before - 2);
 
     // Long enough for the further of the two round trips, plus the walk in.
-    stepWorldN(world, streams, legTicks(second) * 2 + 600);
-    expect(caravansOf(world)).toHaveLength(0);
+    // Walked in short steps, and the reading taken the moment both parties are
+    // off the road rather than at the end of the budget. One long jump asked a
+    // different question than it looks like it is asking: a colony with wood in
+    // the yard sends the next party out inside the margin, so "nobody is on the
+    // road" goes false again, and the settler who walked home an hour ago is
+    // south of the map with a pack on and no longer counted a colonist. Both of
+    // those read as this trip having failed. Measured after the woodpile fix:
+    // both are in at `legTicks(second) * 2` exactly, and caravan #3 leaves
+    // before the margin is up.
+    let arrived: { alive: number; hasA: boolean; hasB: boolean } | null = null;
+    for (let t = 0; t < legTicks(second) * 2 + 600 && !arrived; t += 60) {
+      stepWorldN(world, streams, 60);
+      const out = caravansOf(world).map((c) => c.id);
+      if (out.includes(a!.id) || out.includes(b!.id)) continue;
+      arrived = {
+        alive: livingColonists(world).length,
+        hasA: livingColonists(world).some((p) => p.id === a!.pawn.id),
+        hasB: livingColonists(world).some((p) => p.id === b!.pawn.id),
+      };
+    }
+    expect(arrived).not.toBeNull();
+
     // Both back on their feet and counted again, and both trips banked. `stats`
     // counting two is the assertion that matters: a loop that removed the first
     // party before stepping the second would leave the second walking for ever,
     // and an arrival that overwrote rather than appended would bank one.
-    expect(livingColonists(world).length).toBeGreaterThanOrEqual(before);
-    expect(livingColonists(world).some((p) => p.id === a!.pawn.id)).toBe(true);
-    expect(livingColonists(world).some((p) => p.id === b!.pawn.id)).toBe(true);
+    expect(arrived!.alive).toBeGreaterThanOrEqual(before);
+    expect(arrived!.hasA).toBe(true);
+    expect(arrived!.hasB).toBe(true);
     expect(world.stats.caravans).toBe(2);
     expect(first.visits).toBe(1);
     expect(second.visits).toBe(1);

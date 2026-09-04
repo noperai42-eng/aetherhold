@@ -40,6 +40,7 @@ import { isTimber } from './forest';
 import { buriableDead, freeGraves } from './graves';
 import { adjacentStandCells, buildingAt, dist, isWalkable } from './grid';
 import { canPlace, designate } from './orders';
+import { missingResource } from './jobs';
 import { planBlueprint } from './stranded';
 import { DRAW, GENERATOR_OUTPUT, conducts, isElectrical, isSource, powerNetworks } from './power';
 import { BUNK_DEEP, planBunkhouse, planPartition } from './annex';
@@ -724,12 +725,37 @@ export const AMBITIONS: Ambition[] = [
       const room = heart(world);
       if (!room) return 0;
       const b = boundsOf(world, room);
-      const cx = (b.x0 + b.x1) / 2;
-      const cy = (b.y0 + b.y1) / 2;
+      let cx = (b.x0 + b.x1) / 2;
+      let cy = (b.y0 + b.y1) / 2;
       // Where the colony is standing, so a tree on the far side of a lake is not
       // an errand. This is what the reachability index is for: asking it about
       // forty trees costs one array read each.
-      const home = regionAt(world, Math.round(cx), Math.round(cy));
+      let home = regionAt(world, Math.round(cx), Math.round(cy));
+
+      // Unless nobody lives there. `heart` wants the biggest enclosed room with
+      // something built in it, and takes the biggest room on the map if no room
+      // qualifies — which is the right answer for laying out a yard and the wrong
+      // one for sending somebody out with an axe, because a raid that opens the
+      // cabin roof stops it being a room at all. Measured on seed 99001 at forty
+      // days: the heart was a three-cell pocket at (108,45), all six settlers and
+      // all thirty-five frames were in region 0 around (98,95), and so every one
+      // of the two thousand four hundred and seventy-one trees on the map failed
+      // the reachability test against a cupboard nobody was standing in.
+      //
+      // Fetching is about where the people are, not where the house was. Only the
+      // fetching: the yard, the fence and the rest still measure from the heart,
+      // which is what they are about.
+      const crew = livingColonists(world);
+      if (crew.length > 0 && !crew.some((p) => regionAt(world, Math.round(p.x), Math.round(p.y)) === home)) {
+        const mx = crew.reduce((n, p) => n + p.x, 0) / crew.length;
+        const my = crew.reduce((n, p) => n + p.y, 0) / crew.length;
+        // The middle of the crew can be a wall or a lake, so stand on whoever is
+        // nearest to it rather than on the average itself.
+        const near = crew.reduce((a, p) => (dist(p.x, p.y, mx, my) < dist(a.x, a.y, mx, my) ? p : a), crew[0]!);
+        cx = near.x;
+        cy = near.y;
+        home = regionAt(world, Math.round(cx), Math.round(cy));
+      }
 
       let n = 0;
       const reachableFrom = (x: number, y: number): boolean => {
@@ -1677,6 +1703,47 @@ export function setSteward(world: World, on: boolean): void {
  * outside, daylight, and nothing already marked. What follows is a walk down the
  * ambitions in order, and the first one that marks anything ends the pass.
  */
+/**
+ * The one ambition allowed to run over a board that is not clear.
+ *
+ * Found by id rather than taken as `AMBITIONS[0]`, so reordering the list to
+ * change what the colony cares about first cannot silently change what it is
+ * allowed to do when it is stuck.
+ */
+const STORES = AMBITIONS.find((a) => a.id === 'stores')!;
+
+/**
+ * Is the board stuck for want of something nobody can go and get?
+ *
+ * `boardClear` freezes every ambition while a blueprint stands, which is right —
+ * the Steward must not queue a second project over a stalled first. But fetching
+ * the timber the stalled first is waiting for is not a second project, and
+ * without this the gate is a trap that springs itself: a colony that runs out of
+ * wood halfway along a fence can never order another tree cut, because the
+ * unbuilt fence is the thing stopping it. Measured on seed 99001 at forty days —
+ * thirty-five frames standing, not one plank on the map, no designations, and
+ * five of six settlers idle in the yard.
+ *
+ * "Nobody can go and get it" is `countResource === 0`: none anywhere, in any
+ * pile, on the whole map. That reading is only trustworthy because a stack can no
+ * longer be walled over — see `shoveItemsClear`. While it could, the colony
+ * counted forty-nine planks it had entombed and concluded it was fine.
+ *
+ * An outstanding designation means somebody is already out there with an axe, so
+ * the board is moving and this is not the moment to mark eight more trees.
+ */
+function boardStarved(world: World): boolean {
+  for (let i = 0; i < world.cellDesig.length; i++) {
+    if (world.cellDesig[i] !== DESIG_NONE) return false;
+  }
+  for (const b of world.buildings) {
+    if (b.built) continue;
+    const missing = missingResource(b);
+    if (missing && countResource(world, missing.kind) === 0) return true;
+  }
+  return false;
+}
+
 export function tickSteward(world: World): void {
   if (!stewardOn(world) || world.gameOver) return;
   if (world.tick % STEWARD_INTERVAL !== 0) return;
@@ -1691,7 +1758,18 @@ export function tickSteward(world: World): void {
   // Everything below this line spends materials and competes with the player's
   // own queue. Choosing what to study does neither.
   pickProject(world);
-  if (!boardClear(world)) return;
+  if (!boardClear(world)) {
+    // Stuck, and stuck on something the colony does not have. Send people out
+    // for it — and nothing else, because everything below this line would be
+    // starting a second thing while the first is still standing half-built.
+    if (!boardStarved(world)) return;
+    const n = STORES.mark(world);
+    if (n > 0) {
+      if (world.stewardLast !== STORES.id) msg(world, STORES.says, 'info');
+      world.stewardLast = STORES.id;
+    }
+    return;
+  }
 
   for (const ambition of AMBITIONS) {
     const n = ambition.mark(world);

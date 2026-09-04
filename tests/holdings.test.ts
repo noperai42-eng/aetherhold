@@ -610,9 +610,22 @@ describe('a colony that actually marches', () => {
     expect(holdingById(world, h.id)?.held).toBe(true);
 
     // And then it pays, without anybody being sent to collect.
-    const steel = countResource(world, 'steel');
-    const until = h.dueTick! + 60;
-    for (let t = world.tick; t < until; t += 60) stepWorldN(world, streams, 60);
-    expect(countResource(world, 'steel')).toBeGreaterThan(steel);
+    //
+    // Watched for the cart rather than measured off the steel pile. The pile is
+    // not the payment: a colony whose board is moving spends steel on whatever
+    // frame is standing while the cart is still coming down off the moor, and a
+    // pile that is no bigger afterwards then reads as a holding that never paid.
+    // Measured here, ninety-three steel before and ninety-three after, with a
+    // cart in the log in between and a turret frame drinking the difference.
+    const due = h.dueTick!;
+    let paid = false;
+    for (let t = world.tick; t < due + 60; t += 60) {
+      stepWorldN(world, streams, 60);
+      paid ||= world.messages.some((m) => /comes down off the moor/i.test(m.text));
+    }
+    expect(paid).toBe(true);
+    // And the next cart is already on the books, which is the line that makes it
+    // a tribute rather than a one-off.
+    expect(h.dueTick).toBeGreaterThan(due);
   });
 });

@@ -2346,6 +2346,45 @@ function frameNeed(
   return { total, nearest };
 }
 
+/**
+ * Push loose goods out from under a wall that has just closed over them.
+ *
+ * The sibling of the rule below it, and it was missing for the whole of this
+ * game's life. A stack is picked up by standing *on* it — `findStack` asks
+ * `reachable(..., false)` — so the moment a solid building finishes on a cell
+ * holding items, those items stop existing for every purpose except counting.
+ * `countResource` still sees them, which is the part that makes it a trap rather
+ * than a loss: the colony believes it has the wood, so nothing goes out for more.
+ *
+ * That is not a hypothetical. On seed 1312 the colony walled and fenced over four
+ * woodpiles — forty-nine wood on grass and dirt, under two walls and a fence —
+ * and from day twenty-four it never built another thing. Twenty frames standing,
+ * eight settlers healthy, fed, unbroken and idle nineteen thousand ticks a day,
+ * because every one of those frames wanted wood and the only wood was under a
+ * wall. `boardClear` then froze the Steward on top of it, so the colony could not
+ * even order the trees cut that would have got it out.
+ *
+ * Nearest standable cell, and the stack keeps its reservation: a hauler already
+ * walking to it finds it one square over, which the pickup handles, and the
+ * alternative — dropping the claim — is a stack that two settlers then race for.
+ * Only for buildings that are actually solid. A bed or a lamp over a sack of
+ * wheat buries nothing, because somebody can still stand there and lift it.
+ */
+export function shoveItemsClear(world: World, b: Building): void {
+  if (!defOf(b.kind).solid) return;
+  const here = itemsAt(world, b.x, b.y);
+  if (here.length === 0) return;
+  const spot = adjacentStandCells(world, b.x, b.y).find((c) => isWalkable(world, c.x, c.y));
+  // Nowhere to put it down is a stack in the middle of a sealed wall, which the
+  // doorway check above has already refused to build. Leave it rather than
+  // teleport it across the map — a settler can always take the wall back down.
+  if (!spot) return;
+  for (const s of here) {
+    s.x = spot.x;
+    s.y = spot.y;
+  }
+}
+
 /** Pick a job for an idle settler. Needs jump the queue; then player priorities. */
 export function assignJob(world: World, pawn: Pawn): void {
   if (pawn.jobId !== null || pawn.dead || pawn.downed || pawn.drafted) return;
@@ -2875,6 +2914,8 @@ export function tickJob(world: World, pawn: Pawn, rng: Rng): void {
         world.stats.built++;
         gainSkill(world, pawn, 'construction', 0.12);
         msg(world, `${pawn.name} finished a ${defOf(b.kind).label.toLowerCase()}.`, 'good');
+        // And a wall raised over the woodpile must not bury it.
+        shoveItemsClear(world, b);
         // A wall raised under a body must not trap it.
         for (const p of world.pawns) {
           if (p.dead) continue;
