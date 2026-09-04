@@ -212,16 +212,37 @@ describe('colony survives its first week', () => {
   // The pin asks for a colony that still starves visibly enough to tell four
   // causes apart, and harsh/7 is no longer one.
   //
+  // harsh/1234 went fifth, the day the flu learned to pass between people, and
+  // it went the way all four before it went. Contagion is not a starvation rule
+  // and it moved every one of these columns anyway, because a settler in bed
+  // with a fever is a settler not carrying a meal to anybody: 1234's unfed
+  // column read 2.3 h when it was pinned and 0.0 after, with the floor spell
+  // going 25.4 to 0.3. The colony is not worse. It is differently occupied, and
+  // this pin asks for one that still starves visibly enough to tell four causes
+  // apart.
+  //
   // The readings this pin was re-pointed on, from `scripts/probe-starve-pin.ts`:
-  // feet 3.3 h, floor 25.4, stranded 6.9, unfed 2.3 — the widest margins on the
-  // grid, and the reason harsh/1234 was taken over harsh/31 (2.4 / 20.8 / 5.6 /
-  // 1.8), which also fits and is the spare. harsh/99001 fits as well and is
-  // already carried in `SEEDS`. harsh/424242 is no longer the spare: its unfed
-  // column was 1.1 against a threshold of 1 when that was written, and the
-  // bedrooms took it to 0.0.
+  // feet 3.7 h, floor 21.3, stranded 7.7, unfed 1.5 — the widest margins of the
+  // three runs that fit, out of twelve seeds walked on two difficulties. This is
+  // a harder twenty days than the pins before it: three of the six are dead by
+  // the end, which is the point, because a colony that starves visibly is the
+  // only kind that can tell four causes of starving apart.
+  //
+  // harsh/5150 (1.1 / 8.1 / 4.4 / 2.4) is the spare, and has the best margin on
+  // the unfed column — the one that has collapsed under every re-point. It was
+  // not taken because its walk-home column reads 1.1 against a threshold of 1,
+  // and that is the margin harsh/424242 was carrying the round before it failed.
+  //
+  // harsh/8675309 (1.5 / 14.9 / 3.2 / 1.8) fits as well and was pinned here for
+  // one run before being backed out on cost rather than on a reading: it takes
+  // 87 s to simulate against 61 s for the seed it replaced, and this file has
+  // fifteen runs in it and sits nearest the 300 s per-test ceiling. It timed out
+  // in the full suite and passed alone, which is the whole failure mode. Check
+  // the clock as well as the columns before pinning anything here — 20260902
+  // costs 64 s, so this re-point is free.
   it('tells a walk home from a wait on the floor from a wait with hands free', () => {
     const r = runColony({
-      seed: 1234,
+      seed: 20260902,
       days: 20,
       difficulty: 'harsh',
       playPastFounding: true,

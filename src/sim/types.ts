@@ -1282,6 +1282,15 @@ export interface Pawn {
    */
   wellUntil?: number;
   /**
+   * Tick until which they cannot catch the flu off anybody else.
+   *
+   * Longer than `wellUntil` and only about the one illness that passes between
+   * people, because it is doing a different job: it is what makes an outbreak a
+   * wave that goes through a colony and burns out, rather than a condition the
+   * colony simply has from now on. See `tickContagion`.
+   */
+  fluImmuneUntil?: number;
+  /**
    * Consecutive ticks on an empty stomach, reset by the first mouthful. Mood
    * climbs with it, so the third day of a famine is worse than the first.
    */
@@ -1750,6 +1759,14 @@ export interface World {
     social?: number;
     /** Where the next seed falls. Its own stream so a sapling cannot move a raid. */
     forest?: number;
+    /**
+     * Who catches what off whom. Its own stream for the sharpest version of the
+     * usual argument: this pass draws a die for every settler indoors twice a
+     * minute, so taking it from `health` would mean a colony's wounds, fevers
+     * and food poisoning all landed differently depending on how many people
+     * happened to be standing in the hall.
+     */
+    contagion?: number;
   };
   /** set when the colony is wiped */
   gameOver: boolean;

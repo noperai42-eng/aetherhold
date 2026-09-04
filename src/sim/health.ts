@@ -14,10 +14,11 @@
  * neglect is.
  */
 
-import { TICKS_PER_DAY } from './types';
+import { TICKS_PER_DAY, inBounds } from './types';
 import { grieve, nudgeMood } from './needs';
 import { cellTemp } from './temperature';
 import { rainfall } from './weather';
+import { roomIndex } from './rooms';
 import { insulationOf } from './gear';
 import { cancelJob, msg } from './world';
 import type { Ailment, AilmentKind, Building, Pawn, World } from './types';
@@ -94,6 +95,24 @@ export const WOUND_BELOW = 0.55;
 
 /** How long shaking something off keeps the next thing off. See `afflict`. */
 const CONVALESCENCE = TICKS_PER_DAY;
+
+/**
+ * And how long shaking off the *flu* keeps the flu off, which is a longer and
+ * more specific promise.
+ *
+ * Without it a shared hall never gets well. Measured over twenty days on seed
+ * 99001 with one day of convalescence: three of six settlers ill at every
+ * sample, twenty settler-days of illness, and the colony's kitchen stalled dead
+ * from day fourteen — not an outbreak but a permanent condition, because the
+ * pool of people reinfecting each other never emptied. That is a colony the
+ * player cannot do anything about, which is the one thing an illness in this
+ * game is not allowed to be.
+ *
+ * Six days is long enough for a wave to run out of people to reach. The hall
+ * still has a bad week; the difference a door makes is that the wave never gets
+ * going at all.
+ */
+const FLU_IMMUNITY = TICKS_PER_DAY * 6;
 
 /** Chance a settler who eats uncooked food spends the next day regretting it. */
 export const RAW_FOOD_POISON_CHANCE = 0.11;
@@ -354,6 +373,78 @@ function tickAilment(world: World, pawn: Pawn, a: Ailment): 'running' | 'cured' 
 }
 
 /**
+ * Catching it off somebody else.
+ *
+ * The flu is the only thing in this file that passes between people, and that is
+ * a design statement rather than an omission. A wound goes septic because nobody
+ * washed it and a raw turnip is a raw turnip — neither of those is anybody
+ * else's fault, and making them catching would turn every injury into an
+ * outbreak. What spreads is the thing that spreads.
+ *
+ * **The room is the whole model.** Two settlers share air if they are standing
+ * in the same enclosed room, and that is the only kind of contact this counts.
+ * Everything the player can do about an outbreak falls out of that one rule
+ * without a single line of special case:
+ *
+ *  - A hall with eight bunks in it is eight people breathing on each other all
+ *    night, every night. One settler comes home with it and the colony has it.
+ *  - A room of one's own is one person in a room. There is nobody to catch it
+ *    from and nobody to give it to, and the eight hours that used to be the
+ *    colony's main exposure become eight hours of nothing happening.
+ *  - Standing in the yard is not a room, so a colony working outside all day is
+ *    not infecting itself while it works.
+ *
+ * That is the answer to "how do we deal with it", and it is the same answer as
+ * "everyone under a roof, and then everyone behind a door" — which is what the
+ * bunkhouse is for. The private room stops being a mood and starts being the
+ * thing that keeps the colony on its feet.
+ *
+ * Rate is per sick person in the room per day *of standing there*. Settlers are
+ * out working most of the day, so the exposure that matters is the night, and
+ * eight hours in a hall beside one sick neighbour comes out near a one-in-three.
+ * Somebody just over it is skipped: `wellUntil` is the convalescence that stops
+ * a settler catching the same flu again on their way out of the sickbed.
+ */
+export const FLU_CATCH_PER_DAY = 0.45;
+
+/** Roll for it twice a minute rather than sixty times — see `tickContagion`. */
+export const CONTAGION_INTERVAL = 60;
+
+export function tickContagion(world: World, rng: Rng): void {
+  if (world.tick % CONTAGION_INTERVAL !== 0) return;
+  const idx = roomIndex(world);
+  const byRoom = new Map<number, Pawn[]>();
+  for (const pawn of world.pawns) {
+    if (pawn.dead) continue;
+    if (pawn.faction !== 'colony' && pawn.faction !== 'prisoner') continue;
+    const x = Math.floor(pawn.x);
+    const y = Math.floor(pawn.y);
+    if (!inBounds(world, x, y)) continue;
+    const id = idx.cellRoom[y * world.width + x];
+    if (id === undefined || id < 0) continue;
+    const list = byRoom.get(id);
+    if (list) list.push(pawn);
+    else byRoom.set(id, [pawn]);
+  }
+
+  for (const list of byRoom.values()) {
+    if (list.length < 2) continue;
+    let sick = 0;
+    for (const p of list) if (hasAilment(p, 'flu')) sick++;
+    if (sick === 0) continue;
+    // Scaled by the interval, so how often this runs is a performance decision
+    // and never a balance one.
+    const rate = perTick(FLU_CATCH_PER_DAY * sick) * CONTAGION_INTERVAL;
+    for (const pawn of list) {
+      if (hasAilment(pawn, 'flu')) continue;
+      if (world.tick < (pawn.wellUntil ?? 0)) continue;
+      if (world.tick < (pawn.fluImmuneUntil ?? 0)) continue;
+      if (rng.chance(rate)) afflict(world, pawn, 'flu');
+    }
+  }
+}
+
+/**
  * One pass over everybody who can get ill.
  *
  * Ordered after the fighting so a wound taken this tick is already on the books,
@@ -388,6 +479,7 @@ export function tickHealth(world: World, rng: Rng): void {
       if (outcome === 'cured') {
         list.splice(i, 1);
         pawn.wellUntil = world.tick + CONVALESCENCE;
+        if (a.kind === 'flu') pawn.fluImmuneUntil = world.tick + FLU_IMMUNITY;
         msg(world, `${pawn.name} has shaken off ${AILMENTS[a.kind].label}.`, 'good');
         continue;
       }

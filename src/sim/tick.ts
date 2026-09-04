@@ -12,7 +12,7 @@ import { tickBushes } from './berries';
 import { tickCrops } from './farming';
 import { tickExplore } from './explore';
 import { tickFireSafety } from './firesafety';
-import { tickHealth } from './health';
+import { tickContagion, tickHealth } from './health';
 import {
   assignJob,
   assignNeedsOnly,
@@ -71,6 +71,7 @@ export interface Streams {
   health: Rng;
   social: Rng;
   forest: Rng;
+  contagion: Rng;
 }
 
 export function makeStreams(world: World): Streams {
@@ -89,6 +90,11 @@ export function makeStreams(world: World): Streams {
     // taking it from `main` would put every wildlife decision in the game on a
     // different footing depending on how much of the valley had been logged.
     forest: new Rng(world.rng.forest ?? (world.rng.main ^ 0x6d2b79f5) >>> 0),
+    // And once more, for the sharpest version of the argument: this pass draws a
+    // die for every settler indoors twice a minute, so on `health` a colony's
+    // wounds and fevers would land differently depending on how many people were
+    // standing in the hall.
+    contagion: new Rng(world.rng.contagion ?? (world.rng.main ^ 0x9e3779b9) >>> 0),
   };
 }
 
@@ -99,6 +105,7 @@ export function storeStreams(world: World, s: Streams): void {
   world.rng.health = s.health.state;
   world.rng.social = s.social.state;
   world.rng.forest = s.forest.state;
+  world.rng.contagion = s.contagion.state;
 }
 
 /** How often an idle settler re-evaluates what to do (ticks). Staggered by id. */
@@ -260,6 +267,9 @@ export function stepWorld(world: World, streams: Streams): void {
   // fester, and before the settler loop, so somebody whose fever broke through
   // this tick goes to bed on this tick rather than the next one.
   tickHealth(world, streams.health);
+  // After, not before: `tickHealth` is what cures somebody, and a colony that
+  // reinfected them in the same tick they shook it off would never get well.
+  tickContagion(world, streams.contagion);
   // The dead before opinions, because how the colony feels about the bodies in
   // the yard is part of what `tickSocial` prices below — and a body that rots
   // away on this tick must be gone before anybody is charged for it again.

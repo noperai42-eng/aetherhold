@@ -23,7 +23,7 @@ import { runColony } from '../src/eval/run';
 import type { Difficulty } from '../src/sim/types';
 
 const dayOptions = process.argv.length > 2 ? process.argv.slice(2).map(Number) : [20];
-const seeds = [7, 424242, 1312, 99001, 20260729, 1234, 31];
+const seeds = [7, 424242, 1312, 99001, 20260729, 1234, 31, 5150, 8675309, 20260902, 77, 4242];
 const difficulties: Difficulty[] = ['harsh', 'settler'];
 
 console.log('starvation columns · past founding');
