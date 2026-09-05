@@ -65,6 +65,7 @@ import {
   type BuildingKind,
   type ResourceKind,
   type World,
+  type Zone,
 } from './types';
 
 /** How often the Steward looks up from its work. Slow on purpose: this is planning. */
@@ -481,6 +482,24 @@ function gridSpot(world: World, kind: BuildingKind): { x: number; y: number } | 
   return best;
 }
 
+/** The room the colony keeps its cold store in: the one with a cooler standing in it. */
+function coldStore(world: World): Room | null {
+  const idx = roomIndex(world);
+  for (const b of world.buildings) {
+    if (!b.built || b.kind !== 'cooler') continue;
+    const id = idx.cellRoom[b.y * world.width + b.x];
+    if (id === undefined || id < 0) continue;
+    const room = idx.rooms.get(id);
+    if (room) return room;
+  }
+  return null;
+}
+
+/** A stockpile zone that takes the colony's food. */
+function isLarder(z: Zone): boolean {
+  return z.accepts.includes('rawfood') && z.accepts.includes('meal') && !z.accepts.includes('wood');
+}
+
 /**
  * A room the colony has walled and not yet furnished.
  *
@@ -501,12 +520,13 @@ function bedlessRooms(world: World): Room[] {
     if (room.size > QUARTERS_MAX_CELLS) continue;
     let taken = false;
     for (const b of world.buildings) {
-      // A prison bunk counts, and it has to. `isBed` says no — a prisonbed is
-      // not somewhere a settler sleeps — but this list is "rooms nobody has
-      // claimed", and without the extra clause the cell block the Steward has
-      // just walled reads as empty and `quarters` puts a colonist's bunk in it
-      // next to the raider.
-      if (!b.built || !(isBed(b.kind) || b.kind === 'prisonbed')) continue;
+      // A prison bunk counts, and so does a cooler. `isBed` says no to both — a
+      // prisonbed is not somewhere a settler sleeps and a cooler is not a bed at
+      // all — but this list is "rooms nobody has claimed", and without the extra
+      // clauses the cell block and the cold store the Steward has just walled
+      // both read as empty, and `quarters` puts a colonist's bunk in one next to
+      // the raider and the other in the freezer.
+      if (!b.built || !(isBed(b.kind) || b.kind === 'prisonbed' || b.kind === 'cooler')) continue;
       if (idx.cellRoom[b.y * world.width + b.x] === room.id) {
         taken = true;
         break;
@@ -1182,6 +1202,88 @@ export const AMBITIONS: Ambition[] = [
       }
       if (!best) return 0;
       return planBlueprint(world, 'turret', best.x, best.y) ? 1 : 0;
+    },
+  },
+  {
+    id: 'cellar',
+    says: 'The colony walls off a cold store, so the winter it grows is the winter it eats.',
+    mark(world) {
+      // The one thing on this list the colony was never able to want.
+      //
+      // `spoilage.ts` says outright what it is for — "grow what you eat, or build
+      // a room cold enough to keep the rest" — and every part of that promise was
+      // already wired: `spoilFactor` is a hard zero below freezing rather than a
+      // small number, `roomTargets` lets one cooler chill a small sealed room hard
+      // because the term is `q / room.size`, and `findStockpileCell` already
+      // carries anything perishable to a below-freezing cell "however far it is".
+      // The only missing piece was somebody to order it. The Steward could plan
+      // fourteen kinds of building and a cooler was not one of them, so on a
+      // colony nobody is clicking, the cold store was a mechanic with no door into
+      // it. Measured on seed 7 over forty harsh days: 268 food spoiled, the larder
+      // sat at 11C, and not one unit was ever frozen.
+      //
+      // Below `defence`, because the raid is what actually kills this colony and
+      // twenty-eight steel is most of a turret. Above `sickbay` and everything
+      // under it, because a ward bed is for the settler who is already ill and
+      // this is the room that stops the colony's food becoming the reason.
+      if (!buildingUnlocked(world, 'cooler')) return 0;
+
+      // The grid has to be able to carry it before it is switched on. `power` sits
+      // above this and sizes generators to demand, so it would catch up on its own
+      // — but `SHED_ORDER` drops coolers before turrets, so a cooler plugged into
+      // a grid that cannot hold it is a freezer that thaws on exactly the night
+      // the guns are firing. Cheaper to wait a pass.
+      let load = 0;
+      for (const b of world.buildings) {
+        if (!b.built) continue;
+        load += DRAW[b.kind] ?? 0;
+      }
+      if (builtCount(world, 'generator') * GENERATOR_OUTPUT < load + (DRAW.cooler ?? 0)) return 0;
+
+      const cold = coldStore(world);
+      if (!cold) {
+        if (!affordsBuilding(world, 'cooler')) return 0;
+        // Every empty room gets asked, not just the first — the same loop
+        // `growQuarters` and `cells` run, for the same reason. This map generates
+        // caves, `bedlessRooms` returns them in index order, and taking `[0]`
+        // hands the cooler to a hole in the rock, fails to place it there, and
+        // then reports "no cold store today" for ever while a finished room
+        // stands empty by the door. `planBlueprint` refuses the caves on its own,
+        // because it will not propose work nobody can walk to.
+        for (const room of bedlessRooms(world)) {
+          for (const cell of freeCells(world, room).reverse()) {
+            if (planBlueprint(world, 'cooler', cell.x, cell.y)) return 1;
+          }
+        }
+        // Nowhere walled to put one yet. A cold store is a small room with a
+        // machine in it and a door that shuts, which is a bedroom with a
+        // different occupant — so it is cut the same way, by the same function.
+        return carveRoom(world);
+      }
+
+      // The room is cold and the food does not know. `findStockpileCell` only
+      // prefers a freezing cell if a stockpile is painted on one, so the zone is
+      // as load-bearing as the cooler and there is no point building one without
+      // the other.
+      //
+      // Its own zone, accepting food and nothing else: a cellar that took wood
+      // and steel would fill with building material and then have no room for the
+      // harvest, which is the one thing it was cut for.
+      let larder = world.zones.find((z) => z.kind === 'stockpile' && z.cells.length > 0 && isLarder(z));
+      let n = 0;
+      for (const cell of freeCells(world, cold)) {
+        const packed = packCell(world, cell.x, cell.y);
+        if (world.cellZone[packed]! >= 0) continue;
+        larder ??= addZone(world, 'stockpile', ['rawfood', 'meal']);
+        addCellToZone(world, larder, cell.x, cell.y);
+        n++;
+      }
+      // The cabin keeps its own food column, and that is deliberate rather than
+      // an oversight. A full cellar has to have somewhere to overflow to, and
+      // `findStockpileCell` already falls back to the warm pool when no cold cell
+      // has room — strip the cabin and a colony with a full cellar has nowhere to
+      // put the harvest at all.
+      return n;
     },
   },
   {

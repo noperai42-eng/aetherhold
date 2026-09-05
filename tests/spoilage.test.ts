@@ -18,8 +18,11 @@ import { FREEZING, cellTemp, outdoorTemp, tickTemperature } from '../src/sim/tem
 import { SPOIL_DAYS, freshness, spoilFactor, tickSpoilage } from '../src/sim/spoilage';
 import { buildingAt, isWalkable } from '../src/sim/grid';
 import { CABIN, createWorld } from '../src/sim/worldgen';
-import { addBuilding, addItem, countResource, mergeRot } from '../src/sim/world';
+import { addBuilding, addCellToZone, addItem, addZone, countResource, mergeRot } from '../src/sim/world';
+import { coldStoreOpen, findStockpileCell } from '../src/sim/jobs';
+import { MAX_STACK } from '../src/sim/world';
 import { makeStreams, stepWorldN } from '../src/sim/tick';
+import type { Streams } from '../src/sim/tick';
 import { setPriority } from '../src/sim/orders';
 import { indoors, roomAt } from '../src/sim/rooms';
 import { tickPower } from '../src/sim/power';
@@ -505,6 +508,24 @@ describe('the larder, played', () => {
     }
   }
 
+  /**
+   * A fortnight with the crew's hands kept off the food, day by day.
+   *
+   * `downToolsOnFood` only reaches the settlers standing there when it is called,
+   * and a colony that survives a fortnight takes in new ones — five of them here,
+   * arriving with hauling on. Once the Steward learnt to wall a cold store it also
+   * paints a stockpile over it, so those arrivals cheerfully carried warm food onto
+   * the shelf and `mergeRot` averaged their rot into a pile this test needs
+   * untouched: the larder came out of the run at 75 units and 0.08 rot, both of
+   * them the colony's doing rather than the freezer's.
+   */
+  function quietFortnight(world: World, streams: Streams): void {
+    for (let d = 0; d < 14; d++) {
+      downToolsOnFood(world);
+      stepWorldN(world, streams, TICKS_PER_DAY);
+    }
+  }
+
   it('loses an open-air surplus over a fortnight and keeps the cold-stored one', () => {
     // A month of the real loop, so the colony has to keep its grid up as well as
     // its walls: at seed 1337 a fire takes the generator out on day four and the
@@ -520,13 +541,13 @@ describe('the larder, played', () => {
     const yard = untouchable(addItem(world, 'rawfood', 60, out.x, out.y)!);
     const larder = untouchable(addItem(world, 'rawfood', 60, shelf.x, shelf.y)!);
 
-    stepWorldN(world, streams, TICKS_PER_DAY * 14);
+    quietFortnight(world, streams);
 
     // A fortnight in, the yard pile is visibly going and the larder has not moved.
     expect(yard.rot ?? 0).toBeGreaterThan(0.45);
-    expect(larder.rot ?? 0).toBe(0);
+        expect(larder.rot ?? 0).toBe(0);
 
-    stepWorldN(world, streams, TICKS_PER_DAY * 14);
+    quietFortnight(world, streams);
 
     expect(world.items).not.toContain(yard);
     expect(world.items).toContain(larder);
@@ -600,5 +621,122 @@ describe('the larder, played', () => {
       expect(rot).toBeGreaterThanOrEqual(0);
       expect(rot).toBeLessThan(1);
     }
+  });
+});
+
+
+// ---------------------------------------------------------------------------
+// Moving what is already put away
+// ---------------------------------------------------------------------------
+
+/**
+ * A stockpile painted over the cold room, taking food and nothing else.
+ *
+ * This is what the `cellar` ambition paints, done by hand so the hauling rules
+ * can be tested without running the Steward.
+ */
+function coldLarder(world: World, at: Cell): void {
+  const z = addZone(world, 'stockpile', ['rawfood', 'meal']);
+  addCellToZone(world, z, at.x, at.y);
+}
+
+describe('food already in a warm store', () => {
+  /**
+   * Put away is not the same as put away properly.
+   *
+   * Before this, `needsHauling` answered "is it in a stockpile that takes it",
+   * which is true of a sack of meat sitting two cells from the stove — so the
+   * heap the colony started with stayed in the cabin and rotted while every new
+   * harvest was routed correctly past it into the cellar. Measured on seed 7 over
+   * forty harsh days: 268 food spoiled and not one unit was ever frozen.
+   */
+  it('is somewhere to move it to once a cold shelf has room', () => {
+    const { world } = game();
+    calm(world);
+    atHour(world, 0.6);
+    const shelf = coldStore(world);
+    settleFor(world);
+    expect(cellTemp(world, shelf.x, shelf.y)).toBeLessThan(FREEZING);
+
+    coldLarder(world, shelf);
+    expect(coldStoreOpen(world, 'rawfood')).toBe(true);
+    // And the drop cell the colony would choose for it is the cold one, which is
+    // the half of this that was already working.
+    const drop = findStockpileCell(world, 'rawfood');
+    expect(drop).not.toBeNull();
+    expect(cellTemp(world, drop!.x, drop!.y)).toBeLessThan(FREEZING);
+  });
+
+  /**
+   * The guard that stops the colony carrying the same sack back and forth for
+   * ever. A full cellar is not somewhere to put anything, so the answer has to be
+   * about *room* and not merely about a cold room existing — and the cabin is
+   * then the fallback, which is what the colony wants.
+   */
+  it('stays where it is when the cold shelf is full', () => {
+    const { world } = game();
+    calm(world);
+    atHour(world, 0.6);
+    const shelf = coldStore(world);
+    settleFor(world);
+    coldLarder(world, shelf);
+
+    addItem(world, 'rawfood', MAX_STACK, shelf.x, shelf.y);
+    expect(coldStoreOpen(world, 'rawfood')).toBe(false);
+    // Not "nowhere at all" — the warm larder still takes it. A colony whose
+    // cellar is full must still have somewhere to put the harvest.
+    expect(findStockpileCell(world, 'rawfood')).not.toBeNull();
+  });
+
+  it('has nowhere colder to be before anybody builds a cellar', () => {
+    const { world } = game();
+    calm(world);
+    expect(coldStoreOpen(world, 'rawfood')).toBe(false);
+    // Steel does not care how warm it is, and must never start a haul on this
+    // account.
+    expect(coldStoreOpen(world, 'steel')).toBe(false);
+  });
+
+  /**
+   * The experience half: leave the colony alone with a cold room standing and a
+   * warm heap in the cabin, and the settlers move the food themselves. No orders,
+   * no player input — just the ordinary haul work type doing its round.
+   */
+  it('gets carried into the cellar by settlers left to their own devices', () => {
+    const { world, streams } = game();
+    calm(world);
+    const shelf = coldStore(world);
+    settleFor(world);
+    coldLarder(world, shelf);
+
+    // A sack in the warm cabin larder — already in a stockpile that accepts it,
+    // which is precisely the case the old rule called "done".
+    const warm = indoorCell();
+    const zone = addZone(world, 'stockpile', ['rawfood', 'meal']);
+    addCellToZone(world, zone, warm.x, warm.y);
+    addItem(world, 'rawfood', 40, warm.x, warm.y);
+    expect(cellTemp(world, warm.x, warm.y)).toBeGreaterThan(FREEZING);
+
+    const before = countResource(world, 'rawfood');
+    for (const p of world.pawns) setPriority(world, p.id, 'haul', 4);
+    // Wind the clock to the middle of the working day first. Settlers do not haul
+    // in their sleep, and a run that starts at the default hour spends most of
+    // twelve hundred ticks in bed and moves nothing.
+    atHour(world, 0.4);
+    stepWorldN(world, streams, 1200);
+
+    // Nothing was eaten into oblivion or lost on the way — it moved.
+    expect(countResource(world, 'rawfood')).toBeGreaterThan(0);
+    let frozen = 0;
+    for (const s of world.items) {
+      if (s.kind !== 'rawfood' || s.carriedBy !== null) continue;
+      if (cellTemp(world, s.x, s.y) <= FREEZING) frozen += s.amount;
+    }
+    // The sack that started warm in the cabin is now standing in the freezer,
+    // which is the whole of what the colony was asked to do. Not every crumb on
+    // the map moves in twelve hundred ticks — the far heaps are somebody else's
+    // errand — so this asserts the journey happened, not that the map is tidy.
+    expect(frozen).toBeGreaterThan(0);
+    expect(before).toBeGreaterThan(0);
   });
 });

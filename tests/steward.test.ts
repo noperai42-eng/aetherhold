@@ -158,6 +158,23 @@ function gunOnTheWall(world: World): void {
   expect(turret).not.toBeNull();
 }
 
+/**
+ * A generator with headroom, standing well clear of anything that matters.
+ *
+ * The cellar refuses to plug a cooler into a grid that cannot hold it — the shed
+ * order drops coolers before turrets, so an unsupported one thaws on exactly the
+ * night the guns are firing. Every cellar test therefore needs watts before it
+ * needs anything else.
+ */
+function powerToSpare(world: World, x: number, y: number): Building {
+  clearPatch(world, x - 1, y - 1, x + 1, y + 1);
+  const gen = addBuilding(world, 'generator', x, y, true);
+  expect(gen).not.toBeNull();
+  gen!.fuel = 10_000;
+  markBuildingsChanged(world);
+  return gen!;
+}
+
 function spareRoom(world: World, x0: number, y0: number): { x: number; y: number } {
   const x1 = x0 + 2;
   const y1 = y0 + 2;
@@ -1797,5 +1814,114 @@ describe('a board stuck on something the colony has not got', () => {
     expect(gen.built).toBe(false);
     expect(countResource(world, 'wood')).toBeGreaterThan(0);
     expect(world.messages.some((m) => /sends people out for timber/i.test(m.text))).toBe(true);
+  });
+});
+
+describe('the cold store', () => {
+  /**
+   * The last mechanic in the sim with no door into it.
+   *
+   * `spoilage.ts` states the bargain in its own header — "grow what you eat, or
+   * build a room cold enough to keep the rest" — and every moving part was
+   * already wired: a hard zero spoil rate below freezing, one cooler chilling a
+   * small sealed room hard because the term is `q / room.size`, and
+   * `findStockpileCell` carrying perishables to a freezing cell "however far it
+   * is". What was missing was an ambition that ordered one. Measured on seed 7
+   * over forty harsh days before this existed: 268 food spoiled, the larder sat
+   * at 11C, and not one unit was ever frozen.
+   */
+  it('puts a cooler in a walled room once the grid can carry it', () => {
+    const world = createWorld(24);
+    world.tick = NOON;
+    wellStocked(world);
+    powerToSpare(world, HOME_X + 15, HOME_Y + 15);
+    spareRoom(world, HOME_X + 8, HOME_Y + 8);
+    const cellar = AMBITIONS.find((a) => a.id === 'cellar')!;
+
+    expect(cellar.mark(world)).toBe(1);
+    const marked = world.buildings.filter((b) => !b.built);
+    expect(marked).toHaveLength(1);
+    expect(marked[0]!.kind).toBe('cooler');
+    // Indoors, and that is the whole mechanic rather than a nicety: `roomTargets`
+    // only counts a device that is standing in a room, so a cooler in the yard
+    // chills the sky. Its own blurb says "useless outdoors".
+    expect(indoors(world, marked[0]!.x, marked[0]!.y)).toBe(true);
+  });
+
+  /**
+   * The control on the gate above. A cooler is 90 W and `SHED_ORDER` drops
+   * coolers before turrets, so one plugged into a grid with no headroom is a
+   * freezer that goes off the moment the colony needs its guns.
+   */
+  it('will not plug a cooler into a grid that cannot carry it', () => {
+    const world = createWorld(24);
+    world.tick = NOON;
+    wellStocked(world);
+    spareRoom(world, HOME_X + 8, HOME_Y + 8);
+    const cellar = AMBITIONS.find((a) => a.id === 'cellar')!;
+
+    // Every generator in the world stopped. Worldgen ships one, so this is a
+    // removal rather than an omission.
+    for (const b of world.buildings.filter((q) => q.kind === 'generator')) removeBuilding(world, b);
+    markBuildingsChanged(world);
+
+    expect(cellar.mark(world)).toBe(0);
+    expect(world.buildings.some((b) => b.kind === 'cooler')).toBe(false);
+  });
+
+  /**
+   * A cold room the food does not know about is a cold room full of nothing.
+   * `findStockpileCell` only prefers a freezing cell if a stockpile is painted on
+   * one, so the zone is exactly as load-bearing as the cooler.
+   */
+  it('paints a food stockpile in the cold store once the cooler stands', () => {
+    const world = createWorld(24);
+    world.tick = NOON;
+    wellStocked(world);
+    powerToSpare(world, HOME_X + 15, HOME_Y + 15);
+    const inside = spareRoom(world, HOME_X + 8, HOME_Y + 8);
+    expect(addBuilding(world, 'cooler', inside.x, inside.y, true)).not.toBeNull();
+    markBuildingsChanged(world);
+    const cellar = AMBITIONS.find((a) => a.id === 'cellar')!;
+
+    expect(cellar.mark(world)).toBeGreaterThan(0);
+    const room = roomAt(world, inside.x, inside.y)!;
+    const zone = world.zones.find(
+      (z) => z.kind === 'stockpile' && z.cells.some((c) => roomAt(world, unpackX(world, c), unpackY(world, c))?.id === room.id),
+    );
+    expect(zone).toBeDefined();
+    expect(zone!.accepts).toContain('rawfood');
+    expect(zone!.accepts).toContain('meal');
+    // Food and nothing else. A cellar that took timber would fill with building
+    // material and have no room left for the harvest it was cut for.
+    expect(zone!.accepts).not.toContain('wood');
+  });
+
+  /**
+   * The same trap the cell block fell into, and the reason `bedlessRooms` grew a
+   * second clause. That list means "rooms nobody has claimed"; a cooler is not a
+   * bed, so without the extra check the cold store reads as empty and `quarters`
+   * puts somebody's bunk in the freezer.
+   */
+  it('does not hand the cold store out as somebody\'s bedroom', () => {
+    const world = createWorld(24);
+    world.tick = NOON;
+    wellStocked(world);
+    powerToSpare(world, HOME_X + 15, HOME_Y + 15);
+    const inside = spareRoom(world, HOME_X + 8, HOME_Y + 8);
+    expect(addBuilding(world, 'cooler', inside.x, inside.y, true)).not.toBeNull();
+    markBuildingsChanged(world);
+
+    // Read by position rather than by id: `markBuildingsChanged` renumbers rooms,
+    // so an id captured before the cooler went in names a different room after.
+    const cold = () => roomAt(world, inside.x, inside.y)?.id;
+    const before = cold();
+    const quarters = AMBITIONS.find((a) => a.id === 'quarters')!;
+    quarters.mark(world);
+
+    for (const b of world.buildings) {
+      if (!isBed(b.kind)) continue;
+      expect(roomAt(world, b.x, b.y)?.id).not.toBe(before);
+    }
   });
 });
