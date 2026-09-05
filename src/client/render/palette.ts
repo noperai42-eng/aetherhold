@@ -253,12 +253,25 @@ export const SKY_DUSK = new THREE.Color(0xc4784a);
 export const HORIZON_DAY = new THREE.Color(0xcfdce6);
 export const HORIZON_NIGHT = new THREE.Color(0x1b2634);
 /**
+ * The band the sky goes to in the last few degrees above the horizon by day —
+ * warmer and lighter than `HORIZON_DAY`, which is the colour of the lower sky
+ * in general. Without it the dome is one blue running into one paler blue, and
+ * read from eye level at noon it is a wall of one colour. This is the cream a
+ * clear sky actually thins to where the air is thickest.
+ */
+export const HORIZON_WARM = new THREE.Color(0xefe4d0);
+/**
  * The flat grey a fully overcast noon sky lerps toward. Slightly blue rather than
  * neutral: a pure grey dome reads as a rendering failure, a cool one reads as cloud.
  */
 export const OVERCAST_DAY = new THREE.Color(0x9fa8b2);
 
-export const SUN_DAY = new THREE.Color(0xfff2d8);
+// A few percent toward amber from the near-white it was. On the real renderer
+// the noon picture came out neutral-to-green: a pale key over a blue sky bounce
+// and a warm ground bounce averages to grey, and ACES pulls grey toward green.
+// The key has to be the warm thing so that the shade, lit by the sky alone,
+// reads blue against it.
+export const SUN_DAY = new THREE.Color(0xffeec8);
 export const SUN_DUSK = new THREE.Color(0xff9d5c);
 export const MOON = new THREE.Color(0x8ea8cc);
 

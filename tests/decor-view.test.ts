@@ -10,6 +10,7 @@ import * as THREE from 'three';
 import { describe, expect, it } from 'vitest';
 
 import { DecorView, scatterChecksum } from '../src/client/render/decor';
+import { TERRAIN_COLOR } from '../src/client/render/palette';
 import { createWorld } from '../src/sim/worldgen';
 import { TERRAIN_LIST, packCell, terrainAt } from '../src/sim/types';
 import type { Terrain, World } from '../src/sim/types';
@@ -184,6 +185,71 @@ describe('what a blade and a stone are made of', () => {
     expect(stones.geometry.index).not.toBeNull();
     expect(stones.geometry.getAttribute('position').count).toBeLessThan(triangles(stones.geometry) * 3);
     expect(triangles(stones.geometry)).toBeLessThanOrEqual(200);
+    view.dispose();
+  });
+
+  it('plants a clump of slim blades on one root, not a single shard', () => {
+    // From the manager camera one blade is a chevron; three leaning out of the
+    // same root are grass. Every root vertex sits at y = 0 and within a blade's
+    // width of the origin, which is what "sharing one root" means — and the
+    // count of them is the count of blades, since a strip has two.
+    const view = new DecorView(meadow());
+    const p = meshes(view).tufts.geometry.getAttribute('position');
+    let roots = 0;
+    for (let i = 0; i < p.count; i++) {
+      if (Math.abs(p.getY(i)) > 1e-6) continue;
+      roots++;
+      expect(Math.hypot(p.getX(i), p.getZ(i))).toBeLessThan(0.3);
+    }
+    expect(roots).toBeGreaterThanOrEqual(6);
+    view.dispose();
+  });
+
+  it('lights a blade from turf-green at the root to a paler tip', () => {
+    // Blades darker than the lawn they stand on peppered every overhead frame
+    // with black shards. The gradient is baked into the geometry — the shader
+    // multiplies it with the per-tuft tint — so it has to be there, the root
+    // must be no darker than the ground's own green, and the tip lighter still
+    // so the top of a tuft catches light instead of going black.
+    const view = new DecorView(meadow());
+    const { tufts } = meshes(view);
+    expect((tufts.material as THREE.MeshLambertMaterial).vertexColors).toBe(true);
+    const geo = tufts.geometry;
+    const p = geo.getAttribute('position');
+    const col = geo.getAttribute('color');
+    expect(col).toBeDefined();
+    // Lightness is judged in sRGB — the space the palette is written in —
+    // since three keeps every colour linear-light once it is set.
+    const hsl = { h: 0, s: 0, l: 0 };
+    const turf = new THREE.Color(TERRAIN_COLOR.grass).getHSL(hsl, THREE.SRGBColorSpace).l;
+    const c = new THREE.Color();
+    for (let i = 0; i < p.count; i++) {
+      const l = c.fromBufferAttribute(col, i).getHSL(hsl, THREE.SRGBColorSpace).l;
+      if (Math.abs(p.getY(i)) < 1e-6) expect(l).toBeGreaterThanOrEqual(turf);
+      if (Math.abs(p.getY(i) - 1) < 1e-6) expect(l).toBeGreaterThan(turf + 0.1);
+    }
+    view.dispose();
+  });
+
+  it('colours every stone a mid tone, and no two fields of them alike', () => {
+    // A loose stone in the cliff's navy grey came out as a black dot on lit
+    // dirt from overhead. Every instance has to stay in the middle of the range
+    // — never near black, never blown out — and they must not all be the one
+    // colour, or the scatter reads as a stamp.
+    const world = createWorld(SEED);
+    const view = new DecorView(world);
+    const { stones } = meshes(view);
+    expect(stones.count).toBeGreaterThan(1);
+    const c = new THREE.Color();
+    const seen = new Set<number>();
+    for (let i = 0; i < stones.count; i++) {
+      stones.getColorAt(i, c);
+      const { l } = c.getHSL({ h: 0, s: 0, l: 0 }, THREE.SRGBColorSpace);
+      expect(l).toBeGreaterThan(0.38);
+      expect(l).toBeLessThan(0.62);
+      seen.add(c.getHex());
+    }
+    expect(seen.size).toBeGreaterThan(1);
     view.dispose();
   });
 });

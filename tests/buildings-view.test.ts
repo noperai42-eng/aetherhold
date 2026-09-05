@@ -193,6 +193,119 @@ describe('the buildings view', () => {
   });
 });
 
+/** One part of one building, by the key the view built it under. */
+function partGeometry(view: BuildingsView, key: string): THREE.BufferGeometry {
+  let found: THREE.BufferGeometry | null = null;
+  view.group.traverse((o) => {
+    const mesh = o as THREE.InstancedMesh;
+    if (mesh.isInstancedMesh && mesh.geometry.name === key) found = mesh.geometry;
+  });
+  expect(found, `no pool called ${key}`).not.toBeNull();
+  return found!;
+}
+
+/** Every live instance matrix in one pool. */
+function matricesOf(view: BuildingsView, key: string): THREE.Matrix4[] {
+  const out: THREE.Matrix4[] = [];
+  view.group.traverse((o) => {
+    const mesh = o as THREE.InstancedMesh;
+    if (!mesh.isInstancedMesh || mesh.geometry.name !== key) return;
+    for (let i = 0; i < mesh.count; i++) {
+      const m = new THREE.Matrix4();
+      mesh.getMatrixAt(i, m);
+      out.push(m);
+    }
+  });
+  return out;
+}
+
+describe('a bed', () => {
+  it('has its mattress top at the height the sim lays a sleeper', () => {
+    // `standHeight` is where the pawn view draws a body lying in this bed. The
+    // sim owns that number; the mesh is built down from it. A mattress two
+    // centimetres too high buries the sleeper's shoulders in the ticking, and
+    // two centimetres too low leaves them lying on air, and both were true of
+    // a bed drawn to a height someone eyeballed. Three beds, one sleeper.
+    const view = new BuildingsView();
+    for (const [kind, prefix] of [
+      ['bed', 'bed'],
+      ['medbed', 'med'],
+      ['prisonbed', 'prison'],
+    ] as const) {
+      const g = partGeometry(view, `${prefix}.mattress`);
+      g.computeBoundingBox();
+      const top = g.boundingBox!.max.y;
+      const want = defOf(kind).standHeight;
+      expect(Math.abs(top - want), `${kind} mattress tops out at ${top}, sleeper lies at ${want}`).toBeLessThan(0.005);
+    }
+    view.dispose();
+  });
+});
+
+describe('a wood', () => {
+  it('has crowns with a lobed rim, not a circle turned on a lathe', () => {
+    // The tell of a stacked-cone tree is the rim of each tier: a clean
+    // horizontal circle where the profile is widest, with every vertex on it
+    // at the same radius and the same height. A crown that has been rumpled
+    // with low-frequency lobes has only a few vertices out at its full reach
+    // and the rest tucked in, and the rim rises and falls as it goes round. So
+    // the vertices within a few percent of the maximum radius must be fewer
+    // than a full ring — sixteen segments plus the seam copy — and the widest
+    // point of each sector round the crown must sit at its own height rather
+    // than all of them lying in one plane.
+    const view = new BuildingsView();
+    const SECTORS = 16;
+    for (const key of ['tree.lower', 'tree.upper', 'tree.top']) {
+      const pos = partGeometry(view, key).attributes.position;
+      let rMax = 0;
+      let onRim = 0;
+      const widest = new Array<number>(SECTORS).fill(0);
+      const rimY = new Array<number>(SECTORS).fill(0);
+      for (let k = 0; k < pos.count; k++) rMax = Math.max(rMax, Math.hypot(pos.getX(k), pos.getZ(k)));
+      for (let k = 0; k < pos.count; k++) {
+        const r = Math.hypot(pos.getX(k), pos.getZ(k));
+        if (r >= rMax * 0.96) onRim++;
+        const sector = Math.floor(((Math.atan2(pos.getZ(k), pos.getX(k)) + Math.PI) / (2 * Math.PI)) * SECTORS) % SECTORS;
+        if (r > widest[sector]) {
+          widest[sector] = r;
+          rimY[sector] = pos.getY(k);
+        }
+      }
+      expect(onRim, `${key} has a full ring of ${onRim} vertices at its widest`).toBeLessThan(17);
+      expect(Math.max(...rimY) - Math.min(...rimY), `${key}'s rim is a horizontal circle`).toBeGreaterThan(0.05);
+    }
+    view.dispose();
+  });
+
+  it('is not a row of clones', () => {
+    // Worldgen scatters a few hundred trees, and from inside a body a treeline
+    // of identical, vertical, equal-height crowns reads as a plantation of
+    // cutouts however smooth each one is. Each tree draws its own size and lean
+    // out of the cell it stands on, so a sample of the wood must show several
+    // sizes and at least one trunk off the vertical — and none leaning further
+    // than a tree that is still standing up.
+    const world = createWorld(SEED);
+    const view = new BuildingsView();
+    view.sync(world);
+    const trunks = matricesOf(view, 'tree.trunk');
+    expect(trunks.length).toBeGreaterThan(20);
+    const sizes = new Set<number>();
+    const up = new THREE.Vector3();
+    let leaning = 0;
+    for (const m of trunks) {
+      const s = new THREE.Vector3().setFromMatrixScale(m);
+      sizes.add(Math.round(s.x * 1000));
+      up.set(0, 1, 0).transformDirection(m);
+      const lean = Math.acos(Math.min(1, up.y));
+      expect(lean, `a tree leans ${lean} rad`).toBeLessThan(0.08);
+      if (lean > 0.008) leaning++;
+    }
+    expect(sizes.size, `only ${sizes.size} tree sizes in the wood`).toBeGreaterThanOrEqual(4);
+    expect(leaning, 'every tree in the wood stands dead vertical').toBeGreaterThan(0);
+    view.dispose();
+  });
+});
+
 describe('a fence line', () => {
   it('rails towards its neighbours and not into open ground', () => {
     const world = createWorld(SEED);

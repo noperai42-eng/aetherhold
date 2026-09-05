@@ -183,6 +183,25 @@ describe('what the map shows about what is out there', () => {
     v.dispose();
   });
 
+  it('welds every lump so it lights as one skin and not as facets', () => {
+    // The stones and ore chunks are subdivided polyhedra, which three hands
+    // over as unshared triangles: nudge those and the faces tear, light those
+    // and every facet carries its own normal. Welded, each vertex is shared —
+    // fewer vertices than three per triangle — and the smooth material has a
+    // smooth surface to shade. The planks are a rounded box that arrives with
+    // its own analytic normals, so the weld is only owed by the two lumps.
+    const world = createWorld(SEED);
+    const v = view(world);
+    const [stones, , shards] = meshes(v);
+    for (const mesh of [stones!, shards!]) {
+      const geo = mesh.geometry;
+      expect(geo.index).not.toBeNull();
+      expect(geo.getAttribute('normal')).toBeDefined();
+      expect(geo.getAttribute('position').count).toBeLessThan(geo.index!.count);
+    }
+    v.dispose();
+  });
+
   it('copes with a map that has no finds on it at all', () => {
     const world = createWorld(SEED);
     world.sites.length = 0;

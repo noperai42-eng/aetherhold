@@ -63,6 +63,14 @@ const TORSO_Y = 1.02;
 const SHOULDER_Y = 1.28;
 const HEAD_Y = 1.51;
 
+/**
+ * Hair, black through grey. Read off `colorSeed` like the skin and the cloth
+ * are, from bits neither of those looks at, so a colony is not six people in
+ * the same dark brown and the hair does not follow the coat. Nothing here is a
+ * sim field; the seed is the only cosmetic the record carries.
+ */
+const HAIR_TONES = [0x1d1714, 0x2b2119, 0x4a3221, 0x6e4a2a, 0x8a5230, 0xb08a4e, 0x7d7a74];
+
 /** One settler's body. Parts are plain meshes so limbs can swing independently. */
 class PawnRig implements Rig {
   readonly group = new THREE.Group();
@@ -82,7 +90,7 @@ class PawnRig implements Rig {
   constructor(pawn: Pawn, shared: SharedGeometry) {
     const cloth = pawnTint(FACTION_COLOR[pawn.faction], pawn.colorSeed);
     const skin = new THREE.Color(SKIN_TONES[pawn.colorSeed % SKIN_TONES.length]!);
-    const hairCol = new THREE.Color(0x2b2119).offsetHSL(0, 0, ((pawn.colorSeed >> 4) % 5) * 0.05);
+    const hairCol = new THREE.Color(HAIR_TONES[(pawn.colorSeed >> 8) % HAIR_TONES.length]!);
 
     const clothMat = new THREE.MeshStandardMaterial({ color: cloth, roughness: 0.78 });
     const skinMat = new THREE.MeshStandardMaterial({ color: skin, roughness: 0.62 });
@@ -99,8 +107,11 @@ class PawnRig implements Rig {
 
     this.torso = new THREE.Mesh(shared.torso, clothMat);
     this.head = new THREE.Mesh(shared.head, skinMat);
-    const hair = new THREE.Mesh(shared.hair, hairMat);
+    // Cropped or to the jaw, on one more bit of the same seed.
+    const hair = new THREE.Mesh((pawn.colorSeed >> 12) & 1 ? shared.hairLong : shared.hair, hairMat);
     const neck = new THREE.Mesh(shared.neck, skinMat);
+    this.head.name = 'head';
+    neck.name = 'neck';
     const belt = new THREE.Mesh(shared.belt, leatherMat);
     this.legL = new THREE.Mesh(shared.leg, clothMat);
     this.legR = new THREE.Mesh(shared.leg, clothMat);
@@ -109,8 +120,8 @@ class PawnRig implements Rig {
 
     this.torso.position.y = TORSO_Y;
     this.head.position.y = HEAD_Y;
-    // The neck spans the gap between the torso's rounded top and the chin, and
-    // the belt sits where the lathe pinches in, so both are placed off the
+    // The neck rises from the torso's rounded top and flares up into the skull,
+    // and the belt sits where the lathe pinches in, so both are placed off the
     // torso rather than by eye.
     neck.position.y = TORSO_Y + 0.29;
     belt.position.y = TORSO_Y - 0.15;
@@ -327,15 +338,17 @@ class AnimalRig implements Rig {
     const barrel = new THREE.Mesh(shared.animalBody, hideMat);
     barrel.position.y = 0.62;
     const neck = new THREE.Mesh(shared.animalNeck, hideMat);
-    neck.position.set(0, 0.82, 0.3);
+    neck.position.set(0, 0.81, 0.34);
     // Leans forward into the skull. It leaned the other way for a long time —
     // a negative pitch carries the top of a limb toward -Z, so the neck rose
     // from the chest and reached back over the shoulders, its top hanging in
     // the air a hand's width behind the head it was meant to hold up. At
     // eleven cells up that read as withers; at eye level it read as a mistake.
-    neck.rotation.x = 0.5;
+    neck.rotation.x = 0.55;
     this.head = new THREE.Mesh(shared.animalHead, hideMat);
     this.head.position.set(0, 1.02, 0.5);
+    this.head.name = 'head';
+    neck.name = 'neck';
     const tail = new THREE.Mesh(shared.animalTail, trimMat);
     tail.position.set(0, 0.72, -0.4);
 
@@ -365,9 +378,13 @@ class AnimalRig implements Rig {
     // A hunter carries its head low and forward, which is most of why a wolf
     // reads as a wolf at any distance — the silhouette is a horizontal line
     // where a grazer's is a vertical one. Cheaper and clearer than a new mesh.
+    // The neck comes down with it: pitched flatter from where it stood, its top
+    // cleared the back of the lowered skull and hung in the air behind the ears,
+    // the withers mistake again in the other species.
     if (def.hunts) {
       this.head.position.set(0, 0.86, 0.62);
-      neck.rotation.x = 1.0;
+      neck.position.set(0, 0.745, 0.395);
+      neck.rotation.x = 1.05;
     }
 
     // Antlers on a mossback, long ears on a dunhare, small pricked ears on a
@@ -417,6 +434,7 @@ class AnimalRig implements Rig {
     const collarMat = new THREE.MeshLambertMaterial({ color: 0xc9553a });
     this.mats.push(collarMat);
     this.collar = new THREE.Mesh(shared.animalCollar, collarMat);
+    this.collar.name = 'collar';
     // On the neck, square to it, so it rings the neck the way a collar does
     // rather than lying level across a sloping one.
     this.collar.position.set(0, 0.16, 0);
@@ -426,6 +444,7 @@ class AnimalRig implements Rig {
     const tagMat = new THREE.MeshLambertMaterial({ color: 0x4fd1c5 });
     this.mats.push(tagMat);
     this.tag = new THREE.Mesh(shared.petTag, tagMat);
+    this.tag.name = 'tag';
     // Hung off the front of the ring and parented to it, so it lies against
     // the throat below the collar rather than floating where the neck used to be.
     this.tag.position.set(0, -0.04, 0.13);
@@ -514,6 +533,7 @@ interface SharedGeometry {
   neck: THREE.BufferGeometry;
   head: THREE.BufferGeometry;
   hair: THREE.BufferGeometry;
+  hairLong: THREE.BufferGeometry;
   eye: THREE.BufferGeometry;
   leg: THREE.BufferGeometry;
   boot: THREE.BufferGeometry;
@@ -593,15 +613,58 @@ function makeTorso(): THREE.BufferGeometry {
  * band down the back and sides that stops short of the face. The dome's rim is
  * the fringe. It sits a little proud of the head all round, so nothing here is
  * coplanar with the skin underneath it.
+ *
+ * Cropped, the band is a short nape; long, it carries on down the sides and
+ * back to the jaw. Two shapes on one seed bit is the cheapest thing that keeps
+ * a crew from being the same silhouette six times over.
  */
-function makeHair(): THREE.BufferGeometry {
+function makeHair(long: boolean): THREE.BufferGeometry {
   const r = 0.155;
   const dome = new THREE.SphereGeometry(r, 16, 8, 0, Math.PI * 2, 0, Math.PI / 2);
   // `phi` runs from -X through +Z to +X to -Z; the back half is the second PI.
-  const nape = new THREE.SphereGeometry(r, 8, 3, Math.PI, Math.PI, Math.PI / 2, Math.PI * 0.15);
+  const nape = long
+    ? new THREE.SphereGeometry(r, 10, 4, Math.PI * 0.8, Math.PI * 1.4, Math.PI / 2, Math.PI * 0.34)
+    : new THREE.SphereGeometry(r, 8, 3, Math.PI, Math.PI, Math.PI / 2, Math.PI * 0.15);
   const g = weld([dome, nape]);
   g.translate(0, 0.035, -0.012);
   return g;
+}
+
+/**
+ * The settler's neck: a throat that narrows a little above the collar and then
+ * flares up into the underside of the skull. A straight cylinder met the sphere
+ * where the sphere was still nearly flat, and at arm's length the head sat on
+ * the neck with a shelf between them; the flare fills that crease and ends a
+ * few millimetres inside the skull, so its rim never shows. The rim stays
+ * inside through the working nod, which is the only pitch the head takes. Both
+ * ends are open — one is inside the torso, the other inside the head.
+ */
+function makeNeck(): THREE.BufferGeometry {
+  const profile = [
+    [0.08, -0.08],
+    [0.066, -0.03],
+    [0.062, 0.02],
+    [0.068, 0.06],
+    [0.082, 0.09],
+    [0.1, 0.12],
+  ].map(([r, y]) => new THREE.Vector2(r, y));
+  return new THREE.LatheGeometry(profile, 16);
+}
+
+/**
+ * The animal's neck: tapered from the chest to the skull and domed at the top.
+ * The head pitches through more than a radian when it grazes, and no straight
+ * tube can keep its top rim inside a skull that swings that far; what pokes out
+ * of the nape at the bottom of a graze is now a rounded end of neck, which reads
+ * as the nape, rather than a flat disc, which read as a cut.
+ */
+function makeAnimalNeck(): THREE.BufferGeometry {
+  const profile: THREE.Vector2[] = [new THREE.Vector2(0.11, -0.22), new THREE.Vector2(0.078, 0.13)];
+  for (let i = 1; i <= 4; i++) {
+    const a = (i / 4) * (Math.PI / 2);
+    profile.push(new THREE.Vector2(0.078 * Math.cos(a), 0.13 + 0.078 * Math.sin(a)));
+  }
+  return new THREE.LatheGeometry(profile, 16);
 }
 
 /** A rifle held at the hand: stock, receiver, barrel and a sight. Points +Z. */
@@ -698,12 +761,13 @@ function makeShared(): SharedGeometry {
   return {
     torso: makeTorso(),
     belt,
-    neck: new THREE.CylinderGeometry(0.06, 0.075, 0.16, 12),
+    neck: makeNeck(),
     // A sphere drawn a touch tall. A rounded box with a radius this generous is
     // the same shape for six times the triangles, which is where the first cut
     // of this rig spent most of its budget.
     head: new THREE.SphereGeometry(0.13, 20, 12).scale(1, 1.06, 1),
-    hair: makeHair(),
+    hair: makeHair(false),
+    hairLong: makeHair(true),
     eye: new THREE.SphereGeometry(0.022, 8, 6),
     leg: limb(0.075, SETTLER_LEG, 12),
     boot,
@@ -712,16 +776,17 @@ function makeShared(): SharedGeometry {
     rifle: makeRifle(),
     club: makeClub(),
     animalBody,
-    animalNeck: new THREE.CylinderGeometry(0.085, 0.11, 0.44, 12),
+    animalNeck: makeAnimalNeck(),
     animalHead: makeAnimalHead(),
     animalTail: makeTail(),
-    animalLeg: limb(0.05, ANIMAL_LEG_LENGTH, 10, 3),
+    animalLeg: limb(0.05, ANIMAL_LEG_LENGTH, 12, 3),
     animalAntler: makeAntler(),
     animalEar: ear,
     // A band round the neck. The only thing on the map that separates a tamed
     // mossback from the wild one grazing beside it, so it is a ring of solid
     // colour rather than a tint the isometric camera would lose in shadow.
-    animalCollar: new THREE.TorusGeometry(0.15, 0.035, 16, 32).rotateX(Math.PI / 2),
+    // Twelve round the tube: sixteen was a thousand triangles on a strap.
+    animalCollar: new THREE.TorusGeometry(0.15, 0.035, 12, 32).rotateX(Math.PI / 2),
     // A little lozenge hung off the collar: the tell that this one is somebody's
     // rather than the colony's. A shape rather than a second collar colour,
     // because the collar already says something — pale gold when there is

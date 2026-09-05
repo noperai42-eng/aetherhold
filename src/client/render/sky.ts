@@ -10,6 +10,7 @@ import * as THREE from 'three';
 import {
   HORIZON_DAY,
   HORIZON_NIGHT,
+  HORIZON_WARM,
   MOON,
   OVERCAST_DAY,
   SKY_DAY,
@@ -23,8 +24,23 @@ import { cloudiness, strikeFlash, visibility } from '../../sim/weather';
 import type { QualitySettings } from './renderer';
 import type { World } from '../../sim/types';
 
-const SKY_RADIUS = 400;
+/**
+ * Inside the first-person camera's far plane (400), not on it. The dome is
+ * centred on the viewer, so at 400 every vertex of it sat exactly at the clip
+ * distance and survived only because the faces between them are chords, a little
+ * nearer than the sphere they approximate. The disc and stars are at 300 and 340
+ * and have to stay inside it.
+ */
+const SKY_RADIUS = 360;
 const WHITE = new THREE.Color(0xffffff);
+/**
+ * What the sky bounce lerps toward by day where it lights shade. The dome's
+ * own blue is right for the dome, but as the colour of every surface the sun
+ * cannot reach it is too grey to read as sky: a shadow lit by it and by the warm
+ * ground bounce averages to neutral. A cooler, more saturated blue here is what
+ * makes a shadow read as a shadow of a sunny day rather than as a dim patch.
+ */
+const SHADE_BLUE = new THREE.Color(0x6a92cf);
 /** Point lights are expensive; only the nearest few lamps and fires get one. */
 const MAX_POINT_LIGHTS = 7;
 
@@ -44,15 +60,26 @@ const SKY_VERT = /* glsl */ `
 `;
 
 /**
- * Two things on top of the gradient, both cheap. A haze band just above the
- * horizon, so the sky does not run straight from sky-blue into ground colour
- * with nothing in between; and a glow around the sun — tight and pale at noon,
- * wide and warm as it goes down — which is the difference between a sun disc
- * sitting on the dome and a sun that the sky is lit by.
+ * Three things on top of the gradient, all cheap — a few `pow`s per fragment
+ * of a 24×16 dome, no post-processing. A haze band just above the horizon, so
+ * the sky does not run straight from sky-blue into ground colour with nothing
+ * in between. A second, warmer band inside the first few degrees of that,
+ * `uHorizon`, mixed in by `uBand`: this is the light cream a clear sky thins to
+ * at the horizon, and it is what stops the dome being one colour from eye level
+ * — `uBand` is the mix at the horizon itself, which is exactly the colour the
+ * fog has to be (see `fogColor`). And the glow around the sun, in three widths.
+ * The corona is a few degrees across and softens the drawn disc's edge into the
+ * sky; the halo is the tens of degrees the eye reads as "the sky is lit by
+ * this", wide enough that at noon, with the sun 52° up and out of a level
+ * first-person frame, the top of that frame still brightens toward it; the
+ * bloom is the whole quadrant lifting toward the sun's colour. Tight and pale
+ * at noon, wide and warm as it goes down.
  */
 const SKY_FRAG = /* glsl */ `
   uniform vec3 uTop;
   uniform vec3 uBottom;
+  uniform vec3 uHorizon;
+  uniform float uBand;
   uniform float uExponent;
   uniform vec3 uSunDir;
   uniform vec3 uGlow;
@@ -65,9 +92,13 @@ const SKY_FRAG = /* glsl */ `
     vec3 col = mix(uBottom, uTop, t);
     float haze = exp(-max(h, 0.0) * 9.0) * 0.35;
     col = mix(col, uBottom, haze);
+    float band = exp(-max(h, 0.0) * 12.0);
+    col = mix(col, uHorizon, band * uBand);
     float s = max(dot(d, uSunDir), 0.0);
-    float glow = pow(s, 48.0) * 0.55 + pow(s, 6.0) * 0.28 + pow(s, 2.0) * 0.08;
-    col = mix(col, uGlow, min(1.0, glow * uGlowStrength));
+    float corona = pow(s, 320.0) * 0.9;
+    float halo = pow(s, 24.0) * 0.5 + pow(s, 5.0) * 0.22;
+    float bloom = pow(s, 1.5) * 0.12;
+    col = mix(col, uGlow, min(1.0, (corona + halo + bloom) * uGlowStrength));
     gl_FragColor = vec4(col, 1.0);
   }
 `;
@@ -147,6 +178,9 @@ export class SkyView {
   private readonly lamps: THREE.PointLight[] = [];
   private readonly skyTop = new THREE.Color();
   private readonly skyBottom = new THREE.Color();
+  /** The warm band at the horizon, and the colour the dome actually shows there. */
+  private readonly horizon = new THREE.Color();
+  private readonly fogCol = new THREE.Color();
   private readonly overcast = new THREE.Color();
   private readonly lightCol = new THREE.Color();
   private readonly glowCol = new THREE.Color();
@@ -156,6 +190,8 @@ export class SkyView {
       uniforms: {
         uTop: { value: new THREE.Color(SKY_DAY) },
         uBottom: { value: new THREE.Color(HORIZON_DAY) },
+        uHorizon: { value: new THREE.Color(HORIZON_WARM) },
+        uBand: { value: 0 },
         uExponent: { value: 0.7 },
         uSunDir: { value: new THREE.Vector3(0, 1, 0) },
         uGlow: { value: new THREE.Color(SUN_DAY) },
@@ -199,12 +235,18 @@ export class SkyView {
     // lights reads as night rather than as an unlit surface. Measured on the
     // real renderer: the intensity barely moves the picture on its own — it is
     // this colour, once converted to linear, that decides how dark night gets.
-    this.ambient = new THREE.AmbientLight(0x4d5f80, 0.35);
+    // Nudged bluer at the same luminance: by day it is a third of what a shadow
+    // gets, and a shadow should be the cool thing in a picture with a warm key.
+    this.ambient = new THREE.AmbientLight(0x47608c, 0.35);
     this.group.add(this.ambient);
 
+    // Eleven at three hundred is a disc a little over four degrees across —
+    // eight times the real sun, which is the size that reads as a sun from a
+    // game camera rather than as a stray bright pixel. Its hard edge is
+    // softened by the dome's corona, which is centred on the same direction.
     this.sunDisc = new THREE.Mesh(
-      new THREE.SphereGeometry(9, 12, 10),
-      new THREE.MeshBasicMaterial({ color: 0xfff4d6, fog: false }),
+      new THREE.SphereGeometry(11, 16, 12),
+      new THREE.MeshBasicMaterial({ color: 0xfff3d2, fog: false }),
     );
     this.sunDisc.frustumCulled = false;
     this.group.add(this.sunDisc);
@@ -267,8 +309,21 @@ export class SkyView {
       this.skyTop.lerp(WHITE, flash * 0.75);
       this.skyBottom.lerp(WHITE, flash * 0.6);
     }
+    // The warm band at the horizon: cream by day, the dusk colour as the sun
+    // crosses, and nothing after dark — a warm horizon at midnight is a city
+    // over the hill. Cloud takes it away too, since it is the low sun's light
+    // through clear air that makes it. `band` is the mix at the horizon itself.
+    this.horizon.copy(HORIZON_NIGHT).lerp(HORIZON_WARM, day).lerp(SKY_DUSK, twilight * 0.6);
+    if (cloud > 0) this.horizon.lerp(this.overcast, cloud * 0.8);
+    if (flash > 0) this.horizon.lerp(WHITE, flash * 0.6);
+    const band = (0.1 + day * 0.55) * (1 - cloud * 0.7);
     (this.domeMat.uniforms.uTop!.value as THREE.Color).copy(this.skyTop);
     (this.domeMat.uniforms.uBottom!.value as THREE.Color).copy(this.skyBottom);
+    (this.domeMat.uniforms.uHorizon!.value as THREE.Color).copy(this.horizon);
+    this.domeMat.uniforms.uBand!.value = band;
+    // What the dome shows where it meets the ground, which is what the fog has
+    // to be: the same mix the shader makes at h = 0.
+    this.fogCol.copy(this.skyBottom).lerp(this.horizon, band);
     this.dome.position.set(focusX, 0, focusY);
 
     const up = Math.max(0, Math.sin(elev + 0.02));
@@ -351,8 +406,11 @@ export class SkyView {
 
     // At night the sky tint is nearly black, and a hemisphere light that colour
     // contributes nothing. Lerping it toward white as the day fades keeps the
-    // sky half of the bounce alive after dark without washing out midday.
-    this.hemi.color.copy(this.skyTop).lerp(WHITE, (1 - day) * 0.4);
+    // sky half of the bounce alive after dark without washing out midday. By
+    // day it goes the other way, toward a cooler blue than the dome's: this is
+    // the light in every shadow, and it is the key's warmth against this that
+    // makes noon read as sunlit rather than as evenly grey.
+    this.hemi.color.copy(this.skyTop).lerp(SHADE_BLUE, day * 0.5).lerp(WHITE, (1 - day) * 0.4);
     this.hemi.intensity = (0.24 + day * 0.62) * Math.max(0.6, cloudLift * 0.85);
 
     // Ambient is the readability floor and works in the opposite direction to
@@ -428,9 +486,14 @@ export class SkyView {
     }
   }
 
-  /** Fog matches the horizon so the map edge dissolves instead of ending. */
+  /**
+   * Fog matches the horizon so the map edge dissolves instead of ending. The
+   * horizon, not the lower sky: the dome shows `skyBottom` mixed with the warm
+   * band where it meets the ground, and fog of the plain lower-sky colour would
+   * put a cool grey seam between the last cells and the sky behind them.
+   */
   fogColor(): THREE.Color {
-    return this.skyBottom;
+    return this.fogCol;
   }
 
   /**

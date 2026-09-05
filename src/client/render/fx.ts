@@ -32,16 +32,52 @@ import type { BuildingKind, World } from '../../sim/types';
 const FIRE_PARTICLES = 7;
 const MAX_FIRE_PARTICLES = 420;
 /**
+ * How far above the ground plane a designation mark and a drag-preview quad ride.
+ *
+ * Stacked over the zone paint (which sits two centimetres up) so a harvest mark
+ * on a growing zone is drawn over the green and not through it, and the preview
+ * over both.
+ */
+const MARK_LIFT = 0.05;
+const PREVIEW_LIFT = 0.06;
+/**
+ * How far a mark on a rock rides above the block's flat top.
+ *
+ * A centimetre, not the ground clearance: the rock's skin is dented *down* from
+ * that plane and never up (`terrain.ts` clamps its jitter inside the crate), so
+ * anything above the plane is clear of the surface, and a mark five centimetres
+ * over a boulder is a mark floating over a boulder from inside a body.
+ */
+const ROCK_MARK_LIFT = 0.012;
+/**
+ * How much a preview quad shrinks on a rock cell.
+ *
+ * The block's top is flat only inside its shoulder — the bevel starts eight
+ * hundredths of the footprint in from each edge — and the block is turned up to
+ * `ROCK_TILT` off the grid. A ninety-centimetre quad's corner, swung by that yaw,
+ * lands on the shoulder where the surface has already dropped, and pokes out of
+ * the rock. Eight-tenths keeps the swung corner inside the flat, with room for
+ * the dents that shrink it.
+ */
+const ROCK_MARK_INSET = 0.8 / 0.9;
+
+/** Is this cell a rock block, whose marks ride its top rather than the ground? */
+function onRock(world: World, x: number, y: number): boolean {
+  return terrainAt(world, x, y) === 'rock';
+}
+
+/**
  * How high a cell's overlay mark has to ride.
  *
  * Rock is a solid instanced block, so a ground-level overlay quad sits entirely
  * inside it and never reaches the camera. Anything marking a rock cell rides on
  * top instead — including the drag preview, without which dragging the mine tool
  * across a cliff face looks like it did nothing at all. Blocks are not all the
- * same height, so the mark asks its own cell rather than assuming.
+ * same height, so the mark asks its own cell rather than assuming. `lift` is
+ * the mark's own clearance over open ground.
  */
-function markHeight(world: World, x: number, y: number): number {
-  return terrainAt(world, x, y) === 'rock' ? rockTopAt(x, y) - 0.02 : 0;
+function markHeight(world: World, x: number, y: number, lift: number): number {
+  return onRock(world, x, y) ? rockTopAt(x, y) + ROCK_MARK_LIFT : lift;
 }
 
 /** A ripe crop's colour. Squared blend so it stays green until it is nearly ready. */
@@ -122,9 +158,10 @@ export class FxView {
       { tinted: true, castShadow: false, layer: LAYER_MANAGER },
     );
 
+    // Marks and preview quads are built flat at y = 0 and lifted per instance,
+    // because how far they ride depends on what they are marking (`markHeight`).
     const mark = new THREE.RingGeometry(0.24, 0.42, 4);
     mark.rotateX(-Math.PI / 2);
-    mark.translate(0, 0.05, 0);
     this.designations = new InstancedPool(
       this.group,
       mark,
@@ -148,7 +185,6 @@ export class FxView {
 
     const previewQuad = new THREE.PlaneGeometry(0.9, 0.9);
     previewQuad.rotateX(-Math.PI / 2);
-    previewQuad.translate(0, 0.06, 0);
     this.previewPool = new InstancedPool(
       this.group,
       previewQuad,
@@ -338,8 +374,7 @@ export class FxView {
       );
       const x = unpackX(world, i);
       const y = unpackY(world, i);
-      const markY = markHeight(world, x, y);
-      this.v.set(x, markY, y);
+      this.v.set(x, markHeight(world, x, y, MARK_LIFT), y);
       this.q.setFromAxisAngle(UP, Math.PI / 4);
       this.s.set(1, 1, 1);
       this.m.compose(this.v, this.q, this.s);
@@ -367,9 +402,10 @@ export class FxView {
     this.previewPool.begin();
     for (const c of cells) {
       this.c.setHex(c.valid ? 0x8ddc9a : 0xd85a4a);
-      this.v.set(c.x, markHeight(world, c.x, c.y), c.y);
+      this.v.set(c.x, markHeight(world, c.x, c.y, PREVIEW_LIFT), c.y);
       this.q.identity();
-      this.s.set(1, 1, 1);
+      const inset = onRock(world, c.x, c.y) ? ROCK_MARK_INSET : 1;
+      this.s.set(inset, 1, inset);
       this.m.compose(this.v, this.q, this.s);
       this.previewPool.push(this.m, this.c);
     }

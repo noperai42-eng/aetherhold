@@ -368,6 +368,88 @@ describe('what the shadow map must not do to a smooth surface', () => {
 });
 
 /**
+ * What colour the day is.
+ *
+ * The frames from the real GPU came back neutral-to-green at noon, with a sky
+ * that was one blue from the zenith to the ground. None of the irradiance above
+ * can see that, because it measures luminance and throws the hue away. So these
+ * read the hue: the key is warm, the shade is cool, the sky has a horizon, and
+ * the fog is the colour of it — read off the scene graph and the dome's uniforms,
+ * the way `irradiance` reads the lights.
+ */
+describe('what colour the day is', () => {
+  /** The dome, found the way the renderer finds it: the one mesh with a shader on it. */
+  const domeMeshOf = (sky: SkyView): THREE.Mesh =>
+    sky.group.children.find(
+      (o) => o instanceof THREE.Mesh && o.material instanceof THREE.ShaderMaterial,
+    ) as THREE.Mesh;
+  const domeOf = (sky: SkyView): THREE.ShaderMaterial => domeMeshOf(sky).material as THREE.ShaderMaterial;
+  const colorU = (mat: THREE.ShaderMaterial, name: string): THREE.Color =>
+    mat.uniforms[name]!.value as THREE.Color;
+
+  it('puts a warm key over a cool shade at noon — the grey picture was the two averaging out', () => {
+    const { sky } = rigAt(0.5);
+    // The sun is amber-side of white: red over green over blue.
+    expect(sky.sun.color.r).toBeGreaterThan(sky.sun.color.g);
+    expect(sky.sun.color.g).toBeGreaterThan(sky.sun.color.b);
+    // What a shadow gets — every light but the sun, on open ground — is blue-side.
+    const shade = new THREE.Color(0, 0, 0);
+    const l = new THREE.Vector3();
+    const term = new THREE.Color();
+    for (const obj of sky.group.children) {
+      if (obj === sky.sun) continue;
+      if (obj instanceof THREE.DirectionalLight) {
+        l.copy(obj.position).sub(obj.target.position).normalize();
+        shade.add(term.copy(obj.color).multiplyScalar(obj.intensity * Math.max(0, UP.dot(l))));
+      } else if (obj instanceof THREE.HemisphereLight) {
+        shade.add(term.copy(obj.color).multiplyScalar(obj.intensity));
+      } else if (obj instanceof THREE.AmbientLight) {
+        shade.add(term.copy(obj.color).multiplyScalar(obj.intensity));
+      }
+    }
+    expect(shade.b).toBeGreaterThan(shade.r * 1.15);
+  });
+
+  it('gives the sky a horizon by day and takes it away at night', () => {
+    const noon = domeOf(rigAt(0.5).sky);
+    const top = colorU(noon, 'uTop');
+    const horizon = colorU(noon, 'uHorizon');
+    // The band is warmer and lighter than the zenith, and strong enough to see:
+    // a band you cannot see is the one-colour sky the frames showed.
+    expect(horizon.r - horizon.b).toBeGreaterThan(top.r - top.b);
+    expect(horizon.r + horizon.g + horizon.b).toBeGreaterThan(top.r + top.g + top.b);
+    expect(noon.uniforms.uBand!.value as number).toBeGreaterThan(0.4);
+    // After dark the band all but goes: a warm horizon at midnight is a town
+    // over the hill, and the stars have to sit on something black.
+    const midnight = domeOf(rigAt(0).sky);
+    expect(midnight.uniforms.uBand!.value as number).toBeLessThan(0.15);
+    expect(colorU(midnight, 'uHorizon').r).toBeLessThan(0.15);
+  });
+
+  it('fogs the map edge in the colour the dome shows at the horizon, round the clock', () => {
+    let mesh!: THREE.Mesh;
+    // Midnight, dawn, noon, dusk: the four states the band passes through.
+    for (let i = 0; i < 24; i += 6) {
+      const { sky } = rigAt(i / 24);
+      mesh = domeMeshOf(sky);
+      const dome = mesh.material as THREE.ShaderMaterial;
+      // The shader at h = 0: bottom mixed with the band by uBand. The fog has to
+      // land on this exactly, or the last cells sit against a seam of sky.
+      const want = colorU(dome, 'uBottom').clone().lerp(colorU(dome, 'uHorizon'), dome.uniforms.uBand!.value as number);
+      const fog = sky.fogColor();
+      const hh = `${String(i).padStart(2, '0')}:00`;
+      expect(fog.r, `${hh} r`).toBeCloseTo(want.r, 6);
+      expect(fog.g, `${hh} g`).toBeCloseTo(want.g, 6);
+      expect(fog.b, `${hh} b`).toBeCloseTo(want.b, 6);
+    }
+    // And the dome itself is inside the first-person far plane, not sitting on
+    // it: a sky that clips at its own vertices is a sky with holes in it.
+    mesh.geometry.computeBoundingSphere();
+    expect(mesh.geometry.boundingSphere!.radius).toBeLessThan(400);
+  });
+});
+
+/**
  * What a body is made of.
  *
  * The settlers and the herds went from boxes to capsules, lathes and rounded
@@ -471,6 +553,103 @@ describe('what a body is made of', () => {
       limbs++;
     });
     expect(limbs).toBeGreaterThan(0);
+    view.dispose();
+  });
+
+  /** The named part under a rig, which is how the tests below find a neck or a head. */
+  function part(root: THREE.Object3D, name: string): THREE.Mesh {
+    let found: THREE.Mesh | null = null;
+    root.traverse((o) => {
+      if (!found && o instanceof THREE.Mesh && o.name === name) found = o;
+    });
+    expect(found, `${name} on the rig`).not.toBeNull();
+    return found!;
+  }
+
+  it("ends the settler's neck inside the skull, upright and nodding — a rim that shows is a shelf under the chin", () => {
+    // The neck flares up into the head to fill the crease where a straight
+    // tube met the sphere. The flare only works if its rim stays buried: a rim
+    // that clears the skin is the step it was built to remove, and the working
+    // nod is the one pitch the head takes, so the rim is checked through it.
+    const { view, world } = bodies();
+    const v = new THREE.Vector3();
+    let settlers = 0;
+    for (const rig of view.group.children) {
+      const pawn = world.pawns.find((p) => p.x === rig.position.x && p.y === rig.position.z)!;
+      if (pawn.animal) continue;
+      settlers++;
+      const neck = part(rig, 'neck');
+      const head = part(rig, 'head');
+      // The head is a scaled sphere, so its bounding box's half-extents are the
+      // ellipsoid's axes: a point is inside it when its normalised radius is < 1.
+      head.geometry.computeBoundingBox();
+      const axes = head.geometry.boundingBox!.max;
+      neck.geometry.computeBoundingBox();
+      const rimY = neck.geometry.boundingBox!.max.y;
+      const pos = neck.geometry.attributes.position!;
+      for (const nod of [0, 0.3]) {
+        head.rotation.x = nod;
+        rig.updateMatrixWorld(true);
+        for (let i = 0; i < pos.count; i++) {
+          v.fromBufferAttribute(pos, i);
+          if (v.y < rimY - 1e-6) continue;
+          head.worldToLocal(neck.localToWorld(v));
+          const r = Math.hypot(v.x / axes.x, v.y / axes.y, v.z / axes.z);
+          expect(r, `neck rim inside the skull at nod ${nod}`).toBeLessThan(1);
+        }
+      }
+    }
+    expect(settlers).toBeGreaterThan(0);
+    view.dispose();
+  });
+
+  it("ends every animal's neck inside its head — the fenwolf's stood clear of the lowered skull and hung behind the ears", () => {
+    // A hunter carries its head low, and the neck used to be pitched flatter
+    // from the same root: its top centre landed a hand's width above and behind
+    // the skull, a stub in the air that the manager camera read as withers and
+    // the first-person one read as a mistake. The top of the neck belongs
+    // inside the head, for every species, before the head pitches at all.
+    const { view, world } = bodies();
+    const box = new THREE.Box3();
+    const v = new THREE.Vector3();
+    const kinds = new Set<string>();
+    for (const rig of view.group.children) {
+      const pawn = world.pawns.find((p) => p.x === rig.position.x && p.y === rig.position.z)!;
+      if (!pawn.animal) continue;
+      kinds.add(pawn.animal);
+      const neck = part(rig, 'neck');
+      const head = part(rig, 'head');
+      head.rotation.x = 0;
+      rig.updateMatrixWorld(true);
+      head.geometry.computeBoundingBox();
+      box.copy(head.geometry.boundingBox!);
+      neck.geometry.computeBoundingBox();
+      v.set(0, neck.geometry.boundingBox!.max.y, 0);
+      head.worldToLocal(neck.localToWorld(v));
+      expect(box.containsPoint(v), `${pawn.animal}'s neck ends inside its head`).toBe(true);
+    }
+    expect(kinds.has('fenwolf'), 'the map has a hunter to check').toBe(true);
+    view.dispose();
+  });
+
+  it('keeps the collar and tag under a thousand triangles — the budget above never sees them, and a pen is full of them', () => {
+    // Both are hidden on every wild animal, which is every animal the budget
+    // check meets, so a strap that costs half a wolf gets through it. It did:
+    // sixteen segments round the tube was a thousand triangles on its own.
+    const { view } = bodies();
+    let animals = 0;
+    for (const rig of view.group.children) {
+      let collar: THREE.Mesh | null = null;
+      let tag: THREE.Mesh | null = null;
+      rig.traverse((o) => {
+        if (o instanceof THREE.Mesh && o.name === 'collar') collar = o;
+        if (o instanceof THREE.Mesh && o.name === 'tag') tag = o;
+      });
+      if (!collar || !tag) continue;
+      animals++;
+      expect(triangles(collar) + triangles(tag)).toBeLessThanOrEqual(1000);
+    }
+    expect(animals).toBeGreaterThan(0);
     view.dispose();
   });
 });

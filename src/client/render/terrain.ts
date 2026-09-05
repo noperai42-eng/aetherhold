@@ -2,15 +2,13 @@
  * Ground and rock. One non-indexed quad per cell, coloured at its corners rather
  * than its middle so neighbouring ground bleeds together instead of tiling, plus
  * instanced blocks for rock — which is solid terrain, so it has to look like
- * something you cannot walk through, because you cannot. The block is a
- * bevelled, dented boulder rather than a crate, but it is still sized and placed
- * as a crate: everything that has to clear a rock or stand on one reads the
- * crate, and the boulder is built to stay inside it.
+ * something you cannot walk through, because you cannot. The block is a domed,
+ * lumpy boulder rather than a crate, but it is still sized and placed as a
+ * crate: everything that has to clear a rock or stand on one reads the crate,
+ * and the boulder is built to stay inside it and to reach its lid.
  */
 
 import * as THREE from 'three';
-import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
-import { mergeVertices } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 
 import { ICE_STEPS, SEASON_STEPS, SNOW_STEPS, TERRAIN_COLOR, groundColor } from './palette';
 import { yearPhase } from '../../sim/seasons';
@@ -65,33 +63,67 @@ export const ROCK_HEIGHT = 2.45;
 const ROCK_MIN_HEIGHT = 1.55;
 /** How far a block sinks into the ground, so no cliff floats above its own seam. */
 const ROCK_SINK = 0.15;
-/** Yaw range in radians. Small, because a block still has to cover its own cell. */
+/**
+ * Tilt range in radians, on top of the quarter turn every block gets. Small,
+ * because a block still has to cover its own cell.
+ */
 const ROCK_TILT = 0.07;
 /**
- * How far the top edges of a block are rounded off, as a fraction of its height.
+ * How much of the block's height is dome, as a fraction of that height.
  *
  * A fraction rather than a length because the block is a unit mesh stretched to
- * its height per instance, so this is what the bevel can be. It comes out between
- * twenty and thirty-five centimetres on a real block, which is a boulder's
- * shoulder and not a chamfer: big enough to catch a highlight from the manager
- * view and to give a cliff a skyline of humps from inside a body, small enough
- * that the flat top is still most of the top and the overlays that sit on it
- * (`rockTopAt`) still sit on rock.
+ * its height per instance, so this is what the dome can be. It comes out between
+ * forty and seventy centimetres on a real block — a hump, not a chamfer. That
+ * size is the point: a cliff with a straight top edge is a wall of crates however
+ * well its corners are sanded, and only a top that has no straight edge at all
+ * reads as rock from the manager view. Everything above the shoulder is above
+ * every neighbour of the same height, so the dome costs nothing in coverage.
  */
-const ROCK_BEVEL = 0.14;
+const ROCK_DOME = 0.28;
 /**
- * How far the vertical edges are rounded off, as a fraction of the block's width.
+ * How square the dome's profile is. Two is an ellipse; a little more keeps the
+ * top of the hump broad and drops its flanks faster, which is a boulder's
+ * shoulder rather than an egg's.
+ */
+const ROCK_DOME_K = 2.3;
+/**
+ * Where the dome peaks, as a fraction of the block's width from the cell centre.
  *
- * Smaller than the vertical bevel, and deliberately so — see `rockGeometry`. Every
- * centimetre here is a centimetre the block has to be wider to keep covering its
- * cell (`ROCK_COVER`), and that width is what a mined corridor loses on each side.
+ * Off-centre so the lump is lopsided, and lopsided so that the quarter turn a
+ * cell gets is a different silhouette and not the same one again: one mesh is
+ * drawn thousands of times, and the peak's four positions are what stop a cliff
+ * reading as a grid of identical humps.
+ */
+const ROCK_PEAK_X = 0.11;
+const ROCK_PEAK_Z = -0.06;
+/**
+ * How far the vertical edges of the base are rounded off, as a fraction of the
+ * block's width.
+ *
+ * Small on purpose. Every centimetre here is a centimetre the block has to be
+ * wider to keep covering its cell (`ROCK_COVER`), and that width is what a mined
+ * corridor loses on each side. The rounding the eye wants comes from the dome,
+ * which is free, not from the base, which is not.
  */
 export const ROCK_EDGE = 0.08;
 /**
- * How far a vertex wanders from the bevelled form, as a fraction of the block's
- * width. Along the normal, in or out, so the skin is lumpy rather than warped.
+ * The deepest a dent in the block's side can go, as a fraction of its width.
+ *
+ * The sides are the part of the boulder that neighbours and corridors see, and
+ * every dent in them is paid for in `ROCK_COVER`, so they are only ever dented
+ * inward and only this far. The dome is dented far more (`ROCK_LUMP`): it stands
+ * clear of everything, so its noise is free.
  */
-export const ROCK_JITTER = 0.012;
+export const ROCK_JITTER = 0.03;
+/**
+ * How far the dome's skin wanders, in or out, as a fraction of the block's width.
+ * Low-frequency, so the result is a lump with a few bulges rather than a rough
+ * one — roughness is the material's job, and at this triangle count it would
+ * only read as grain.
+ */
+const ROCK_LUMP = 0.09;
+/** Vertices around one ring of the boulder. Rings times this is the triangle budget. */
+const ROCK_AROUND = 18;
 /**
  * How much wider a block has to be than the square it is covering, now that its
  * corners are rounded and its sides are dented.
@@ -124,7 +156,7 @@ const RAIL_T = 0.08;
 /** One rock block's deterministic deviation from a plain unit crate. */
 export interface RockShape {
   height: number;
-  /** Yaw in radians. */
+  /** Yaw in radians: a quarter turn chosen per cell, plus a small tilt. */
   rot: number;
   /** Horizontal scale. Never less than the tilt costs. */
   scale: number;
@@ -142,16 +174,19 @@ export function rockShapeAt(x: number, y: number): RockShape {
   const a = hash(x, y, 3.71);
   const b = hash(x, y, 9.13);
   const c = hash(x, y, 17.29);
-  const rot = (b - 0.5) * 2 * ROCK_TILT;
+  // A quarter turn per cell, because every block is the same lopsided lump and
+  // four ways round is four different boulders; the tilt on top is what keeps
+  // the four from lining up into rows.
+  const rot = Math.floor(hash(x, y, 29.7) * 4) * (Math.PI / 2) + (b - 0.5) * 2 * ROCK_TILT;
   return {
     height: ROCK_MIN_HEIGHT + a * (ROCK_HEIGHT - ROCK_MIN_HEIGHT),
     rot,
-    // A square turned by `rot` needs cos+sin of that angle just to cover the
-    // ground it started on, and a square with its corners rounded off needs
-    // `ROCK_COVER` of that again. Anything less opens a seam you can see through
-    // and still cannot walk through — so the tilt and the bevel pay for
-    // themselves before the extra.
-    scale: (Math.cos(rot) + Math.abs(Math.sin(rot))) * ROCK_COVER + c * 0.05,
+    // A square turned by `rot` needs |cos|+|sin| of that angle just to cover
+    // the ground it started on, and a square with its corners rounded off and
+    // its sides dented needs `ROCK_COVER` of that again. Anything less opens a
+    // seam you can see through and still cannot walk through — so the tilt and
+    // the dents pay for themselves before the extra.
+    scale: (Math.abs(Math.cos(rot)) + Math.abs(Math.sin(rot))) * ROCK_COVER + c * 0.05,
     shade: (c - 0.5) * 0.11,
   };
 }
@@ -223,7 +258,7 @@ export class TerrainView {
       rockGeometry(),
       // White, because the real colour rides per instance — a cliff of one hex
       // reads as a wall of crates however well it is lit. Smooth-shaded, or the
-      // bevel would come back as a stack of lit facets and the boulder as a crate
+      // dome would come back as a stack of lit facets and the boulder as a crate
       // with its corners knocked off.
       new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.9 }),
       this.rockCapacity,
@@ -567,10 +602,64 @@ function hash(x: number, y: number, salt: number): number {
   return n - Math.floor(n);
 }
 
-/** The same hash for a point in the block, so a vertex's dent is a property of where it is. */
+/** Hash on the integer lattice `lumpNoise` interpolates over. */
 function hash3(x: number, y: number, z: number): number {
   const n = Math.sin(x * 127.1 + y * 311.7 + z * 74.7) * 43758.5453;
   return n - Math.floor(n);
+}
+
+/**
+ * Smooth value noise: the lattice hash, blended across each cell with a
+ * smoothstep so the surface has no creases at the cell walls. In [0, 1].
+ */
+function valueNoise(x: number, y: number, z: number): number {
+  const ix = Math.floor(x);
+  const iy = Math.floor(y);
+  const iz = Math.floor(z);
+  const fx = THREE.MathUtils.smoothstep(x - ix, 0, 1);
+  const fy = THREE.MathUtils.smoothstep(y - iy, 0, 1);
+  const fz = THREE.MathUtils.smoothstep(z - iz, 0, 1);
+  const lerp = THREE.MathUtils.lerp;
+  const x00 = lerp(hash3(ix, iy, iz), hash3(ix + 1, iy, iz), fx);
+  const x10 = lerp(hash3(ix, iy + 1, iz), hash3(ix + 1, iy + 1, iz), fx);
+  const x01 = lerp(hash3(ix, iy, iz + 1), hash3(ix + 1, iy, iz + 1), fx);
+  const x11 = lerp(hash3(ix, iy + 1, iz + 1), hash3(ix + 1, iy + 1, iz + 1), fx);
+  return lerp(lerp(x00, x10, fy), lerp(x01, x11, fy), fz);
+}
+
+/**
+ * How far the skin at a point wants to bulge, in [−1, 1] and deterministic, so
+ * the same block comes out every session.
+ *
+ * Two octaves of value noise at a wavelength of about half the block, which is
+ * one or two bulges across a face — the scale of a lump, not of grain. The
+ * vertical axis is sampled faster because the unit mesh is stretched to about
+ * twice its width when it is drawn, and a bulge that was round on the unit
+ * block would come out as a stripe.
+ */
+function lumpNoise(x: number, y: number, z: number): number {
+  const a = valueNoise(x * 2.1 + 3.3, y * 3.6 + 1.7, z * 2.1 + 9.2);
+  const b = valueNoise(x * 4.7 + 7.1, y * 8.0 + 5.9, z * 4.7 + 2.4);
+  // Value noise huddles round its middle; a tanh opens it out to fill the range
+  // without the hard plateau a clamp would leave on the biggest bulges.
+  return Math.tanh((0.7 * a + 0.3 * b - 0.5) * 6);
+}
+
+/**
+ * How far the outline of the block's base reaches along a direction, for a
+ * square of half-width ½ whose corners are rounded to `ROCK_EDGE`.
+ */
+function baseReach(c: number, s: number): number {
+  const a = Math.abs(c);
+  const b = Math.abs(s);
+  const h = 0.5;
+  const r = ROCK_EDGE;
+  const side = h / Math.max(a, b);
+  if (side * Math.min(a, b) <= h - r) return side;
+  // In a corner: the ray meets the quarter circle centred (h − r, h − r).
+  const k = h - r;
+  const dot = (a + b) * k;
+  return dot + Math.sqrt(dot * dot - 2 * k * k + r * r);
 }
 
 /**
@@ -578,62 +667,111 @@ function hash3(x: number, y: number, z: number): number {
  *
  * One boulder, built once and shared: the per-cell height, yaw, width and shade
  * all ride in the instance matrix, so the mesh only has to be a convincing lump
- * inside the unit crate it replaced. Three things hold that contract. The top is
- * flat and sits exactly at +½, so `rockTopAt` and the clearance height mean what
+ * inside the unit crate it replaced. Three things hold that contract. The highest
+ * point sits exactly at +½, so `rockTopAt` and the clearance height mean what
  * they did. Nothing reaches past ±½ sideways, so `scale` is still the footprint.
- * And the bottom bevel is pushed *below* −½ — the box is built one bevel taller
- * than it needs to be and then shifted down — so the block meets the ground with
- * a straight-sided band rather than a curve that would undercut its own foot.
- * That band's underside and everything beneath it is then cut away: it is buried
- * fifteen centimetres deep under ground that never sinks near a rock, and it
- * would only cost triangles on every one of thousands of instances.
+ * And the base ring at −½ is the full rounded square, so a block meets the block
+ * beside it and the ground under it without a seam — the base is buried fifteen
+ * centimetres under ground that never sinks near a rock, so it needs no floor.
  *
- * The rounding is elliptical on purpose. `RoundedBoxGeometry` takes one radius,
- * so the box is built wide and squashed back to a unit footprint: the vertical
- * bevel keeps `ROCK_BEVEL` of the block's height while the horizontal one is
- * `ROCK_EDGE` of its width, which is what stops a two-and-a-half-metre block
- * looking like a sanded-off die. The vertices are then welded so the faces share
- * normals across their seams, pushed in or out along those normals by a
- * position-seeded amount, and the normals recomputed over the welded mesh — so
- * the surface lights as one continuous lumpy skin and not six planes meeting at
- * a crease. The dents are clamped back inside the crate, so a dent can lower
- * the top under the overlays but never lift it into what has to clear it.
+ * The form is a straight-sided stump with a dome on it. The stump is the base
+ * outline carried up to the shoulder; above the shoulder each ring shrinks toward
+ * a peak that is deliberately off-centre, and its outline blends from the rounded
+ * square to a circle on the way up so no corner of the base runs up the dome as a
+ * ridge. Then the skin is displaced along its normals by low-frequency noise:
+ * inward only on the stump, and only as deep as `ROCK_COVER` has paid for; in or
+ * out on the dome, out only as far as the crate wall allows, so no dent can be
+ * clamped into a flat spot. The whole thing is finally rescaled so the highest
+ * vertex is at the lid, wherever the noise put it. It is one welded, indexed mesh,
+ * so `computeVertexNormals` gives one continuous lit skin and no crease survives
+ * from the construction.
  */
 function rockGeometry(): THREE.BufferGeometry {
-  const w = ROCK_BEVEL / ROCK_EDGE;
-  const rounded = new RoundedBoxGeometry(w, 1 + ROCK_BEVEL, w, 2, ROCK_BEVEL);
-  // No texture ever goes on a rock, and UVs and analytic normals differ across
-  // every seam — they are exactly what would keep the weld from closing.
-  rounded.deleteAttribute('uv');
-  rounded.deleteAttribute('normal');
-  rounded.scale(1 / w, 1, 1 / w);
-  rounded.translate(0, -ROCK_BEVEL / 2, 0);
-
-  const src = rounded.getAttribute('position') as THREE.BufferAttribute;
-  const kept: number[] = [];
-  for (let i = 0; i < src.count; i += 3) {
-    const top = Math.max(src.getY(i), src.getY(i + 1), src.getY(i + 2));
-    if (top <= -0.5 + 1e-6) continue;
-    for (let k = i; k < i + 3; k++) kept.push(src.getX(k), src.getY(k), src.getZ(k));
+  const shoulder = 0.5 - ROCK_DOME;
+  // Each ring is [height, how much of the base outline it keeps, how far it has
+  // gone from rounded square to circle]. The stump first, then the dome by the
+  // angle up its superelliptical profile, then the peak.
+  const rings: [number, number, number][] = [];
+  for (const y of [-0.5, -0.14, shoulder]) rings.push([y, 1, 0]);
+  const e = 2 / ROCK_DOME_K;
+  for (const deg of [15, 30, 45, 60, 75]) {
+    const phi = THREE.MathUtils.degToRad(deg);
+    const u = Math.sin(phi) ** e;
+    rings.push([shoulder + u * ROCK_DOME, Math.cos(phi) ** e, u]);
   }
-  rounded.dispose();
-  const shell = new THREE.BufferGeometry();
-  shell.setAttribute('position', new THREE.Float32BufferAttribute(kept, 3));
-  const geo = mergeVertices(shell);
-  shell.dispose();
 
+  const n = ROCK_AROUND;
+  const pos: number[] = [];
+  for (const [y, w, round] of rings) {
+    for (let i = 0; i < n; i++) {
+      const th = (i / n) * Math.PI * 2;
+      const c = Math.cos(th);
+      const s = Math.sin(th);
+      const r = baseReach(c, s) * (1 - round) + 0.5 * round;
+      pos.push(ROCK_PEAK_X + (c * r - ROCK_PEAK_X) * w, y, ROCK_PEAK_Z + (s * r - ROCK_PEAK_Z) * w);
+    }
+  }
+  const peak = pos.length / 3;
+  pos.push(ROCK_PEAK_X, 0.5, ROCK_PEAK_Z);
+
+  const idx: number[] = [];
+  for (let j = 0; j < rings.length - 1; j++) {
+    for (let i = 0; i < n; i++) {
+      const a = j * n + i;
+      const b = j * n + ((i + 1) % n);
+      idx.push(a, a + n, b, b, a + n, b + n);
+    }
+  }
+  const top = (rings.length - 1) * n;
+  for (let i = 0; i < n; i++) idx.push(top + i, peak, top + ((i + 1) % n));
+
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  geo.setIndex(idx);
   geo.computeVertexNormals();
+
   const p = geo.getAttribute('position') as THREE.BufferAttribute;
-  const n = geo.getAttribute('normal') as THREE.BufferAttribute;
+  const nrm = geo.getAttribute('normal') as THREE.BufferAttribute;
+  let lid = -0.5;
   for (let i = 0; i < p.count; i++) {
-    const d = (hash3(p.getX(i), p.getY(i), p.getZ(i)) - 0.5) * 2 * ROCK_JITTER;
+    const x = p.getX(i);
+    const y = p.getY(i);
+    const z = p.getZ(i);
+    const nx = nrm.getX(i);
+    const ny = nrm.getY(i);
+    const nz = nrm.getZ(i);
+    // Nothing at the buried base, the full side dent by the shoulder, the full
+    // lump at the peak. The stump can only go inward, so its noise is folded to
+    // one sign rather than half of it thrown away at the wall — a face that is
+    // dented in places is a face; one that is dented or flat is a crate with
+    // damage. The fold eases off up the dome, where there is room to bulge.
+    const amp =
+      y <= shoulder
+        ? (ROCK_JITTER * (y + 0.5)) / (shoulder + 0.5)
+        : THREE.MathUtils.lerp(ROCK_JITTER, ROCK_LUMP, (y - shoulder) / ROCK_DOME);
+    const fold = y <= shoulder ? 1 : 1 - (y - shoulder) / ROCK_DOME;
+    let d = ((lumpNoise(x, y, z) - fold) / (1 + fold)) * amp;
+    if (d > 0) {
+      // Outward, only as far as the crate wall it is heading for.
+      let room = Infinity;
+      if (nx * x > 0) room = Math.min(room, (0.5 - Math.abs(x)) / Math.abs(nx));
+      if (nz * z > 0) room = Math.min(room, (0.5 - Math.abs(z)) / Math.abs(nz));
+      d = Math.min(d, room);
+    }
+    const ny2 = y + ny * d;
+    lid = Math.max(lid, ny2);
     p.setXYZ(
       i,
-      THREE.MathUtils.clamp(p.getX(i) + n.getX(i) * d, -0.5, 0.5),
-      THREE.MathUtils.clamp(p.getY(i) + n.getY(i) * d, -0.5, 0.5),
-      THREE.MathUtils.clamp(p.getZ(i) + n.getZ(i) * d, -0.5, 0.5),
+      THREE.MathUtils.clamp(x + nx * d, -0.5, 0.5),
+      ny2,
+      THREE.MathUtils.clamp(z + nz * d, -0.5, 0.5),
     );
   }
+  // The lid is a promise to everything that clears a rock, so the highest point
+  // is put exactly on it: the base stays at −½ and the rest is stretched or
+  // squashed to fit, which is a change of a centimetre or two nobody sees.
+  for (let i = 0; i < p.count; i++) p.setY(i, -0.5 + (p.getY(i) + 0.5) / (lid + 0.5));
+  p.needsUpdate = true;
   geo.computeVertexNormals();
   return geo;
 }

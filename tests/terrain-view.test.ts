@@ -97,16 +97,33 @@ describe('the shape of a rock block', () => {
    * The one invariant that is not cosmetic. Rock is impassable, so if a tilted
    * block does not cover the whole cell it stood on, the player sees through a
    * corner they can never walk into — visuals disagreeing with collision. A square
-   * turned by θ needs cos θ + sin θ of its own width to still cover the original.
+   * turned by θ needs |cos θ| + |sin θ| of its own width to still cover the
+   * original, whichever quarter turn the tilt is sitting on.
    */
   it('always covers the cell it stands on, tilt and all', () => {
     for (let x = 0; x < 64; x++) {
       for (let y = 0; y < 64; y++) {
         const sh = rockShapeAt(x, y);
-        const needed = Math.cos(sh.rot) + Math.abs(Math.sin(sh.rot));
+        const needed = Math.abs(Math.cos(sh.rot)) + Math.abs(Math.sin(sh.rot));
         expect(sh.scale).toBeGreaterThanOrEqual(needed);
       }
     }
+  });
+
+  /**
+   * Every cell draws the same lopsided lump, so the only variety a cliff has
+   * beyond height and shade is which way round each lump faces. If the hash
+   * ever collapsed to one quadrant, the peaks would all lean the same way and
+   * the cliff would be a grid of the same hump again.
+   */
+  it('turns the lump all four ways across a cliff', () => {
+    const quadrants = new Set<number>();
+    for (let x = 0; x < 64; x++) {
+      for (let y = 0; y < 64; y++) {
+        quadrants.add(Math.round(rockShapeAt(x, y).rot / (Math.PI / 2)) % 4);
+      }
+    }
+    expect(quadrants.size).toBe(4);
   });
 
   /**
@@ -121,7 +138,7 @@ describe('the shape of a rock block', () => {
     for (let x = 0; x < 64; x++) {
       for (let y = 0; y < 64; y++) {
         const sh = rockShapeAt(x, y);
-        const needed = Math.cos(sh.rot) + Math.abs(Math.sin(sh.rot));
+        const needed = Math.abs(Math.cos(sh.rot)) + Math.abs(Math.sin(sh.rot));
         expect(sh.scale * (1 - inset)).toBeGreaterThanOrEqual(needed);
       }
     }
@@ -183,6 +200,73 @@ describe('the boulder every block draws', () => {
     }
     // A crate has no normal that is neither flat nor upright; a boulder's shoulder is nothing else.
     expect(bent).toBeGreaterThan(0);
+    view.dispose();
+  });
+
+  /**
+   * The lid is one point, not a plate. A block whose top ring sat at the lid
+   * would still pass the crate test and still be a crate from the manager view —
+   * a straight top edge on every cell is exactly the stacked-cube look the dome
+   * exists to lose. So only a peak may touch the lid, and the top must fall away
+   * from it: anything nearly half a cell from the peak is well below.
+   */
+  it('has a domed top that only its peak brings up to the lid', () => {
+    const { geo, view } = boulder();
+    const p = geo.getAttribute('position') as THREE.BufferAttribute;
+    let peakX = 0;
+    let peakZ = 0;
+    for (let i = 0; i < p.count; i++) {
+      if (p.getY(i) >= 0.5 - 1e-6) {
+        peakX = p.getX(i);
+        peakZ = p.getZ(i);
+      }
+    }
+    let atLid = 0;
+    for (let i = 0; i < p.count; i++) {
+      if (p.getY(i) > 0.5 - 0.01) atLid++;
+      if (Math.hypot(p.getX(i) - peakX, p.getZ(i) - peakZ) > 0.45) {
+        expect(p.getY(i)).toBeLessThan(0.5 - 0.05);
+      }
+    }
+    expect(atLid).toBeLessThan(p.count * 0.05);
+    view.dispose();
+  });
+
+  /**
+   * The base is what tiles. Two rock cells side by side are two of these meshes
+   * with overlapping footprints, and it is the full-width ring at the bottom that
+   * closes the seam between them and against the ground; a lump that narrowed at
+   * its foot would show daylight under every cliff.
+   */
+  it('meets the ground at the full width of its cell', () => {
+    const { geo, view } = boulder();
+    const p = geo.getAttribute('position') as THREE.BufferAttribute;
+    let reachX = 0;
+    let reachZ = 0;
+    for (let i = 0; i < p.count; i++) {
+      if (p.getY(i) > -0.5 + 1e-6) continue;
+      reachX = Math.max(reachX, Math.abs(p.getX(i)));
+      reachZ = Math.max(reachZ, Math.abs(p.getZ(i)));
+    }
+    expect(reachX).toBeCloseTo(0.5, 6);
+    expect(reachZ).toBeCloseTo(0.5, 6);
+    view.dispose();
+  });
+
+  /**
+   * A dented skin can fold a normal back on itself, and a normal facing into the
+   * rock lights that patch as a hole — from inside a body, a cave mouth in the
+   * cliff that nobody can enter. Every normal has to face away from the block's
+   * axis, wherever the noise put its vertex.
+   */
+  it('faces outward everywhere, so no dent lights as a cave', () => {
+    const { geo, view } = boulder();
+    const p = geo.getAttribute('position') as THREE.BufferAttribute;
+    const n = geo.getAttribute('normal') as THREE.BufferAttribute;
+    for (let i = 0; i < p.count; i++) {
+      const out = n.getX(i) * p.getX(i) + n.getY(i) * p.getY(i) + n.getZ(i) * p.getZ(i);
+      expect(out).toBeGreaterThan(0);
+    }
     view.dispose();
   });
 });
