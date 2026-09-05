@@ -501,7 +501,12 @@ function bedlessRooms(world: World): Room[] {
     if (room.size > QUARTERS_MAX_CELLS) continue;
     let taken = false;
     for (const b of world.buildings) {
-      if (!b.built || !isBed(b.kind)) continue;
+      // A prison bunk counts, and it has to. `isBed` says no — a prisonbed is
+      // not somewhere a settler sleeps — but this list is "rooms nobody has
+      // claimed", and without the extra clause the cell block the Steward has
+      // just walled reads as empty and `quarters` puts a colonist's bunk in it
+      // next to the raider.
+      if (!b.built || !(isBed(b.kind) || b.kind === 'prisonbed')) continue;
       if (idx.cellRoom[b.y * world.width + b.x] === room.id) {
         taken = true;
         break;
@@ -617,6 +622,18 @@ function growQuarters(world: World): number {
     return n;
   }
 
+  return carveRoom(world);
+}
+
+/**
+ * Wall out one more small room, wherever the next one will fit.
+ *
+ * Split off from `growQuarters` when the cell block needed the same thing: a
+ * prison is a room with a bunk in it and a door that shuts, which is a bedroom
+ * with a different occupant. Every hard-won rule below is about *how* to cut a
+ * room without breaking the hall, and none of it is about who ends up in it.
+ */
+function carveRoom(world: World): number {
   const h = heart(world);
   if (!h) return 0;
   if (!affordsBuilding(world, 'wall')) return 0;
@@ -1165,6 +1182,107 @@ export const AMBITIONS: Ambition[] = [
       }
       if (!best) return 0;
       return planBlueprint(world, 'turret', best.x, best.y) ? 1 : 0;
+    },
+  },
+  {
+    id: 'sickbay',
+    says: 'The colony builds a bed for the sick to get better in.',
+    mark(world) {
+      // Everything a sickbay needs was already here. `immunityScale` gives a
+      // medbed 1.3 against a plain bunk's 1.0, and `findFreeBed` already pulls an
+      // ill settler towards one and a well settler away from it (`SICKBAY_PULL`).
+      // The only missing piece was somebody to order one: no ambition planned a
+      // `medbed`, worldgen places none, so on a colony nobody is clicking the
+      // whole ward was dead code. Measured on seed 7 over forty days: zero
+      // medbeds ever built, and of all the time settlers spent ill, none of it
+      // was spent anywhere better than a bunk.
+      //
+      // Below `defence`, and that is a steel decision rather than a medical one.
+      // A medbed is twelve steel and a turret is forty; a colony that spends the
+      // ward's steel first is a colony nursing the wounds it would not have taken.
+      //
+      // Above `quarters` because a bed the sick get better in is not a comfort
+      // and a room of one's own is.
+      const people = livingColonists(world).length;
+      // Only once everybody has somewhere to sleep at all. A ward built while
+      // settlers are on the floor is a bed the healthy will end up in, which is
+      // the one thing `SICKBAY_PULL` exists to prevent.
+      if (builtCount(world, 'bed') + builtCount(world, 'medbed') < people) return 0;
+      // One ward bed per four settlers, and never more than two. A third is
+      // twenty wood and twelve steel standing empty for the ninety per cent of
+      // the time nobody is ill, and this colony has walls to pay for.
+      const want = Math.min(2, Math.ceil(people / 4));
+      // Counting only what stands is safe here for the reason it is safe in
+      // `beds`: `boardClear` stops the whole list while any blueprint is up, so
+      // there is never an unbuilt medbed for this to double up on.
+      if (builtCount(world, 'medbed') >= want) return 0;
+      if (!affordsBuilding(world, 'medbed')) return 0;
+      const room = heart(world);
+      if (!room) return 0;
+      // Against a wall, for the reason the hall's own bunks are: see `beds`.
+      for (const cell of freeCells(world, room).reverse()) {
+        if (planBlueprint(world, 'medbed', cell.x, cell.y)) return 1;
+      }
+      return 0;
+    },
+  },
+  {
+    id: 'cells',
+    says: 'The colony walls off a cell, so the next raider it drops can be taken alive.',
+    mark(world) {
+      // One built prisonbed is the entire condition on the warden's capture path
+      // (`jobs.ts`, the `warden` work type): with none standing, a downed raider
+      // is not a prisoner, they are a body waiting to bleed out. No ambition ever
+      // planned one, so on a colony nobody is clicking the prison — capture,
+      // feeding, recruitment, the resistance clock, all of it — was code that
+      // could not run. Measured on seed 7 over forty days: eighteen raiders lay
+      // on the ground alive and every one of them was left there.
+      //
+      // Above `quarters`, with the fairness written out below rather than
+      // implied by the order — and that swap is the whole of the second fix here.
+      //
+      // It sat *below* `quarters` first, on the reasoning that settlers should
+      // get rooms of their own before the colony builds one for somebody who came
+      // to kill them, and that `quarters` returns 0 the moment nobody is
+      // unhoused. The second half of that is true and useless: `quarters` never
+      // gets there. Measured over forty harsh days, seed 7 ended with three
+      // settlers still without a room and 99001 with four — a colony gains people
+      // faster than `growQuarters` walls corners for them — so `cells` was never
+      // reached on any seed and not one prisonbed was ever built. That is the
+      // trap the note on `quarters` describes: a want the list can never get to
+      // is not a low priority, it is a feature that does not exist.
+      //
+      // So the policy is stated as a condition instead of a position: somebody
+      // must already have a room of their own. The colony has to have proved it
+      // can carve a room and given the first one away before it walls one for a
+      // prisoner.
+      if (!buildingUnlocked(world, 'prisonbed')) return 0;
+      // And only once there is a gun on the wall. A cell is an invitation to hold
+      // somebody who wants out; a colony that cannot win the fight it is already
+      // in has no business starting a second one indoors.
+      if (builtCount(world, 'turret') === 0) return 0;
+      if (livingColonists(world).length - unhoused(world).length < 1) return 0;
+      if (builtCount(world, 'prisonbed') >= 1) return 0;
+
+      // A room with a door, not a bunk in the corner of the hall. The isolation
+      // is the point — it is the same reason the sick and the well sleep apart —
+      // and `bedlessRooms` now counts a prison bunk as claiming its room, so
+      // `quarters` will not follow this in and put a settler next to the raider.
+      // Every empty room gets asked, not just the first one — the same loop
+      // `growQuarters` runs, for the same reason. This map generates caves, a
+      // cave is a small enclosed room, and `bedlessRooms` returns them in index
+      // order: taking `[0]` handed the bunk to a hole in the rock, failed to
+      // place it there, and reported "no cell block today" forever while a
+      // finished room stood empty three cells from the door.
+      if (affordsBuilding(world, 'prisonbed')) {
+        for (const room of bedlessRooms(world)) {
+          // Against a wall, like every other bunk this colony lays: see `beds`.
+          for (const cell of freeCells(world, room).reverse()) {
+            if (planBlueprint(world, 'prisonbed', cell.x, cell.y)) return 1;
+          }
+        }
+      }
+      return carveRoom(world);
     },
   },
   {
