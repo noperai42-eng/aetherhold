@@ -240,9 +240,19 @@ describe('colony survives its first week', () => {
   // in the full suite and passed alone, which is the whole failure mode. Check
   // the clock as well as the columns before pinning anything here — 20260902
   // costs 64 s, so this re-point is free.
+  //
+  // Re-pointed again to harsh/7 when a rotted settler started releasing her
+  // claims (`tickGraves`): every run where a body rots now takes a different
+  // path, and 20260902's fourth column went to 0.0 h — the pin failing because
+  // the sim moved, not because feeding broke. The grid says three of twenty-four
+  // runs still fit, and 7 is the widest of them by a distance (3.7 / 24.9 / 9.9 /
+  // 5.0) *and* the cheapest row on the clock at 47 s against 20260902's 58 s, so
+  // this re-point buys margin on both axes. `probe-starve-pin` now prints the
+  // clock alongside the columns, so the next person does not have to time it by
+  // hand.
   it('tells a walk home from a wait on the floor from a wait with hands free', () => {
     const r = runColony({
-      seed: 20260902,
+      seed: 7,
       days: 20,
       difficulty: 'harsh',
       playPastFounding: true,
