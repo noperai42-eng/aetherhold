@@ -56,6 +56,31 @@ function heightAt(view: BuildingsView, x: number, y: number): number {
   return top;
 }
 
+/** How far any instance on a cell reaches from the cell's centre, on the ground plane. */
+function reachAt(view: BuildingsView, x: number, y: number): number {
+  const m = new THREE.Matrix4();
+  const box = new THREE.Box3();
+  let reach = 0;
+  view.group.traverse((o) => {
+    const mesh = o as THREE.InstancedMesh;
+    if (!mesh.isInstancedMesh) return;
+    for (let i = 0; i < mesh.count; i++) {
+      mesh.getMatrixAt(i, m);
+      const pos = new THREE.Vector3().setFromMatrixPosition(m);
+      if (Math.round(pos.x) !== x || Math.round(pos.z) !== y) continue;
+      if (!mesh.geometry.boundingBox) mesh.geometry.computeBoundingBox();
+      box.copy(mesh.geometry.boundingBox!).applyMatrix4(m);
+      reach = Math.max(reach, box.max.x - x, x - box.min.x, box.max.z - y, y - box.min.z);
+    }
+  });
+  return reach;
+}
+
+/** Triangles in a geometry, indexed or not — what the GPU actually draws per instance. */
+function triangles(g: THREE.BufferGeometry): number {
+  return (g.index ? g.index.count : g.attributes.position.count) / 3;
+}
+
 /** A cell nothing already stands on — worldgen scatters trees over most of the map. */
 function clearCell(world: World): { x: number; y: number } {
   for (let y = 2; y < world.height - 2; y++) {
@@ -112,6 +137,57 @@ describe('the buildings view', () => {
       const top = heightAt(view, x, y);
       const want = defOf(kind).height;
       expect(Math.abs(top - want), `${kind} is ${top} tall, sim says ${want}`).toBeLessThan(0.25);
+    }
+    view.dispose();
+  });
+
+  it('shades nothing flat, because a faceted cylinder is a polygon with a light on it', () => {
+    // Smoothness is a property of the materials and the segment counts, not of
+    // the camera, so it can be checked without one. A single pool left with
+    // `flatShading` on would put one faceted thing in a colony of smooth ones,
+    // and the eye finds the odd one out before it finds anything else.
+    const view = new BuildingsView();
+    view.group.traverse((o) => {
+      const mesh = o as THREE.InstancedMesh;
+      if (!mesh.isInstancedMesh) return;
+      const mat = mesh.material as THREE.MeshStandardMaterial;
+      expect(mat.flatShading, `${mesh.geometry.type} pool is flat-shaded`).toBe(false);
+    });
+    view.dispose();
+  });
+
+  it('keeps the parts drawn by the hundred cheap', () => {
+    // Walls, fences, conduits and trees are what a colony is mostly made of, and
+    // each of their parts is instanced a few hundred times. Detail on those is
+    // paid for on every cell of the perimeter and every tree in the wood, so a
+    // pool sized for that many instances has a triangle ceiling per part, and
+    // the ceiling is what lets the furniture spend more.
+    const view = new BuildingsView();
+    view.group.traverse((o) => {
+      const mesh = o as THREE.InstancedMesh;
+      if (!mesh.isInstancedMesh) return;
+      const capacity = mesh.instanceMatrix.count;
+      if (capacity < 256) return;
+      expect(triangles(mesh.geometry), `a ${capacity}-instance pool draws ${triangles(mesh.geometry)} triangles`).toBeLessThanOrEqual(400);
+    });
+    view.dispose();
+  });
+
+  it('keeps furniture inside its own cell', () => {
+    // A bed that pokes into the next cell is a bed a settler walks through, and
+    // a stove whose flue stands in the corridor is a stove you cannot get past
+    // in first person. Only the things built to reach out are exempt: a fence's
+    // rails, a conduit's arms, a turret's barrel, the rod and the wheel that
+    // hang over the water, the door on its swing and the crown of a tree.
+    const reaching = new Set<BuildingKind>(['fence', 'conduit', 'turret', 'fishhole', 'watermill', 'door', 'tree']);
+    const world = createWorld(SEED);
+    const view = new BuildingsView();
+    for (const kind of BUILD_MENU) {
+      if (reaching.has(kind)) continue;
+      const { x, y } = clearCell(world);
+      place(world, kind, x, y);
+      view.sync(world);
+      expect(reachAt(view, x, y), `${kind} reaches ${reachAt(view, x, y)} from its centre`).toBeLessThanOrEqual(0.56);
     }
     view.dispose();
   });

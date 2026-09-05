@@ -9,6 +9,7 @@
  */
 
 import * as THREE from 'three';
+import { mergeVertices } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 
 import { TERRAIN_COLOR } from './palette';
 import { growingCells } from '../../sim/farming';
@@ -40,10 +41,12 @@ export class DecorView {
   constructor(world: World) {
     const cells = world.width * world.height;
 
-    const blade = new THREE.ConeGeometry(0.5, 1, 3);
-    // Base at the origin so per-instance scale is a height, and so the shader can
-    // use object-space y directly as "how far from the roots am I".
-    blade.translate(0, 0.5, 0);
+    // A blade rather than a spike: a tapered strip that curves forward as it
+    // rises, so from overhead it is a leaf and from eye level it is a bent stem
+    // instead of a green pyramid. Base at the origin so per-instance scale is a
+    // height, and so the shader can use object-space y directly as "how far from
+    // the roots am I".
+    const blade = bladeGeometry(0.8, 4, 0.5);
     this.tufts = new THREE.InstancedMesh(
       blade,
       grassMaterial(this.time, this.wind),
@@ -55,9 +58,12 @@ export class DecorView {
     this.tufts.frustumCulled = false;
     this.group.add(this.tufts);
 
+    // A river-worn pebble, not a die: a sphere knocked slightly out of true and
+    // lit smoothly, so the facets that read as "low poly" from a metre away are
+    // gone and what is left is a lump with a highlight sliding over it.
     this.stones = new THREE.InstancedMesh(
-      new THREE.DodecahedronGeometry(0.5, 0),
-      new THREE.MeshLambertMaterial({ color: 0xffffff, flatShading: true }),
+      lumpyGeometry(new THREE.IcosahedronGeometry(0.5, 1), 0.07, 3.7),
+      new THREE.MeshLambertMaterial({ color: 0xffffff }),
       cells,
     );
     this.stones.castShadow = true;
@@ -190,7 +196,9 @@ function grassMaterial(
   time: { value: number },
   wind: { value: number },
 ): THREE.MeshLambertMaterial {
-  const mat = new THREE.MeshLambertMaterial({ color: 0xffffff, flatShading: true });
+  // Two-sided because a blade is a strip with no thickness: a possessed colonist
+  // walking round a tuft would otherwise see it wink out for half the turn.
+  const mat = new THREE.MeshLambertMaterial({ color: 0xffffff, side: THREE.DoubleSide });
   mat.onBeforeCompile = (shader) => {
     shader.uniforms.uTime = time;
     shader.uniforms.uWind = wind;
@@ -214,6 +222,72 @@ function grassMaterial(
       );
   };
   return mat;
+}
+
+/**
+ * A single leaf: a strip `width` across at the roots, tapering to a point at
+ * y = 1, that bows forward (+z) by `bend` at the tip. Built by hand because no
+ * primitive is a curved sheet, and kept to a handful of triangles because the
+ * grass draws one of these per blade across the whole map.
+ *
+ * The taper is quadratic — broad for most of its length, then narrowing fast —
+ * which is what a blade of grass or a crop leaf actually looks like, and the bow
+ * is quadratic too, so the base stands straight and only the upper half leans.
+ * The instance matrix scales y to the blade's height and x/z to its girth, so
+ * everything here is in "one blade tall" units.
+ */
+export function bladeGeometry(width: number, segments: number, bend: number): THREE.BufferGeometry {
+  const pos: number[] = [];
+  const idx: number[] = [];
+  for (let i = 0; i < segments; i++) {
+    const t = i / segments;
+    const half = (width / 2) * (1 - t * t);
+    const z = bend * t * t;
+    pos.push(-half, t, z, half, t, z);
+  }
+  pos.push(0, 1, bend);
+  const tip = segments * 2;
+  for (let i = 0; i < segments - 1; i++) {
+    const l = i * 2;
+    idx.push(l, l + 1, l + 3, l, l + 3, l + 2);
+  }
+  idx.push(tip - 2, tip - 1, tip);
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  geo.setIndex(idx);
+  geo.computeVertexNormals();
+  return geo;
+}
+
+/**
+ * A polyhedron knocked out of true and lit as one smooth surface.
+ *
+ * Three's subdivided polyhedra arrive as unshared triangles, so nudging their
+ * vertices would tear the faces apart and `computeVertexNormals` would hand back
+ * one normal per facet — exactly the low-poly look this is meant to lose. The
+ * seams are welded first (dropping the uv and normal attributes that would keep
+ * coincident corners apart — nothing here is textured), then every vertex is
+ * moved by a hash of where it started, so the same shape comes out every time
+ * and welded corners move together. `amount` is the largest nudge as a fraction
+ * of the radius; `seed` picks which lump this is.
+ */
+export function lumpyGeometry(base: THREE.BufferGeometry, amount: number, seed: number): THREE.BufferGeometry {
+  base.deleteAttribute('uv');
+  base.deleteAttribute('normal');
+  const geo = mergeVertices(base);
+  base.dispose();
+  const p = geo.getAttribute('position') as THREE.BufferAttribute;
+  const v = new THREE.Vector3();
+  for (let i = 0; i < p.count; i++) {
+    v.fromBufferAttribute(p, i);
+    // Pushed along the radius rather than in a random direction, so a vertex
+    // never crosses its neighbour and the surface stays a surface.
+    v.multiplyScalar(1 + (hash(v.x * 9.1, v.y * 7.3 + v.z * 5.7, seed) - 0.5) * 2 * amount);
+    p.setXYZ(i, v.x, v.y, v.z);
+  }
+  p.needsUpdate = true;
+  geo.computeVertexNormals();
+  return geo;
 }
 
 function hash(x: number, y: number, salt: number): number {

@@ -4,9 +4,17 @@
  * Every mesh here is derived from the same `BUILDING_DEFS` entry the simulation
  * uses for collision, so a wall you can see is a wall you cannot walk through in
  * either view. Heights come from `def.height`; nothing is eyeballed.
+ *
+ * Nothing here is flat-shaded. Every curved part carries enough segments to
+ * read as round from a body's eye height, every box that a settler can put a
+ * hand on has its edges eased, and the handful of parts that are honestly
+ * faceted — a pyramid roof — get face normals baked into the geometry rather
+ * than a material flag that would facet the whole pool.
  */
 
 import * as THREE from 'three';
+import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 
 import { BUILDING_COLOR, RESOURCE_COLOR, seasonTint } from './palette';
 import { InstancedPool } from './instanced';
@@ -21,6 +29,12 @@ import type { Building, BuildingKind, ResourceKind, World } from '../../sim/type
 
 const TURRET_RANGE = 14;
 const BLACK = new THREE.Color(0x000000);
+/**
+ * Bark. The trunk is the one part of a tree that is not the tree's colour: it
+ * used to take the building tint like everything else, which painted every
+ * trunk in the forest the same green as the crown above it.
+ */
+const BARK = 0x5a4331;
 
 const NEIGHBOURS: ReadonlyArray<readonly [number, number]> = [
   [1, 0],
@@ -44,12 +58,27 @@ const FENCE_LINKS = new Set<BuildingKind>(['fence', 'wall', 'stonewall', 'door']
  */
 const ITEM_REST: Partial<Record<BuildingKind, number>> = {
   table: 0.9,
-  bench: 0.875,
+  bench: 0.92,
 };
 
 /** A box whose geometry has been shifted so instance matrices are plain placements. */
 function box(w: number, h: number, d: number, y: number, x = 0, z = 0): THREE.BufferGeometry {
   const g = new THREE.BoxGeometry(w, h, d);
+  g.translate(x, y, z);
+  return g;
+}
+
+/**
+ * A box with its edges eased off. The bevel is small — two to five centimetres —
+ * because the point is not to make furniture look inflated but to give every
+ * edge a highlight to catch: a sharp box has faces that are either lit or not,
+ * and a bevelled one has a bright line along each edge that reads as solid from
+ * both cameras. `seg` is the number of steps round the bevel; one is a chamfer,
+ * two reads as a curve, and each step costs triangles on a part that may be
+ * instanced by the hundred.
+ */
+function rbox(w: number, h: number, d: number, y: number, x = 0, z = 0, r = 0.03, seg = 2): THREE.BufferGeometry {
+  const g = new RoundedBoxGeometry(w, h, d, seg, r);
   g.translate(x, y, z);
   return g;
 }
@@ -90,27 +119,167 @@ const TAU = Math.PI * 2;
  */
 const AXLE = new THREE.Vector3(1, 0, 0);
 
-function cylinder(rTop: number, rBottom: number, h: number, y: number, seg = 10): THREE.BufferGeometry {
+function cylinder(rTop: number, rBottom: number, h: number, y: number, seg = 20): THREE.BufferGeometry {
   const g = new THREE.CylinderGeometry(rTop, rBottom, h, seg);
   g.translate(0, y, 0);
   return g;
 }
 
-function cone(r: number, h: number, y: number, seg = 8): THREE.BufferGeometry {
+function cone(r: number, h: number, y: number, seg = 20): THREE.BufferGeometry {
   const g = new THREE.ConeGeometry(r, h, seg);
   g.translate(0, y, 0);
   return g;
 }
 
-/** The lamp's bulb. Built twice — once lit, once not — so `globe()` rather than a const. */
-function globe(): THREE.BufferGeometry {
-  const g = new THREE.SphereGeometry(0.17, 10, 8);
-  g.translate(0, 1.6, 0);
+function sphere(r: number, y: number, x = 0, z = 0, ws = 20, hs = 14): THREE.BufferGeometry {
+  const g = new THREE.SphereGeometry(r, ws, hs);
+  g.translate(x, y, z);
   return g;
 }
 
-function solidMat(rough: number, flat: boolean): THREE.MeshStandardMaterial {
-  return new THREE.MeshStandardMaterial({ roughness: rough, metalness: 0.04, flatShading: flat });
+/**
+ * A profile spun round the y axis: (radius, height) pairs from the bottom up.
+ * This is how anything round-but-not-a-cylinder is made here — a trunk that
+ * flares at the root, a tier of foliage, a torso — because a lathe is smooth by
+ * construction and costs one ring of triangles per point in the profile.
+ */
+function lathe(profile: ReadonlyArray<readonly [number, number]>, seg = 16): THREE.LatheGeometry {
+  return new THREE.LatheGeometry(
+    profile.map(([r, y]) => new THREE.Vector2(r, y)),
+    seg,
+  );
+}
+
+/**
+ * Several parts welded into one geometry so they draw as one instance. A bed
+ * frame with its headboard, a wheel with its spokes, a ring of nine stones: one
+ * pool each rather than nine, and the count of draw calls stays where it was
+ * before the parts had any detail at all. Rounded boxes come out non-indexed
+ * and everything else indexed, and a merge will not mix the two, so every part
+ * is flattened first; the GPU counts triangles, and flattening changes none.
+ */
+function merge(...parts: THREE.BufferGeometry[]): THREE.BufferGeometry {
+  const flat = parts.map((p) => (p.index ? p.toNonIndexed() : p));
+  const g = mergeGeometries(flat, false);
+  for (const p of parts) p.dispose();
+  for (const p of flat) if (!parts.includes(p)) p.dispose();
+  return g;
+}
+
+/**
+ * A hard-edged part that must stay hard. A pyramid roof lit with smooth normals
+ * is a cone pretending, so the few parts that are honestly faceted get face
+ * normals baked into the geometry itself.
+ */
+function faceted(g: THREE.BufferGeometry): THREE.BufferGeometry {
+  const flat = g.toNonIndexed();
+  flat.computeVertexNormals();
+  g.dispose();
+  return flat;
+}
+
+/**
+ * Roughs up a lathe so it stops reading as turned on a machine. Every vertex is
+ * nudged by a hash of where it sits on the profile and round the ring, which is
+ * deterministic — the same tree is the same tree on reload — and matched at the
+ * seam, where the lathe keeps two copies of its first meridian. The tip and the
+ * bottom rim are left alone, so a tier still comes to a point and still sits
+ * where the profile says it does.
+ */
+function rumple(g: THREE.LatheGeometry, amp: number): THREE.BufferGeometry {
+  const { points, segments } = g.parameters;
+  const P = points.length;
+  const pos = g.attributes.position as THREE.BufferAttribute;
+  for (let k = 0; k < pos.count; k++) {
+    const i = Math.floor(k / P) % segments;
+    const j = k % P;
+    if (j === 0 || j === P - 1) continue;
+    const h = Math.sin(i * 12.9898 + j * 78.233) * 43758.5453;
+    const f = (h - Math.floor(h)) * 2 - 1;
+    const s = 1 + f * amp;
+    pos.setXYZ(k, pos.getX(k) * s, pos.getY(k) + f * amp * 0.4, pos.getZ(k) * s);
+  }
+  g.computeVertexNormals();
+  // The two copies of the seam meridian have different neighbours and so came
+  // out with slightly different normals; average them or the seam shows as a
+  // line of light down one side of every tree.
+  const nrm = g.attributes.normal as THREE.BufferAttribute;
+  for (let j = 0; j < P; j++) {
+    const a = j;
+    const b = segments * P + j;
+    const x = nrm.getX(a) + nrm.getX(b);
+    const y = nrm.getY(a) + nrm.getY(b);
+    const z = nrm.getZ(a) + nrm.getZ(b);
+    const len = Math.hypot(x, y, z) || 1;
+    nrm.setXYZ(a, x / len, y / len, z / len);
+    nrm.setXYZ(b, x / len, y / len, z / len);
+  }
+  return g;
+}
+
+/**
+ * Timber planking for a wall: a proud board every half metre on all four
+ * faces, with a post up each corner. The boards sit a centimetre into the body
+ * so the joint is never a coplanar face, and they are at the same heights on
+ * every cell so a run of wall reads as continuous planking rather than as
+ * cells. On a face that meets a neighbour they are buried inside it, which
+ * costs nothing to draw and nothing to see.
+ */
+function planks(): THREE.BufferGeometry {
+  const parts: THREE.BufferGeometry[] = [];
+  for (let i = 0; i < 5; i++) {
+    const y = 0.27 + i * 0.48;
+    parts.push(box(0.98, 0.42, 0.05, y, 0, 0.505));
+    parts.push(box(0.98, 0.42, 0.05, y, 0, -0.505));
+    parts.push(box(0.05, 0.42, 0.98, y, 0.505, 0));
+    parts.push(box(0.05, 0.42, 0.98, y, -0.505, 0));
+  }
+  for (const x of [-0.5, 0.5]) for (const z of [-0.5, 0.5]) parts.push(box(0.08, 2.44, 0.08, 1.22, x, z));
+  return merge(...parts);
+}
+
+/**
+ * Coursed stone for the stone wall: three proud courses with a joint in each,
+ * the joints staggered from course to course the way a mason lays them. The
+ * recessed courses between are the body itself, so one thin part gives the
+ * whole face a bond pattern, and it stays inside the plinth and coping
+ * footprint so the wall's outline is still the box the sim collides with.
+ */
+function courses(): THREE.BufferGeometry {
+  const parts: THREE.BufferGeometry[] = [];
+  const edge = 0.47;
+  for (let c = 0; c < 3; c++) {
+    const y = 0.69 + c * 0.7;
+    const joint = c % 2 === 0 ? -0.15 : 0.15;
+    const w1 = joint - 0.02 + edge;
+    const w2 = edge - (joint + 0.02);
+    for (const side of [1, -1]) {
+      parts.push(box(w1, 0.36, 0.05, y, -edge + w1 / 2, side * 0.475));
+      parts.push(box(w2, 0.36, 0.05, y, edge - w2 / 2, side * 0.475));
+      parts.push(box(0.05, 0.36, w1, y, side * 0.475, -edge + w1 / 2));
+      parts.push(box(0.05, 0.36, w2, y, side * 0.475, edge - w2 / 2));
+    }
+  }
+  return merge(...parts);
+}
+
+/** The lamp's globe. Built twice — once lit, once not — so `globe()` rather than a const. */
+function globe(): THREE.BufferGeometry {
+  return sphere(0.18, 1.5);
+}
+
+function solidMat(rough: number): THREE.MeshStandardMaterial {
+  return new THREE.MeshStandardMaterial({ roughness: rough, metalness: 0.04 });
+}
+
+/**
+ * A part with a colour of its own under the instance tint — dark iron on a
+ * timber bench, linen on a bed frame. The colour multiplies the building's
+ * palette entry rather than replacing it, so one entry still gives the whole
+ * building its family and the parts their contrast within it.
+ */
+function tone(color: number, rough: number, metal = 0.04): THREE.MeshStandardMaterial {
+  return new THREE.MeshStandardMaterial({ color, roughness: rough, metalness: metal });
 }
 
 /** The crate mesh's own height — the step from one stack in a pile to the next. */
@@ -123,6 +292,30 @@ function itemRest(world: World, x: number, y: number): number {
   const b = buildingAt(world, Math.round(x), Math.round(y));
   if (!b || !b.built) return 0;
   return ITEM_REST[b.kind] ?? defOf(b.kind).standHeight;
+}
+
+/** Four legs on a rail, for anything that stands on a top: `pitch` is half the leg spacing. */
+function legs(pitch: number, h: number, rTop: number, rBottom: number): THREE.BufferGeometry {
+  const parts: THREE.BufferGeometry[] = [];
+  for (const x of [-pitch, pitch]) {
+    for (const z of [-pitch, pitch]) parts.push(cylinder(rTop, rBottom, h, h / 2, 12).translate(x, 0, z));
+  }
+  const rail = h - 0.09;
+  parts.push(box(pitch * 2, 0.06, 0.05, rail, 0, pitch));
+  parts.push(box(pitch * 2, 0.06, 0.05, rail, 0, -pitch));
+  parts.push(box(0.05, 0.06, pitch * 2, rail, pitch, 0));
+  parts.push(box(0.05, 0.06, pitch * 2, rail, -pitch, 0));
+  return merge(...parts);
+}
+
+/** A sandbag: a squashed capsule lying along x, at rest on `y`. */
+function bag(y: number, x: number, z: number, alongZ: boolean): THREE.BufferGeometry {
+  const g = new THREE.CapsuleGeometry(0.15, 0.36, 3, 10);
+  g.rotateZ(Math.PI / 2);
+  g.scale(1, 0.8, 1);
+  if (alongZ) g.rotateY(Math.PI / 2);
+  g.translate(x, y, z);
+  return g;
 }
 
 export class BuildingsView {
@@ -151,33 +344,59 @@ export class BuildingsView {
   private readonly pile = new Map<number, number>();
 
   constructor() {
-    // Walls read as rammed earth with a stone coping line along the top.
-    this.pool('wall.body', box(1, 2.44, 1, 1.22), solidMat(0.92, true), 256);
-    this.pool('wall.cap', box(1.06, 0.16, 1.06, 2.52), solidMat(0.8, true), 256);
+    // Walls read as a timber-framed plank wall with a stone coping line along the
+    // top. The body keeps the exact box the sim collides with; the planking and
+    // the coping are thin parts laid over it.
+    this.pool('wall.body', box(1, 2.44, 1, 1.22), solidMat(0.92), 256);
+    this.pool('wall.planks', planks(), tone(0xb9ad98, 0.9), 256);
+    this.pool('wall.cap', rbox(1.06, 0.16, 1.06, 2.52, 0, 0, 0.04), solidMat(0.8), 256);
 
     // Stone wall: the same silhouette as timber so a mixed perimeter still reads as
-    // one wall, but with a proud plinth at the base and a heavier coping. It is the
-    // colour that carries the difference — see BUILDING_COLOR.stonewall.
-    this.pool('stone.plinth', box(1.04, 0.34, 1.04, 0.17), solidMat(0.95, true), 256);
-    this.pool('stone.body', box(0.94, 2.2, 0.94, 1.44), solidMat(0.95, true), 256);
-    this.pool('stone.cap', box(1.1, 0.2, 1.1, 2.62), solidMat(0.85, true), 256);
+    // one wall, but with a proud plinth at the base, coursed stone up the face and
+    // a heavier coping. It is the colour that carries the difference — see
+    // BUILDING_COLOR.stonewall.
+    this.pool('stone.plinth', rbox(1.04, 0.34, 1.04, 0.17), solidMat(0.95), 256);
+    this.pool('stone.body', box(0.94, 2.2, 0.94, 1.44), solidMat(0.95), 256);
+    this.pool('stone.courses', courses(), tone(0xb4b4b0, 0.95), 256);
+    this.pool('stone.cap', rbox(1.1, 0.2, 1.1, 2.62, 0, 0, 0.05), solidMat(0.85), 256);
 
-    // Research bench: a sloped drafting surface with a small brass lamp over it, so
-    // it reads as thinking-work rather than another workbench from across the map.
-    this.pool('lab.body', box(0.92, 0.62, 0.72, 0.31), solidMat(0.85, false), 8);
+    // Research bench: a desk with glassware on it and a small brass lamp over
+    // it, so it reads as thinking-work rather than another workbench from across
+    // the map. The flask is the part that carries it — nothing else in the colony
+    // is made of glass.
     this.pool(
-      'lab.slope',
-      (() => {
-        const g = box(1, 0.1, 0.86, 0.72);
-        g.rotateX(-0.28);
-        return g;
-      })(),
-      solidMat(0.6, false),
+      'lab.desk',
+      merge(
+        rbox(0.98, 0.08, 0.7, 0.7),
+        rbox(0.08, 0.66, 0.62, 0.33, -0.43, 0, 0.02, 1),
+        rbox(0.08, 0.66, 0.62, 0.33, 0.43, 0, 0.02, 1),
+        rbox(0.7, 0.36, 0.04, 0.36, 0, -0.29, 0.01, 1),
+      ),
+      solidMat(0.8),
+      8,
+    );
+    this.pool(
+      'lab.glass',
+      merge(sphere(0.11, 0.85, 0.2, 0.1, 16, 12), cylinder(0.035, 0.04, 0.16, 0.99, 12).translate(0.2, 0, 0.1)),
+      tone(0xe6f2f0, 0.15, 0.1),
+      8,
+    );
+    this.pool(
+      'lab.stand',
+      merge(
+        cylinder(0.05, 0.06, 0.03, 0.755, 12).translate(-0.24, 0, 0.12),
+        cylinder(0.012, 0.012, 0.34, 0.92, 8).translate(-0.24, 0, 0.12),
+        new THREE.TorusGeometry(0.06, 0.008, 6, 16).rotateX(Math.PI / 2).translate(-0.18, 1.0, 0.12),
+      ),
+      tone(0x3e3e42, 0.45, 0.5),
       8,
     );
     this.pool(
       'lab.lamp',
-      box(0.2, 0.09, 0.2, 1.06, -0.3, -0.22),
+      merge(
+        cylinder(0.015, 0.015, 0.34, 0.91, 8).translate(-0.3, 0, -0.22),
+        cylinder(0.09, 0.04, 0.09, 1.1, 16).translate(-0.3, 0, -0.22),
+      ),
       new THREE.MeshStandardMaterial({
         color: 0xc9a866,
         emissive: new THREE.Color(0x6a4a12),
@@ -187,70 +406,126 @@ export class BuildingsView {
     );
 
     // Door: the panel's geometry is offset so its origin sits on the hinge edge,
-    // which lets the sim's 0..1 `open` value drive a real swing.
-    this.pool('door.panel', box(0.94, 2.3, 0.14, 1.15, 0.47), solidMat(0.7, false), 32);
-    this.pool('door.lintel', box(1, 0.3, 0.5, 2.45), solidMat(0.85, true), 32);
+    // which lets the sim's 0..1 `open` value drive a real swing. The handle is
+    // built in the same hinge frame and pushed with the same matrix, so it goes
+    // round with the panel rather than hanging in the air where the door was.
+    this.pool(
+      'door.panel',
+      merge(
+        rbox(0.88, 2.28, 0.12, 1.15, 0.45, 0, 0.02, 1),
+        rbox(0.6, 0.8, 0.02, 1.6, 0.45, 0.065, 0.01, 1),
+        rbox(0.6, 0.8, 0.02, 1.6, 0.45, -0.065, 0.01, 1),
+        rbox(0.6, 0.7, 0.02, 0.62, 0.45, 0.065, 0.01, 1),
+        rbox(0.6, 0.7, 0.02, 0.62, 0.45, -0.065, 0.01, 1),
+      ),
+      solidMat(0.7),
+      32,
+    );
+    this.pool(
+      'door.handle',
+      merge(
+        sphere(0.045, 1.05, 0.78, 0.09, 12, 8),
+        sphere(0.045, 1.05, 0.78, -0.09, 12, 8),
+        cylinder(0.02, 0.02, 0.2, 0, 10).rotateX(Math.PI / 2).translate(0.78, 1.05, 0),
+      ),
+      tone(0x4a4034, 0.4, 0.5),
+      32,
+    );
+    this.pool(
+      'door.frame',
+      merge(
+        rbox(0.1, 2.45, 0.24, 1.225, -0.5, 0, 0.02, 1),
+        rbox(0.1, 2.45, 0.24, 1.225, 0.5, 0, 0.02, 1),
+        rbox(1, 0.3, 0.5, 2.45, 0, 0, 0.04),
+      ),
+      solidMat(0.85),
+      32,
+    );
 
-    this.pool('bed.frame', box(0.86, 0.28, 0.94, 0.2), solidMat(0.8, false), 32);
-    this.pool('bed.pillow', box(0.68, 0.14, 0.26, 0.41, 0, -0.31), solidMat(0.9, false), 32);
+    this.bedSet('bed', 32, 0.36, tone(0x8c8c8c, 0.8), tone(0xf2ede4, 0.9), tone(0xa9b8a0, 0.95), tone(0xfaf6ee, 0.95));
 
     // Hospital bed: pale linen, a raised head end and a red cross on the blanket.
     // The cross is what carries it from the isometric camera — a white bed at
     // that distance is a bed with the lights on, but a bed with a red mark on it
     // is a sickbay, and a player scanning for somewhere to put a patient finds it
     // without clicking anything.
-    this.pool('med.frame', box(0.86, 0.3, 0.94, 0.21), solidMat(0.85, false), 8);
-    this.pool('med.pillow', box(0.68, 0.2, 0.26, 0.46, 0, -0.32), solidMat(1.0, false), 8);
-    this.pool(
-      'med.crossA',
-      box(0.34, 0.04, 0.1, 0.38, 0, 0.12),
-      new THREE.MeshStandardMaterial({ color: 0xb2413c, roughness: 0.75, flatShading: true }),
-      8,
-    );
-    this.pool(
-      'med.crossB',
-      box(0.1, 0.04, 0.34, 0.38, 0, 0.12),
-      new THREE.MeshStandardMaterial({ color: 0xb2413c, roughness: 0.75, flatShading: true }),
-      8,
-    );
+    this.bedSet('med', 8, 0.4, tone(0xb8b8b8, 0.6), solidMat(1.0), solidMat(1.0), solidMat(1.0));
+    this.pool('med.cross', merge(box(0.34, 0.04, 0.1, 0.43, 0, 0.14), box(0.1, 0.04, 0.34, 0.43, 0, 0.14)), tone(0xb2413c, 0.75), 8);
 
     // Prison bunk: the same bed, plus the thing that makes it a cell. The bars
     // are what carries the read from the isometric camera — a grey bed is just a
     // bed you cannot see the colour of, but a bed with a grille at the head of it
-    // is unmistakably somewhere you put a person you do not trust.
-    this.pool('prison.frame', box(0.86, 0.26, 0.94, 0.19), solidMat(0.8, false), 16);
-    this.pool('prison.pillow', box(0.6, 0.12, 0.24, 0.38, 0, -0.31), solidMat(0.9, false), 16);
+    // is unmistakably somewhere you put a person you do not trust. They stand
+    // where the headboard would be, so this is the one bed built without one.
+    this.bedSet('prison', 16, 0, tone(0x8a8a8a, 0.8), tone(0xd8d4cc, 0.95), tone(0x9a9a9a, 0.95), tone(0xe0dcd4, 0.95));
     this.pool(
       'prison.bars',
-      box(0.9, 0.72, 0.08, 0.36, 0, -0.46),
-      new THREE.MeshStandardMaterial({ color: 0x4a4c50, roughness: 0.5, flatShading: true }),
+      (() => {
+        const parts: THREE.BufferGeometry[] = [box(0.9, 0.04, 0.05, 0.22, 0, -0.46), box(0.9, 0.04, 0.05, 0.72, 0, -0.46)];
+        for (let i = 0; i < 7; i++) parts.push(cylinder(0.015, 0.015, 0.62, 0.45, 8).translate(-0.39 + i * 0.13, 0, -0.46));
+        return merge(...parts);
+      })(),
+      tone(0x4a4c50, 0.5, 0.4),
       16,
     );
 
-    this.pool('table.top', box(0.98, 0.1, 0.98, 0.85), solidMat(0.7, false), 32);
-    this.pool('table.leg', box(0.32, 0.85, 0.32, 0.42), solidMat(0.8, false), 32);
+    this.pool('table.top', rbox(0.98, 0.08, 0.98, 0.86), solidMat(0.7), 32);
+    this.pool('table.legs', legs(0.4, 0.82, 0.035, 0.05), solidMat(0.8), 32);
 
     // A games table: a smaller top than the dining table, a dark board laid on
-    // it, and a stool either side. The board is the whole point — from the
-    // manager camera the two tables are the same silhouette, and the dark square
-    // on top is what tells you which one your settlers are playing at. Its
-    // material multiplies under the palette tint, the same trick the grave uses
-    // to get two tones from one entry.
-    this.pool('game.top', box(0.74, 0.09, 0.74, 0.72), solidMat(0.7, false), 24);
-    this.pool('game.leg', box(0.26, 0.72, 0.26, 0.36), solidMat(0.8, false), 24);
+    // it with pale pieces standing on the board, and a stool either side. The
+    // board is the whole point — from the manager camera the two tables are the
+    // same silhouette, and the dark square on top is what tells you which one
+    // your settlers are playing at. Its material multiplies under the palette
+    // tint, the same trick the grave uses to get two tones from one entry.
+    this.pool('game.top', rbox(0.74, 0.08, 0.74, 0.77), solidMat(0.7), 24);
+    this.pool('game.legs', legs(0.28, 0.73, 0.03, 0.04), solidMat(0.8), 24);
+    this.pool('game.board', rbox(0.5, 0.03, 0.5, 0.825, 0, 0, 0.01, 1), tone(0x4e6b46, 0.95), 24);
     this.pool(
-      'game.board',
-      box(0.5, 0.04, 0.5, 0.785),
-      new THREE.MeshStandardMaterial({ color: 0x4e6b46, roughness: 0.95, flatShading: true }),
+      'game.pieces',
+      (() => {
+        const parts: THREE.BufferGeometry[] = [];
+        for (const [x, z] of [
+          [-0.15, -0.15],
+          [0.05, -0.15],
+          [0.15, 0.05],
+          [-0.05, 0.05],
+          [-0.15, 0.15],
+          [0.15, -0.05],
+        ]) {
+          parts.push(cylinder(0.035, 0.035, 0.024, 0.852, 12).translate(x, 0, z));
+        }
+        return merge(...parts);
+      })(),
+      tone(0xf3ead6, 0.6),
       24,
     );
-    this.pool('game.stool.l', box(0.22, 0.34, 0.22, 0.17, -0.36), solidMat(0.85, true), 24);
-    this.pool('game.stool.r', box(0.22, 0.34, 0.22, 0.17, 0.36), solidMat(0.85, true), 24);
+    this.pool(
+      'game.stools',
+      merge(cylinder(0.13, 0.11, 0.34, 0.17, 16).translate(-0.38, 0, 0), cylinder(0.13, 0.11, 0.34, 0.17, 16).translate(0.38, 0, 0)),
+      solidMat(0.85),
+      24,
+    );
 
-    this.pool('stove.body', box(0.9, 0.92, 0.9, 0.46), solidMat(0.5, false), 16);
+    // Stove: a rounded cast body with a firebox door on the front, two hobs on
+    // the top and a flue up the back corner. The hobs glow; they are the part
+    // the eye lands on from above, where the door is out of sight.
+    this.pool('stove.body', rbox(0.88, 0.9, 0.86, 0.45, 0, 0, 0.04), solidMat(0.5), 16);
+    this.pool(
+      'stove.door',
+      merge(rbox(0.5, 0.42, 0.05, 0.4, 0, 0.43, 0.015, 1), box(0.3, 0.03, 0.03, 0.4, 0, 0.47)),
+      tone(0x2e2e33, 0.45, 0.3),
+      16,
+    );
+    this.pool(
+      'stove.flue',
+      merge(cylinder(0.07, 0.07, 0.3, 0.95, 16).translate(-0.26, 0, -0.26), cylinder(0.09, 0.09, 0.05, 1.075, 16).translate(-0.26, 0, -0.26)),
+      tone(0x3a3a3f, 0.6, 0.3),
+      16,
+    );
     this.pool(
       'stove.plate',
-      box(0.72, 0.07, 0.72, 0.96),
+      merge(cylinder(0.14, 0.14, 0.025, 0.91, 20).translate(-0.2, 0, 0.1), cylinder(0.14, 0.14, 0.025, 0.91, 20).translate(0.2, 0, 0.1)),
       new THREE.MeshStandardMaterial({
         color: 0x3a3a40,
         emissive: new THREE.Color(0x2a0d05),
@@ -259,14 +534,32 @@ export class BuildingsView {
       16,
     );
 
-    // Workbench: a heavy plank top on a cabinet, with a dark steel vise clamped to
-    // the near edge so it reads as "things are made here" from the isometric camera.
-    this.pool('bench.body', box(0.9, 0.74, 0.6, 0.37), solidMat(0.85, false), 16);
-    this.pool('bench.top', box(1, 0.13, 0.78, 0.81), solidMat(0.75, false), 16);
+    // Workbench: a slatted plank top on a cabinet with two drawers, and a dark
+    // steel vise clamped to the near edge so it reads as "things are made here"
+    // from the isometric camera.
+    this.pool(
+      'bench.body',
+      merge(rbox(0.86, 0.82, 0.56, 0.41), rbox(0.34, 0.22, 0.03, 0.5, -0.2, 0.29, 0.01, 1), rbox(0.34, 0.22, 0.03, 0.5, 0.2, 0.29, 0.01, 1)),
+      solidMat(0.85),
+      16,
+    );
+    this.pool(
+      'bench.top',
+      (() => {
+        const parts: THREE.BufferGeometry[] = [];
+        for (let i = 0; i < 5; i++) parts.push(rbox(0.17, 0.1, 0.78, 0.87, -0.4 + i * 0.2, 0, 0.02, 1));
+        return merge(...parts);
+      })(),
+      solidMat(0.75),
+      16,
+    );
     this.pool(
       'bench.vise',
-      box(0.24, 0.2, 0.24, 0.98, 0.3, 0.24),
-      new THREE.MeshStandardMaterial({ color: 0x4a4d55, roughness: 0.45, flatShading: true }),
+      merge(
+        rbox(0.22, 0.14, 0.2, 0.99, 0.3, 0.26, 0.02, 1),
+        cylinder(0.015, 0.015, 0.3, 0, 10).rotateZ(Math.PI / 2).translate(0.3, 0.97, 0.4),
+      ),
+      tone(0x4a4d55, 0.45, 0.4),
       16,
     );
 
@@ -276,20 +569,30 @@ export class BuildingsView {
     // the `standHeight` in the def — 0.14 — or a fisher's boots sink into their
     // own jetty. The rod and post are aimed at the lake at draw time; everything
     // else here is symmetric, so the stage reads the same from any camera angle.
-    this.pool('fish.deck', box(0.94, 0.14, 0.94, 0.07), solidMat(0.8, false), 12);
-    this.pool('fish.post', box(0.11, 0.52, 0.11, 0.4, -0.32, 0.32), solidMat(0.75, false), 12);
+    this.pool(
+      'fish.deck',
+      (() => {
+        const parts: THREE.BufferGeometry[] = [];
+        for (let i = 0; i < 6; i++) parts.push(rbox(0.94, 0.14, 0.145, 0.07, 0, -0.39 + i * 0.156, 0.015, 1));
+        return merge(...parts);
+      })(),
+      solidMat(0.8),
+      12,
+    );
+    this.pool('fish.post', rbox(0.11, 0.52, 0.11, 0.4, -0.32, 0.32, 0.02, 1), solidMat(0.75), 12);
     this.pool(
       'fish.rod',
       (() => {
         // Built pointing down +x so the yaw at draw time swings it over the water.
-        const g = box(1.15, 0.05, 0.05, 0);
+        const g = cylinder(0.012, 0.024, 1.15, 0, 8);
+        g.rotateZ(-Math.PI / 2);
         g.rotateZ(0.34);
         // Lands the butt of the rod against the post and the tip out past the
         // edge of the deck, so it reads as propped rather than floating.
         g.translate(0.2, 0.62, 0.32);
         return g;
       })(),
-      new THREE.MeshStandardMaterial({ color: 0xb9a274, roughness: 0.6, flatShading: true }),
+      tone(0xb9a274, 0.6),
       12,
     );
     // The pail is what makes it read as fishing rather than as a bare pontoon at
@@ -297,13 +600,9 @@ export class BuildingsView {
     // the deck beside it is the thing the eye actually catches.
     this.pool(
       'fish.pail',
-      (() => {
-        // Off the centre of the deck: that is where the fisher's feet go.
-        const g = cylinder(0.15, 0.12, 0.22, 0.25, 8);
-        g.translate(0.26, 0, -0.28);
-        return g;
-      })(),
-      new THREE.MeshStandardMaterial({ color: 0x557a86, roughness: 0.55, flatShading: true }),
+      // Off the centre of the deck: that is where the fisher's feet go.
+      merge(cylinder(0.15, 0.12, 0.22, 0.25, 16).translate(0.26, 0, -0.28), cylinder(0.16, 0.16, 0.03, 0.355, 16).translate(0.26, 0, -0.28)),
+      tone(0x557a86, 0.55, 0.2),
       12,
     );
 
@@ -312,184 +611,288 @@ export class BuildingsView {
     // then swings at the lake — the same trick the fishing stage uses, and for
     // the same reason: a wheel that always faced east would be turning in the
     // grass three times out of four.
-    this.pool(
-      'mill.house',
-      box(0.62, 1.05, 0.78, 0.525, -0.3, 0),
-      solidMat(0.85, true),
-      8,
-    );
+    this.pool('mill.house', rbox(0.62, 1.05, 0.78, 0.525, -0.3, 0, 0.03, 1), solidMat(0.85), 8);
     // The pitched cap. Not decoration — it is what stops the house reading as
     // another grey cabinet in the isometric distance, where the wheel behind it
-    // is only a few pixels of moving edge.
+    // is only a few pixels of moving edge. It is the one honestly faceted thing
+    // here, and it keeps its facets.
     this.pool(
       'mill.roof',
       (() => {
         const g = cone(0.62, 0.34, 1.22, 4);
         g.rotateY(Math.PI / 4);
         g.translate(-0.3, 0, 0);
-        return g;
+        return faceted(g);
       })(),
-      new THREE.MeshStandardMaterial({ color: 0x54402c, roughness: 0.8, flatShading: true }),
+      tone(0x54402c, 0.8),
       8,
     );
-    // The shaft out of the house to the hub. It never spins in its own right —
-    // it is round — so it can be baked into place and pushed with the plain yaw
-    // rather than carried through the wheel's rotation.
+    // The shaft out of the house to the hub, with the hub on the end of it. It
+    // never spins in its own right — it is round — so it can be baked into place
+    // and pushed with the plain yaw rather than carried through the wheel's
+    // rotation.
     this.pool(
       'mill.axle',
-      (() => {
-        const g = cylinder(0.08, 0.08, HUB_OUT + 0.3, 0, 8);
-        g.rotateZ(Math.PI / 2);
-        g.translate((HUB_OUT - 0.15) / 2 + 0.05, HUB_Y, 0);
-        return g;
-      })(),
-      new THREE.MeshStandardMaterial({ color: 0x4f4a42, roughness: 0.6, flatShading: true }),
+      merge(
+        cylinder(0.08, 0.08, HUB_OUT + 0.3, 0, 16)
+          .rotateZ(Math.PI / 2)
+          .translate((HUB_OUT - 0.15) / 2 + 0.05, HUB_Y, 0),
+        cylinder(0.14, 0.14, 0.1, 0, 20).rotateZ(Math.PI / 2).translate(HUB_OUT, HUB_Y, 0),
+      ),
+      tone(0x4f4a42, 0.6),
       8,
     );
-    // One paddle, drawn eight times per wheel at eight angles. A merged rim would
-    // be one instance instead of eight, but it would also be one rigid ring: this
-    // way the blades catch the light at different angles as they come round,
-    // which is most of what makes the thing read as turning at all. Built at the
-    // top of the wheel and swept round the axle at draw time, so the geometry's
-    // own origin is the hub.
+    // One paddle, drawn eight times per wheel at eight angles, each carrying its
+    // own spoke and its eighth of the rim. A merged wheel would be one instance
+    // instead of eight, but it would also be one rigid ring: this way the blades
+    // catch the light at different angles as they come round, which is most of
+    // what makes the thing read as turning at all. Built at the top of the wheel
+    // and swept round the axle at draw time, so the geometry's own origin is the
+    // hub.
     this.pool(
       'mill.paddle',
-      box(0.44, 0.07, 0.19, WHEEL_R),
-      new THREE.MeshStandardMaterial({ color: 0x7d6242, roughness: 0.75, flatShading: true }),
+      merge(
+        rbox(0.44, 0.07, 0.19, WHEEL_R, 0, 0, 0.015, 1),
+        box(0.04, WHEEL_R - 0.11, 0.04, (WHEEL_R - 0.11) / 2 + 0.08),
+        box(0.04, 0.05, 0.42, WHEEL_R - 0.055, 0.2, 0),
+        box(0.04, 0.05, 0.42, WHEEL_R - 0.055, -0.2, 0),
+      ),
+      tone(0x7d6242, 0.75),
       64,
     );
 
-    // Cooler: a cabinet with a vent grille on top and a rime-frosted door panel.
-    // The pale band is what carries it at isometric distance — a plain grey box
-    // would read as another stove from three cells away.
-    this.pool('cooler.body', box(0.92, 1.12, 0.86, 0.56), solidMat(0.55, false), 16);
+    // Cooler: a rounded chest with a lid, a rime-frosted band round the middle
+    // and a vent grille low on the front. The pale band is what carries it at
+    // isometric distance — a plain grey box would read as another stove from
+    // three cells away.
+    this.pool('cooler.body', rbox(0.92, 1.1, 0.86, 0.55, 0, 0, 0.04), solidMat(0.55), 16);
+    this.pool('cooler.lid', rbox(0.98, 0.2, 0.92, 1.2, 0, 0, 0.05), solidMat(0.45), 16);
     this.pool(
       'cooler.frost',
-      box(0.96, 0.3, 0.9, 0.72),
-      new THREE.MeshStandardMaterial({ color: 0xdaeef5, roughness: 0.35, flatShading: true }),
+      merge(rbox(0.95, 0.24, 0.89, 0.74, 0, 0, 0.02, 1), rbox(0.99, 0.04, 0.93, 1.12, 0, 0, 0.01, 1)),
+      tone(0xdaeef5, 0.35),
       16,
     );
     this.pool(
       'cooler.vent',
-      box(0.62, 0.14, 0.62, 1.2),
-      new THREE.MeshStandardMaterial({ color: 0x4d5a60, roughness: 0.5, flatShading: true }),
+      merge(rbox(0.5, 0.16, 0.04, 0.32, 0, 0.44, 0.01, 1), box(0.16, 0.05, 0.04, 1.2, 0, 0.47)),
+      tone(0x4d5a60, 0.5, 0.3),
       16,
     );
 
-    // Campfire: a ring of fieldstone with logs stacked in it, and a flame that is
-    // only pushed while there is something in the firebox — the same trick the
-    // generator uses, and for the same reason. A cold fire pit and a lit one have
-    // to be different at a glance from the isometric camera, because the whole
-    // point of a fire is knowing whether it is out.
-    this.pool('fire.ring', cylinder(0.44, 0.5, 0.26, 0.13, 9), solidMat(0.95, true), 32);
+    // Campfire: a ring of fieldstone round a bed of ash, logs laid across it,
+    // and a flame that is only pushed while there is something in the firebox —
+    // the same trick the generator uses, and for the same reason. A cold fire
+    // pit and a lit one have to be different at a glance from the isometric
+    // camera, because the whole point of a fire is knowing whether it is out.
     this.pool(
-      'fire.logs',
+      'fire.ring',
       (() => {
-        const g = new THREE.CylinderGeometry(0.09, 0.09, 0.62, 6);
-        g.rotateZ(Math.PI / 2);
-        g.translate(0, 0.24, 0);
-        return g;
+        const parts: THREE.BufferGeometry[] = [cylinder(0.36, 0.38, 0.06, 0.03, 20)];
+        for (let i = 0; i < 9; i++) {
+          const a = (i / 9) * TAU;
+          const r = 0.11 + ((i * 7) % 3) * 0.015;
+          const stone = sphere(r, 0, 0, 0, 8, 6);
+          stone.scale(1.15, 0.72, 1);
+          stone.rotateY(a * 1.7);
+          stone.translate(Math.cos(a) * 0.4, r * 0.6, Math.sin(a) * 0.4);
+          parts.push(stone);
+        }
+        return merge(...parts);
       })(),
-      new THREE.MeshStandardMaterial({ color: 0x5d4126, roughness: 0.9, flatShading: true }),
+      solidMat(0.95),
       32,
     );
     this.pool(
-      'fire.logs2',
+      'fire.logs',
       (() => {
-        const g = new THREE.CylinderGeometry(0.09, 0.09, 0.62, 6);
-        g.rotateZ(Math.PI / 2);
-        g.rotateY(Math.PI / 2.6);
-        g.translate(0, 0.3, 0);
-        return g;
+        const parts: THREE.BufferGeometry[] = [];
+        for (const [yaw, y] of [
+          [0, 0.15],
+          [Math.PI / 2.6, 0.22],
+          [-Math.PI / 3.2, 0.29],
+        ]) {
+          const log = cylinder(0.075, 0.085, 0.6, 0, 12);
+          log.rotateZ(Math.PI / 2);
+          log.rotateY(yaw);
+          log.translate(0, y, 0);
+          parts.push(log);
+        }
+        return merge(...parts);
       })(),
-      new THREE.MeshStandardMaterial({ color: 0x4c3520, roughness: 0.9, flatShading: true }),
+      tone(0x5d4126, 0.9),
       32,
     );
     this.pool(
       'fire.flame',
-      cone(0.26, 0.62, 0.62, 6),
+      lathe([
+        [0.02, 0.28],
+        [0.2, 0.36],
+        [0.26, 0.5],
+        [0.18, 0.7],
+        [0.08, 0.86],
+        [0, 0.98],
+      ]),
       new THREE.MeshStandardMaterial({ color: 0xffb658, emissive: new THREE.Color(0xe0620c), roughness: 0.4 }),
       32,
     );
 
-    // Heater: an upright casing with fins down its face and a grille that glows
-    // when it has watts behind it. Read against the cooler on purpose — same
-    // footprint, warm colour, fins instead of frost.
-    this.pool('heat.body', box(0.8, 1.0, 0.66, 0.5), solidMat(0.6, false), 24);
-    this.pool('heat.cap', box(0.88, 0.14, 0.74, 1.07), solidMat(0.5, true), 24);
+    // Heater: a rounded upright casing with fins down its face and an element
+    // behind them that glows when it has watts behind it. Read against the
+    // cooler on purpose — same footprint, warm colour, fins instead of frost.
+    this.pool('heat.body', rbox(0.78, 1.14, 0.64, 0.57, 0, 0, 0.05), solidMat(0.6), 24);
+    this.pool('heat.cap', rbox(0.86, 0.12, 0.72, 1.19, 0, 0, 0.04), solidMat(0.5), 24);
     this.pool(
       'heat.grille',
-      box(0.56, 0.5, 0.06, 0.55, 0, 0.34),
-      new THREE.MeshStandardMaterial({ color: 0x40332c, roughness: 0.7, flatShading: true }),
+      (() => {
+        const parts: THREE.BufferGeometry[] = [box(0.6, 0.03, 0.06, 0.29, 0, 0.37), box(0.6, 0.03, 0.06, 0.81, 0, 0.37)];
+        for (let i = 0; i < 6; i++) parts.push(box(0.035, 0.52, 0.06, 0.55, -0.25 + i * 0.1, 0.37));
+        return merge(...parts);
+      })(),
+      tone(0x40332c, 0.7),
       24,
     );
     this.pool(
       'heat.glow',
-      box(0.5, 0.42, 0.05, 0.55, 0, 0.37),
+      rbox(0.56, 0.46, 0.04, 0.55, 0, 0.33, 0.01, 1),
       new THREE.MeshStandardMaterial({ color: 0xff9b4d, emissive: new THREE.Color(0xd8500a), roughness: 0.4 }),
       24,
     );
 
-    this.pool('turret.base', cylinder(0.38, 0.44, 0.5, 0.25), solidMat(0.6, false), 24);
-    this.pool('turret.barrel', box(1.05, 0.16, 0.16, 0.78, 0.42), solidMat(0.45, false), 24);
+    // Turret: a base that stays put, and a head with the barrel under it that
+    // turns as one to face whatever the barrel is tracking.
+    this.pool('turret.base', merge(cylinder(0.42, 0.48, 0.34, 0.17, 24), cylinder(0.16, 0.22, 0.5, 0.59, 20)), solidMat(0.6), 24);
+    this.pool(
+      'turret.head',
+      merge(rbox(0.48, 0.34, 0.44, 1.0, 0, 0, 0.08), cylinder(0.02, 0.02, 0.2, 1.27, 8), sphere(0.04, 1.36, 0, 0, 10, 8)),
+      solidMat(0.5),
+      24,
+    );
+    this.pool(
+      'turret.barrel',
+      merge(
+        cylinder(0.06, 0.07, 0.9, 0, 14).rotateZ(-Math.PI / 2).translate(0.6, 1.0, 0),
+        cylinder(0.09, 0.09, 0.14, 0, 14).rotateZ(-Math.PI / 2).translate(1.02, 1.0, 0),
+      ),
+      solidMat(0.45),
+      24,
+    );
 
-    // A deadfall reads from the isometric camera as a pale plate with two raised
-    // jaws, and from inside a body as something you can see over the top of —
-    // which it must, since the sim says it is neither solid nor cover.
-    this.pool('trap.plate', box(0.9, 0.07, 0.9, 0.035), solidMat(0.9, true), 128);
-    this.pool('trap.jaw.n', box(0.88, 0.24, 0.1, 0.19, 0, -0.36), solidMat(0.7, true), 128);
-    this.pool('trap.jaw.s', box(0.88, 0.24, 0.1, 0.19, 0, 0.36), solidMat(0.7, true), 128);
-    this.pool('trap.trigger', box(0.28, 0.05, 0.28, 0.1), solidMat(0.5, false), 128);
+    // A deadfall reads from the isometric camera as a pale plate with two rows
+    // of teeth standing up off it, and from inside a body as something you can
+    // see over the top of — which it must, since the sim says it is neither
+    // solid nor cover.
+    this.pool('trap.plate', rbox(0.9, 0.06, 0.9, 0.03, 0, 0, 0.02, 1), solidMat(0.9), 128);
+    this.pool(
+      'trap.jaws',
+      (() => {
+        const parts: THREE.BufferGeometry[] = [];
+        for (const z of [-0.36, 0.36]) {
+          parts.push(box(0.88, 0.1, 0.08, 0.1, 0, z));
+          for (let i = 0; i < 6; i++) parts.push(cone(0.03, 0.14, 0.22, 8).translate(-0.35 + i * 0.14, 0, z));
+        }
+        return merge(...parts);
+      })(),
+      solidMat(0.6),
+      128,
+    );
+    this.pool('trap.trigger', rbox(0.26, 0.04, 0.26, 0.08, 0, 0, 0.01, 1), solidMat(0.5), 128);
 
-    this.pool('sandbag.lower', box(0.96, 0.55, 0.96, 0.27), solidMat(0.95, true), 64);
-    this.pool('sandbag.upper', box(0.78, 0.28, 0.78, 0.69), solidMat(0.95, true), 64);
+    // Sandbags: three courses of bags, each course laid across the one below the
+    // way a wall of them is actually built, so the stack reads as bags from a
+    // body's eye height rather than as two boxes.
+    this.pool('sandbag.lower', merge(bag(0.12, 0, -0.31, false), bag(0.12, 0, 0, false), bag(0.12, 0, 0.31, false)), solidMat(0.95), 64);
+    this.pool(
+      'sandbag.upper',
+      merge(bag(0.36, -0.31, 0, true), bag(0.36, 0, 0, true), bag(0.36, 0.31, 0, true), bag(0.6, 0, -0.17, false), bag(0.6, 0, 0.17, false)),
+      solidMat(0.95),
+      64,
+    );
 
-    // A grave is a low mound of turned earth with a marker standing at its head.
-    // The mound's material is a multiplier under the instance tint rather than a
-    // colour of its own, which is what gives one palette entry two tones: dark
-    // soil for the plot, pale timber for the cross above it.
+    // A grave is a low mound of turned earth with a headstone standing at its
+    // head. The mound's material is a multiplier under the instance tint rather
+    // than a colour of its own, which is what gives one palette entry two tones:
+    // dark soil for the plot, pale stone for the marker above it.
     //
-    // The cross is deliberately the loud part, and it took a screenshot to learn
+    // The stone is deliberately the loud part, and it took a screenshot to learn
     // how loud. A knee-high 30 cm marker over a full-cell mound rendered at
     // manager range as four dark squares of dirt and nothing else — a graveyard
     // has to read as a row of uprights or it reads as a scorch mark. So the
-    // marker is now most of `def.height`, and the mound gives it a cell's width
-    // to stand out of rather than covering the whole tile.
+    // marker is most of `def.height`, and the mound gives it a cell's width to
+    // stand out of rather than covering the whole tile.
     this.pool(
       'grave.mound',
-      box(0.76, 0.12, 0.76, 0.06),
-      new THREE.MeshStandardMaterial({ color: 0x8a8078, roughness: 1.0, flatShading: true }),
+      (() => {
+        const g = new THREE.SphereGeometry(0.42, 16, 8, 0, TAU, 0, Math.PI / 2);
+        g.scale(1, 0.33, 1.1);
+        return g;
+      })(),
+      tone(0x8a8078, 1.0),
       32,
     );
-    this.pool('grave.post', box(0.1, 0.62, 0.1, 0.31, 0, -0.24), solidMat(0.8, true), 32);
-    this.pool('grave.bar', box(0.36, 0.1, 0.1, 0.5, 0, -0.24), solidMat(0.8, true), 32);
-
-    // A statue: plinth, body, head, and two arms lifted a little away from the
-    // sides. It is a figure rather than an obelisk because the whole job of the
-    // thing is to be worth looking at, and a person is the shape a person looks
-    // at. The plinth is darkened under the tint so the pale figure stands off it
-    // instead of reading as one solid block from above.
     this.pool(
-      'statue.plinth',
-      box(0.7, 0.34, 0.7, 0.17),
-      new THREE.MeshStandardMaterial({ color: 0x9a968c, roughness: 0.9, flatShading: true }),
+      'grave.stone',
+      merge(rbox(0.36, 0.6, 0.1, 0.34, 0, -0.3, 0.06), rbox(0.46, 0.08, 0.18, 0.06, 0, -0.3, 0.015, 1)),
+      solidMat(0.8),
+      32,
+    );
+
+    // A statue: a stepped pedestal and a figure on it, one arm raised. It is a
+    // figure rather than an obelisk because the whole job of the thing is to be
+    // worth looking at, and a person is the shape a person looks at. The
+    // pedestal is darkened under the tint so the pale figure stands off it
+    // instead of reading as one solid block from above.
+    this.pool('statue.plinth', merge(rbox(0.7, 0.34, 0.7, 0.17), rbox(0.56, 0.1, 0.56, 0.39, 0, 0, 0.02, 1)), tone(0x9a968c, 0.9), 16);
+    this.pool(
+      'statue.figure',
+      (() => {
+        const body = lathe([
+          [0.1, 0.44],
+          [0.16, 0.5],
+          [0.18, 0.9],
+          [0.15, 1.05],
+          [0.2, 1.35],
+          [0.22, 1.45],
+          [0.06, 1.52],
+          [0.06, 1.58],
+        ]);
+        const left = new THREE.CapsuleGeometry(0.05, 0.5, 3, 10);
+        left.rotateZ(-0.15);
+        left.translate(-0.27, 1.12, 0);
+        const right = new THREE.CapsuleGeometry(0.05, 0.5, 3, 10);
+        right.rotateZ(-0.4);
+        right.translate(0.32, 1.5, 0);
+        return merge(body, sphere(0.15, 1.7, 0, 0, 16, 12), left, right);
+      })(),
+      solidMat(0.55),
       16,
     );
-    this.pool('statue.body', box(0.3, 0.86, 0.24, 0.77), solidMat(0.55, true), 16);
-    this.pool('statue.head', box(0.2, 0.22, 0.2, 1.31), solidMat(0.55, true), 16);
-    this.pool('statue.arm.l', box(0.09, 0.6, 0.09, 0.86, -0.22), solidMat(0.55, true), 16);
-    this.pool('statue.arm.r', box(0.09, 0.6, 0.09, 0.86, 0.22), solidMat(0.55, true), 16);
 
     // Fence: a post at the cell's centre and half-length rails that reach out only
     // towards neighbours that are also part of the line, so two cells of fence meet
     // as one rail and a lone one is a lone post rather than a cross of stubs. The
     // post is the full `def.height` — a fence is a thing you cannot walk through,
     // and it has to look like the barrier the sim says it is.
-    this.pool('fence.post', box(0.19, 1.15, 0.19, 0.575), solidMat(0.88, true), 256);
-    this.pool('fence.rail.hi', box(0.56, 0.11, 0.09, 0.92, 0.28), solidMat(0.88, true), 256);
-    this.pool('fence.rail.lo', box(0.56, 0.11, 0.09, 0.52, 0.28), solidMat(0.88, true), 256);
+    this.pool('fence.post', rbox(0.18, 1.15, 0.18, 0.575, 0, 0, 0.03, 1), solidMat(0.88), 256);
+    this.pool('fence.rail.hi', rbox(0.56, 0.1, 0.08, 0.92, 0.28, 0, 0.025, 1), solidMat(0.88), 256);
+    this.pool('fence.rail.lo', rbox(0.56, 0.1, 0.08, 0.52, 0.28, 0, 0.025, 1), solidMat(0.88), 256);
 
-    this.pool('lamp.post', cylinder(0.06, 0.09, 1.45, 0.72, 6), solidMat(0.6, false), 24);
+    // Lamp: a tapered post on a foot, an iron bracket with four ribs caging the
+    // globe, and the globe itself.
+    this.pool('lamp.post', merge(cylinder(0.045, 0.07, 1.3, 0.65, 16), cylinder(0.13, 0.16, 0.06, 0.03, 20)), solidMat(0.6), 24);
+    this.pool(
+      'lamp.bracket',
+      merge(
+        cylinder(0.09, 0.07, 0.08, 1.34, 16),
+        box(0.02, 0.36, 0.02, 1.5, 0.2, 0),
+        box(0.02, 0.36, 0.02, 1.5, -0.2, 0),
+        box(0.02, 0.36, 0.02, 1.5, 0, 0.2),
+        box(0.02, 0.36, 0.02, 1.5, 0, -0.2),
+        cone(0.1, 0.08, 1.66, 16),
+      ),
+      tone(0x3c3835, 0.5, 0.4),
+      24,
+    );
     this.pool(
       'lamp.globe',
       globe(),
@@ -502,78 +905,175 @@ export class BuildingsView {
     // which is the exact thing the player is meant to be able to see at a glance.
     this.pool('lamp.dark', globe(), new THREE.MeshStandardMaterial({ color: 0x6b6552, roughness: 0.7 }), 24);
 
-    // Generator: a cast housing with a flywheel on its flank and a stack over the
-    // firebox. The wheel is what sells it from the isometric camera — a plain box
-    // reads as another cabinet, a box with a wheel on it reads as an engine.
-    this.pool('gen.body', box(0.9, 0.92, 0.82, 0.46), solidMat(0.6, false), 16);
-    this.pool('gen.hood', box(0.96, 0.18, 0.88, 1.0), solidMat(0.5, true), 16);
+    // Generator: a rounded cast housing with a flywheel on its flank, vents on
+    // the front, terminals on the hood and a stack over the firebox. The wheel
+    // is what sells it from the isometric camera — a plain box reads as another
+    // cabinet, a box with a wheel on it reads as an engine.
+    this.pool('gen.body', rbox(0.9, 0.9, 0.82, 0.45, 0, 0, 0.05), solidMat(0.6), 16);
+    this.pool('gen.hood', rbox(0.96, 0.16, 0.88, 0.98, 0, 0, 0.04), solidMat(0.5), 16);
     this.pool(
       'gen.wheel',
-      (() => {
-        const g = new THREE.CylinderGeometry(0.28, 0.28, 0.12, 12);
-        g.rotateZ(Math.PI / 2);
-        g.translate(0.5, 0.52, 0);
-        return g;
-      })(),
-      new THREE.MeshStandardMaterial({ color: 0x50545c, roughness: 0.45, flatShading: true }),
+      merge(
+        cylinder(0.28, 0.28, 0.1, 0, 24).rotateZ(Math.PI / 2).translate(0.48, 0.52, 0),
+        cylinder(0.08, 0.08, 0.14, 0, 12).rotateZ(Math.PI / 2).translate(0.48, 0.52, 0),
+      ),
+      tone(0x50545c, 0.45, 0.4),
       16,
     );
     this.pool(
       'gen.stack',
+      merge(cylinder(0.1, 0.13, 0.4, 1.25, 16).translate(-0.26, 0, -0.2), cylinder(0.13, 0.13, 0.05, 1.425, 16).translate(-0.26, 0, -0.2)),
+      tone(0x3c3a38, 0.8),
+      16,
+    );
+    this.pool(
+      'gen.trim',
       (() => {
-        const g = new THREE.CylinderGeometry(0.1, 0.13, 0.42, 8);
-        g.translate(-0.26, 1.28, -0.2);
-        return g;
+        const parts: THREE.BufferGeometry[] = [
+          cylinder(0.04, 0.04, 0.1, 1.1, 10).translate(0.2, 0, 0.25),
+          cylinder(0.04, 0.04, 0.1, 1.1, 10).translate(0.32, 0, 0.25),
+        ];
+        for (let i = 0; i < 5; i++) parts.push(box(0.4, 0.02, 0.04, 0.6 + i * 0.06, 0, 0.42));
+        return merge(...parts);
       })(),
-      new THREE.MeshStandardMaterial({ color: 0x3c3a38, roughness: 0.8, flatShading: true }),
+      tone(0x45484f, 0.45, 0.4),
       16,
     );
     // Only pushed while the firebox is actually burning, so "is it running" is a
     // thing you read off the machine rather than off a panel.
     this.pool(
       'gen.fire',
-      box(0.4, 0.24, 0.1, 0.36, 0, 0.42),
+      rbox(0.4, 0.24, 0.08, 0.32, 0, 0.42, 0.02, 1),
       new THREE.MeshStandardMaterial({ color: 0xffb056, emissive: new THREE.Color(0xd45a10), roughness: 0.4 }),
       16,
     );
 
-    // Conduit: a floor strip with arms reaching only towards the neighbours it
-    // actually carries power to, the same trick the fence uses for its rails. A run
-    // of wire therefore draws itself as one continuous line, and a conduit going
-    // nowhere reads as the stub it is.
-    this.pool('conduit.pad', box(0.34, 0.05, 0.34, 0.025), solidMat(0.55, true), 256);
-    this.pool('conduit.arm', box(0.56, 0.045, 0.14, 0.022, 0.28), solidMat(0.55, true), 512);
+    // Conduit: a junction puck with cable reaching only towards the neighbours it
+    // actually carries power to, the same trick the fence uses for its rails. A
+    // run of wire therefore draws itself as one continuous line, and a conduit
+    // going nowhere reads as the stub it is.
+    this.pool('conduit.pad', cylinder(0.16, 0.18, 0.05, 0.025, 16), solidMat(0.55), 256);
+    this.pool(
+      'conduit.arm',
+      new THREE.CapsuleGeometry(0.03, 0.5, 2, 10).rotateZ(Math.PI / 2).translate(0.28, 0.03, 0),
+      solidMat(0.55),
+      512,
+    );
 
-    // Battery bank: a crate of cells with a charge band down the side. The band is
-    // pushed with a colour mixed from the actual charge, so a bank you have run
-    // flat is a different colour from a full one without opening anything.
-    this.pool('batt.body', box(0.86, 0.6, 0.78, 0.3), solidMat(0.7, false), 16);
-    this.pool('batt.lid', box(0.92, 0.12, 0.84, 0.66), solidMat(0.6, true), 16);
+    // Battery bank: a crate of cells with terminals on the lid and a charge band
+    // down the side. The band is pushed with a colour mixed from the actual
+    // charge, so a bank you have run flat is a different colour from a full one
+    // without opening anything.
+    this.pool('batt.body', rbox(0.86, 0.6, 0.78, 0.3, 0, 0, 0.04), solidMat(0.7), 16);
+    this.pool('batt.lid', rbox(0.92, 0.12, 0.84, 0.66, 0, 0, 0.04), solidMat(0.6), 16);
+    this.pool(
+      'batt.trim',
+      merge(
+        cylinder(0.05, 0.05, 0.12, 0.78, 12).translate(-0.25, 0, 0),
+        cylinder(0.05, 0.05, 0.12, 0.78, 12).translate(0.25, 0, 0),
+        box(0.6, 0.03, 0.04, 0.85, 0, 0),
+        box(0.02, 0.3, 0.5, 0.3, 0.44, 0),
+        box(0.02, 0.3, 0.5, 0.3, -0.44, 0),
+      ),
+      tone(0x45484f, 0.45, 0.4),
+      16,
+    );
     this.pool(
       'batt.band',
-      box(0.5, 0.14, 0.06, 0.42, 0, 0.4),
+      rbox(0.5, 0.14, 0.06, 0.42, 0, 0.4, 0.01, 1),
       new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: new THREE.Color(0x224422), roughness: 0.4 }),
       16,
     );
 
-    // Solar panel: one tilted plate on a short pillar. Tilted rather than flat so
-    // it catches the sun light and reads as a panel from the low isometric angle
-    // instead of as a dark square on the ground.
-    this.pool('solar.pillar', box(0.18, 0.6, 0.18, 0.3), solidMat(0.7, false), 16);
+    // Solar panel: a tilted frame on a short pillar, with a grid of cells laid
+    // into it. Tilted rather than flat so it catches the sun light and reads as
+    // a panel from the low isometric angle instead of as a dark square on the
+    // ground; the cells are low-roughness glass, so they catch it harder still.
+    // The pillar runs up into the frame rather than stopping short of it: it
+    // used to end at 0.6 under a panel whose underside is at 0.79, which from a
+    // body's eye height was a panel hanging in the air over a post.
+    this.pool('solar.pillar', merge(cylinder(0.07, 0.1, 0.82, 0.41, 16), cylinder(0.2, 0.22, 0.05, 0.025, 16)), solidMat(0.7), 16);
     this.pool(
-      'solar.panel',
+      'solar.frame',
       (() => {
-        const g = box(1.02, 0.07, 0.9, 0.82);
+        const g = rbox(1.04, 0.06, 0.92, 0, 0, 0, 0.02, 1);
         g.rotateX(-0.36);
+        g.translate(0, 0.82, 0);
         return g;
       })(),
-      new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.25, metalness: 0.2, flatShading: true }),
+      tone(0xd8d8d8, 0.4, 0.5),
+      16,
+    );
+    this.pool(
+      'solar.cells',
+      (() => {
+        const parts: THREE.BufferGeometry[] = [];
+        for (let i = 0; i < 4; i++) {
+          for (let j = 0; j < 3; j++) parts.push(box(0.22, 0.02, 0.26, 0.035, -0.375 + i * 0.25, -0.28 + j * 0.28));
+        }
+        const g = merge(...parts);
+        g.rotateX(-0.36);
+        g.translate(0, 0.82, 0);
+        return g;
+      })(),
+      tone(0x99b0ff, 0.15, 0.3),
       16,
     );
 
-    this.pool('tree.trunk', cylinder(0.15, 0.22, 1.7, 0.85, 7), solidMat(0.9, false), 256);
-    this.pool('tree.lower', cone(0.95, 2.2, 2.1, 8), solidMat(0.85, true), 256);
-    this.pool('tree.upper', cone(0.62, 1.5, 3.3, 8), solidMat(0.85, true), 256);
+    // A tree is a trunk that flares at the root and two tiers of foliage, each a
+    // lathe roughed up so the edge of the crown is ragged rather than turned.
+    // Two tiers rather than one is what keeps it a conifer from overhead — the
+    // step between them is the silhouette — and the underside of each tier is
+    // closed, because from inside a body you look up into it.
+    this.pool(
+      'tree.trunk',
+      lathe([
+        [0.34, 0],
+        [0.27, 0.1],
+        [0.22, 0.3],
+        [0.19, 0.8],
+        [0.16, 1.5],
+        [0.13, 2.2],
+        [0.1, 2.9],
+      ]),
+      solidMat(0.9),
+      256,
+    );
+    this.pool(
+      'tree.lower',
+      rumple(
+        lathe([
+          [0.2, 1.0],
+          [0.95, 1.05],
+          [0.9, 1.25],
+          [0.72, 1.85],
+          [0.5, 2.45],
+          [0.28, 2.9],
+          [0.08, 3.15],
+          [0, 3.2],
+        ]),
+        0.06,
+      ),
+      solidMat(0.85),
+      256,
+    );
+    this.pool(
+      'tree.upper',
+      rumple(
+        lathe([
+          [0.15, 2.55],
+          [0.62, 2.6],
+          [0.58, 2.75],
+          [0.44, 3.15],
+          [0.28, 3.55],
+          [0.12, 3.9],
+          [0, 4.05],
+        ]),
+        0.06,
+      ),
+      solidMat(0.85),
+      256,
+    );
 
     // Blueprints: one translucent box scaled to the real height of what is coming,
     // so you can see the shape of your plan from either view before it exists.
@@ -597,8 +1097,8 @@ export class BuildingsView {
         k,
         new InstancedPool(
           this.group,
-          box(0.62, 0.3, 0.62, 0.15),
-          new THREE.MeshStandardMaterial({ color: RESOURCE_COLOR[k], roughness: 0.85, flatShading: true }),
+          rbox(0.62, 0.3, 0.62, 0.15, 0, 0, 0.025, 1),
+          new THREE.MeshStandardMaterial({ color: RESOURCE_COLOR[k], roughness: 0.85 }),
           48,
           { tinted: false },
         ),
@@ -612,6 +1112,37 @@ export class BuildingsView {
 
   private get(key: string): InstancedPool {
     return this.pools.get(key)!;
+  }
+
+  /**
+   * The three beds are one bed. A frame with a headboard, a mattress, a blanket
+   * turned down over the foot end and a pillow at the head; what makes one a
+   * sickbed and another a bunk in a cell is the material each part is given and
+   * what is bolted on afterwards, not the carpentry. `head` is the headboard's
+   * height above the frame, and zero means none.
+   */
+  private bedSet(
+    prefix: string,
+    cap: number,
+    head: number,
+    frame: THREE.Material,
+    mattress: THREE.Material,
+    blanket: THREE.Material,
+    pillow: THREE.Material,
+  ): void {
+    const carcass = [rbox(0.9, 0.2, 0.98, 0.1)];
+    if (head > 0) carcass.push(rbox(0.9, head, 0.06, 0.2 + head / 2, 0, -0.46));
+    this.pool(`${prefix}.frame`, merge(...carcass), frame, cap);
+    this.pool(`${prefix}.mattress`, rbox(0.8, 0.16, 0.88, 0.28, 0, 0, 0.05), mattress, cap);
+    this.pool(`${prefix}.blanket`, rbox(0.82, 0.06, 0.56, 0.385, 0, 0.14, 0.03), blanket, cap);
+    this.pool(`${prefix}.pillow`, rbox(0.56, 0.12, 0.24, 0.42, 0, -0.3, 0.05), pillow, cap);
+  }
+
+  private pushBed(prefix: string, b: Building): void {
+    this.flat(`${prefix}.frame`, b);
+    this.flat(`${prefix}.mattress`, b);
+    this.flat(`${prefix}.blanket`, b);
+    this.flat(`${prefix}.pillow`, b);
   }
 
   sync(world: World): void {
@@ -654,8 +1185,8 @@ export class BuildingsView {
     for (const p of this.stacks.values()) p.end();
   }
 
-  private tint(b: Building): THREE.Color {
-    this.c.setHex(BUILDING_COLOR[b.kind]);
+  private tint(b: Building, base = BUILDING_COLOR[b.kind]): THREE.Color {
+    this.c.setHex(base);
     if (b.hp < b.maxHp) this.c.lerp(BLACK, 0.4 * (1 - b.hp / b.maxHp));
     // Anything on the grid that is not currently drawing goes dull. It is the same
     // signal for all of them — a cooler that has been shed, a turret with nothing
@@ -678,69 +1209,71 @@ export class BuildingsView {
     switch (b.kind) {
       case 'wall':
         this.flat('wall.body', b);
+        this.flat('wall.planks', b);
         this.flat('wall.cap', b);
         break;
       case 'stonewall':
         this.flat('stone.plinth', b);
         this.flat('stone.body', b);
+        this.flat('stone.courses', b);
         this.flat('stone.cap', b);
         break;
       case 'lab':
-        this.flat('lab.body', b);
-        this.flat('lab.slope', b);
+        this.flat('lab.desk', b);
+        this.flat('lab.glass', b);
+        this.flat('lab.stand', b);
         this.flat('lab.lamp', b);
         break;
       case 'door': {
         // The hinge swing is read straight from the sim, so a door standing open
         // in the manager view is standing open when you walk up to it in person.
         const open = b.open ?? 0;
-        this.v.set(b.x - 0.47, 0, b.y);
+        this.v.set(b.x - 0.45, 0, b.y);
         this.q.setFromAxisAngle(UP, -open * (Math.PI / 2));
         this.s.set(1, 1, 1);
         this.m.compose(this.v, this.q, this.s);
         this.get('door.panel').push(this.m, this.tint(b));
-        this.flat('door.lintel', b);
+        this.get('door.handle').push(this.m, this.tint(b));
+        this.flat('door.frame', b);
         break;
       }
       case 'bed':
-        this.flat('bed.frame', b);
-        this.flat('bed.pillow', b);
+        this.pushBed('bed', b);
         break;
       case 'medbed':
-        this.flat('med.frame', b);
-        this.flat('med.pillow', b);
-        this.flat('med.crossA', b);
-        this.flat('med.crossB', b);
+        this.pushBed('med', b);
+        this.flat('med.cross', b);
         break;
       case 'prisonbed':
-        this.flat('prison.frame', b);
-        this.flat('prison.pillow', b);
+        this.pushBed('prison', b);
         this.flat('prison.bars', b);
         break;
       case 'table':
         this.flat('table.top', b);
-        this.flat('table.leg', b);
+        this.flat('table.legs', b);
         break;
       case 'gametable':
         this.flat('game.top', b);
-        this.flat('game.leg', b);
+        this.flat('game.legs', b);
         this.flat('game.board', b);
-        this.flat('game.stool.l', b);
-        this.flat('game.stool.r', b);
+        this.flat('game.pieces', b);
+        this.flat('game.stools', b);
         break;
       case 'stove':
         this.flat('stove.body', b);
+        this.flat('stove.door', b);
+        this.flat('stove.flue', b);
         this.flat('stove.plate', b);
         break;
       case 'cooler':
         this.flat('cooler.body', b);
+        this.flat('cooler.lid', b);
         this.flat('cooler.frost', b);
         this.flat('cooler.vent', b);
         break;
       case 'campfire': {
         this.flat('fire.ring', b);
         this.flat('fire.logs', b);
-        this.flat('fire.logs2', b);
         // The flame flickers on the clock rather than on a random, so both views
         // and every reload agree on what the fire is doing this instant.
         if ((b.fuel ?? 0) > 0) {
@@ -789,6 +1322,7 @@ export class BuildingsView {
         this.q.setFromAxisAngle(UP, yaw);
         this.s.set(1, 1, 1);
         this.m.compose(this.v, this.q, this.s);
+        this.get('turret.head').push(this.m, this.tint(b));
         this.get('turret.barrel').push(this.m, this.tint(b));
         break;
       }
@@ -798,20 +1332,15 @@ export class BuildingsView {
         break;
       case 'grave':
         this.flat('grave.mound', b);
-        this.flat('grave.post', b);
-        this.flat('grave.bar', b);
+        this.flat('grave.stone', b);
         break;
       case 'statue':
         this.flat('statue.plinth', b);
-        this.flat('statue.body', b);
-        this.flat('statue.head', b);
-        this.flat('statue.arm.l', b);
-        this.flat('statue.arm.r', b);
+        this.flat('statue.figure', b);
         break;
       case 'trap':
         this.flat('trap.plate', b);
-        this.flat('trap.jaw.n', b);
-        this.flat('trap.jaw.s', b);
+        this.flat('trap.jaws', b);
         this.flat('trap.trigger', b);
         break;
       case 'fence':
@@ -831,6 +1360,7 @@ export class BuildingsView {
         break;
       case 'lamp':
         this.flat('lamp.post', b);
+        this.flat('lamp.bracket', b);
         this.flat(b.powered === true ? 'lamp.globe' : 'lamp.dark', b);
         break;
       case 'generator':
@@ -838,6 +1368,7 @@ export class BuildingsView {
         this.flat('gen.hood', b);
         this.flat('gen.wheel', b);
         this.flat('gen.stack', b);
+        this.flat('gen.trim', b);
         if (b.powered === true) this.flat('gen.fire', b);
         break;
       case 'conduit':
@@ -855,6 +1386,7 @@ export class BuildingsView {
       case 'battery': {
         this.flat('batt.body', b);
         this.flat('batt.lid', b);
+        this.flat('batt.trim', b);
         // Red at empty through to green at full. The band is the only part that
         // moves, so the crate keeps its own colour and the charge reads clean.
         const level = Math.min(1, Math.max(0, (b.charge ?? 0) / BATTERY_CAPACITY));
@@ -868,7 +1400,8 @@ export class BuildingsView {
       }
       case 'solar':
         this.flat('solar.pillar', b);
-        this.flat('solar.panel', b);
+        this.flat('solar.frame', b);
+        this.flat('solar.cells', b);
         break;
       case 'watermill': {
         const yaw = waterYaw(world, b);
@@ -915,7 +1448,7 @@ export class BuildingsView {
         this.q.setFromAxisAngle(UP, (b.x * 1.7 + b.y * 0.9) % (Math.PI * 2));
         this.s.set(k, k, k);
         this.m.compose(this.v, this.q, this.s);
-        this.get('tree.trunk').push(this.m, this.tint(b));
+        this.get('tree.trunk').push(this.m, this.tint(b, BARK));
         // The per-tree hue jitter goes on first and the season over the top, so a
         // wood still reads as a wood of individual trees in October rather than
         // one flat gold cutout — the variation survives the tint.

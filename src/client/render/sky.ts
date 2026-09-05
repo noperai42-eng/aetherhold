@@ -28,23 +28,47 @@ const WHITE = new THREE.Color(0xffffff);
 /** Point lights are expensive; only the nearest few lamps and fires get one. */
 const MAX_POINT_LIGHTS = 7;
 
+/**
+ * The dome is centred on the player and never rotated, so a vertex's object-space
+ * position *is* its direction from the viewer. It used to be read back out of
+ * world space, which quietly folded the dome's offset into the gradient: on a
+ * 192-wide map the horizon sat a few degrees lower on one side of the sky than
+ * the other and drifted as the camera panned.
+ */
 const SKY_VERT = /* glsl */ `
-  varying vec3 vWorld;
+  varying vec3 vDir;
   void main() {
-    vWorld = (modelMatrix * vec4(position, 1.0)).xyz;
+    vDir = position;
     gl_Position = projectionMatrix * viewMatrix * modelMatrix * vec4(position, 1.0);
   }
 `;
 
+/**
+ * Two things on top of the gradient, both cheap. A haze band just above the
+ * horizon, so the sky does not run straight from sky-blue into ground colour
+ * with nothing in between; and a glow around the sun — tight and pale at noon,
+ * wide and warm as it goes down — which is the difference between a sun disc
+ * sitting on the dome and a sun that the sky is lit by.
+ */
 const SKY_FRAG = /* glsl */ `
   uniform vec3 uTop;
   uniform vec3 uBottom;
   uniform float uExponent;
-  varying vec3 vWorld;
+  uniform vec3 uSunDir;
+  uniform vec3 uGlow;
+  uniform float uGlowStrength;
+  varying vec3 vDir;
   void main() {
-    float h = normalize(vWorld).y;
+    vec3 d = normalize(vDir);
+    float h = d.y;
     float t = pow(max(h, 0.0), uExponent);
-    gl_FragColor = vec4(mix(uBottom, uTop, t), 1.0);
+    vec3 col = mix(uBottom, uTop, t);
+    float haze = exp(-max(h, 0.0) * 9.0) * 0.35;
+    col = mix(col, uBottom, haze);
+    float s = max(dot(d, uSunDir), 0.0);
+    float glow = pow(s, 48.0) * 0.55 + pow(s, 6.0) * 0.28 + pow(s, 2.0) * 0.08;
+    col = mix(col, uGlow, min(1.0, glow * uGlowStrength));
+    gl_FragColor = vec4(col, 1.0);
   }
 `;
 
@@ -70,6 +94,39 @@ export function shadowStrength(elev: number): number {
   return Math.max(SHADOW_FLOOR, Math.min(1, 1.25 - len * 0.3));
 }
 
+/** Half the width of the sun's shadow frustum, in cells, either side of the focus. */
+const SHADOW_HALF = 26;
+
+/**
+ * How far along its normal a surface is pushed before it looks the shadow map up,
+ * for a map of this many texels across.
+ *
+ * Shadow acne is a surface shadowing itself because its depth and the map's
+ * disagree by less than one texel, and it is worst exactly where the surface is
+ * smooth: a flat wall is either in or out of one texel, a bevel or a capsule
+ * grazes through dozens of them. The cure is to step the lookup one texel or so
+ * off the surface, which has to be *in world units*, so it has to scale with the
+ * texel — the 0.03 that was tuned by eye against the 2048 map is a hair over one
+ * of its texels, and was left in place when the map halved at medium quality,
+ * which is where the stripes on the round things came from.
+ */
+export function shadowNormalBias(mapSize: number): number {
+  return ((SHADOW_HALF * 2) / mapSize) * 1.2;
+}
+
+/**
+ * How brightly the environment map lights the colony, 0 .. 1, from daylight and
+ * cloud. It is the only light that comes from every direction at once, so it is
+ * the one that would flatten a night if it were left at a daytime level: three
+ * tenths by day, which is enough to put a highlight on a bevel and not enough
+ * to fill a shadow, falling to a trace after dark so the moon still has a face
+ * to glint off. Cloud pulls it down too — the room's light is a small bright
+ * source, and a small bright source is the one thing an overcast sky lacks.
+ */
+export function environmentStrength(day: number, cloud: number): number {
+  return (0.05 + day * 0.3) * (1 - cloud * 0.4);
+}
+
 export class SkyView {
   readonly group = new THREE.Group();
   readonly sun: THREE.DirectionalLight;
@@ -92,6 +149,7 @@ export class SkyView {
   private readonly skyBottom = new THREE.Color();
   private readonly overcast = new THREE.Color();
   private readonly lightCol = new THREE.Color();
+  private readonly glowCol = new THREE.Color();
 
   constructor(world: World, settings: QualitySettings) {
     this.domeMat = new THREE.ShaderMaterial({
@@ -99,6 +157,9 @@ export class SkyView {
         uTop: { value: new THREE.Color(SKY_DAY) },
         uBottom: { value: new THREE.Color(HORIZON_DAY) },
         uExponent: { value: 0.7 },
+        uSunDir: { value: new THREE.Vector3(0, 1, 0) },
+        uGlow: { value: new THREE.Color(SUN_DAY) },
+        uGlowStrength: { value: 0 },
       },
       vertexShader: SKY_VERT,
       fragmentShader: SKY_FRAG,
@@ -116,12 +177,12 @@ export class SkyView {
     const cam = this.sun.shadow.camera;
     cam.near = 1;
     cam.far = 160;
-    cam.left = -26;
-    cam.right = 26;
-    cam.top = 26;
-    cam.bottom = -26;
+    cam.left = -SHADOW_HALF;
+    cam.right = SHADOW_HALF;
+    cam.top = SHADOW_HALF;
+    cam.bottom = -SHADOW_HALF;
     this.sun.shadow.bias = -0.0009;
-    this.sun.shadow.normalBias = 0.03;
+    this.sun.shadow.normalBias = shadowNormalBias(settings.shadowMapSize);
     this.group.add(this.sun);
     this.group.add(this.sun.target);
 
@@ -171,6 +232,8 @@ export class SkyView {
   applyQuality(settings: QualitySettings): void {
     this.sun.castShadow = settings.shadows;
     this.sun.shadow.mapSize.set(settings.shadowMapSize, settings.shadowMapSize);
+    // The bias is sized in texels, and the texel just changed size with the map.
+    this.sun.shadow.normalBias = shadowNormalBias(settings.shadowMapSize);
     this.sun.shadow.map?.dispose();
     this.sun.shadow.map = null;
   }
@@ -210,6 +273,23 @@ export class SkyView {
 
     const up = Math.max(0, Math.sin(elev + 0.02));
     const dir = new THREE.Vector3(Math.cos(azi) * Math.cos(elev), Math.sin(elev), Math.sin(azi) * Math.cos(elev));
+
+    // The glow around the sun: warm and wide through twilight, pale and tight
+    // by noon, and gone once the sun is well below the horizon or behind cloud.
+    // The disc itself is drawn separately; this is the sky around it.
+    (this.domeMat.uniforms.uSunDir!.value as THREE.Vector3).copy(dir);
+    this.glowCol.copy(SUN_DAY).lerp(SUN_DUSK, twilight);
+    (this.domeMat.uniforms.uGlow!.value as THREE.Color).copy(this.glowCol);
+    const glowUp = Math.max(0, Math.min(1, (elev + 0.12) / 0.2));
+    this.domeMat.uniforms.uGlowStrength!.value = glowUp * (0.7 + twilight * 0.9) * (1 - cloud * 0.85);
+
+    // The environment map is the renderer's, but the hour is the sky's, and the
+    // scene this rig hangs in is the scene whose environment that map is. Set
+    // here rather than in the view so that the one file that decides how bright
+    // the world is at 03:00 is still this one. Nothing to do until the rig has
+    // been hung, which is how the lighting tests run it.
+    const scene = this.group.parent;
+    if (scene instanceof THREE.Scene) scene.environmentIntensity = environmentStrength(day, cloud);
 
     // How hard the sun's shadows land, as a function of how long they are.
     //

@@ -8,7 +8,9 @@
  */
 
 import * as THREE from 'three';
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 
+import { bladeGeometry } from './decor';
 import { BUILDING_COLOR, TERRAIN_COLOR } from './palette';
 import {
   DESIG_DECONSTRUCT,
@@ -82,29 +84,29 @@ export class FxView {
     // default layer: the possessed colonist walks past the same shoots the manager
     // watches ripen. Height and colour both track growth, which makes "is it ready"
     // readable from either camera without a label.
-    const cropGeo = new THREE.ConeGeometry(0.26, 1, 5);
-    cropGeo.translate(0, 0.5, 0);
+    // Two-sided because the leaves are sheets with no back face of their own.
     this.crops = new InstancedPool(
       this.group,
-      cropGeo,
-      new THREE.MeshLambertMaterial({ color: 0xffffff }),
+      cropPlantGeometry(),
+      new THREE.MeshLambertMaterial({ color: 0xffffff, side: THREE.DoubleSide }),
       512,
       { tinted: true, castShadow: false, receiveShadow: false },
     );
 
-    // Wild brambles. Faceted rather than smooth and squashed rather than round,
-    // so a bush never gets mistaken for a boulder from the manager camera — and
-    // on the default layer with the crops, because the possessed colonist has to
-    // be able to walk up to one and see the fruit on it. Colour carries ripeness
-    // exactly as it does on a sown cell, which is the point of doing it the same
-    // way: the player learns "green means wait" once and it holds everywhere.
-    const bushGeo = new THREE.IcosahedronGeometry(0.36, 0);
+    // Wild brambles. A smooth dome, squashed rather than round, so a bush never
+    // gets mistaken for a boulder from the manager camera — the stones are lumps
+    // and this is a cushion — and on the default layer with the crops, because
+    // the possessed colonist has to be able to walk up to one and see the fruit
+    // on it. Colour carries ripeness exactly as it does on a sown cell, which is
+    // the point of doing it the same way: the player learns "green means wait"
+    // once and it holds everywhere.
+    const bushGeo = new THREE.IcosahedronGeometry(0.36, 2);
     bushGeo.scale(1, 0.72, 1);
     bushGeo.translate(0, 0.28, 0);
     this.bushes = new InstancedPool(
       this.group,
       bushGeo,
-      new THREE.MeshLambertMaterial({ color: 0xffffff, flatShading: true }),
+      new THREE.MeshLambertMaterial({ color: 0xffffff }),
       512,
       { tinted: true, castShadow: false },
     );
@@ -418,6 +420,31 @@ export class FxView {
 }
 
 const UP = new THREE.Vector3(0, 1, 0);
+
+/**
+ * A sown plant: one upright shoot with a ring of leaves fanning out and bowing
+ * away from it, welded into a single geometry so a field is still one draw call.
+ *
+ * Everything is in "one plant tall" units with the roots at the origin, the same
+ * contract the cone kept, so `syncCrops` goes on scaling y to growth and x/z to
+ * girth. The lean and bow are picked so a fully grown plant reaches about 0.45
+ * of a cell from its stem: neighbours in a field just touch, and nothing pokes
+ * across a path.
+ */
+function cropPlantGeometry(): THREE.BufferGeometry {
+  const leaves = 5;
+  const parts: THREE.BufferGeometry[] = [bladeGeometry(0.3, 4, 0.15)];
+  for (let i = 0; i < leaves; i++) {
+    const leaf = bladeGeometry(0.42, 4, 0.25);
+    leaf.scale(1, 0.7, 1);
+    leaf.rotateX(0.3);
+    leaf.rotateY((i / leaves) * Math.PI * 2);
+    parts.push(leaf);
+  }
+  const geo = mergeGeometries(parts);
+  for (const p of parts) p.dispose();
+  return geo;
+}
 
 /** A soft round sprite, drawn in code so the build ships no image files. */
 function radialTexture(): THREE.Texture {

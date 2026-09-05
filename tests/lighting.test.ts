@@ -23,7 +23,17 @@ import * as THREE from 'three';
 import { describe, expect, it } from 'vitest';
 
 import { QUALITY } from '../src/client/render/renderer';
-import { SHADOW_FLOOR, SkyView, shadowStrength } from '../src/client/render/sky';
+import { PawnsView } from '../src/client/render/pawns';
+import { PickiesView } from '../src/client/render/pickies';
+import { SETTLER_LEG } from '../src/client/gait';
+import { POOF_TICKS, summonPicky } from '../src/sim/pickies';
+import {
+  SHADOW_FLOOR,
+  SkyView,
+  environmentStrength,
+  shadowNormalBias,
+  shadowStrength,
+} from '../src/client/render/sky';
 import { daylight, sunElevation } from '../src/sim/clock';
 import { createWorld } from '../src/sim/worldgen';
 import { TICKS_PER_DAY } from '../src/sim/types';
@@ -305,5 +315,259 @@ describe('day and night stay different', () => {
     for (let i = 1; i < morning.length; i++) {
       expect(morning[i]).toBeGreaterThan(morning[i - 1]);
     }
+  });
+
+  it('keeps the environment map from lighting midnight like noon', () => {
+    // The environment is the one light that comes from everywhere at once, and
+    // it lives on the renderer where none of the irradiance above can see it.
+    // Left at a daytime level it would fill every shadow on the map after dark,
+    // which is the flat night that this whole describe exists to prevent.
+    const noon = environmentStrength(1, 0);
+    const midnight = environmentStrength(0, 0);
+    expect(noon).toBeGreaterThan(0.25);
+    expect(noon).toBeLessThan(0.45);
+    expect(midnight).toBeGreaterThan(0);
+    expect(midnight).toBeLessThan(noon * 0.25);
+    // Overcast dims it, never brightens it: the room's small bright light is the
+    // one thing a cloudy sky has not got.
+    expect(environmentStrength(1, 1)).toBeLessThan(noon);
+  });
+});
+
+/**
+ * The shadow map's own artefacts. The colony's surfaces are now bevelled and
+ * capsuled rather than boxed, and a smooth surface is where self-shadowing
+ * stripes show up first: it grazes through dozens of shadow texels where a flat
+ * wall is squarely in or out of one.
+ */
+describe('what the shadow map must not do to a smooth surface', () => {
+  it('sizes the normal bias to the texel, so a coarser map is not an acned one', () => {
+    // 0.03 was tuned by eye against the 2048 map; the formula has to land on it.
+    expect(shadowNormalBias(QUALITY.high.shadowMapSize)).toBeCloseTo(0.03, 2);
+    // Halving the map doubles the texel, and the bias must follow or medium
+    // quality gets stripes that high never showed.
+    expect(shadowNormalBias(QUALITY.medium.shadowMapSize)).toBeCloseTo(
+      shadowNormalBias(QUALITY.high.shadowMapSize) * 2,
+      6,
+    );
+  });
+
+  it('re-tunes the bias when quality changes, not only when the rig is built', () => {
+    const { sky } = rigAt(0.5);
+    sky.applyQuality(QUALITY.medium);
+    expect(sky.sun.shadow.normalBias).toBeCloseTo(shadowNormalBias(QUALITY.medium.shadowMapSize), 6);
+    sky.applyQuality(QUALITY.high);
+    expect(sky.sun.shadow.normalBias).toBeCloseTo(shadowNormalBias(QUALITY.high.shadowMapSize), 6);
+  });
+
+  it('keeps low quality cheap: no environment map, no shadows', () => {
+    expect(QUALITY.low.environment).toBe(false);
+    expect(QUALITY.low.shadows).toBe(false);
+    expect(QUALITY.high.environment).toBe(true);
+  });
+});
+
+/**
+ * What a body is made of.
+ *
+ * The settlers and the herds went from boxes to capsules, lathes and rounded
+ * boxes in one pass, and the things that pass can break are not things the
+ * screen tells you about until somebody is standing at eye level: a limb that
+ * pivots somewhere other than the joint the gait was tuned against, a sole that
+ * hovers or sinks, a part left flat-shaded among smooth ones, or a rig that
+ * quietly costs three times the triangles it was budgeted. These live here
+ * because this is the render suite that runs without a GPU — it reads the scene
+ * graph, exactly as `irradiance` above reads the light rig.
+ */
+describe('what a body is made of', () => {
+  function bodies(): { view: PawnsView; world: World; rigs: Map<number, THREE.Group> } {
+    const world = createWorld(SEED);
+    const view = new PawnsView();
+    view.onTick(world);
+    view.sync(world, 0, null);
+    const rigs = new Map<number, THREE.Group>();
+    for (const g of view.group.children) rigs.set(g.id, g as THREE.Group);
+    return { view, world, rigs };
+  }
+
+  /** Every mesh under a rig that would actually be drawn. */
+  function drawn(root: THREE.Object3D): THREE.Mesh[] {
+    const out: THREE.Mesh[] = [];
+    root.traverse((o) => {
+      if (o instanceof THREE.Mesh && o.visible) out.push(o);
+    });
+    return out;
+  }
+
+  const triangles = (m: THREE.Mesh): number =>
+    (m.geometry.index ? m.geometry.index.count : m.geometry.attributes.position!.count) / 3;
+
+  it('leaves no part flat-shaded — one faceted piece on a smooth body is the whole regression', () => {
+    const { view } = bodies();
+    for (const m of drawn(view.group)) {
+      const mats = Array.isArray(m.material) ? m.material : [m.material];
+      for (const mat of mats) {
+        expect((mat as THREE.MeshStandardMaterial).flatShading ?? false, mat.type).toBe(false);
+      }
+    }
+    view.dispose();
+  });
+
+  it('stays inside its triangle budget: ~3,000 for a settler, ~2,500 for a wild animal', () => {
+    const { view, world } = bodies();
+    const byId = new Map(world.pawns.map((p) => [p.id, p]));
+    let settlers = 0;
+    let animals = 0;
+    for (const rig of view.group.children) {
+      const total = drawn(rig).reduce((n, m) => n + triangles(m), 0);
+      // The rig groups are added in pawn order, so pair them back up by position.
+      const pawn = world.pawns.find((p) => byId.has(p.id) && p.x === rig.position.x && p.y === rig.position.z);
+      expect(pawn, 'every rig stands on a pawn').toBeDefined();
+      if (pawn!.animal) {
+        animals++;
+        expect(total, `${pawn!.animal} rig`).toBeLessThanOrEqual(2500);
+      } else {
+        settlers++;
+        expect(total, `settler rig (${pawn!.weapon})`).toBeLessThanOrEqual(3000);
+      }
+    }
+    expect(settlers).toBeGreaterThan(0);
+    expect(animals).toBeGreaterThan(0);
+    view.dispose();
+  });
+
+  it('keeps every sole on the floor: no body floats and none sinks, at either size', () => {
+    const { view, world } = bodies();
+    const box = new THREE.Box3();
+    for (const rig of view.group.children) {
+      const pawn = world.pawns.find((p) => p.x === rig.position.x && p.y === rig.position.z)!;
+      if (pawn.dead || pawn.downed || pawn.activity === 'sleeping') continue;
+      box.setFromObject(rig);
+      const sole = box.min.y - rig.position.y;
+      // A walking body bobs up to 0.035 off the ground; a standing one does not.
+      // Downward, a leg pivots at the hip and its toe sweeps an arc, so mid-swing
+      // the tip of a boot dips about a centimetre into the grass — as the old
+      // box feet did — and that is not the sinking this guards against.
+      expect(sole, `${pawn.animal ?? 'settler'} sole`).toBeGreaterThan(-0.02);
+      expect(sole, `${pawn.animal ?? 'settler'} sole`).toBeLessThan(0.04);
+    }
+    view.dispose();
+  });
+
+  it('pivots every limb at the joint, exactly where the gait was tuned', () => {
+    // The stride arithmetic in `gait.ts` assumes a leg hangs from the hip and
+    // reaches `SETTLER_LEG` below it. A limb whose geometry starts above or
+    // below its pivot would swing about the wrong point and scrub its foot.
+    const { view } = bodies();
+    const box = new THREE.Box3();
+    let limbs = 0;
+    view.group.traverse((o) => {
+      if (!(o instanceof THREE.Mesh) || o.position.y !== SETTLER_LEG) return;
+      // A leg: its own geometry's top is the pivot, and its length is the gait's.
+      o.geometry.computeBoundingBox();
+      box.copy(o.geometry.boundingBox!);
+      expect(box.max.y, 'leg pivots at its top').toBeCloseTo(0, 6);
+      expect(box.min.y, 'leg reaches the floor').toBeCloseTo(-SETTLER_LEG, 6);
+      limbs++;
+    });
+    expect(limbs).toBeGreaterThan(0);
+    view.dispose();
+  });
+});
+
+/**
+ * What a Picky is made of.
+ *
+ * The same pass took the goblins from boxes and cones to capsules and leaves,
+ * and they have their own view, their own trot and their own scale, so none of
+ * the settler checks above ever look at one. The three things that pass can
+ * break silently are the same three: a faceted part among smooth ones, a rig
+ * that outgrows its budget — there are six of them at most, and they were
+ * allowed twelve hundred triangles each — and a sole that hovers, which at
+ * knee height is a body standing on nothing.
+ */
+describe('what a Picky is made of', () => {
+  /** One fully-grown Picky, mid-stride at phase zero: legs straight, no bounce. */
+  function goblin(): { view: PickiesView; rig: THREE.Group } {
+    const world = createWorld(SEED);
+    const picky = summonPicky(world, { kind: 'reach', x: 1, y: 1 })!;
+    expect(picky, 'the map has somewhere for a Picky to stand').toBeTruthy();
+    // Born a full pop ago, so the arrival has finished playing and the body is
+    // at its true size rather than a sliver of it lifting off the ground.
+    picky.born = world.tick - POOF_TICKS;
+    const view = new PickiesView();
+    view.onTick(world);
+    view.sync(world, 0);
+    expect(view.group.children).toHaveLength(1);
+    return { view, rig: view.group.children[0] as THREE.Group };
+  }
+
+  /** Every mesh under a rig that would actually be drawn. */
+  function drawn(root: THREE.Object3D): THREE.Mesh[] {
+    const out: THREE.Mesh[] = [];
+    root.traverse((o) => {
+      if (o instanceof THREE.Mesh && o.visible) out.push(o);
+    });
+    return out;
+  }
+
+  const triangles = (m: THREE.Mesh): number =>
+    (m.geometry.index ? m.geometry.index.count : m.geometry.attributes.position!.count) / 3;
+
+  it('is smooth all over and stays under twelve hundred triangles', () => {
+    const { view, rig } = goblin();
+    let total = 0;
+    for (const m of drawn(rig)) {
+      const mats = Array.isArray(m.material) ? m.material : [m.material];
+      for (const mat of mats) {
+        expect((mat as THREE.MeshStandardMaterial).flatShading ?? false, `${m.name} ${mat.type}`).toBe(false);
+      }
+      total += triangles(m);
+    }
+    expect(total).toBeLessThanOrEqual(1200);
+    view.dispose();
+  });
+
+  it('stands on the floor with its legs hung from the hip — no sole hovers, no hip is inside a knee', () => {
+    const { view, rig } = goblin();
+    const box = new THREE.Box3();
+    // The leg's reach is the hip's height: with the leg straight the sole is on
+    // the ground, and the joint end sits above the pivot, inside the torso, so
+    // the swing never opens a gap. The first capsules took the proud end out of
+    // the reach and every Picky stood three centimetres in the air.
+    const legs = drawn(rig).filter((m) => m.name === 'leg');
+    expect(legs).toHaveLength(2);
+    for (const leg of legs) {
+      leg.geometry.computeBoundingBox();
+      box.copy(leg.geometry.boundingBox!);
+      expect(box.max.y, 'joint end proud of the pivot').toBeGreaterThan(0);
+      expect(box.min.y, 'leg reaches the floor').toBeCloseTo(-leg.position.y, 6);
+    }
+    box.setFromObject(rig);
+    const sole = box.min.y - rig.position.y;
+    expect(sole).toBeGreaterThan(-0.005);
+    expect(sole).toBeLessThan(0.005);
+    view.dispose();
+  });
+
+  it('lets go of every buffer it made when it is torn down — a Picky pops, and so must its geometry', () => {
+    const { view, rig } = goblin();
+    const geometries = new Set<THREE.BufferGeometry>();
+    const materials = new Set<THREE.Material>();
+    for (const m of drawn(rig)) {
+      geometries.add(m.geometry);
+      for (const mat of Array.isArray(m.material) ? m.material : [m.material]) materials.add(mat);
+    }
+    const freed = new Set<object>();
+    for (const o of [...geometries, ...materials]) {
+      const real = o.dispose.bind(o);
+      o.dispose = () => {
+        freed.add(o);
+        real();
+      };
+    }
+    view.dispose();
+    for (const o of geometries) expect(freed.has(o), `geometry ${o.type}`).toBe(true);
+    for (const o of materials) expect(freed.has(o), `material ${o.type}`).toBe(true);
   });
 });

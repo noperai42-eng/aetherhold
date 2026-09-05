@@ -150,6 +150,48 @@ describe('where the scatter lands', () => {
   });
 });
 
+describe('what a blade and a stone are made of', () => {
+  it('keeps a blade cheap, rooted at the origin and one unit tall', () => {
+    // The blade is instanced once per tuft across the whole map, so a few extra
+    // triangles here is tens of thousands on screen. And the instance matrix
+    // scales y straight to the blade's height: a geometry whose roots drifted
+    // off the origin or whose tip was not at y = 1 would plant every tuft in the
+    // wrong place and lie to the knee-height check above.
+    const view = new DecorView(meadow());
+    const geo = meshes(view).tufts.geometry;
+    expect(triangles(geo)).toBeLessThanOrEqual(16);
+    geo.computeBoundingBox();
+    const box = geo.boundingBox!;
+    expect(box.min.y).toBeCloseTo(0, 6);
+    expect(box.max.y).toBeCloseTo(1, 6);
+    expect(Math.max(Math.abs(box.min.x), box.max.x, Math.abs(box.min.z), box.max.z)).toBeLessThan(1);
+    view.dispose();
+  });
+
+  it('lights grass and stones as curved surfaces, seen from either side', () => {
+    // Flat shading is what makes a pebble read as a die and a blade as a spike:
+    // one normal per facet. A blade is also a sheet with no back, so it has to
+    // draw from both sides or it vanishes for half a turn in first person.
+    const view = new DecorView(meadow());
+    const { tufts, stones } = meshes(view);
+    const grass = tufts.material as THREE.MeshLambertMaterial;
+    const rock = stones.material as THREE.MeshLambertMaterial;
+    expect(grass.flatShading).toBe(false);
+    expect(grass.side).toBe(THREE.DoubleSide);
+    expect(rock.flatShading).toBe(false);
+    // A stone whose corners were never welded would still be facets under a
+    // smooth material — every triangle carrying its own three vertices.
+    expect(stones.geometry.index).not.toBeNull();
+    expect(stones.geometry.getAttribute('position').count).toBeLessThan(triangles(stones.geometry) * 3);
+    expect(triangles(stones.geometry)).toBeLessThanOrEqual(200);
+    view.dispose();
+  });
+});
+
+function triangles(geo: THREE.BufferGeometry): number {
+  return (geo.index ? geo.index.count : geo.getAttribute('position').count) / 3;
+}
+
 describe('the scatter keeping up with the colony', () => {
   it('clears the turf under a wall the moment it goes up', () => {
     const world = meadow();

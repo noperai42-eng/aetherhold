@@ -10,7 +10,14 @@
 import * as THREE from 'three';
 import { describe, expect, it } from 'vitest';
 
-import { ROCK_HEIGHT, TerrainView, rockShapeAt, rockTopAt } from '../src/client/render/terrain';
+import {
+  ROCK_EDGE,
+  ROCK_HEIGHT,
+  ROCK_JITTER,
+  TerrainView,
+  rockShapeAt,
+  rockTopAt,
+} from '../src/client/render/terrain';
 import { TERRAIN_COLOR } from '../src/client/render/palette';
 import { createWorld } from '../src/sim/worldgen';
 import { TERRAIN_LIST, packCell, terrainAt } from '../src/sim/types';
@@ -102,10 +109,81 @@ describe('the shape of a rock block', () => {
     }
   });
 
+  /**
+   * The same invariant, now that the block is a boulder. Rounding a square's
+   * corners cuts its diagonal in by r(1 − 1/√2), and a dent in its skin can cut
+   * any side in by the jitter; the block has to be wide enough to pay for both
+   * on top of the tilt, or the bevel opens the very seam the tilt was made to
+   * close.
+   */
+  it('still covers the cell once its corners are rounded and its skin is dented', () => {
+    const inset = 2 * ROCK_EDGE * (1 - Math.SQRT1_2) + 2 * ROCK_JITTER;
+    for (let x = 0; x < 64; x++) {
+      for (let y = 0; y < 64; y++) {
+        const sh = rockShapeAt(x, y);
+        const needed = Math.cos(sh.rot) + Math.abs(Math.sin(sh.rot));
+        expect(sh.scale * (1 - inset)).toBeGreaterThanOrEqual(needed);
+      }
+    }
+  });
+
   it('reports a top that sits just under the block height', () => {
     const sh = rockShapeAt(7, 9);
     expect(rockTopAt(7, 9)).toBeCloseTo(sh.height - 0.15, 6);
     expect(rockTopAt(7, 9)).toBeLessThan(sh.height);
+  });
+});
+
+describe('the boulder every block draws', () => {
+  function boulder(): { geo: THREE.BufferGeometry; mat: THREE.MeshStandardMaterial; view: TerrainView } {
+    const view = new TerrainView(createWorld(SEED));
+    const rocks = view.group.children[1] as THREE.InstancedMesh;
+    return { geo: rocks.geometry, mat: rocks.material as THREE.MeshStandardMaterial, view };
+  }
+
+  /**
+   * Everything that clears a rock or stands on one reads the crate, not the
+   * mesh: `rockTopAt` is the crate's lid, `ROCK_HEIGHT` is its tallest lid, and
+   * `scale` is its footprint. So the boulder must never leave the crate — a
+   * vertex above the lid would poke through a floor built to clear it, and one
+   * past the sides would grow the block past the width that was paid for.
+   */
+  it('stays inside the unit crate it replaced, and reaches its lid', () => {
+    const { geo, view } = boulder();
+    geo.computeBoundingBox();
+    const box = geo.boundingBox!;
+    expect(box.max.y).toBeLessThanOrEqual(0.5 + 1e-6);
+    expect(box.max.y).toBeGreaterThan(0.5 - 1e-6);
+    expect(box.min.y).toBeGreaterThanOrEqual(-0.5 - 1e-6);
+    expect(box.max.x).toBeLessThanOrEqual(0.5 + 1e-6);
+    expect(box.min.x).toBeGreaterThanOrEqual(-0.5 - 1e-6);
+    expect(box.max.z).toBeLessThanOrEqual(0.5 + 1e-6);
+    expect(box.min.z).toBeGreaterThanOrEqual(-0.5 - 1e-6);
+    view.dispose();
+  });
+
+  /**
+   * Smooth is a property of the buffers, not of the lighting: the faces must
+   * share their vertices across the seams, the normals must actually bend round
+   * the bevel, and the material must not undo it all with flat shading. And
+   * every one of those costs triangles on every one of thousands of instances,
+   * so the count is part of the same bargain.
+   */
+  it('is one welded, smooth-shaded skin within the per-block triangle budget', () => {
+    const { geo, mat, view } = boulder();
+    expect(mat.flatShading).toBe(false);
+    expect(geo.index).not.toBeNull();
+    expect(geo.index!.count / 3).toBeLessThanOrEqual(300);
+
+    const n = geo.getAttribute('normal') as THREE.BufferAttribute;
+    let bent = 0;
+    for (let i = 0; i < n.count; i++) {
+      const ny = Math.abs(n.getY(i));
+      if (ny > 0.15 && ny < 0.85) bent++;
+    }
+    // A crate has no normal that is neither flat nor upright; a boulder's shoulder is nothing else.
+    expect(bent).toBeGreaterThan(0);
+    view.dispose();
   });
 });
 

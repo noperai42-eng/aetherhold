@@ -2,10 +2,15 @@
  * Ground and rock. One non-indexed quad per cell, coloured at its corners rather
  * than its middle so neighbouring ground bleeds together instead of tiling, plus
  * instanced blocks for rock — which is solid terrain, so it has to look like
- * something you cannot walk through, because you cannot.
+ * something you cannot walk through, because you cannot. The block is a
+ * bevelled, dented boulder rather than a crate, but it is still sized and placed
+ * as a crate: everything that has to clear a rock or stand on one reads the
+ * crate, and the boulder is built to stay inside it.
  */
 
 import * as THREE from 'three';
+import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
+import { mergeVertices } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 
 import { ICE_STEPS, SEASON_STEPS, SNOW_STEPS, TERRAIN_COLOR, groundColor } from './palette';
 import { yearPhase } from '../../sim/seasons';
@@ -62,6 +67,41 @@ const ROCK_MIN_HEIGHT = 1.55;
 const ROCK_SINK = 0.15;
 /** Yaw range in radians. Small, because a block still has to cover its own cell. */
 const ROCK_TILT = 0.07;
+/**
+ * How far the top edges of a block are rounded off, as a fraction of its height.
+ *
+ * A fraction rather than a length because the block is a unit mesh stretched to
+ * its height per instance, so this is what the bevel can be. It comes out between
+ * twenty and thirty-five centimetres on a real block, which is a boulder's
+ * shoulder and not a chamfer: big enough to catch a highlight from the manager
+ * view and to give a cliff a skyline of humps from inside a body, small enough
+ * that the flat top is still most of the top and the overlays that sit on it
+ * (`rockTopAt`) still sit on rock.
+ */
+const ROCK_BEVEL = 0.14;
+/**
+ * How far the vertical edges are rounded off, as a fraction of the block's width.
+ *
+ * Smaller than the vertical bevel, and deliberately so — see `rockGeometry`. Every
+ * centimetre here is a centimetre the block has to be wider to keep covering its
+ * cell (`ROCK_COVER`), and that width is what a mined corridor loses on each side.
+ */
+export const ROCK_EDGE = 0.08;
+/**
+ * How far a vertex wanders from the bevelled form, as a fraction of the block's
+ * width. Along the normal, in or out, so the skin is lumpy rather than warped.
+ */
+export const ROCK_JITTER = 0.012;
+/**
+ * How much wider a block has to be than the square it is covering, now that its
+ * corners are rounded and its sides are dented.
+ *
+ * A square with corners of radius r is cut in on the diagonal by r(1 − 1/√2), and
+ * a dent can cut any side in by the jitter. Each is charged twice, once per side,
+ * and the dent is charged at its full depth rather than its diagonal share, which
+ * is more than the corner strictly needs and is the simpler number to defend.
+ */
+const ROCK_COVER = 1 / (1 - 2 * ROCK_EDGE * (1 - Math.SQRT1_2) - 2 * ROCK_JITTER);
 /** How much a corner darkens per touching rock cell — the shadow a cliff casts on its own foot. */
 const AO_PER_ROCK = 0.12;
 const UP = new THREE.Vector3(0, 1, 0);
@@ -107,9 +147,11 @@ export function rockShapeAt(x: number, y: number): RockShape {
     height: ROCK_MIN_HEIGHT + a * (ROCK_HEIGHT - ROCK_MIN_HEIGHT),
     rot,
     // A square turned by `rot` needs cos+sin of that angle just to cover the
-    // ground it started on. Anything less opens a seam you can see through and
-    // still cannot walk through — so the tilt pays for itself before the extra.
-    scale: Math.cos(rot) + Math.abs(Math.sin(rot)) + c * 0.05,
+    // ground it started on, and a square with its corners rounded off needs
+    // `ROCK_COVER` of that again. Anything less opens a seam you can see through
+    // and still cannot walk through — so the tilt and the bevel pay for
+    // themselves before the extra.
+    scale: (Math.cos(rot) + Math.abs(Math.sin(rot))) * ROCK_COVER + c * 0.05,
     shade: (c - 0.5) * 0.11,
   };
 }
@@ -178,10 +220,12 @@ export class TerrainView {
 
     this.rockCapacity = Math.max(1, countRock(world));
     this.rocks = new THREE.InstancedMesh(
-      new THREE.BoxGeometry(1, 1, 1),
+      rockGeometry(),
       // White, because the real colour rides per instance — a cliff of one hex
-      // reads as a wall of crates however well it is lit.
-      new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.9, flatShading: true }),
+      // reads as a wall of crates however well it is lit. Smooth-shaded, or the
+      // bevel would come back as a stack of lit facets and the boulder as a crate
+      // with its corners knocked off.
+      new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.9 }),
       this.rockCapacity,
     );
     this.rocks.castShadow = true;
@@ -382,7 +426,8 @@ export class TerrainView {
     // The whole reason the lift is worth having: normals off the new surface, so
     // the sun finds the slope where the pack runs down into a path and the drift
     // has a lit face and a shaded one. Flat per-triangle, because the geometry is
-    // non-indexed — which suits a valley whose cliffs are already flat-shaded.
+    // non-indexed — and a drift is a few facets of white either way; the smoothing
+    // that matters is on the boulders standing on it.
     this.ground.geometry.computeVertexNormals();
 
     // Deep snow is a slightly less matte surface than wet grass. One number on
@@ -520,6 +565,77 @@ function jitter(x: number, y: number): number {
 function hash(x: number, y: number, salt: number): number {
   const n = Math.sin(x * 127.1 + y * 311.7 + salt) * 43758.5453;
   return n - Math.floor(n);
+}
+
+/** The same hash for a point in the block, so a vertex's dent is a property of where it is. */
+function hash3(x: number, y: number, z: number): number {
+  const n = Math.sin(x * 127.1 + y * 311.7 + z * 74.7) * 43758.5453;
+  return n - Math.floor(n);
+}
+
+/**
+ * The block every rock instance draws.
+ *
+ * One boulder, built once and shared: the per-cell height, yaw, width and shade
+ * all ride in the instance matrix, so the mesh only has to be a convincing lump
+ * inside the unit crate it replaced. Three things hold that contract. The top is
+ * flat and sits exactly at +½, so `rockTopAt` and the clearance height mean what
+ * they did. Nothing reaches past ±½ sideways, so `scale` is still the footprint.
+ * And the bottom bevel is pushed *below* −½ — the box is built one bevel taller
+ * than it needs to be and then shifted down — so the block meets the ground with
+ * a straight-sided band rather than a curve that would undercut its own foot.
+ * That band's underside and everything beneath it is then cut away: it is buried
+ * fifteen centimetres deep under ground that never sinks near a rock, and it
+ * would only cost triangles on every one of thousands of instances.
+ *
+ * The rounding is elliptical on purpose. `RoundedBoxGeometry` takes one radius,
+ * so the box is built wide and squashed back to a unit footprint: the vertical
+ * bevel keeps `ROCK_BEVEL` of the block's height while the horizontal one is
+ * `ROCK_EDGE` of its width, which is what stops a two-and-a-half-metre block
+ * looking like a sanded-off die. The vertices are then welded so the faces share
+ * normals across their seams, pushed in or out along those normals by a
+ * position-seeded amount, and the normals recomputed over the welded mesh — so
+ * the surface lights as one continuous lumpy skin and not six planes meeting at
+ * a crease. The dents are clamped back inside the crate, so a dent can lower
+ * the top under the overlays but never lift it into what has to clear it.
+ */
+function rockGeometry(): THREE.BufferGeometry {
+  const w = ROCK_BEVEL / ROCK_EDGE;
+  const rounded = new RoundedBoxGeometry(w, 1 + ROCK_BEVEL, w, 2, ROCK_BEVEL);
+  // No texture ever goes on a rock, and UVs and analytic normals differ across
+  // every seam — they are exactly what would keep the weld from closing.
+  rounded.deleteAttribute('uv');
+  rounded.deleteAttribute('normal');
+  rounded.scale(1 / w, 1, 1 / w);
+  rounded.translate(0, -ROCK_BEVEL / 2, 0);
+
+  const src = rounded.getAttribute('position') as THREE.BufferAttribute;
+  const kept: number[] = [];
+  for (let i = 0; i < src.count; i += 3) {
+    const top = Math.max(src.getY(i), src.getY(i + 1), src.getY(i + 2));
+    if (top <= -0.5 + 1e-6) continue;
+    for (let k = i; k < i + 3; k++) kept.push(src.getX(k), src.getY(k), src.getZ(k));
+  }
+  rounded.dispose();
+  const shell = new THREE.BufferGeometry();
+  shell.setAttribute('position', new THREE.Float32BufferAttribute(kept, 3));
+  const geo = mergeVertices(shell);
+  shell.dispose();
+
+  geo.computeVertexNormals();
+  const p = geo.getAttribute('position') as THREE.BufferAttribute;
+  const n = geo.getAttribute('normal') as THREE.BufferAttribute;
+  for (let i = 0; i < p.count; i++) {
+    const d = (hash3(p.getX(i), p.getY(i), p.getZ(i)) - 0.5) * 2 * ROCK_JITTER;
+    p.setXYZ(
+      i,
+      THREE.MathUtils.clamp(p.getX(i) + n.getX(i) * d, -0.5, 0.5),
+      THREE.MathUtils.clamp(p.getY(i) + n.getY(i) * d, -0.5, 0.5),
+      THREE.MathUtils.clamp(p.getZ(i) + n.getZ(i) * d, -0.5, 0.5),
+    );
+  }
+  geo.computeVertexNormals();
+  return geo;
 }
 
 function countRock(world: World): number {

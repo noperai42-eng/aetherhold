@@ -159,6 +159,30 @@ describe('what the map shows about what is out there', () => {
     v.dispose();
   });
 
+  it('rounds every ground piece off without letting it grow or go flat', () => {
+    // The pieces are placed by radius — a cairn stone bites into the one below
+    // because their centres are less than two radii apart, a crate lid leans off
+    // a crate edge. A rounded shape that had swelled past its unit would float
+    // those overlaps apart; one lit flat would be back to the die it replaced.
+    // And they draw once per rock across the map, so each stays under budget.
+    const world = createWorld(SEED);
+    const v = view(world);
+    for (const mesh of meshes(v).slice(0, -1)) {
+      const mat = mesh.material as THREE.MeshLambertMaterial;
+      expect(mat.flatShading).toBe(false);
+      const geo = mesh.geometry;
+      const tris = (geo.index ? geo.index.count : geo.getAttribute('position').count) / 3;
+      expect(tris).toBeLessThanOrEqual(200);
+      geo.computeBoundingBox();
+      const box = geo.boundingBox!;
+      for (const axis of ['x', 'y', 'z'] as const) {
+        expect(box.min[axis]).toBeGreaterThanOrEqual(-0.56);
+        expect(box.max[axis]).toBeLessThanOrEqual(0.56);
+      }
+    }
+    v.dispose();
+  });
+
   it('copes with a map that has no finds on it at all', () => {
     const world = createWorld(SEED);
     world.sites.length = 0;

@@ -22,7 +22,9 @@
  */
 
 import * as THREE from 'three';
+import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
 
+import { lumpyGeometry } from './decor';
 import { BUILDING_COLOR, RESOURCE_COLOR, TERRAIN_COLOR } from './palette';
 import type { Site, World } from '../../sim/types';
 
@@ -65,10 +67,20 @@ export class LandmarkView {
   constructor(world: World) {
     const n = Math.max(1, world.sites.length);
     // Three primitives cover every arrangement below, so the whole set of finds
-    // on a map costs four draw calls rather than one per rock.
-    this.stones = instanced(new THREE.DodecahedronGeometry(0.5, 0), n * STONES_PER_SITE);
-    this.blocks = instanced(new THREE.BoxGeometry(1, 1, 1), n * BLOCKS_PER_SITE);
-    this.shards = instanced(new THREE.OctahedronGeometry(0.5, 0), n * SHARDS_PER_SITE);
+    // on a map costs four draw calls rather than one per rock. Each is a rounded,
+    // smooth-lit version of the shape it stands for: a stone is a worn lump, a
+    // plank has softened edges so its silhouette does not cut like a wireframe,
+    // and an ore chunk is a nugget — still pinched along its axes, which is what
+    // keeps it from reading as one more pebble.
+    this.stones = instanced(
+      lumpyGeometry(new THREE.IcosahedronGeometry(0.5, 1), 0.07, 11.3),
+      n * STONES_PER_SITE,
+    );
+    this.blocks = instanced(new RoundedBoxGeometry(1, 1, 1, 1, 0.08), n * BLOCKS_PER_SITE);
+    this.shards = instanced(
+      lumpyGeometry(new THREE.OctahedronGeometry(0.5, 2), 0.12, 17.9),
+      n * SHARDS_PER_SITE,
+    );
     // Unlit, so it reads as a marker and not as an object with a light on it.
     // Fog still touches it: a pin you can see through a snowstorm would be the
     // one thing on the map that ignores the weather.
@@ -325,11 +337,7 @@ function coldCamp(site: Site, blocks: Piece[], stones: Piece[]): void {
 }
 
 function instanced(geo: THREE.BufferGeometry, count: number): THREE.InstancedMesh {
-  const mesh = new THREE.InstancedMesh(
-    geo,
-    new THREE.MeshLambertMaterial({ color: 0xffffff, flatShading: true }),
-    count,
-  );
+  const mesh = new THREE.InstancedMesh(geo, new THREE.MeshLambertMaterial({ color: 0xffffff }), count);
   mesh.castShadow = true;
   mesh.receiveShadow = true;
   // The set is small and scattered over the whole map, so per-mesh culling would
