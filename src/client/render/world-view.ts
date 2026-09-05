@@ -104,6 +104,20 @@ export class WorldView {
     this.shroud.setTint(fog.color);
   }
 
+  /** Hide the valley while a pocket scene has the renderer. */
+  setVisible(on: boolean): void {
+    this.terrain.group.visible = on;
+    this.decor.group.visible = on;
+    this.buildings.group.visible = on;
+    this.landmarks.group.visible = on;
+    this.pawns.group.visible = on;
+    this.pickies.group.visible = on;
+    this.shroud.group.visible = on;
+    this.sky.group.visible = on;
+    this.fx.group.visible = on;
+    this.weather.group.visible = on;
+  }
+
   applyQuality(settings: QualitySettings): void {
     this.sky.applyQuality(settings);
     this.fx.setDecor(settings.decor);

@@ -203,6 +203,8 @@ export interface HudHooks {
    * See `sim/pickies.ts`.
    */
   sendPickyErrand(kind: 'rounds' | 'doors' | 'fetch' | 'surprise'): void;
+  /** Open the Iter 1 mortal hollow pocket — see `client/scene/hollow-loop.ts`. */
+  enterHollow(): void;
 }
 
 export interface HudState {
@@ -376,7 +378,8 @@ const KEYS_COLONY =
   `<dt>;</dt><dd>the story — everything that has happened here, by day. The corner log only keeps the last few minutes; this keeps the rest.</dd>` +
   `<dt>\`</dt><dd>send a Picky — a little pink goblin runs to the cell you click and says whether it got there. Nobody going somewhere? Ask one.</dd>` +
   `<dt>Space</dt><dd>pause · <b>-</b> and <b>=</b> slow down / speed up — manager only</dd>` +
-  `<dt>G</dt><dd>possess the selected settler</dd>`;
+  `<dt>G</dt><dd>possess the selected settler</dd>` +
+  `<dt>Hollow</dt><dd>a mortal village pocket — mill jam, no qi. Also <code>?pocket=hollow</code></dd>`;
 
 const KEYS_FPS =
   `<dt>V</dt><dd>switch view, any time, no reload</dd>` +
@@ -618,6 +621,11 @@ export class Hud {
   private chronicleOpen = false;
   private chronicleSig = '';
 
+  /** The HUD mount. Pocket chrome hangs off the same root. */
+  get host(): HTMLElement {
+    return this.root;
+  }
+
   constructor(root: HTMLElement, hooks: HudHooks) {
     this.root = root;
     this.hooks = hooks;
@@ -722,7 +730,10 @@ export class Hud {
     backupBtn.onclick = () => this.openBackup();
     const helpBtn = el('button', 'btn', {}, '?') as HTMLButtonElement;
     helpBtn.onclick = () => this.toggleHelp();
-    sys.append(viewBtn, workBtn, boardBtn, techBtn, this.tradeBtn, this.roadBtn, this.chronicleBtn, this.stewardBtn, this.qualityBtn, saveBtn, loadBtn, this.continueBtn, backupBtn, helpBtn);
+    const hollowBtn = el('button', 'btn', {}, 'Hollow') as HTMLButtonElement;
+    hollowBtn.title = 'Walk a mortal village pocket — clear the mill jam, no qi';
+    hollowBtn.onclick = () => this.hooks.enterHollow();
+    sys.append(viewBtn, workBtn, boardBtn, techBtn, this.tradeBtn, this.roadBtn, this.chronicleBtn, this.stewardBtn, this.qualityBtn, saveBtn, loadBtn, this.continueBtn, backupBtn, hollowBtn, helpBtn);
     top.append(this.clock, speeds, res, sys);
     this.root.append(top);
     // On a phone the system row is the More drawer, which stands above the tab
@@ -2863,6 +2874,12 @@ export class Hud {
 
   toggleHelp(): void {
     this.helpOverlay.classList.toggle('on');
+  }
+
+  /** Hide the colony chrome while a pocket scene has the screen. */
+  setPocketChrome(on: boolean): void {
+    this.root.classList.toggle('hollow-mode', on);
+    if (on && this.helpOpen) this.toggleHelp();
   }
 
   get helpOpen(): boolean {
