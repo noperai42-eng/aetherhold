@@ -26,7 +26,7 @@
  * in `world.pawns` for the renderer to draw and every pass to skip over.
  */
 
-import { livingColonists, msg } from './world';
+import { cancelJob, livingColonists, msg } from './world';
 import { TICKS_PER_DAY, type Building, type Pawn, type World } from './types';
 
 /** How long an unburied body lasts before there is nothing left to bury. */
@@ -127,6 +127,16 @@ export function tickGraves(world: World): void {
   if (gone.length > 0) {
     const names = world.pawns.filter((p) => gone.includes(p.id) && p.faction === 'colony');
     for (const p of names) msg(world, `Nothing is left of ${p.name} to bury.`, 'bad');
+    // Everything they had claimed comes free before they go, the same way a
+    // settler walking out with a caravan releases theirs. Dying only cancels the
+    // job in hand — anything still queued behind it belongs to a pawn who is
+    // about to stop existing, and a job whose owner is not in `world.pawns` can
+    // never be finished and never be taken off anybody else. Measured on seed 7:
+    // a rotted settler's queued `build` held one fence frame from day 11 to day
+    // 33, which kept `boardClear` false, which switched off every Steward
+    // ambition below `yard` — no turret was ever ordered on 158 steel while the
+    // crew was floored by raid after raid with clubs in their hands.
+    for (const j of world.jobs.slice()) if (gone.includes(j.pawnId)) cancelJob(world, j.id);
     world.pawns = world.pawns.filter((p) => !gone.includes(p.id));
     // A grave that was promised to a body which then rotted away is free again.
     for (const b of world.buildings) {
