@@ -30,6 +30,7 @@ import {
   DESIG_HARVEST,
   DESIG_NONE,
   DESIG_FLOOR_PLANK,
+  markBuildingsChanged,
   packCell,
   unpackX,
   unpackY,
@@ -56,7 +57,7 @@ import {
   tickSteward,
   yardRing,
 } from '../src/sim/steward';
-import type { Pawn, ResourceKind, World } from '../src/sim/types';
+import type { Building, Pawn, ResourceKind, World } from '../src/sim/types';
 
 /** A daytime tick the Steward actually wakes on. */
 const NOON = 2400;
@@ -389,6 +390,103 @@ describe('what the colony decides to do next', () => {
     for (const c of yardRing(world, room)) {
       expect(soil.has(packCell(world, c.x, c.y))).toBe(false);
     }
+  });
+
+  /**
+   * The gate is decided before the ring closes, not after.
+   *
+   * `gate` returns 0 until the line is eighty per cent walled, so it costs
+   * nothing sitting above `yard`; below it, it was unreachable, because `yard`
+   * keeps returning a number for as long as it has posts left to lay. The colony
+   * therefore hung its gate one tick after it had already shut itself in.
+   */
+  it('hangs the gate while there are still posts left to lay', () => {
+    const world = createWorld(18);
+    world.tick = NOON;
+    wellStocked(world);
+    const room = heart(world)!;
+    const ring = yardRing(world, room);
+    // Nine tenths of a fence: past the gate's threshold, and still short of a
+    // closed ring, which is the exact window that used to be unreachable.
+    const gaps = Math.floor(ring.length * 0.1);
+    for (const c of ring.slice(gaps)) addBuilding(world, 'fence', c.x, c.y, true);
+    expect(ring.filter((c) => buildingAt(world, c.x, c.y)?.kind === 'fence').length).toBeGreaterThan(0);
+
+    let door: Building | undefined;
+    for (let i = 0; i < AMBITIONS.length * 2 && !door; i++) {
+      tickSteward(world);
+      door = world.buildings.find((b) => b.kind === 'door' && !b.built);
+      if (door) break;
+      for (const b of world.buildings.filter((x) => !x.built)) removeBuilding(world, b);
+      world.cellDesig.fill(DESIG_NONE);
+    }
+    expect(door).toBeDefined();
+    // On the ring, where a post used to be — not on the cabin.
+    expect(ring.some((c) => c.x === door!.x && c.y === door!.y)).toBe(true);
+    // And there is still fence left to lay, which is the whole point.
+    expect(ring.some((c) => !buildingAt(world, c.x, c.y))).toBe(true);
+  });
+
+  /**
+   * The control. Promoting `gate` must not make it jump the gun: a gate in a
+   * fence with three posts in it is a door standing in a field, and the colony
+   * should still be laying fence.
+   */
+  it('will not hang a gate in a line that is barely started', () => {
+    const world = createWorld(18);
+    world.tick = NOON;
+    wellStocked(world);
+    const room = heart(world)!;
+    const ring = yardRing(world, room);
+    for (const c of ring.slice(0, Math.floor(ring.length * 0.3))) addBuilding(world, 'fence', c.x, c.y, true);
+
+    for (let i = 0; i < AMBITIONS.length * 2; i++) {
+      tickSteward(world);
+      expect(world.buildings.some((b) => b.kind === 'door' && !b.built)).toBe(false);
+      for (const b of world.buildings.filter((x) => !x.built)) removeBuilding(world, b);
+      world.cellDesig.fill(DESIG_NONE);
+    }
+  });
+
+  /**
+   * Played out: the colony finishes its fence and is still able to walk out of it.
+   *
+   * This is the failure as it actually happened on seed 1312 at harsh. On day 38
+   * the last post went in, and all seven settlers spent three days inside a
+   * sixty-four cell pocket — fifty-four walls, thirteen posts, no door — while
+   * the twenty-seven thousand cells they had been chopping and hunting that
+   * morning sat on the other side of it. Nothing in the sim told them; they just
+   * stopped being able to do anything outdoors.
+   *
+   * So the assertion is the one a player would make: build the whole ring out,
+   * and check that the settlers can still reach the map.
+   */
+  it('finishes the fence without shutting the settlers inside it', () => {
+    const world = createWorld(18);
+    world.tick = NOON;
+    wellStocked(world);
+    const outside = { x: 4, y: 4 };
+    const reach = () =>
+      livingColonists(world).some((p) => regionAt(world, Math.round(p.x), Math.round(p.y)) === regionAt(world, outside.x, outside.y));
+    expect(reach()).toBe(true);
+
+    // Run the Steward and actually raise what it plans, which is the only way the
+    // ring ever closes — and the only way the trap ever sprang.
+    for (let i = 0; i < AMBITIONS.length * 6; i++) {
+      wellStocked(world);
+      tickSteward(world);
+      for (const b of world.buildings.filter((x) => !x.built)) b.built = true;
+      markBuildingsChanged(world);
+      world.cellDesig.fill(DESIG_NONE);
+      expect(reach()).toBe(true);
+    }
+
+    // The fence really did go up — otherwise this passes by never building one.
+    const room = heart(world)!;
+    const ring = yardRing(world, room);
+    const posts = ring.filter((c) => buildingAt(world, c.x, c.y)?.kind === 'fence').length;
+    expect(posts).toBeGreaterThan(ring.length * 0.5);
+    expect(ring.some((c) => buildingAt(world, c.x, c.y)?.kind === 'door')).toBe(true);
   });
 
   /** A post already standing in the soil comes out, so old saves heal themselves. */

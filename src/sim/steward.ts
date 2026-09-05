@@ -963,39 +963,21 @@ export const AMBITIONS: Ambition[] = [
       return n;
     },
   },
-  {
-    id: 'yard',
-    says: 'The colony stakes out a fence line around the yard.',
-    mark(world) {
-      const room = heart(world);
-      if (!room) return 0;
-      const ring = yardRing(world, room);
-      // Before adding to the line, take out anything left standing in the soil.
-      // A post on a growing cell that the line no longer runs through is holding
-      // nothing and costing a row of crops, and colonies that were already going
-      // when the ring learned to go around a plot have six of them across the
-      // kitchen garden. Bounded to posts *off* the line so a fence the player
-      // deliberately painted a zone over is left alone.
-      const online = new Set(ring.map((c) => packCell(world, c.x, c.y)));
-      for (const packed of growingCells(world)) {
-        if (online.has(packed)) continue;
-        const b = buildingAt(world, unpackX(world, packed), unpackY(world, packed));
-        if (!b || !b.built || b.kind !== 'fence') continue;
-        removeBuilding(world, b);
-        msg(world, 'A fence post is pulled out of the garden — that row can be sown again.');
-        return 1;
-      }
-      if (!affords(world, 'wood', (defOf('fence').cost.wood ?? 0) * BATCH)) return 0;
-      let n = 0;
-      for (const cell of ring) {
-        if (n >= BATCH) break;
-        if (ringDone(world, cell.x, cell.y)) continue;
-        if (canPlace(world, 'fence', cell.x, cell.y) !== 'ok') continue;
-        if (planBlueprint(world, 'fence', cell.x, cell.y)) n++;
-      }
-      return n;
-    },
-  },
+  // Above `yard`, and that placement is the whole of the fix.
+  //
+  // A gate only makes sense once the line is nearly a line, and `mark` returns 0
+  // until the ring is eighty per cent walled — so standing above `yard` costs
+  // nothing while the fence is going up. Standing *below* it cost everything:
+  // `yard` returns a number for as long as it has posts left to lay, so the gate
+  // was only ever considered after the ring was closed, which is one tick too
+  // late. Measured on seed 1312: on day 38 the last post went in and all seven
+  // settlers spent three days inside a sixty-four cell pocket with fifty-four
+  // walls and thirteen posts around it and not one door, unable to reach the
+  // twenty-seven thousand cells of map they had been working that morning.
+  //
+  // Running twice over is not a risk: `tickSteward` will not reach any ambition
+  // while a blueprint stands, so the door this plans blocks the next pass until
+  // somebody hangs it.
   {
     id: 'gate',
     says: 'The colony hangs a gate in the yard fence.',
@@ -1034,6 +1016,39 @@ export const AMBITIONS: Ambition[] = [
       // fence, not the deconstruct tool, so nothing the player marked is touched.
       removeBuilding(world, best);
       return planBlueprint(world, 'door', x, y) ? 1 : 0;
+    },
+  },
+  {
+    id: 'yard',
+    says: 'The colony stakes out a fence line around the yard.',
+    mark(world) {
+      const room = heart(world);
+      if (!room) return 0;
+      const ring = yardRing(world, room);
+      // Before adding to the line, take out anything left standing in the soil.
+      // A post on a growing cell that the line no longer runs through is holding
+      // nothing and costing a row of crops, and colonies that were already going
+      // when the ring learned to go around a plot have six of them across the
+      // kitchen garden. Bounded to posts *off* the line so a fence the player
+      // deliberately painted a zone over is left alone.
+      const online = new Set(ring.map((c) => packCell(world, c.x, c.y)));
+      for (const packed of growingCells(world)) {
+        if (online.has(packed)) continue;
+        const b = buildingAt(world, unpackX(world, packed), unpackY(world, packed));
+        if (!b || !b.built || b.kind !== 'fence') continue;
+        removeBuilding(world, b);
+        msg(world, 'A fence post is pulled out of the garden — that row can be sown again.');
+        return 1;
+      }
+      if (!affords(world, 'wood', (defOf('fence').cost.wood ?? 0) * BATCH)) return 0;
+      let n = 0;
+      for (const cell of ring) {
+        if (n >= BATCH) break;
+        if (ringDone(world, cell.x, cell.y)) continue;
+        if (canPlace(world, 'fence', cell.x, cell.y) !== 'ok') continue;
+        if (planBlueprint(world, 'fence', cell.x, cell.y)) n++;
+      }
+      return n;
     },
   },
   {
