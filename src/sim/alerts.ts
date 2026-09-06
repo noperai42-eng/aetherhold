@@ -18,12 +18,14 @@ import { livingColonists, hostiles, countResource } from './world';
 import { FOOD_VALUE, FOOD_DRAIN, BREAK_MOOD, isBreaking, worstMoodFactor } from './needs';
 import { worstAilment } from './health';
 import { isBed } from './buildings';
-import { missingResource } from './jobs';
+import { missingResource, PATIENT_EMERGENCY_FOOD } from './jobs';
 import { CRAFT_DEFS, RECIPE_ORDER, bestCrafter, colonyCanCraft, craftBlocker } from './crafting';
 import { DAYS_PER_SEASON, daysUntilWinter } from './seasons';
 import { settlementsOf, specialty } from './settlements';
 import { freeGraves, unburiedDead } from './graves';
 import { knowhowNow } from './knowhow';
+import { WOOD_BURN_TICKS } from './power';
+import { CAMPFIRE_BURN_TICKS } from './temperature';
 import { TICKS_PER_DAY, flareActive, type CraftRecipe, type Pawn, type World } from './types';
 
 /** Sentence case for a blocker phrase that was written to sit mid-sentence. */
@@ -119,6 +121,57 @@ const FOOD_URGENT_DAYS = 1.5;
 /** How close to a break counts as "about to". */
 const NEAR_BREAK = 0.06;
 
+/** Ticks in an hour of colony time, so the fuel row can be read off a clock. */
+const HOUR_TICKS = TICKS_PER_DAY / 24;
+
+/**
+ * Hours of burning left before the fires go out.
+ *
+ * Twelve is one working day plus the night on the other side of it: long enough
+ * that the answer — mark a tree, wait for somebody to walk to it and fell it —
+ * fits inside the daylight the player still has. Four is the same warning at the
+ * point where it is no longer a plan, it is tonight.
+ */
+const FUEL_WARN_HOURS = 12;
+const FUEL_URGENT_HOURS = 4;
+
+/**
+ * How long the loose woodpile lasts, or null when nothing in the colony burns it.
+ *
+ * A deliberate over-estimate of the burn and therefore an under-estimate of the
+ * hours, because the alternative is a number that goes quiet exactly when it is
+ * useful. Both wood-burners in the sim are conditional: a generator takes a log
+ * only while its network is short of watts (`power.ts`), so on a sunny afternoon
+ * with panels up it burns nothing, and a campfire takes one only once its room
+ * has actually gone cold (`temperature.ts`), so it costs nothing in July. Meter
+ * the *lit* ones and the row says "fine" all day and then appears at dusk with
+ * the trees dark and the settlers going to bed. So this counts every fire that
+ * could want feeding and reports the worst case, which errs early — the one
+ * direction a warning is allowed to err.
+ *
+ * A flare is the one exception, because it is not a guess: nothing electrical
+ * runs, the generators do not turn over, and they burn nothing at all until the
+ * sky clears. Campfires are untouched by it and keep burning through.
+ *
+ * The fuel already inside a firebox is left out. It is under five hours in the
+ * worst case, it is not in a stockpile, and the number a player can act on is
+ * the pile they can see and a hauler can add to.
+ */
+export function fuelHours(world: World): number | null {
+  const flare = flareActive(world);
+  let perTick = 0;
+  for (const b of world.buildings) {
+    if (!b.built) continue;
+    if (b.kind === 'generator') {
+      if (!flare) perTick += 1 / WOOD_BURN_TICKS;
+    } else if (b.kind === 'campfire') {
+      perTick += 1 / CAMPFIRE_BURN_TICKS;
+    }
+  }
+  if (perTick <= 0) return null;
+  return countResource(world, 'wood') / perTick / HOUR_TICKS;
+}
+
 /**
  * How many days out the colony is told winter is coming.
  *
@@ -183,16 +236,44 @@ export function alerts(world: World): Alert[] {
     });
   }
 
-  for (const p of settlers) {
-    if (!p.downed) continue;
-    out.push({
-      id: `downed:${p.id}`,
-      text: `${p.name} is down`,
-      hint: 'A settler with Doctor priority will come. Medicine makes it faster.',
-      level: 'urgent',
-      at: { x: Math.round(p.x), y: Math.round(p.y) },
-      pawnId: p.id,
-    });
+  // Somebody has to be upright, on the board, willing and fed for help to be
+  // on its way, and the hint said it was regardless — once per body, so an
+  // unconscious colony of five was told five times over that a doctor was
+  // coming, on the afternoon that sentence was most completely false and the run
+  // was still winnable. The rescue lane in `jobs.ts` picks its carrier through
+  // exactly these four gates, so the hint now names whichever one is shut and
+  // therefore which key answers it. The order matters: they are checked in the
+  // order the sim checks them, so the sentence describes the first thing that
+  // would have to change rather than the last.
+  const down = settlers.filter((q) => q.downed);
+  if (down.length > 0) {
+    const upright = settlers.filter((q) => !q.downed);
+    const onTheBoard = upright.filter((q) => !q.drafted && !q.manual && !q.playerControlled);
+    const willing = onTheBoard.filter((q) => q.priorities.doctor > 0);
+    const able = willing.filter((q) => q.needs.food > PATIENT_EMERGENCY_FOOD);
+    const rescue =
+      upright.length === 0
+        ? // Not hopeless, and saying so would be its own lie: `combat.ts` stands
+          // a settler back up once the bleeding stops and they are past a third
+          // of their health, doctor or no doctor.
+          'Nobody is on their feet to reach them. They get up on their own if the bleeding stops.'
+        : onTheBoard.length === 0
+          ? 'Everyone still standing is drafted or under orders. Undraft one with T and they will come.'
+          : willing.length === 0
+            ? 'Nobody has Doctor priority. Turn it on for somebody in the work board (P).'
+            : able.length === 0
+              ? 'The only ones who could come are starving themselves. Feed them first, or two die instead of one.'
+              : 'A settler with Doctor priority will come. Medicine makes it faster.';
+    for (const p of down) {
+      out.push({
+        id: `downed:${p.id}`,
+        text: `${p.name} is down`,
+        hint: rescue,
+        level: 'urgent',
+        at: { x: Math.round(p.x), y: Math.round(p.y) },
+        pawnId: p.id,
+      });
+    }
   }
 
   const days = foodDays(world);
@@ -202,6 +283,28 @@ export function alerts(world: World): Alert[] {
       text: days < 0.05 ? 'No food left' : `${days.toFixed(1)} days of food`,
       hint: 'Sow a grow zone, hunt, or cook what is in the pantry.',
       level: days < FOOD_URGENT_DAYS ? 'urgent' : 'warn',
+    });
+  }
+
+  // The other pantry, and until now the colony kept it in silence. A grep of
+  // this file for 'wood' returned nothing, while `power.ts` fed a log to every
+  // hungry generator every fifteen minutes and `temperature.ts` fed one to every
+  // cold campfire every thirteen. The only line either of them ever earned was
+  // 'Grid short - N buildings off', which fires *after* the shedding: the first
+  // the player hears about an empty woodpile is the cold store already warm and
+  // the turrets already dark. This is that news, in the hours before it happens,
+  // and it sits beside the food row because it is the same sentence about a
+  // different store.
+  const fuel = fuelHours(world);
+  if (fuel !== null && fuel < FUEL_WARN_HOURS) {
+    out.push({
+      id: 'fuel',
+      // Not "N wood": the pile is also what walls and beds are made of, and a
+      // player reading a raw count has to do the arithmetic this row exists to
+      // do for them.
+      text: fuel < 0.5 ? 'No wood left to burn' : `Fuel for about ${Math.round(fuel)} hours`,
+      hint: 'Mark trees with C. When the pile runs out the generators stop and the fires go cold.',
+      level: fuel < FUEL_URGENT_HOURS ? 'urgent' : 'warn',
     });
   }
 
