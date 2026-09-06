@@ -662,6 +662,38 @@ function lifted(r: number, g: number, b: number, rough: number, metal = 0.04): T
   return m;
 }
 
+/** How far a painted part may be multiplied up before the ask is a lie about the palette. */
+const PAINT_MAX = 8;
+
+/**
+ * A part painted the colour it will actually come out at, whatever tint is
+ * pushed under it. `tone` and `lifted` both state a *multiplier*, which is fine
+ * while the entry being multiplied is pale and a trap the moment it is not, and
+ * round 9's frames found the whole class at once. The lamp's shade was dark iron
+ * at 0x3c3835; the lamp's palette entry is warm brass; dark iron under warm brass
+ * is nine parts in a thousand of reflectance — a black bowl at noon, on the one
+ * surface in the colony the sun is directly above. Twenty other parts were the
+ * same arithmetic: the stove's door and vents, the generator's skid and flywheel,
+ * the campfire's ash, the solar panel's own cells.
+ *
+ * So state the colour and not the factor: the material carries the target divided
+ * by the entry it is going to be multiplied by, in linear light, and the part
+ * lands on the target however the palette moves under it. The instance tint still
+ * takes it down for damage and for a machine with no watts behind it — those are
+ * signals, and they are *meant* to darken a part.
+ */
+function paint(kind: BuildingKind, target: number, rough: number, metal = 0.04): THREE.MeshStandardMaterial {
+  const want = new THREE.Color().setHex(target);
+  const under = new THREE.Color().setHex(BUILDING_COLOR[kind]);
+  const m = new THREE.MeshStandardMaterial({ roughness: rough, metalness: metal });
+  m.color.setRGB(
+    Math.min(PAINT_MAX, want.r / under.r),
+    Math.min(PAINT_MAX, want.g / under.g),
+    Math.min(PAINT_MAX, want.b / under.b),
+  );
+  return m;
+}
+
 /**
  * Timber under the wall's tint. The planking and the closers are two pools and
  * so two materials, hence a function rather than a const; `vertexColors` is what
@@ -1090,7 +1122,7 @@ export class BuildingsView {
         parts.push(box(0.28, 0.04, 0.02, 0.29, 0.22, -0.258));
         return merge(...parts);
       })(),
-      tone(0x3a3f46, 0.45, 0.35),
+      paint('lab', 0x4a505a, 0.45, 0.3),
       8,
     );
     this.pool(
@@ -1110,7 +1142,7 @@ export class BuildingsView {
         cylinder(0.012, 0.012, 0.34, 0.92, 8).translate(-0.24, 0, 0.12),
         new THREE.TorusGeometry(0.06, 0.008, 6, 16).rotateX(Math.PI / 2).translate(-0.18, 1.0, 0.12),
       ),
-      tone(0x3e3e42, 0.45, 0.5),
+      paint('lab', 0x4e4e54, 0.45, 0.4),
       8,
     );
     this.pool(
@@ -1159,7 +1191,7 @@ export class BuildingsView {
         sphere(0.03, 1.05, 0.64, 0.12, 12, 8),
         sphere(0.03, 1.05, 0.64, -0.12, 12, 8),
       ),
-      tone(0x3a322a, 0.4, 0.5),
+      paint('door', 0x5b5148, 0.4, 0.4),
       32,
     );
     // The frame is a shade lighter than the panel under the same tint, so the
@@ -1208,7 +1240,7 @@ export class BuildingsView {
         for (let i = 0; i < 7; i++) parts.push(cylinder(0.015, 0.015, 0.62, 0.57, 12).translate(-0.39 + i * 0.13, 0, -0.46));
         return merge(...parts);
       })(),
-      tone(0x4a4c50, 0.5, 0.4),
+      paint('prisonbed', 0x5c5f64, 0.5, 0.35),
       16,
     );
 
@@ -1287,7 +1319,7 @@ export class BuildingsView {
         parts.push(box(0.78, 0.06, 0.1, 0.11, 0, 0.3));
         return merge(...parts);
       })(),
-      tone(0x36363b, 0.55, 0.35),
+      paint('stove', 0x4b4b52, 0.55, 0.3),
       16,
     );
     this.pool('stove.body', rbox(0.88, 0.9, 0.86, 0.59, 0, 0, 0.06), solidMat(0.4), 16);
@@ -1306,7 +1338,7 @@ export class BuildingsView {
         cylinder(0.018, 0.018, 0.055, 0, 10).rotateX(Math.PI / 2).translate(0.19, 0.58, 0.5275),
         box(0.1, 0.03, 0.03, 0.58, 0.19, 0.535),
       ),
-      tone(0x2e2e33, 0.4, 0.3),
+      paint('stove', 0x4a4a51, 0.4, 0.28),
       16,
     );
     // The air intake under the firebox, as louvres rather than as a dark patch:
@@ -1326,7 +1358,7 @@ export class BuildingsView {
         }
         return merge(...parts);
       })(),
-      tone(0x27272b, 0.6, 0.25),
+      paint('stove', 0x44444a, 0.6, 0.25),
       16,
     );
     // A stovepipe, not a stub. It used to stop thirty centimetres over the shell,
@@ -1341,17 +1373,26 @@ export class BuildingsView {
         cylinder(0.095, 0.095, 0.04, 1.47, 16).translate(-0.26, 0, -0.26),
         cylinder(0.1, 0.085, 0.06, 1.56, 16).translate(-0.26, 0, -0.26),
       ),
-      tone(0x3a3a3f, 0.6, 0.3),
+      paint('stove', 0x56565d, 0.6, 0.28),
       16,
     );
     this.pool(
       'stove.plate',
       merge(cylinder(0.14, 0.14, 0.025, 1.05, 20).translate(-0.2, 0, 0.1), cylinder(0.14, 0.14, 0.025, 1.05, 20).translate(0.2, 0, 0.1)),
-      new THREE.MeshStandardMaterial({
-        color: 0x3a3a40,
-        emissive: new THREE.Color(0x2a0d05),
-        roughness: 0.35,
-      }),
+      (() => {
+        // The hotplates, and the one part of the class round 9 missed. They
+        // carry an emissive so a lit stove has two red discs on its top, and
+        // that emissive is exactly what hid them: the floor test exempts
+        // anything that makes its own light, and these make eight thousandths
+        // of it. Under the stove's grey, the dark iron they were stated in came
+        // out at four parts in a thousand — half the lamp shade that started
+        // the round, on the same upward-facing surface, in the building the
+        // round's own note named as a victim of the bug. Painted like the rest
+        // of the stove; the emissive stays, because a hotplate does glow.
+        const m = paint('stove', 0x4a4a51, 0.35);
+        m.emissive = new THREE.Color(0x2a0d05);
+        return m;
+      })(),
       16,
     );
 
@@ -1385,7 +1426,7 @@ export class BuildingsView {
         rbox(0.22, 0.14, 0.2, 0.99, 0.3, 0.26, 0.02, 1),
         cylinder(0.015, 0.015, 0.3, 0, 10).rotateZ(Math.PI / 2).translate(0.3, 0.97, 0.4),
       ),
-      tone(0x4a4d55, 0.45, 0.4),
+      paint('bench', 0x5b544a, 0.45, 0.35),
       16,
     );
 
@@ -1428,7 +1469,7 @@ export class BuildingsView {
       'fish.pail',
       // Off the centre of the deck: that is where the fisher's feet go.
       merge(cylinder(0.15, 0.12, 0.22, 0.25, 16).translate(0.26, 0, -0.28), cylinder(0.16, 0.16, 0.03, 0.355, 16).translate(0.26, 0, -0.28)),
-      tone(0x557a86, 0.55, 0.2),
+      paint('fishhole', 0x6d8b96, 0.55, 0.2),
       12,
     );
 
@@ -1500,17 +1541,24 @@ export class BuildingsView {
     // The blade stands radially, a board a quarter of a metre deep straddling
     // the rim, the way an undershot wheel's do; it was a tread lying along the
     // rim, and from twenty cells up a wheel of treads is a disc. The blade is
-    // the pale part and the spoke and rim behind it are dyed to a third of it
+    // the pale part and the spoke and rim behind it are dyed down under it
     // — one pool, two tones — because a wheel is read by the dark spokes
     // between the light blades, and a wheel all one colour at distance is the
     // same disc again.
+    //
+    // Dyed down by half rather than to a third, which is round 9's correction.
+    // A third of the blade under this palette entry is eight percent reflectance,
+    // and the wheel is mostly spoke and rim from every angle the manager camera
+    // takes: the contrast that was meant to draw the spokes was instead taking
+    // the whole wheel down to the darkest thing in the frame. Half keeps the two
+    // to one the spokes need and puts the wheel back in daylight.
     this.pool(
       'mill.paddle',
       merge(
         dye(rbox(0.5, 0.28, 0.05, WHEEL_R + 0.03, 0, 0, 0.012, 1), 1, 1, 1),
-        dye(box(0.05, WHEEL_R - 0.1, 0.05, (WHEEL_R - 0.1) / 2 + 0.08), 0.36, 0.33, 0.3),
-        dye(box(0.05, 0.06, 0.4, WHEEL_R - 0.06, 0.24, 0), 0.36, 0.33, 0.3),
-        dye(box(0.05, 0.06, 0.4, WHEEL_R - 0.06, -0.24, 0), 0.36, 0.33, 0.3),
+        dye(box(0.05, WHEEL_R - 0.1, 0.05, (WHEEL_R - 0.1) / 2 + 0.08), 0.52, 0.48, 0.44),
+        dye(box(0.05, 0.06, 0.4, WHEEL_R - 0.06, 0.24, 0), 0.52, 0.48, 0.44),
+        dye(box(0.05, 0.06, 0.4, WHEEL_R - 0.06, -0.24, 0), 0.52, 0.48, 0.44),
       ),
       (() => {
         const m = lifted(2.6, 2.3, 1.9, 0.65);
@@ -1544,7 +1592,7 @@ export class BuildingsView {
         parts.push(box(0.82, 0.05, 0.1, 0.075, 0, 0.3));
         return merge(...parts);
       })(),
-      tone(0x3f4a50, 0.55, 0.35),
+      paint('cooler', 0x4e565c, 0.55, 0.3),
       16,
     );
     this.pool('cooler.body', rbox(0.92, 1.1, 0.86, 0.65, 0, 0, 0.06), solidMat(0.4), 16);
@@ -1584,7 +1632,7 @@ export class BuildingsView {
         new THREE.CapsuleGeometry(0.028, 0.22, 2, 8).translate(0.26, 0.17, -0.47),
         new THREE.CapsuleGeometry(0.026, 0.14, 2, 8).rotateX(Math.PI / 2).translate(0.26, 0.03, -0.43),
       ),
-      tone(0x4d5a60, 0.5, 0.3),
+      paint('cooler', 0x5e696f, 0.5, 0.28),
       16,
     );
 
@@ -1600,7 +1648,7 @@ export class BuildingsView {
     // It was a ring of nine stones round three crossed logs, and from above
     // the stones read as the petals of a flower with a stick in it. Logs laid
     // radially are the shape everyone knows a fire by.
-    this.pool('fire.bed', cylinder(0.4, 0.42, 0.05, 0.025, 24), tone(0x6f6a64, 0.95), 32);
+    this.pool('fire.bed', cylinder(0.4, 0.42, 0.05, 0.025, 24), paint('campfire', 0x7c756c, 0.95), 32);
     this.pool(
       'fire.logs',
       (() => {
@@ -1622,7 +1670,7 @@ export class BuildingsView {
         }
         return merge(...parts);
       })(),
-      tone(0x5d4126, 0.9),
+      paint('campfire', 0x6d4d2d, 0.9),
       32,
     );
     this.pool(
@@ -1643,7 +1691,7 @@ export class BuildingsView {
         }
         return merge(...parts);
       })(),
-      tone(0x1c1816, 0.95),
+      paint('campfire', 0x3d3733, 0.95),
       32,
     );
     // The core is one heap of coals, lit or dead: a low dome with a few lumps
@@ -1670,7 +1718,7 @@ export class BuildingsView {
       }),
       32,
     );
-    this.pool('fire.ash', embers(), tone(0x2e2a27, 1.0), 32);
+    this.pool('fire.ash', embers(), paint('campfire', 0x4e4842, 1.0), 32);
     this.pool(
       'fire.flame',
       lathe([
@@ -1702,7 +1750,7 @@ export class BuildingsView {
         parts.push(box(0.66, 0.05, 0.09, 0.075, 0, 0.22));
         return merge(...parts);
       })(),
-      tone(0x3d3936, 0.6, 0.3),
+      paint('heater', 0x4f4b47, 0.6, 0.28),
       24,
     );
     this.pool('heat.body', rbox(0.78, 1.04, 0.64, 0.62, 0, 0, 0.06), solidMat(0.42), 24);
@@ -1714,7 +1762,7 @@ export class BuildingsView {
         for (let i = 0; i < 6; i++) parts.push(box(0.035, 0.52, 0.06, 0.6, -0.25 + i * 0.1, 0.37));
         return merge(...parts);
       })(),
-      tone(0x40332c, 0.7),
+      paint('heater', 0x5d4c40, 0.7),
       24,
     );
     this.pool(
@@ -1842,18 +1890,45 @@ export class BuildingsView {
         const parts: THREE.BufferGeometry[] = [heap];
         // Clods, half-buried in the heap: a spadeful of earth is lumps, and a
         // lump is what gives a mound a shadow of its own from twenty cells up.
+        //
+        // Round 9 said they were not surviving the distance — the mound read as
+        // a smooth chocolate loaf at manager zoom — and the reason is that they
+        // were set on the crown, where the heap is flattest and a clod standing
+        // a few centimetres proud of it throws almost no shadow. Height is also
+        // the one dimension that cannot grow: the marker has to clear the mound
+        // by a clear margin or the cross stops being readable, which is measured.
+        // So they moved outward and got wider and flatter. On the flanks, where
+        // the heap is already falling away, the same lump stands twice as proud
+        // of the surface behind it *and* pushes past the heap's own outline — and
+        // a ragged outline is the one thing about turned ground that reads from
+        // twenty cells up, because the eye finds the silhouette before it finds
+        // any shading inside it.
         for (const [x, z, y, r] of [
-          [0.13, 0.19, 0.22, 0.09],
-          [-0.16, -0.05, 0.24, 0.1],
-          [0.05, -0.22, 0.21, 0.085],
-          [-0.08, 0.3, 0.15, 0.08],
-          [0.19, -0.02, 0.19, 0.075],
+          [0.2, 0.25, 0.14, 0.14],
+          [-0.23, -0.08, 0.15, 0.145],
+          [0.09, -0.29, 0.14, 0.125],
+          [-0.13, 0.31, 0.11, 0.12],
+          [0.25, -0.05, 0.13, 0.115],
         ] as const) {
           const clod = new THREE.SphereGeometry(r, 10, 7);
-          clod.scale(1.25, 0.75, 1);
+          clod.scale(1.5, 0.55, 1.2);
           clod.rotateY(x * 9 + z * 5);
           clod.translate(x, y, z);
           parts.push(clod);
+        }
+        // And a rim of loose earth round the foot of it, sitting on the ground
+        // rather than on the heap. Nothing digs a hole without leaving a spill
+        // round the edge of it, and this is what finally separates the plot from
+        // the turf: the heap's own skirt is a clean ellipse, and an ellipse with
+        // crumbs round it is dug ground while an ellipse on its own is a dome.
+        for (let i = 0; i < 7; i++) {
+          const a = (i / 7) * TAU + 0.4;
+          const r = 0.055 + (i % 3) * 0.012;
+          const lump = new THREE.SphereGeometry(r, 8, 6);
+          lump.scale(1.4, 0.6, 1.1);
+          lump.rotateY(a * 1.7);
+          lump.translate(Math.sin(a) * 0.36, 0.028, Math.cos(a) * 0.4);
+          parts.push(lump);
         }
         return merge(...parts);
       })(),
@@ -1987,6 +2062,18 @@ export class BuildingsView {
     // `def.height` on the nose: the sky hangs this lamp's point light at 1.62,
     // just inside the shade's mouth, and a shade the light sat above would be
     // lit from the wrong side.
+    //
+    // Round 9's frames then had that shade rendering as a flat black bowl at
+    // midday, the darkest thing in the frame. Two suspects; the winding was the
+    // wrong one. The lathe's outer half runs bottom-to-top, so its faces come
+    // out front-facing and its normals — three.js takes them as (dy, −dx) along
+    // the profile — point out and up, straight into the noon sun; the inner half
+    // runs top-to-bottom, which flips both, which is exactly what the underside
+    // of a shade wants. Neither surface is backwards. What was backwards was the
+    // colour: the shade shares the fitting's material, the fitting was dark iron
+    // stated as a multiplier, and dark iron multiplied by this lamp's brass entry
+    // is nine parts in a thousand — black, whatever the light does. It is painted
+    // now (see `paint`), so the iron is iron and the sun has something to land on.
     this.pool('lamp.post', merge(cylinder(0.045, 0.07, 1.3, 0.65, 16), cylinder(0.13, 0.16, 0.06, 0.03, 20)), solidMat(0.6), 24);
     this.pool(
       'lamp.bracket',
@@ -2022,7 +2109,7 @@ export class BuildingsView {
         }
         return merge(...parts);
       })(),
-      tone(0x3c3835, 0.5, 0.4),
+      paint('lamp', 0x6e675c, 0.5, 0.3),
       24,
     );
     // The lit globe glows warm and glows hard: the sky owns the point light
@@ -2064,7 +2151,7 @@ export class BuildingsView {
         box(0.14, 0.1, 0.58, 0.05, -0.36, 0),
         box(0.14, 0.1, 0.58, 0.05, 0.36, 0),
       ),
-      tone(0x3a3d43, 0.6, 0.35),
+      paint('generator', 0x534e46, 0.6, 0.3),
       16,
     );
     this.pool('gen.body', rbox(0.9, 0.9, 0.82, 0.57, 0, 0, 0.06), solidMat(0.4), 16);
@@ -2075,13 +2162,13 @@ export class BuildingsView {
         cylinder(0.28, 0.28, 0.1, 0, 24).rotateZ(Math.PI / 2).translate(0.48, 0.64, 0),
         cylinder(0.08, 0.08, 0.14, 0, 12).rotateZ(Math.PI / 2).translate(0.48, 0.64, 0),
       ),
-      tone(0x50545c, 0.45, 0.4),
+      paint('generator', 0x66605a, 0.45, 0.35),
       16,
     );
     this.pool(
       'gen.stack',
       merge(cylinder(0.1, 0.13, 0.4, 1.37, 16).translate(-0.26, 0, -0.2), cylinder(0.13, 0.13, 0.05, 1.545, 16).translate(-0.26, 0, -0.2)),
-      tone(0x3c3a38, 0.8),
+      paint('generator', 0x514e4a, 0.8),
       16,
     );
     // The cooling louvres over the firebox, the terminals on the hood, and the
@@ -2108,7 +2195,7 @@ export class BuildingsView {
         }
         return merge(...parts);
       })(),
-      tone(0x45484f, 0.45, 0.4),
+      paint('generator', 0x615a50, 0.45, 0.35),
       16,
     );
     // Only pushed while the firebox is actually burning, so "is it running" is a
@@ -2120,15 +2207,41 @@ export class BuildingsView {
       16,
     );
 
-    // Conduit: a junction puck with cable reaching only towards the neighbours it
-    // actually carries power to, the same trick the fence uses for its rails. A
-    // run of wire therefore draws itself as one continuous line, and a conduit
+    // Conduit: a junction plate with cable reaching only towards the neighbours
+    // it actually carries power to, the same trick the fence uses for its rails.
+    // A run of wire therefore draws itself as one continuous line, and a conduit
     // going nowhere reads as the stub it is.
-    this.pool('conduit.pad', cylinder(0.16, 0.18, 0.05, 0.025, 16), solidMat(0.55), 256);
+    //
+    // It used to be a puck with capsules threaded on it, and round 9's frames
+    // called that a blue barbell lying on the floor — the loudest object in a
+    // room full of beds and tables, which is exactly backwards for the one
+    // building whose whole job is to be under everything else. Three things were
+    // wrong and all three are the same mistake: it stood up (a capsule's round
+    // section put its brightest highlight at the top, where the manager camera
+    // is), it was wide (a bead is read before a line is), and it was the palette
+    // blue at full strength. So: a flat strap, a hand's width across and three
+    // centimetres proud, painted a dull neutral graphite that sits under the
+    // grass rather than over it, with cleats across it at the fixings — a cable
+    // run pinned to a floor, which is the thing being built. The junction stops
+    // being a bead and becomes a cover plate with a low boss on it, which is
+    // what a junction actually looks like from directly above.
+    //
+    // Both parts are drawn by the hundred, so both stay well inside the
+    // instanced budget: one segment on every rounded box, no cylinders at all.
+    this.pool(
+      'conduit.pad',
+      merge(rbox(0.34, 0.04, 0.34, 0.02, 0, 0, 0.014, 1), rbox(0.15, 0.055, 0.15, 0.027, 0, 0, 0.012, 1)),
+      paint('conduit', 0x54565a, 0.85),
+      256,
+    );
     this.pool(
       'conduit.arm',
-      new THREE.CapsuleGeometry(0.03, 0.5, 2, 10).rotateZ(Math.PI / 2).translate(0.28, 0.03, 0),
-      solidMat(0.55),
+      merge(
+        rbox(0.52, 0.032, 0.13, 0.016, 0.29, 0, 0.014, 1),
+        rbox(0.05, 0.046, 0.17, 0.023, 0.15, 0, 0.012, 1),
+        rbox(0.05, 0.046, 0.17, 0.023, 0.43, 0, 0.012, 1),
+      ),
+      paint('conduit', 0x54565a, 0.85),
       512,
     );
 
@@ -2154,7 +2267,7 @@ export class BuildingsView {
         box(0.12, 0.08, 0.56, 0.04, -0.33, 0),
         box(0.12, 0.08, 0.56, 0.04, 0.33, 0),
       ),
-      tone(0x3f4247, 0.6, 0.35),
+      paint('battery', 0x515a51, 0.6, 0.3),
       16,
     );
     this.pool('batt.body', rbox(0.86, 0.6, 0.78, 0.4, 0, 0, 0.06), solidMat(0.45), 16);
@@ -2189,7 +2302,7 @@ export class BuildingsView {
         }
         return merge(...parts);
       })(),
-      tone(0x45484f, 0.45, 0.4),
+      paint('battery', 0x585f55, 0.45, 0.35),
       16,
     );
     this.pool(
@@ -2257,7 +2370,7 @@ export class BuildingsView {
           new THREE.CapsuleGeometry(0.026, 0.18, 2, 8).rotateX(Math.PI / 2).translate(0.13, 0.03, -0.28),
         );
       })(),
-      tone(0x4a4d55, 0.5, 0.35),
+      paint('solar', 0x555d6a, 0.5, 0.3),
       16,
     );
     this.pool(
@@ -2277,7 +2390,7 @@ export class BuildingsView {
         g.translate(0, 0.82, 0);
         return g;
       })(),
-      tone(0xd8d8d8, 0.4, 0.5),
+      paint('solar', 0x6f747a, 0.4, 0.4),
       16,
     );
     this.pool(
@@ -2292,7 +2405,7 @@ export class BuildingsView {
         g.translate(0, 0.82, 0);
         return g;
       })(),
-      tone(0x99b0ff, 0.15, 0.3),
+      paint('solar', 0x35538c, 0.15, 0.25),
       16,
     );
 

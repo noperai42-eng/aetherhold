@@ -12,7 +12,7 @@ import * as THREE from 'three';
 import { describe, expect, it } from 'vitest';
 
 import { BuildingsView } from '../src/client/render/buildings';
-import { RESOURCE_COLOR } from '../src/client/render/palette';
+import { BUILDING_COLOR, RESOURCE_COLOR } from '../src/client/render/palette';
 import { groundLiftAt } from '../src/client/render/terrain';
 import { BUILD_MENU, defOf } from '../src/sim/buildings';
 import { addBuilding, addItem } from '../src/sim/world';
@@ -76,6 +76,55 @@ function reachAt(view: BuildingsView, x: number, y: number): number {
     }
   });
   return reach;
+}
+
+/**
+ * Which building's palette entry tints each family of pools, by the prefix of the
+ * key the view builds them under. The wood is deliberately absent: a tree's parts
+ * are tinted with bark and with the season rather than with `BUILDING_COLOR.tree`,
+ * so the arithmetic below would be checking the wrong multiplication.
+ */
+const TINTED_BY: Record<string, BuildingKind> = {
+  wall: 'wall',
+  stone: 'stonewall',
+  lab: 'lab',
+  door: 'door',
+  bed: 'bed',
+  med: 'medbed',
+  prison: 'prisonbed',
+  table: 'table',
+  game: 'gametable',
+  stove: 'stove',
+  bench: 'bench',
+  fish: 'fishhole',
+  mill: 'watermill',
+  cooler: 'cooler',
+  fire: 'campfire',
+  heat: 'heater',
+  turret: 'turret',
+  trap: 'trap',
+  sandbag: 'sandbag',
+  grave: 'grave',
+  statue: 'statue',
+  fence: 'fence',
+  lamp: 'lamp',
+  gen: 'generator',
+  conduit: 'conduit',
+  batt: 'battery',
+  solar: 'solar',
+};
+
+/** The darkest per-channel vertex colour in a geometry, or white where it has none. */
+function darkestDye(g: THREE.BufferGeometry): [number, number, number] {
+  const c = g.attributes.color;
+  if (!c) return [1, 1, 1];
+  const out: [number, number, number] = [Infinity, Infinity, Infinity];
+  for (let k = 0; k < c.count; k++) {
+    out[0] = Math.min(out[0], c.getX(k));
+    out[1] = Math.min(out[1], c.getY(k));
+    out[2] = Math.min(out[2], c.getZ(k));
+  }
+  return out;
 }
 
 /** Triangles in a geometry, indexed or not — what the GPU actually draws per instance. */
@@ -204,6 +253,83 @@ describe('the buildings view', () => {
       place(world, kind, x, y);
       view.sync(world);
       expect(reachAt(view, x, y), `${kind} reaches ${reachAt(view, x, y)} from its centre`).toBeLessThanOrEqual(0.56);
+    }
+    view.dispose();
+  });
+
+  it('leaves no part dark enough to be a hole in the ground at noon', () => {
+    // A pool's material colour is a *multiplier* on the palette entry the
+    // instance is tinted with, and that is the trap this test exists for. Round
+    // 9's frames had the lamp reading as a flat black bowl at midday, on the one
+    // surface in the colony the sun is directly above; the shade was not wound
+    // inside out and the lighting had not failed — dark iron (0x3c3835) stated as
+    // a multiplier on warm brass (0xb9a06a) is nine parts in a thousand of
+    // reflectance, and no amount of sun rescues that. Twenty other parts were the
+    // same arithmetic, all of them accents on machines. So the check is on the
+    // product, not on either factor: whatever the palette does and whatever a
+    // part is toned, what the sun actually lands on has to stay above the floor
+    // where a surface stops having a colour and starts being a silhouette.
+    //
+    // Grass is about 0.2 in these units and the darkest thing the colony is
+    // allowed to own is a bed's dark timber frame, at 0.033. The floor sits just
+    // under that: every one of the parts round 9 caught came out between 0.001
+    // and 0.023, so this is the line that has them all on the wrong side of it
+    // and nothing that was ever meant to be dark.
+    const FLOOR = 0.025;
+    const view = new BuildingsView();
+    let darkest = Infinity;
+    let worst = '';
+    view.group.traverse((o) => {
+      const mesh = o as THREE.InstancedMesh;
+      if (!mesh.isInstancedMesh) return;
+      const kind = TINTED_BY[mesh.geometry.name.split('.')[0]];
+      if (!kind) return;
+      const mat = mesh.material as THREE.MeshStandardMaterial;
+      // A part that makes its own light is exempt: an ember or a lit globe is
+      // read off its emissive, and its base colour is deliberately near-black.
+      // But the exemption has to be "bright enough to actually be read off",
+      // not "carries any emissive at all". Stated the loose way it let the
+      // stove's hotplates through on eight thousandths of glow over four
+      // thousandths of albedo — the darkest surface in the colony, facing
+      // straight up, and a member of the very class this test exists to catch.
+      // The seven parts that genuinely make light sit between 0.046 and 0.897,
+      // nowhere near this line, so the tighter rule costs nothing real.
+      const glow = 0.2126 * mat.emissive.r + 0.7152 * mat.emissive.g + 0.0722 * mat.emissive.b;
+      if (glow > FLOOR) return;
+      // A pool that dyes its vertices carries a third multiplier, and the part
+      // that matters is the darkest tone in it — a wheel's spokes, a wall's
+      // darkest board.
+      const dye = darkestDye(mesh.geometry);
+      const tint = new THREE.Color().setHex(BUILDING_COLOR[kind]);
+      const lit =
+        (1 - mat.metalness) *
+        (0.2126 * mat.color.r * tint.r * dye[0] + 0.7152 * mat.color.g * tint.g * dye[1] + 0.0722 * mat.color.b * tint.b * dye[2]);
+      if (lit < darkest) {
+        darkest = lit;
+        worst = `${mesh.geometry.name} under ${kind}`;
+      }
+    });
+    expect(darkest, `${worst} comes out at ${darkest.toFixed(4)}`).toBeGreaterThan(FLOOR);
+    view.dispose();
+  });
+
+  it('lays a conduit down on the floor instead of standing beads on it', () => {
+    // A conduit is the one building whose whole job is to be under everything
+    // else, and round 9's frames had it as the loudest thing in a room of beds
+    // and tables — a blue rod with round beads threaded on it. A capsule puts its
+    // brightest highlight on top, which is exactly where the manager camera is,
+    // and the beads read before the line does. Both parts have to stay flatter
+    // than they are wide and low enough that a settler's boot would clear them.
+    const view = new BuildingsView();
+    for (const key of ['conduit.pad', 'conduit.arm']) {
+      const g = partGeometry(view, key);
+      g.computeBoundingBox();
+      const b = g.boundingBox!;
+      // Strictly under, not at: the capsule this test was written against stood
+      // exactly 0.06 off the floor, so the loose comparison passed on the one
+      // shape it was written to reject and only the aspect check below caught it.
+      expect(b.max.y, `${key} stands ${b.max.y} off the floor`).toBeLessThan(0.06);
+      expect(b.max.z - b.min.z, `${key} is no wider across than it is tall`).toBeGreaterThan(3 * (b.max.y - b.min.y));
     }
     view.dispose();
   });
@@ -406,6 +532,30 @@ describe('a grave and a deadfall', () => {
       trigger.boundingBox!.max.y,
       'the pan is bedded level with the frame, so the trap has no visible trigger',
     ).toBeGreaterThan(frame.boundingBox!.max.y);
+    view.dispose();
+  });
+
+  it('breaks the mound out of the ellipse it was turned on', () => {
+    // Round 9 called the mound a smooth chocolate loaf at manager zoom: the clods
+    // were there, but they sat on the crown where the heap is flattest, so each
+    // one stood a couple of centimetres proud of a surface already facing the sun
+    // and threw no shadow anybody could see from twenty cells up. The fix cannot
+    // be height — the marker has to keep its clearance over the mound, which the
+    // test above measures — so it has to be plan. What separates turned ground
+    // from a dome at that distance is a ragged outline, and the heap's own skirt
+    // is a clean ellipse of 0.352 by 0.42. So the check is for earth *outside*
+    // that ellipse and low down, which is the only place a silhouette is made.
+    const view = new BuildingsView();
+    const mound = partGeometry(view, 'grave.mound');
+    const pos = mound.attributes.position;
+    let outside = 0;
+    for (let k = 0; k < pos.count; k++) {
+      if (pos.getY(k) > 0.2) continue;
+      const u = pos.getX(k) / 0.352;
+      const v = pos.getZ(k) / 0.42;
+      if (u * u + v * v > 1.16) outside++;
+    }
+    expect(outside, 'every crumb of the mound is inside the ellipse, which is a dome').toBeGreaterThan(60);
     view.dispose();
   });
 });

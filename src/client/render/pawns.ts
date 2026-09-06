@@ -54,6 +54,21 @@ const CALF_SCALE = 0.45;
 const COLLAR_R = 0.15;
 
 /**
+ * How far over an animal's back the hunt marker's point hangs — in world units,
+ * which is the whole of the fix.
+ *
+ * The height was a number in the animal's own body space, multiplied by the
+ * species' size on the way out, so the air under the marker shrank with the
+ * animal: a mossback got twenty-three centimetres of it and a brambletail got
+ * under three. On the small species the marker did not hover over the hide, it
+ * lay on it — and a red-orange shape lying on a grey shoulder is not an order
+ * the player gave, it is a wound the animal took. The clearance is the same for
+ * every species now, and for a calf too: the marker is drawn for the player and
+ * not for the world, so it is sized and hung in the player's units.
+ */
+const MARK_CLEARANCE = 0.24;
+
+/**
  * What `PawnsView` needs from a body, whichever body plan it has. Settlers are
  * two-legged and carry things; the herds are four-legged and do not. Keeping one
  * interface means interpolation, layer assignment and cleanup are written once.
@@ -73,6 +88,21 @@ interface Rig {
 const TORSO_Y = 1.02;
 const SHOULDER_Y = 1.28;
 const HEAD_Y = 1.51;
+
+/**
+ * Where the sleeve ends and where the hand hangs below it.
+ *
+ * The arm was one 0.6 tube with the hand set three centimetres short of its
+ * tip, and the palm was narrower across than the sleeve: the whole hand lived
+ * inside the cloth and all that came out of the end was the last centimetre of
+ * a sphere. From the close overhead camera — the nearest look the game takes at
+ * a colonist — a settler's free arm was a plain blue tube ending bluntly at the
+ * wrist. So the cloth stops at the wrist and the hand hangs below it: the arm
+ * ends in skin, in silhouette as well as in colour, and the hand is deeper
+ * front to back than the sleeve so it also breaks the outline.
+ */
+const SLEEVE = 0.53;
+const WRIST_Y = -0.575;
 
 /**
  * Hair, black through silver. Read off `colorSeed` like the skin and the cloth
@@ -157,6 +187,8 @@ class PawnRig implements Rig {
     this.legR.name = 'leg';
     this.armL = new THREE.Mesh(shared.arm, clothMat);
     this.armR = new THREE.Mesh(shared.arm, clothMat);
+    this.armL.name = 'arm';
+    this.armR.name = 'arm';
 
     this.torso.position.y = TORSO_Y;
     this.head.position.y = HEAD_Y;
@@ -194,7 +226,7 @@ class PawnRig implements Rig {
     ] as const) {
       const hand = new THREE.Mesh(shared.hand, skinMat);
       hand.name = 'hand';
-      hand.position.y = -0.57;
+      hand.position.y = WRIST_Y;
       hand.scale.x = side;
       hand.castShadow = true;
       arm.add(hand);
@@ -228,6 +260,7 @@ class PawnRig implements Rig {
         this.weapon.add(part);
       }
       this.weapon.children[0]!.name = pawn.weapon === 'rifle' ? 'stock' : 'club';
+      if (this.weapon.children[1]) this.weapon.children[1].name = 'action';
       this.armR.add(this.weapon); // rides the hand, so it swings with the arm
     }
 
@@ -440,9 +473,11 @@ interface SpeciesModel {
    */
   collarR: number;
   /**
-   * Where the hunt marker's point hovers, in body space: a hand's width over the
-   * back, clear of whatever the species carries up there. One height for all four
-   * put the point half a body above a hare and among a mossback's antlers.
+   * The top of this species' back in body space — the highest thing it carries
+   * over the spine, which is a hump on one animal and a raised brush on
+   * another. The rig hangs the hunt marker's point `MARK_CLEARANCE` above it,
+   * in world units: this number says where the back is, and the constant says
+   * how much air goes over it.
    */
   markAt: number;
   head: THREE.BufferGeometry;
@@ -642,9 +677,10 @@ class AnimalRig implements Rig {
     this.mats.push(markMat);
     this.mark = new THREE.Mesh(shared.huntMark, markMat);
     this.mark.name = 'mark';
-    // The geometry's point is its origin, so this is where the point hangs: over
-    // the species' own back, and lower on a small animal than on a large one.
-    this.mark.position.y = this.markAt * def.size;
+    // The geometry's point is its origin, so this is where the point hangs: the
+    // species' own back, scaled to the animal, and the same clearance over it
+    // whatever the animal is.
+    this.mark.position.y = this.markAt * def.size + MARK_CLEARANCE;
     this.mark.visible = false;
     this.group.add(this.mark);
 
@@ -692,7 +728,7 @@ class AnimalRig implements Rig {
     if (grow !== this.grown) {
       this.grown = grow;
       this.body.scale.setScalar(this.size * grow);
-      this.mark.position.y = this.markAt * this.size * grow;
+      this.mark.position.y = this.markAt * this.size * grow + MARK_CLEARANCE;
       this.walkPhase = phaseScale(this.legLength * this.size * grow, ANIMAL_SWING);
     }
     this.mark.visible = !!pawn.hunted && !pawn.dead;
@@ -942,11 +978,16 @@ function makeHair(long: boolean): THREE.BufferGeometry {
  * few millimetres inside the skull, so its rim never shows. The rim stays
  * inside through the working nod, which is the only pitch the head takes. Both
  * ends are open — one is inside the torso, the other inside the head.
+ *
+ * The throat is drawn in four rings, not five. The old profile put two of them
+ * below the torso's top pole, where the cloth is a fifth of a metre wider than
+ * the neck on every meridian, so one of the two was a ring of vertices nothing
+ * could ever see; the thirty-two triangles it cost went into rounding the
+ * rifle's receiver, which sits in the open under the manager camera.
  */
 function makeNeck(): THREE.BufferGeometry {
   const profile = [
-    [0.08, -0.08],
-    [0.066, -0.03],
+    [0.076, -0.07],
     [0.062, 0.02],
     [0.068, 0.06],
     [0.082, 0.09],
@@ -965,16 +1006,25 @@ function makeNeck(): THREE.BufferGeometry {
  * and that outline is the thumb. It is cut for the right hand, thumb toward
  * -X, and the rig mirrors it for the left, the way an antler is mirrored: on a
  * body whose arms hang at its sides, both thumbs point at the midline.
+ *
+ * The palm is a sixth larger than that first one and hangs clear of the cuff
+ * (see `SLEEVE`), which is the half of the fix the thumb could not do on its
+ * own: a hand the sleeve swallows has no outline to give. Ten meridians rather
+ * than eight, because what the sleeve used to hide is now the last thing on the
+ * arm and the manager camera looks straight down the length of it — a
+ * hexagonal palm on the end of a round sleeve reads as a nut on a bolt.
  */
 function makeHand(): THREE.BufferGeometry {
-  const palm = new THREE.SphereGeometry(0.062, 8, 6).scale(0.72, 1.2, 1.15);
+  const palm = new THREE.SphereGeometry(0.072, 10, 6).scale(0.76, 1.14, 1.08);
   // Rooted a fifth of the way into the palm, so no rim of it shows where the
   // two meet, and rolled far enough over that most of its length is width: a
   // thumb held against the hand is a knuckle, and the outline is the point.
-  const thumb = new THREE.CapsuleGeometry(0.019, 0.055, 1, 6)
+  // It grew less than the palm did: it reaches in toward the trouser at rest,
+  // and a longer one would spend the idle pose buried in the thigh.
+  const thumb = new THREE.CapsuleGeometry(0.021, 0.058, 1, 6)
     .rotateZ(1.05)
     .rotateX(0.3)
-    .translate(-0.028, -0.014, 0.018);
+    .translate(-0.03, -0.016, 0.02);
   return weld([palm, thumb]);
 }
 
@@ -1043,22 +1093,40 @@ function makeAnimalNeck(baseR: number, topR: number, length: number): THREE.Buff
 function makeRifleStock(): THREE.BufferGeometry {
   const butt = new RoundedBoxGeometry(0.048, 0.1, 0.2, 1, 0.014);
   butt.translate(0, -0.03, 0);
-  const forend = new RoundedBoxGeometry(0.044, 0.04, 0.26, 1, 0.012);
-  forend.translate(0, -0.015, 0.35);
+  // The forend is a tube, not a slab. It is four centimetres of wood pinned
+  // under a barrel that is nearly as wide, so of the rounded box it used to be
+  // the camera could only ever see the bottom third — a hundred and eight
+  // triangles for a strip a settler's own hand covers. A capsule is rounder
+  // than the box was for less than half the cost, and the difference is most of
+  // what the receiver above needed.
+  const forend = new THREE.CapsuleGeometry(0.022, 0.22, 1, 10);
+  forend.rotateX(Math.PI / 2);
+  forend.translate(0, -0.016, 0.35);
   const g = weld([butt, forend]);
   g.translate(0, -0.55, 0);
   return g;
 }
 
-/** The steel of a rifle: receiver, barrel and a sight, seated on the stock. */
+/**
+ * The steel of a rifle: receiver, barrel and a sight, seated on the stock.
+ *
+ * The receiver and the sight were the last two square-cornered boxes on a
+ * settler, and they sit where the manager camera looks hardest — at a colonist's
+ * waist, held out from the body against the grass, with the sight standing
+ * proud on the skyline. A box catches the sun on three flats at once and its
+ * corners stay sharp at every zoom, which is exactly the read this whole rig
+ * was rebuilt to lose. So the receiver is a rounded box on the stock's own
+ * radius, and the sight is a post: at nine millimetres across there is no
+ * shape to a sight but its outline, and a capsule's outline is a bead.
+ */
 function makeRifleAction(): THREE.BufferGeometry {
-  const receiver = new THREE.BoxGeometry(0.05, 0.06, 0.2);
+  const receiver = new RoundedBoxGeometry(0.05, 0.06, 0.2, 1, 0.016);
   receiver.translate(0, 0.005, 0.2);
   const barrel = new THREE.CylinderGeometry(0.016, 0.018, 0.44, 12);
   barrel.rotateX(Math.PI / 2);
   barrel.translate(0, 0.012, 0.5);
-  const sight = new THREE.BoxGeometry(0.02, 0.03, 0.03);
-  sight.translate(0, 0.05, 0.28);
+  const sight = new THREE.CapsuleGeometry(0.009, 0.016, 1, 6);
+  sight.translate(0, 0.052, 0.28);
   const g = weld([receiver, barrel, sight]);
   g.translate(0, -0.55, 0);
   return g;
@@ -1425,9 +1493,9 @@ function makeMossback(): SpeciesModel {
     neckPitch: 0.7,
     collarAt: 0.08,
     collarR: 0.13,
-    // Over the hump, which is the highest the back gets; the antlers are higher
+    // The hump, which is the highest the back gets; the antlers are higher
     // still but they are a body-length forward of where the marker hangs.
-    markAt: 1.18,
+    markAt: 0.95,
     head: makeAnimalHead([0.12, 0.11, 0.14], { baseR: 0.085, tipR: 0.05, length: 0.22, drop: 0.03 }),
     headAt: [0, 1.06, 0.56],
     eyeAt: [0.085, 0.035, 0.09],
@@ -1512,9 +1580,9 @@ function makeDunhare(): SpeciesModel {
     neckPitch: 0.6,
     collarAt: 0,
     collarR: 0.085,
-    // Low: a hare stands a third of a mossback, and a marker hung at a mossback's
-    // height over one floated half a body clear of it with nothing in between.
-    markAt: 0.88,
+    // The crown of the back. A hare stands a third of a mossback, and the
+    // clearance over it is the same as a mossback's rather than a third of it.
+    markAt: 0.667,
     head: makeAnimalHead([0.1, 0.1, 0.12], { baseR: 0.076, tipR: 0.052, length: 0.13, drop: 0.02 }),
     headAt: [0, 0.62, 0.36],
     eyeAt: [0.075, 0.03, 0.075],
@@ -1569,8 +1637,8 @@ function makeBrambletail(): SpeciesModel {
     neckPitch: 0.7,
     collarAt: 0.02,
     collarR: 0.081,
-    // Just over the brush, which stands higher than this animal's back does.
-    markAt: 0.95,
+    // The brush, which stands higher than this animal's back does.
+    markAt: 0.86,
     head: makeAnimalHead([0.095, 0.09, 0.11], { baseR: 0.065, tipR: 0.028, length: 0.15, drop: 0.02 }),
     headAt: [0, 0.68, 0.53],
     eyeAt: [0.07, 0.03, 0.07],
@@ -1619,8 +1687,8 @@ function makeFenwolf(): SpeciesModel {
     neckPitch: 1.1,
     collarAt: 0.06,
     collarR: 0.111,
-    // Over the ruff, the highest point on a wolf that carries its head low.
-    markAt: 1,
+    // The ruff, the highest point on a wolf that carries its head low.
+    markAt: 0.86,
     head: makeAnimalHead([0.11, 0.1, 0.13], { baseR: 0.075, tipR: 0.035, length: 0.17, drop: 0.025 }),
     headAt: [0, 0.72, 0.68],
     eyeAt: [0.08, 0.03, 0.085],
@@ -1658,13 +1726,22 @@ function makeFenwolf(): SpeciesModel {
  * past its widest and rolls back inward and up, so the top edge is a turned lip
  * with a curve to it. Against a flat fill the outline is the only thing that
  * can say a marker has thickness, and now it does.
+ *
+ * And the point is a mouth, not a point. Rounded and swollen at the top,
+ * tapering to a sharp tip at the bottom, filled with one flat red-orange and
+ * hung where it grazed the hide, the marker was the exact silhouette of a drop
+ * of blood — on the grey fenwolf it read as an injury rather than as an order
+ * somebody gave. That silhouette is the tip. Opening it into a ring the width
+ * of a thumbnail costs nothing, shows a coin of ground or hide straight through
+ * the middle of it, and leaves a funnel: a thing pointing at an animal rather
+ * than a thing running down one. `MARK_CLEARANCE` does the other half.
  */
 function makeHuntMark(): THREE.BufferGeometry {
   const profile = [
-    [0, 0],
-    [0.056, 0.128],
-    [0.078, 0.182],
-    [0.07, 0.208],
+    [0.038, 0],
+    [0.062, 0.09],
+    [0.078, 0.166],
+    [0.07, 0.192],
   ].map(([r, y]) => new THREE.Vector2(r, y));
   return new THREE.LatheGeometry(profile, 14);
 }
@@ -1689,7 +1766,7 @@ function makeShared(): SharedGeometry {
     // bottom inside a boot, so the fourth was paid for and never seen.
     leg: limb(0.075, SETTLER_LEG, 12, 3),
     boot: makeBoot(),
-    arm: limb(0.065, 0.6, 12, 3),
+    arm: limb(0.065, SLEEVE, 12, 3),
     hand: makeHand(),
     rifleStock: makeRifleStock(),
     rifleAction: makeRifleAction(),

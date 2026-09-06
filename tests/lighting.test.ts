@@ -1131,6 +1131,47 @@ describe('what a body is made of', () => {
     view.dispose();
   });
 
+  it('gives every species the same air under its marker, and opens the point — a red drop resting on a grey shoulder is a wound, not an order', () => {
+    // The clearance above was a number in the animal's own body space, and the
+    // rig multiplied it by the species' size on the way out, so the air under
+    // the marker shrank with the animal: a hand's width of it over a mossback,
+    // under three centimetres over a brambletail, which at any zoom is contact.
+    // A shape lying on the hide, filled with one flat red-orange and tapering to
+    // a point at the bottom, is the silhouette of a drop of blood — the frame it
+    // was caught in read as an injury the animal took rather than as an order
+    // somebody gave. The marker is drawn for the player, so it is hung in the
+    // player's units: the same gap for every species. And the tip that made it a
+    // drop is a ring now, wide enough to show ground through the middle of it.
+    const { view, world } = bodies();
+    const gaps: number[] = [];
+    for (const rig of view.group.children) {
+      const pawn = world.pawns.find((p) => p.x === rig.position.x && p.y === rig.position.z)!;
+      if (!pawn.animal) continue;
+      const barrel = part(rig, 'body');
+      barrel.geometry.computeBoundingBox();
+      const back = barrel.geometry.boundingBox!.max.y * (barrel.parent as THREE.Object3D).scale.y;
+      gaps.push(part(rig, 'mark').position.y - back);
+    }
+    expect(gaps.length, 'there are marked animals to measure').toBeGreaterThan(0);
+    expect(
+      Math.max(...gaps) - Math.min(...gaps),
+      'a hare gets as much air under its marker as a mossback does',
+    ).toBeLessThan(0.01);
+    const mark = part(view.group, 'mark');
+    mark.geometry.computeBoundingBox();
+    const pos = mark.geometry.attributes.position!;
+    const floor = mark.geometry.boundingBox!.min.y;
+    let mouth = 0;
+    let widest = 0;
+    for (let i = 0; i < pos.count; i++) {
+      const r = Math.hypot(pos.getX(i), pos.getZ(i));
+      widest = Math.max(widest, r);
+      if (pos.getY(i) < floor + 1e-6) mouth = Math.max(mouth, r);
+    }
+    expect(mouth, 'the point is an opening, not the tip of a drop').toBeGreaterThan(widest * 0.35);
+    view.dispose();
+  });
+
   it("gives a settler's hand a thumb and turns it toward the midline — two pale ovals on the ends of the arms are not hands", () => {
     // The overhead camera is close enough to count fingers and the hand was a
     // sphere, so it read as a blob rather than as the end of an arm. A thumb is
@@ -1168,6 +1209,79 @@ describe('what a body is made of', () => {
       expect(mirrored.size, 'the two hands are mirrored, so both thumbs face in').toBe(2);
     }
     expect(settlers).toBeGreaterThan(0);
+    view.dispose();
+  });
+
+  it('hangs the hand past the end of the cuff and wider than it — a palm inside the sleeve is an arm ending in nothing', () => {
+    // The thumb above was shipped and nobody could see it. The sleeve ran to the
+    // fingertips and the palm was narrower across than the cloth, so the whole
+    // hand lived inside the arm and the closest camera the game has framed a
+    // blue tube ending bluntly at the wrist. Neither half of that shows in a
+    // triangle count or in the thumb's direction, so both are measured here: the
+    // hand has to reach past the cuff by most of its own length, which is what
+    // makes skin the thing the arm ends in, and it has to be deeper than the
+    // sleeve is thick, which is what puts it in the silhouette as well as in the
+    // colour.
+    const { view, world } = bodies();
+    let settlers = 0;
+    for (const rig of view.group.children) {
+      const pawn = world.pawns.find((p) => p.x === rig.position.x && p.y === rig.position.z)!;
+      if (pawn.animal) continue;
+      settlers++;
+      const arm = part(rig, 'arm');
+      const hand = part(arm, 'hand');
+      arm.geometry.computeBoundingBox();
+      hand.geometry.computeBoundingBox();
+      const sleeve = arm.geometry.boundingBox!;
+      const palm = hand.geometry.boundingBox!;
+      const proud = sleeve.min.y - (hand.position.y + palm.min.y);
+      expect(proud, 'most of the hand hangs below the cuff').toBeGreaterThan((palm.max.y - palm.min.y) * 0.5);
+      expect(palm.max.z, 'and it is deeper than the sleeve, so it breaks the outline').toBeGreaterThan(sleeve.max.z);
+    }
+    expect(settlers).toBeGreaterThan(0);
+    view.dispose();
+  });
+
+  it("leaves no square corner on the rifle's steel — the receiver and the sight were the last boxes on a settler", () => {
+    // A body of capsules and lathes with two boxes left in it, on the one thing
+    // a colonist holds out away from the silhouette at exactly the height the
+    // manager camera looks hardest at. A box catches the sun on three flats at
+    // once and keeps its corners at every zoom, which is the read the whole
+    // rebuild existed to lose. Both are read off the vertices. The receiver's
+    // flanks are the only part of the steel that reaches out past the barrel, and
+    // on a rounded box they stop a corner radius short of its full height where
+    // a box's run the whole way. And the highest thing on the rifle is the
+    // sight: a post ends in a pole, a box in the four corners of a flat roof.
+    const { view } = bodies();
+    const steel = part(view.group, 'action');
+    const pos = steel.geometry.attributes.position!;
+    let across = 0;
+    let top = -Infinity;
+    for (let i = 0; i < pos.count; i++) {
+      across = Math.max(across, Math.abs(pos.getX(i)));
+      top = Math.max(top, pos.getY(i));
+    }
+    const spanY = (keep: (absX: number) => boolean): number => {
+      let lo = Infinity;
+      let hi = -Infinity;
+      for (let i = 0; i < pos.count; i++) {
+        if (!keep(Math.abs(pos.getX(i)))) continue;
+        lo = Math.min(lo, pos.getY(i));
+        hi = Math.max(hi, pos.getY(i));
+      }
+      return hi - lo;
+    };
+    expect(spanY((x) => x > across - 1e-6), "the receiver's flank stops short of its own corners").toBeLessThan(
+      spanY((x) => x > across * 0.8) * 0.7,
+    );
+    const roof = new THREE.Box3();
+    for (let i = 0; i < pos.count; i++) {
+      if (pos.getY(i) > top - 1e-6) roof.expandByPoint(new THREE.Vector3(pos.getX(i), 0, pos.getZ(i)));
+    }
+    expect(
+      Math.max(roof.max.x - roof.min.x, roof.max.z - roof.min.z),
+      'the sight ends in a point, not in a flat roof',
+    ).toBeLessThan(0.002);
     view.dispose();
   });
 

@@ -231,6 +231,37 @@ describe('what the map shows about what is out there', () => {
     v.dispose();
   });
 
+  it('gives the marker a body, since nothing else is going to light it', () => {
+    // The marker takes no light on purpose — it must not dim at dusk with the
+    // rest of the colony — and an unlit solid with one colour on every face is
+    // its own silhouette and nothing more. That is exactly how the old
+    // octahedron reached a frame: a flat gold disc, magnified by hanging two
+    // metres closer to the camera than the ground, lying among the grass beside
+    // its own cairn. So the shading is baked in, and it has to actually vary:
+    // a lit top and a shaded underside, on a shape with depth in all three axes.
+    const world = createWorld(SEED);
+    const v = view(world);
+    const geo = pins(v).geometry;
+    const col = geo.getAttribute('color');
+    expect(col).toBeDefined();
+    const c = new THREE.Color();
+    const hsl = { h: 0, s: 0, l: 0 };
+    let lightest = 0;
+    let darkest = 1;
+    for (let i = 0; i < col.count; i++) {
+      const { l } = c.fromBufferAttribute(col, i).getHSL(hsl, THREE.SRGBColorSpace);
+      lightest = Math.max(lightest, l);
+      darkest = Math.min(darkest, l);
+    }
+    expect(lightest - darkest).toBeGreaterThan(0.1);
+    geo.computeBoundingBox();
+    const box = geo.boundingBox!;
+    for (const axis of ['x', 'y', 'z'] as const) {
+      expect(box.max[axis] - box.min[axis]).toBeGreaterThan(0.2);
+    }
+    v.dispose();
+  });
+
   it('copes with a map that has no finds on it at all', () => {
     const world = createWorld(SEED);
     world.sites.length = 0;

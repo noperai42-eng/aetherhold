@@ -33,6 +33,34 @@ const PIN_HEIGHT = 2.05;
 const PIN_BOB = 0.16;
 /** Amber, the colour the HUD already uses for "you could do something here". */
 const PIN_COLOR = 0xd8a24a;
+/**
+ * The marker's profile, spun about its own axis: a bead pinched top and bottom.
+ *
+ * It used to be a bare octahedron, and from the isometric camera that was a
+ * mistake with a name. Unlit and eight-sided, every face took exactly the same
+ * amber, so what reached the frame was the silhouette and nothing else: a flat
+ * seven-sided disc, and — since it hangs two metres up while the camera is
+ * seven metres up — one magnified half again by perspective, so it read as a
+ * gold coin nine tenths of a cell across lying on the grass beside the cairn,
+ * with tufts on the nearer cells drawn over it. A marker that reads as
+ * something lying on the ground is worse than no marker.
+ *
+ * So it is spun rather than faceted, and slimmer than it was, and its shading
+ * is painted into the geometry (`pinGeometry`) rather than left to a light it
+ * does not take. The x values are radii and the y values heights, centred on
+ * the origin so the instance position goes on meaning "where the marker hangs".
+ */
+const PIN_PROFILE = [
+  [0, -0.26],
+  [0.075, -0.18],
+  [0.14, -0.08],
+  [0.175, 0],
+  [0.155, 0.09],
+  [0.105, 0.17],
+  [0, 0.24],
+] as const;
+/** How many times round. Sixteen, over the profile's six bands: 192 triangles for a marker. */
+const PIN_SEGMENTS = 16;
 
 /** Room for the biggest arrangement any one site can produce, so nothing clips. */
 const STONES_PER_SITE = 8;
@@ -81,12 +109,14 @@ export class LandmarkView {
       lumpyGeometry(new THREE.OctahedronGeometry(0.5, 2), 0.12, 17.9),
       n * SHARDS_PER_SITE,
     );
-    // Unlit, so it reads as a marker and not as an object with a light on it.
-    // Fog still touches it: a pin you can see through a snowstorm would be the
-    // one thing on the map that ignores the weather.
+    // Unlit, so it reads as a marker and not as an object with a light on it —
+    // which is why its shading has to be painted on, and is. Fog still touches
+    // it: a pin you can see through a snowstorm would be the one thing on the
+    // map that ignores the weather. White here because the amber rides in the
+    // vertex colours, and the two multiply.
     this.pins = new THREE.InstancedMesh(
-      new THREE.OctahedronGeometry(0.26, 0),
-      new THREE.MeshBasicMaterial({ color: PIN_COLOR }),
+      pinGeometry(),
+      new THREE.MeshBasicMaterial({ color: 0xffffff, vertexColors: true }),
       n,
     );
     this.pins.frustumCulled = false;
@@ -114,8 +144,9 @@ export class LandmarkView {
       const p = this.pinAt[i]!;
       const phase = t / 20 + p.phase;
       v.set(p.x, PIN_HEIGHT + Math.sin(phase * 1.1) * PIN_BOB, p.y);
-      // Turning as well as bobbing, because an octahedron seen edge-on from the
-      // isometric camera is a diamond that could be part of the ground.
+      // Bobbing and precessing. The bead is a solid of revolution, so a turn
+      // about its own axis alone would be invisible; what shows is its tilt
+      // going round with the turn, and nothing on the ground bobs or wobbles.
       e.set(0, phase * 0.7, 0.35);
       q.setFromEuler(e);
       m.compose(v, q, one);
@@ -344,6 +375,51 @@ function coldCamp(site: Site, blocks: Piece[], stones: Piece[]): void {
     sz: 0.72,
     color: shade(BUILDING_COLOR.fence, -0.08),
   });
+}
+
+/**
+ * The marker, as a solid: `PIN_PROFILE` spun about the y axis, with a sun baked
+ * into its vertex colours.
+ *
+ * The material is unlit on purpose — a marker that dims at dusk with the rest of
+ * the colony is a marker the player stops seeing on the evening they most need
+ * it — and the price of that is a shape with no shading at all, which is how the
+ * old octahedron came out as a flat disc. Painting the light in gets both: the
+ * amber never darkens with the hour, and the bead still has a lit top, a shaded
+ * underside and a band between them that turns as the pin bobs and precesses.
+ *
+ * The tone is each vertex's own normal against a high sun leaning a little to
+ * one side. Straight up alone was tried first and photographed flat: on a solid
+ * of revolution seen side-on, a tone that varies only with height gives the
+ * silhouette a top-to-bottom gradient and no left-to-right one at all, which
+ * the eye reads as a shaded disc rather than as a bead. The lean is what rounds
+ * it. Being fixed in the object it turns with the marker, so the highlight
+ * sweeps round as the pin precesses — on a thing whose whole job is to catch
+ * the eye that reads as a glint, not as an error.
+ */
+function pinGeometry(): THREE.BufferGeometry {
+  const geo = new THREE.LatheGeometry(
+    PIN_PROFILE.map(([r, y]) => new THREE.Vector2(r, y)),
+    PIN_SEGMENTS,
+  );
+  // Nothing here is textured, and the uv attribute is two floats a vertex on a
+  // mesh the whole map shares.
+  geo.deleteAttribute('uv');
+  const n = geo.getAttribute('normal') as THREE.BufferAttribute;
+  const lit = new THREE.Color(shade(PIN_COLOR, 0.18));
+  const dark = new THREE.Color(shade(PIN_COLOR, -0.14));
+  const sun = new THREE.Vector3(0.34, 0.88, 0.33).normalize();
+  const c = new THREE.Color();
+  const col = new Float32Array(n.count * 3);
+  for (let i = 0; i < n.count; i++) {
+    const t = (n.getX(i) * sun.x + n.getY(i) * sun.y + n.getZ(i) * sun.z + 1) / 2;
+    c.copy(dark).lerp(lit, t);
+    col[i * 3] = c.r;
+    col[i * 3 + 1] = c.g;
+    col[i * 3 + 2] = c.b;
+  }
+  geo.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+  return geo;
 }
 
 function instanced(geo: THREE.BufferGeometry, count: number): THREE.InstancedMesh {

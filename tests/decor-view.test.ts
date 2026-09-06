@@ -424,17 +424,115 @@ describe('what a blade and a stone are made of', () => {
     geo.dispose();
   });
 
-  it('keeps a creased blade to five triangles, since three of them share one tuft', () => {
-    // The crease costs a row of vertices, and the grass is instanced tens of
-    // thousands of times, so where that row goes is decided by arithmetic: three
-    // blades inside sixteen triangles leaves five each and nothing spare. A
-    // blade that grew another row would still merge and still draw; what it
-    // would stop doing is fitting, and this is where that shows.
+  it('spends the tuft budget on five thin blades and not three fat ones', () => {
+    // The grass is instanced tens of thousands of times, so how the sixteen
+    // triangles a tuft may cost get divided is a decision and not an accident.
+    // Three creased blades took five triangles each; five plain ones take three
+    // each and land on the same fifteen — the swap that stopped a tuft reading
+    // as a three-pointed star with a notch in the middle. A sixth blade, or a
+    // fourth row of vertices in one of these five, would still merge and still
+    // draw; what it would stop doing is fitting, and this is where that shows.
+    const view = new DecorView(meadow());
+    const geo = meshes(view).tufts.geometry;
+    expect(triangles(geo)).toBe(15);
+    // Five strips of five vertices, none shared: two roots, two at the waist
+    // and a tip, times the five blades.
+    expect(geo.getAttribute('position').count).toBe(25);
+    view.dispose();
+  });
+
+  it('still keeps a creased blade to five triangles, for the leaves built out of it', () => {
+    // The tuft stopped using this shape, but `fx.ts` did not: a stripped bush's
+    // leaves are folded blades, and they are instanced across the moor. The
+    // crease costs a row of vertices, and one row is all it may ever cost.
     const blade = foldedBladeGeometry(0.5, 0.34, 0.8);
     expect(triangles(blade)).toBe(5);
-    const view = new DecorView(meadow());
-    expect(triangles(meshes(view).tufts.geometry)).toBe(triangles(blade) * 3);
     blade.dispose();
+  });
+
+  it('brings each blade up out of its own patch of ground, not one shared point', () => {
+    // Five blades striking the turf at one place is a hard notch, and a field of
+    // notches photographed as bird tracks pressed into the grass — the single
+    // biggest thing wrong with the old three-blade tuft. Each blade's root edge
+    // has its own midpoint on y = 0, far enough from the others that the junction
+    // is a patch of stems rather than a point. Read as the midpoint of each pair
+    // of root vertices, which is how the geometry is built.
+    const view = new DecorView(meadow());
+    const p = meshes(view).tufts.geometry.getAttribute('position');
+    const roots: { x: number; z: number }[] = [];
+    for (let i = 0; i < p.count; i++) {
+      if (Math.abs(p.getY(i)) < 1e-6) roots.push({ x: p.getX(i), z: p.getZ(i) });
+    }
+    expect(roots.length).toBe(10);
+    const mids = [];
+    for (let i = 0; i + 1 < roots.length; i += 2) {
+      mids.push({ x: (roots[i]!.x + roots[i + 1]!.x) / 2, z: (roots[i]!.z + roots[i + 1]!.z) / 2 });
+    }
+    expect(mids.length).toBe(5);
+    for (let i = 0; i < mids.length; i++) {
+      for (let j = i + 1; j < mids.length; j++) {
+        expect(Math.hypot(mids[i]!.x - mids[j]!.x, mids[i]!.z - mids[j]!.z)).toBeGreaterThan(0.06);
+      }
+    }
+    view.dispose();
+  });
+
+  it('makes a blade rise and bow over rather than radiate flat along the ground', () => {
+    // What gave the old tuft its footprint from overhead was the lean, and a
+    // blade leaned far enough to matter is a blade lying on the turf: three of
+    // those from one point is an arrowhead, not grass. The footprint now comes
+    // from the bow, so anything that reaches out from the root has to still be
+    // standing off the ground when it gets there. Measured as the lowest vertex
+    // among those more than a third of a tuft-height out from the root.
+    const view = new DecorView(meadow());
+    const p = meshes(view).tufts.geometry.getAttribute('position');
+    let lowestOut = Infinity;
+    let out = 0;
+    for (let i = 0; i < p.count; i++) {
+      if (Math.hypot(p.getX(i), p.getZ(i)) <= 0.3) continue;
+      out++;
+      lowestOut = Math.min(lowestOut, p.getY(i));
+    }
+    expect(out).toBeGreaterThan(3);
+    expect(lowestOut).toBeGreaterThan(0.1);
+    view.dispose();
+  });
+
+  it('scales a short blade whole, so its bow shrinks with its length', () => {
+    // The bow is an offset at the tip measured in the blade's own units, so a
+    // blade scaled in height alone keeps the reach of a full-length one: the
+    // shortest leaf of the tuft came out a quarter of a tuft-height tall and
+    // two and a half times that far out along the turf. From the manager camera
+    // a leaf lying broadside like that is a long bright streak, and a pair of
+    // them either side of an upright one is the bird the whole shape was
+    // rewritten to stop being. Nothing may reach out much further than it
+    // stands up.
+    const view = new DecorView(meadow());
+    const p = meshes(view).tufts.geometry.getAttribute('position');
+    let widest = 0;
+    for (let i = 0; i < p.count; i++) {
+      const r = Math.hypot(p.getX(i), p.getZ(i));
+      if (r <= 0.3) continue;
+      widest = Math.max(widest, r / p.getY(i));
+    }
+    expect(widest).toBeLessThan(1.8);
+    view.dispose();
+  });
+
+  it('keeps a blade slimmer than a third of the tuft it stands in', () => {
+    // A blade as wide as it is long is not a blade, it is a dart, and the tuft
+    // was three darts. The root edge is where a blade is widest — it tapers
+    // from there — so its length against the tuft's own height is the one number
+    // that says "slim". The tuft is one unit tall by construction.
+    const view = new DecorView(meadow());
+    const p = meshes(view).tufts.geometry.getAttribute('position');
+    const roots: { x: number; z: number }[] = [];
+    for (let i = 0; i < p.count; i++) {
+      if (Math.abs(p.getY(i)) < 1e-6) roots.push({ x: p.getX(i), z: p.getZ(i) });
+    }
+    for (let i = 0; i + 1 < roots.length; i += 2) {
+      expect(Math.hypot(roots[i]!.x - roots[i + 1]!.x, roots[i]!.z - roots[i + 1]!.z)).toBeLessThanOrEqual(0.32);
+    }
     view.dispose();
   });
 
@@ -536,3 +634,4 @@ describe('the scatter keeping up with the colony', () => {
     view.dispose();
   });
 });
+

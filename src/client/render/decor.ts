@@ -21,37 +21,51 @@ const TUFTS_PER_CELL = 3;
 /**
  * The blades of one tuft, in "one tuft tall" units: how wide each is at the
  * root, how long, how far it is tipped out of the vertical, how far it bows
- * forward, and which way it faces.
+ * forward, which way it faces, how far it is wrung about its own length, and
+ * where on the ground it comes up.
  *
- * A single blade is a shard wherever it stands; three leaning out from a shared
- * root are a clump, which is what grass does. Three rather than five because
- * the tuft is instanced tens of thousands of times and the whole clump has to
- * stay inside the sixteen-triangle budget the tests hold it to.
+ * Five thin blades rather than three broad ones, and that swap is the whole
+ * point of this table. Three blades as wide as they were long, radiating from
+ * one point, is not a clump of grass: it is a three-pointed star with a hard
+ * notch in the middle, and a field of them photographs as a scatter of
+ * arrowheads — bird tracks pressed into the turf. The triangle budget did not
+ * move (five blades of three triangles is the same fifteen the three creased
+ * ones cost); what moved is where it is spent, because the defect was never
+ * the cross-section of one blade, it was the shape of the clump.
  *
- * What matters as much as the count is that the three do not stand in one
- * plane and do not stand upright. A tripod of near-vertical blades is three
- * lines meeting at a point when the manager camera looks straight down at it,
- * which is how a field of them came to read as one flat stamp repeated; the
- * first blade keeps the height (its tip is the y = 1 the instance scale means)
- * and the other two fall further and further out on bearings a long way apart,
- * so the clump has a footprint from directly overhead and a silhouette from
- * every side. The leans and bows are picked so no vertex reaches a whole unit
- * from the root: the tuft is scaled to a fifth of a cell across, and a blade
- * that overshot would be grass growing out of the cell next door.
+ * So: no two lengths alike, no two bearings evenly spaced, and every blade
+ * coming up out of its own patch of ground (`rx`/`rz`) rather than all five
+ * meeting at the origin, which is what removes the notch. The first blade
+ * stands straight and keeps the height — its tip is the y = 1 the instance
+ * scale means — and the rest lean, but none of them lean far: a blade tipped
+ * past forty-five degrees is lying down, and lying down is what made the old
+ * clump read as flat. What gives the tuft its footprint from directly
+ * overhead is now the bow rather than the lean, which is the difference
+ * between grass that rises and curls over and grass that radiates.
  *
- * `fold` is how deep the crease down the middle of each blade is, as a fraction
- * of its half-width there (see `foldedBladeGeometry`). Deepest on the two that
- * lie over, since those are the ones the manager camera looks down on and the
- * ones a crease has to separate into a lit half and a shaded one; the upright
- * blade shows that camera its edge whatever its cross-section, and its crease is
- * there for the first-person eye. No two alike, for the same reason no two
- * blades in the clump are the same length.
+ * Everything here is written at the blade's own full length; `tuftGeometry`
+ * then scales the whole blade by `len`, bow and width together. That is why the
+ * widths sit so close to one another and the lengths do not: a short blade ends
+ * up narrow in proportion, which is what it should be, and — the part that
+ * actually mattered — it ends up bowing over a short distance rather than
+ * reaching as far out as a full-length one and lying flat on the turf.
+ *
+ * `twist` is how far the blade is wrung about its own length, in radians at
+ * the tip, and it is what replaces the crease the three-blade clump carried.
+ * A flat strip has one plane and so one normal, and five of them would take
+ * exactly the same light; a wrung one turns its face through the light along
+ * its length, which costs no triangles at all. The root is untwisted (see
+ * `tuftGeometry`) so it stays flat on the ground when the blade is leaned.
  */
 const TUFT_BLADES = [
-  { width: 0.5, len: 1, lean: 0, bend: 0.34, turn: 0.9, fold: 0.75 },
-  { width: 0.44, len: 0.82, lean: 0.5, bend: 0.5, turn: 3.2, fold: 0.9 },
-  { width: 0.38, len: 0.6, lean: 0.78, bend: 0.5, turn: 5.3, fold: 0.85 },
+  { width: 0.2, len: 1, lean: 0, bend: 0.24, turn: 0.55, twist: 0.5, rx: 0.03, rz: -0.04 },
+  { width: 0.18, len: 0.88, lean: 0.2, bend: 0.3, turn: 1.62, twist: -0.6, rx: -0.08, rz: 0.07 },
+  { width: 0.21, len: 0.74, lean: 0.34, bend: 0.36, turn: 2.95, twist: 0.7, rx: 0.1, rz: 0.08 },
+  { width: 0.19, len: 0.63, lean: 0.44, bend: 0.4, turn: 4.05, twist: -0.45, rx: -0.07, rz: -0.11 },
+  { width: 0.23, len: 0.52, lean: 0.52, bend: 0.42, turn: 5.4, twist: 0.6, rx: 0, rz: 0.13 },
 ] as const;
+/** Height rows in a blade: root, waist, tip. Three triangles, and five of those in a tuft. */
+const BLADE_SEGMENTS = 2;
 /** Fraction of bare cells that get a stone. Sparse on purpose — scatter, not gravel. */
 const STONE_CHANCE = 0.16;
 /**
@@ -131,12 +145,15 @@ export class DecorView {
   constructor(world: World) {
     const cells = world.width * world.height;
 
-    // A tuft rather than a spike: a few slim tapered leaves leaning out from one
-    // root, curving forward as they rise and creased down the middle, so from
-    // overhead it is a clump of foliage catching the light on both sides of each
-    // keel and from eye level a bent stem instead of a green pyramid. Roots at
-    // the origin so per-instance scale is a height, and so the shader can use
-    // object-space y directly as "how far from the roots am I".
+    // A tuft rather than a spike: five slim tapered leaves coming up out of
+    // their own patches of ground, curving forward as they rise and wrung about
+    // their own length, so from overhead it is a clump of foliage with light
+    // running along it and from eye level a bent stem instead of a green
+    // pyramid — and from neither is it three fat blades meeting at a notch,
+    // which is what a field of them read as. Every root sits on y = 0 and close
+    // enough to the origin to stay on its own cell, so per-instance scale is a
+    // height and the shader can use object-space y directly as "how far from the
+    // roots am I".
     const tuft = tuftGeometry(GRASS_ROOT, GRASS_TIP);
     this.tufts = new THREE.InstancedMesh(
       tuft,
@@ -229,12 +246,14 @@ export class DecorView {
             // Turned to its own bearing and tipped its own way off the vertical,
             // far enough that three clumps on a cell are three clumps and not one
             // stamp printed three times — but not so far that a tuft lies down,
-            // which reads as trodden rather than as grass. A third of a radian
-            // either way rather than a quarter: at colony zoom the narrower
-            // spread left every tuft presenting the same chevron to the camera,
-            // and what breaks a field of identical marks up is the leans no two
-            // of them share.
-            e.set((d - 0.5) * 0.66, g * Math.PI * 2, (k - 0.5) * 0.66);
+            // which reads as trodden rather than as grass. A fifth of a radian
+            // either way rather than a third: the tuft itself is now five blades
+            // of five different lengths on five uneven bearings, so it no longer
+            // needs the instance lean to stop it looking like its neighbour, and
+            // the wide spread was tipping the outer blades of an already-leaning
+            // clump flat against the turf, where the manager camera sees a whole
+            // blade broadside and reads the pair of them as a pair of wings.
+            e.set((d - 0.5) * 0.4, g * Math.PI * 2, (k - 0.5) * 0.4);
             q.setFromEuler(e);
             // Where the ground around the cell has gone bare, the clump goes with
             // it: shorter, thinner, and the later tufts nearly gone.
@@ -497,14 +516,48 @@ export function foldedBladeGeometry(width: number, bend: number, fold: number): 
 }
 
 /**
- * A clump of leaves sharing one root, in "one tuft tall" units — one folded
- * blade per entry in `TUFT_BLADES`.
+ * The keel of a leaf, without the row of vertices a keel costs: every vertex
+ * is turned about the blade's own length by `twist` radians times how far up
+ * the blade it sits.
+ *
+ * A blade of grass is not a flat sheet, and five flat sheets on one root take
+ * one light between them however they are turned. Wringing each one puts a
+ * different piece of its face towards the sky at every height, which is what a
+ * crease bought and this buys for nothing — the tuft is instanced tens of
+ * thousands of times, and there was no room left for another row of vertices.
+ *
+ * The root row is at y = 0 and so is untouched by construction, which is the
+ * property the caller depends on: the roots have to stay flat on the ground
+ * through the lean that follows, and a root vertex swung out of the y = 0 plane
+ * before a `rotateX` would end up under the turf.
+ */
+function twistBlade(geo: THREE.BufferGeometry, twist: number): void {
+  const p = geo.getAttribute('position') as THREE.BufferAttribute;
+  for (let i = 0; i < p.count; i++) {
+    const a = twist * p.getY(i);
+    const x = p.getX(i);
+    const z = p.getZ(i);
+    p.setXYZ(i, x * Math.cos(a) + z * Math.sin(a), p.getY(i), z * Math.cos(a) - x * Math.sin(a));
+  }
+  p.needsUpdate = true;
+  geo.computeVertexNormals();
+}
+
+/**
+ * A clump of leaves, in "one tuft tall" units — one blade per entry in
+ * `TUFT_BLADES`, each coming up out of its own patch of ground.
  *
  * The first blade stands straight so the clump's tallest point is exactly y = 1
  * and the instance matrix's y scale goes on meaning "height". The rest are
- * shorter and fall further out, each on its own bearing, so the tuft has a
- * silhouette from every side and a footprint from straight above rather than
- * being one strip seen edge-on half the time.
+ * shorter, wrung their own way and bowed out on their own bearing, so the tuft
+ * has a silhouette from every side and a footprint from straight above rather
+ * than being one strip seen edge-on half the time.
+ *
+ * Each blade is *turned and leaned about its own root and then moved to it*, in
+ * that order. The other order — move first, then rotate — would swing the roots
+ * of the outlying blades through the ground, and the whole reason they are
+ * offset is that five blades striking the turf at one point is a notch, and a
+ * field of notches is what read as bird tracks.
  *
  * Two things are baked in here that the shader then leans on. Vertex colours
  * run from `root` at the base of each blade to `tip` at its point — faster than
@@ -521,14 +574,15 @@ export function foldedBladeGeometry(width: number, bend: number, fold: number): 
  * light and reads as dark chevrons on bright turf. Blending each towards up
  * lights a blade like the ground it grows from, with what is left of the true
  * normal keeping the sides of a tuft from shading identically — and, since the
- * blades are creased, keeping the two halves of one leaf from shading
- * identically either, which is the whole reason the crease is there.
+ * blades are wrung, keeping the top of one leaf from shading like its own root,
+ * which is the whole reason the twist is there.
  */
 function tuftGeometry(root: THREE.Color, tip: THREE.Color): THREE.BufferGeometry {
   const parts: THREE.BufferGeometry[] = [];
   const c = new THREE.Color();
   for (const shape of TUFT_BLADES) {
-    const blade = foldedBladeGeometry(shape.width, shape.bend, shape.fold);
+    const blade = bladeGeometry(shape.width, BLADE_SEGMENTS, shape.bend);
+    twistBlade(blade, shape.twist);
     // Painted while the blade is still upright and one unit long, which is the
     // only moment its own y *is* how far along it a vertex sits.
     const bp = blade.getAttribute('position') as THREE.BufferAttribute;
@@ -540,12 +594,18 @@ function tuftGeometry(root: THREE.Color, tip: THREE.Color): THREE.BufferGeometry
       bc[i * 3 + 2] = c.b;
     }
     blade.setAttribute('color', new THREE.Float32BufferAttribute(bc, 3));
-    // Scaled in height alone and then tipped over about its root, so the root
-    // vertices stay exactly on y = 0 where the clump shares them and the tip
-    // swings out rather than the blade stretching.
-    blade.scale(1, shape.len, 1);
+    // Scaled whole and then tipped over about its root, so the root vertices
+    // stay exactly on y = 0 and the tip swings out rather than the blade
+    // stretching. Whole and not in height alone: `bend` is an offset at the tip
+    // in the blade's own units, so squashing y and leaving z gave the short
+    // blades the bow of a tall one — a leaf a quarter of a metre high reaching
+    // two and a half times that far out along the ground. Those are the flat
+    // streaks that made a tuft read as a bird from above however upright the
+    // rest of it stood. Only then is the blade carried to where it comes up.
+    blade.scale(shape.len, shape.len, shape.len);
     if (shape.lean !== 0) blade.rotateX(shape.lean);
     blade.rotateY(shape.turn);
+    blade.translate(shape.rx, 0, shape.rz);
     parts.push(blade);
   }
   const geo = mergeGeometries(parts);

@@ -4,6 +4,129 @@ One round, one measured gap, one fix. Newest first.
 
 ---
 
+## 2026-09-06 — Round nine, and a class of bug that missed a member of itself
+
+**Track: the rendered game.** Six lanes through the workflow — pawns, buildings, decor, terrain,
+lighting, critters — briefed off round 8's *still wrong* list, then four corrections made by hand
+after every lane had reported green. The frames judged are `r8` against `r9b`, and `r9b` rather
+than the workflow's own `r9`, because that set was photographed before the corrections and would
+have certified a solar panel this round had just broken.
+
+### Better
+
+**The grass stopped being bird tracks.** From the manager camera a tuft was three fat darts meeting
+at one point, and the pair either side of the upright one lay along the turf: a field of them read
+as tracks pressed into the ground, which is what four rounds of frames had been showing without
+anyone naming it. Two separate causes. The blades met at a single root, so the junction was a notch
+rather than a patch of stems. And `tuftGeometry` scaled a blade with `scale(1, len, 1)` while the
+bow is a tip offset in blade-local units, so the shortest leaf kept a full-length bow: a quarter of
+a tuft-height tall and two and a half times that far out along the turf — broadside to the camera,
+which is the brightest thing a blade can be. Five thin blades on the same fifteen triangles now,
+uneven in length and unevenly bearinged, each rising out of its own patch of ground, scaled whole so
+the bow shrinks with the blade. In the first-person frame the difference is not subtle: pale
+chevrons lying in the dirt became grass standing up out of it.
+
+**The lamp is a lamp.** `lamp.shade` was stated as dark iron, came out at four thousandths of linear
+luminance under the building's own palette colour, and photographed as a black bowl with the gold
+plate of the bulb showing under it. It is a pale globe now, in both the noon and the dusk frame.
+The rule the round settled on: `paint(kind, target, rough, metal)` divides the wanted colour by
+`BUILDING_COLOR[kind]` per channel in linear light, so a part lands on the colour it states whatever
+the palette does underneath it. `tone()` states a multiplier and is where the whole class came from.
+
+**The machines read as machines.** Against r8 the stove's flue is a pipe rather than a black stub and
+its door and vents are visible; the heater has a grille and feet; the generator's skid, wheel and
+trim separate; the solar panel's rim is a grey frame with the glass reading darker than it, instead
+of the bright silver tray the lane left behind.
+
+**The site marker stopped being a heptagon.** The flat gold seven-sided disc lying in the grass in
+every zoo frame since round 4 was `landmarks.ts`: an unlit flat-shaded octahedron, every face taking
+the identical amber, so from overhead it was a polygon cut out of the ground. It is a spun bead with
+the sun baked into its vertex colours now — still unlit, still four draw calls, 192 triangles.
+
+**The hunt marker cleared the fenwolf.** `markAt` expressed a world-space intent in body space, so
+the clearance scaled with the species: 0.230 on a mossback, 0.098 on a fenwolf, 0.027 on a
+brambletail — the marker was inside the small animals. Adding the clearance after the scale puts
+every species and every calf at 0.240.
+
+**Hands.** The arm capsule ran 0.6 long with the hand at y = −0.57 and a palm half-extent of 0.0446
+against a sleeve radius of 0.065, so the hand was inside the cloth. Sleeve 0.53, wrist −0.575, palm
+0.072 across ten meridians: there is a hand past the cuff in the settler frame now.
+
+### Corrected by hand, after the lanes reported green
+
+Four, all found by looking at frames and hex, none by the gate.
+
+**The round's own class missed a member.** `stove.plate` — the hotplates, upward-facing, on the
+building the round's note names as a victim of the bug — sat at 0.0042, half the lamp shade that
+started the round. It survived the round's own floor test because that test exempts anything
+carrying an emissive, and eight thousandths of glow is not "bright enough to be read off". The
+exemption now requires the emissive to clear the floor itself; the seven parts that genuinely make
+light sit between 0.046 and 0.897, so the tighter rule costs nothing real.
+
+**`paint()` erased the palette families.** Because it states an absolute target, `BUILDING_COLOR`
+stopped reaching the painted parts: `gen.trim` and `batt.trim` came out byte-identical, and so did
+`bench.vise` and `solar.mount`, collapsing distinctions the palette's own comment calls deliberate.
+Eight targets re-stated, families separated by hue, luminance held where it was.
+
+**`solar.frame` was a blowout.** 0.2117 — brighter than grass at 0.124 and a stone wall at 0.159,
+across a 0.77 m² backing plate, on the one building the palette documents as darkest because it is
+glass. Down to 0.1037.
+
+**The conduit test passed on the shape it was written to reject.** The capsule stood exactly 0.06 off
+the floor and the assertion was `toBeLessThanOrEqual(0.06)`; only the aspect check caught it. Strict
+now.
+
+### Still wrong
+
+**The mossback wears its marker as a collar.** The clearance fix is a constant added after the scale,
+and 0.240 is barely more than the 0.230 the mossback already had — so on the largest animal the
+marker still rides its neck and reads as a red band around the throat in both zoo frames. The
+clearance wants measuring off the species' silhouette, not off a number that happens to clear a
+fenwolf.
+
+**The site marker is dough.** The bead is round, which was the fix, but it is pale tan with almost
+no shading contrast and it has lost the amber that made it read as a marker rather than a lump. It
+is the brightest thing in `C2-items-close` and it says nothing.
+
+**The turf lost density.** Five thin blades cover less ground than three fat ones on the same
+instance count, and from the manager camera the field reads sparser than r8 — the fix for the shape
+was paid for out of the coverage. Either the count or the blade width wants raising; the tuft
+budget has nothing spare, so it is the count.
+
+**The stove is the brightest thing in the yard.** Every stove target is a mid-dark grey (0x44 to
+0x56) yet the body photographs near-white in the close-up, brighter than the statue's stone plinth.
+That is metalness 0.25–0.3 against a bright environment map, not albedo. Legible as a steel range,
+but it out-shouts the palette and no test looks at a ceiling — the floor test has no twin.
+
+**The walls are still bit-identical, and now it is measured.** One wall block face is 3,840 pixels
+carrying seven RGB values, 99.6% of them one value, plane-fit residual 0.000 at p10, p50 and p90,
+against open ground at p50 1.032 from 1,358 colours. The trap in measuring it: a crop of the "wall
+region" reads p50 14.751 because it is all mortar joints, and would pass.
+
+### Next
+
+Round 10, in the order the evidence supports. Baked vertex AO in `buildings.ts` is proved out
+end-to-end — triangle-accurate occluders through a uniform grid, seam vertices 12–18% below open
+faces on the stove, generator, bed and lamp, bit-identical to brute force at a third of the cost,
+and deterministic. It has to be baked per building rather than per pool (13 of 30 sampled prototypes
+get nothing at all from self-occlusion), it must run after `dye`/`dyeEnds` because those overwrite
+the attribute, and its floor is set by one part: `bed.frame` at 0.03283 against the test's 0.025
+allows no multiplier below 0.762, so 0.80. It costs about 25× the current geometry build, which is
+the reason to defer the bake behind first paint rather than the reason not to do it. Then wall
+grain, on the albedo term and not roughness — at roughness 0.9 under a diffuse sky a roughness
+perturbation measures as zero. Then the first real draw-call and triangle count of a live colony:
+`renderer.info` appears nowhere in this project, so the frame-time regression LOOK.md claims to
+watch has never had a baseline that was not a 26-building showcase.
+
+Gate re-run by hand before the commit: `tsc` clean, twelve render test files, 265 tests, 403 test
+lines added and nine removed. The nine are one assertion — the tuft's three-blade triangle budget —
+replaced by five tests that pin the new budget, the vertex count, the root separation, the bow and
+the blade's slimness, with the folded blade's own five triangles kept in a test of its own because
+`fx.ts` still builds leaves out of it. `r9b: 0 console errors, 26 showcase buildings stood, 17
+ms/frame`, which is r7's and r8's number.
+
+---
+
 ## 2026-09-06 — Round eight, and a light that was applying its own falloff twice
 
 **Track: the rendered game.** Four lanes. The sixth frame added at the end of round 7 paid for
