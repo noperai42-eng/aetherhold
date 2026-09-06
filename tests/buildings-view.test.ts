@@ -15,7 +15,7 @@ import { BuildingsView } from '../src/client/render/buildings';
 import { BUILDING_COLOR, RESOURCE_COLOR } from '../src/client/render/palette';
 import { groundLiftAt } from '../src/client/render/terrain';
 import { BUILD_MENU, defOf } from '../src/sim/buildings';
-import { addBuilding, addItem } from '../src/sim/world';
+import { addBuilding, addItem, removeBuilding } from '../src/sim/world';
 import { createWorld } from '../src/sim/worldgen';
 import type { BuildingKind, ResourceKind, World } from '../src/sim/types';
 
@@ -1198,3 +1198,204 @@ describe('a fence line', () => {
   });
 });
 
+
+/** Every pooled mesh in the view, the empty ones included — they are half the point below. */
+function pooledMeshes(view: BuildingsView): THREE.InstancedMesh[] {
+  const out: THREE.InstancedMesh[] = [];
+  view.group.traverse((o) => {
+    const mesh = o as THREE.InstancedMesh;
+    if (mesh.isInstancedMesh) out.push(mesh);
+  });
+  return out;
+}
+
+/** One pool, by the key its geometry was named with when the view built it. */
+function poolOf(view: BuildingsView, key: string): THREE.InstancedMesh {
+  let found: THREE.InstancedMesh | null = null;
+  view.group.traverse((o) => {
+    const mesh = o as THREE.InstancedMesh;
+    if (mesh.isInstancedMesh && mesh.geometry.name === key) found = mesh;
+  });
+  expect(found, `no pool called ${key}`).not.toBeNull();
+  return found!;
+}
+
+/**
+ * How far the furthest instance in a pool sticks out past the sphere the renderer
+ * culls that pool by, in world units. Zero or less is right. Anything above zero is
+ * geometry the frustum test does not know is there, and the moment the camera pans
+ * so the sphere leaves the screen while that instance has not, the instance stops
+ * being drawn — a wall gone from the edge of the picture with the sim still
+ * insisting it is solid, which is the failure this whole family of tests exists to
+ * make impossible. Measured the way three measures it: the geometry's own sphere
+ * carried through each instance matrix, which is exactly what `computeBoundingSphere`
+ * unions and therefore what a stale union will be missing.
+ */
+function overhang(mesh: THREE.InstancedMesh): number {
+  expect(mesh.boundingSphere, `${mesh.geometry.name} has no bounding sphere at all`).not.toBeNull();
+  if (!mesh.geometry.boundingSphere) mesh.geometry.computeBoundingSphere();
+  const proto = mesh.geometry.boundingSphere!;
+  const hull = mesh.boundingSphere!;
+  const reach = new THREE.Sphere();
+  const m = new THREE.Matrix4();
+  let worst = -Infinity;
+  for (let i = 0; i < mesh.count; i++) {
+    mesh.getMatrixAt(i, m);
+    reach.copy(proto).applyMatrix4(m);
+    worst = Math.max(worst, hull.center.distanceTo(reach.center) + reach.radius - hull.radius);
+  }
+  return worst;
+}
+
+/** The frustum three would cull against, given a camera. */
+function frustumOf(cam: THREE.PerspectiveCamera): THREE.Frustum {
+  cam.updateMatrixWorld(true);
+  return new THREE.Frustum().setFromProjectionMatrix(
+    new THREE.Matrix4().multiplyMatrices(cam.projectionMatrix, cam.matrixWorldInverse),
+  );
+}
+
+/**
+ * What the renderer is allowed to skip.
+ *
+ * Pools were drawn unconditionally for nine rounds — `frustumCulled = false` on
+ * every one of them — because an InstancedMesh whose bounding sphere is never
+ * recomputed after `setMatrixAt` will cull instances that are plainly on screen.
+ * The sphere is now rebuilt at the end of every rebuild, which is what makes
+ * culling safe, and an empty pool is dropped from the render list rather than
+ * binding a program twice a frame to draw nothing. Both of those trade a picture
+ * that is definitely right for a picture that is cheaper, so the tests below are
+ * the ones that have to hold: the cheapest possible frame is the one that draws
+ * nothing at all.
+ */
+describe('what the renderer is allowed to skip', () => {
+  it('gives every pool a sphere that reaches its own furthest instance', () => {
+    const world = createWorld(SEED);
+    const view = new BuildingsView();
+    // The starting valley already spreads a pool's instances across the map — the
+    // cabin at the middle, trees from one edge to the other in the same wood pools —
+    // which is the arrangement a sphere sized from the prototype geometry gets wrong.
+    view.sync(world);
+    for (const mesh of pooledMeshes(view)) {
+      if (mesh.count === 0) continue;
+      expect(overhang(mesh), `${mesh.geometry.name} reaches past its own bounding sphere`).toBeLessThanOrEqual(1e-6);
+    }
+    view.dispose();
+  });
+
+  it('grows that sphere when the next rebuild puts an instance further out', () => {
+    const world = createWorld(SEED);
+    const view = new BuildingsView();
+    view.sync(world);
+    const first = poolOf(view, 'wall.body').boundingSphere!.clone();
+
+    // A wall in the far corner of a 192-cell map, with the cabin's walls in the
+    // middle of it. Asserted rather than assumed: if the second wall happened to
+    // stand inside the sphere the first sync computed, this test would pass on a
+    // view that never recomputes anything, and prove nothing at all.
+    const far = clearCell(world);
+    expect(
+      first.containsPoint(new THREE.Vector3(far.x, 1.22, far.y)),
+      'the second wall has to stand outside the first sphere or this test is blind',
+    ).toBe(false);
+    place(world, 'wall', far.x, far.y);
+    view.sync(world);
+
+    const wall = poolOf(view, 'wall.body');
+    expect(wall.boundingSphere!.radius).toBeGreaterThan(first.radius);
+    expect(overhang(wall), 'the sphere is the one the previous rebuild computed').toBeLessThanOrEqual(1e-6);
+    view.dispose();
+  });
+
+  it('leaves its pools culled, which only the two above make safe', () => {
+    const world = createWorld(SEED);
+    const view = new BuildingsView();
+    view.sync(world);
+    for (const mesh of pooledMeshes(view)) {
+      expect(mesh.frustumCulled, `${mesh.geometry.name} is drawn whatever the camera is looking at`).toBe(true);
+    }
+    view.dispose();
+  });
+
+  it('takes an emptied pool out of the render list and puts it back when it refills', () => {
+    const world = createWorld(SEED);
+    const view = new BuildingsView();
+    const { x, y } = clearCell(world);
+    const b = addBuilding(world, 'gametable', x, y, true);
+    expect(b, 'a gametable could not be placed').not.toBeNull();
+    view.sync(world);
+    // A gametable is the one thing in the pool, so removing it empties the pool
+    // rather than merely shrinking it — the state the whole colony is in for most
+    // of a game, sixty-odd kinds of building nobody has built yet.
+    expect(poolOf(view, 'game.board').visible).toBe(true);
+
+    removeBuilding(world, b!);
+    view.sync(world);
+    const emptied = poolOf(view, 'game.board');
+    expect(emptied.count).toBe(0);
+    expect(emptied.visible, 'an empty pool is still binding a program every frame').toBe(false);
+
+    place(world, 'gametable', x, y);
+    view.sync(world);
+    const refilled = poolOf(view, 'game.board');
+    expect(refilled.count).toBe(1);
+    expect(refilled.visible, 'a pool that refilled never came back').toBe(true);
+    view.dispose();
+  });
+
+  it('still draws a demolished and rebuilt cabin, from a camera pointed at it', () => {
+    const world = createWorld(SEED);
+    const view = new BuildingsView();
+    view.sync(world);
+    const walls = world.buildings.filter((b) => b.kind === 'wall');
+    expect(walls.length, 'the starting valley has no cabin to knock down').toBeGreaterThan(4);
+    const cells = walls.map((b) => ({ x: b.x, y: b.y }));
+    const before = cells.map((c) => instancesAt(view, c.x, c.y));
+
+    // Down and up again, which is what a player does to move a wall a cell over,
+    // and what a season change does to the pools that hold a crop. The pool is
+    // emptied to nothing in between, so if a rebuild ever failed to restore either
+    // the count or the sphere, this is where it would show.
+    for (const b of walls) removeBuilding(world, b);
+    view.sync(world);
+    expect(poolOf(view, 'wall.body').visible).toBe(false);
+
+    for (const c of cells) place(world, 'wall', c.x, c.y);
+    view.sync(world);
+    cells.forEach((c, i) => {
+      expect(instancesAt(view, c.x, c.y), `the wall at ${c.x},${c.y} came back thinner`).toBe(before[i]);
+    });
+
+    // And the renderer agrees it is on screen: the manager camera looking down on
+    // the cabin from a couple of dozen cells up, which is roughly frame 3 of the
+    // look harness, has to keep the wall pool in the draw list.
+    const wall = poolOf(view, 'wall.body');
+    expect(overhang(wall)).toBeLessThanOrEqual(1e-6);
+    view.group.updateMatrixWorld(true);
+    const cam = new THREE.PerspectiveCamera(50, 16 / 9, 0.1, 200);
+    cam.position.set(cells[0].x, 24, cells[0].y + 24);
+    cam.lookAt(cells[0].x, 0, cells[0].y);
+    expect(frustumOf(cam).intersectsObject(wall), 'the cabin walls are culled from a camera aimed at them').toBe(true);
+    view.dispose();
+  });
+
+  it('skips a pool the camera has its back to, so the saving is real', () => {
+    const world = createWorld(SEED);
+    const view = new BuildingsView();
+    view.sync(world);
+    view.group.updateMatrixWorld(true);
+    const wall = poolOf(view, 'wall.body');
+    expect(wall.boundingSphere, 'nothing has computed a sphere to cull the walls by').not.toBeNull();
+    const s = wall.boundingSphere!;
+
+    // Standing beyond the cabin looking away from it. Every assertion above is
+    // about culling never removing something visible; this one is the other half,
+    // because a bounding sphere big enough to always intersect would satisfy all of
+    // them and save nothing.
+    const cam = new THREE.PerspectiveCamera(50, 16 / 9, 0.1, 100);
+    cam.position.set(s.center.x, s.center.y, s.center.z + s.radius + 150);
+    cam.lookAt(s.center.x, s.center.y, s.center.z + s.radius + 250);
+    expect(frustumOf(cam).intersectsObject(wall)).toBe(false);
+    view.dispose();
+  });
+});

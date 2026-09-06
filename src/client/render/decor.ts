@@ -12,12 +12,39 @@ import * as THREE from 'three';
 import { mergeGeometries, mergeVertices } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 
 import { growingCells } from '../../sim/farming';
+import { yearPhase } from '../../sim/seasons';
+import { snowDepth } from '../../sim/snowpack';
 import { windStrength } from '../../sim/weather';
 import { terrainAt } from '../../sim/types';
 import type { World } from '../../sim/types';
+import { SEASON_STEPS, SNOW_STEPS, seasonTint } from './palette';
 
-/** Tufts per grass cell. Three is enough to cover a map without carpeting it. */
-const TUFTS_PER_CELL = 3;
+/**
+ * Tufts per grass cell.
+ *
+ * Five, where it was three for eight rounds. Round 9 respent the tuft's fifteen
+ * triangles — five slim blades where there had been three broad ones — and that
+ * was the right call: three blades as wide as they were long, meeting at a point,
+ * photographed from the manager camera as a bird track pressed into the turf. But
+ * five thin blades cover less ground than three fat ones, and the colony frame
+ * either side of that change shows exactly that: the same field, marks in the same
+ * places, and visibly more bare earth showing between them.
+ *
+ * The blade is not where that comes back. It was rebuilt last round, it is
+ * correct, and there is nothing spare in fifteen triangles. So the coverage comes
+ * from the count instead — two thirds more grass standing on the same ground,
+ * which is roughly what the narrower blade gave away. On a 192-square map that is
+ * 45,714 tufts at three a cell and 76,190 at five, 685,710 triangles against
+ * 1,142,850, in one instanced draw with no shadow pass behind it. The frame the
+ * harness photographed the hour before this change cost 17 ms, and the reading
+ * after it belongs to the round's own capture rather than to a second run here:
+ * two headless captures on one GPU time each other out, and a number taken while
+ * they fight is not a number. What the count cannot do is add a draw call or a
+ * shadow pass — it grows one pool inside one draw — so if a later round does find
+ * the frame time moved, this is the first number to take it out of, and the blade
+ * is still not.
+ */
+const TUFTS_PER_CELL = 5;
 /**
  * The blades of one tuft, in "one tuft tall" units: how wide each is at the
  * root, how long, how far it is tipped out of the vertical, how far it bows
@@ -84,13 +111,20 @@ const TUFT_HEIGHT_SPREAD = 0.1;
  * than a place. `wearAt` says how bare a cell's surroundings are; this is what
  * that costs the tuft — the first one on a cell keeps most of itself, and each
  * one after it gives way faster, so worn ground ends up with a straggler and
- * two scraps of stubble where open turf has three full clumps. The count is
- * untouched either way: three tufts a cell is what the pool is sized for and
+ * four scraps of stubble where open turf has five full clumps. The count is
+ * untouched either way: five tufts a cell is what the pool is sized for and
  * what the tests count, and what makes ground read as bare is that there is
  * almost nothing standing on it, not that the draw is cheaper.
+ *
+ * The per-tuft step is half what it was, because there are nearly twice as many
+ * tufts sharing the same run down to bare. The last one has to keep a little of
+ * itself — 0.3 + 4 × 0.11 is the same 0.74 that 0.3 + 2 × 0.22 was — and that
+ * ceiling is arithmetic rather than taste: `left` multiplies the instance's y
+ * scale, and a tuft scaled by a negative height is a clump growing downwards
+ * through the turf it is standing on.
  */
 const WEAR_COST = 0.3;
-const WEAR_COST_PER_TUFT = 0.22;
+const WEAR_COST_PER_TUFT = 0.11;
 
 /**
  * Root and tip of a blade. The root sits a shade *above* the turf it grows from
@@ -219,6 +253,23 @@ export class DecorView {
     const m = new THREE.Matrix4();
     const c = new THREE.Color();
     const e = new THREE.Euler();
+    // What the year does to grass, as a ratio rather than as a colour.
+    //
+    // Stating it as a colour is the obvious version and it is wrong: the
+    // root-to-tip gradient `tuftGeometry` bakes into the vertices multiplies with
+    // this, so handing every instance one autumn gold would land the root and the
+    // point on the same tone and flatten the one thing that stops a blade going
+    // black where its normal turns from the sun. So the tint is what the season
+    // does to the *tip* colour divided by that tip colour, per channel in linear
+    // light — the same divide-by-the-entry-you-are-multiplying shape `buildings.ts`
+    // paints its parts with. The tip lands exactly on `seasonTint(GRASS_TIP)`, and
+    // the root travels the same distance in proportion rather than in absolute
+    // terms, which is what a leaf sitting in the shade of its own clump does in
+    // October: it turns, but less than the point the sun is on.
+    const year = seasonTint(GRASS_TIP.clone(), yearPhase(world));
+    const yearR = year.r / GRASS_TIP.r;
+    const yearG = year.g / GRASS_TIP.g;
+    const yearB = year.b / GRASS_TIP.b;
     let tuft = 0;
     let stone = 0;
 
@@ -244,8 +295,8 @@ export class DecorView {
             const k = hash(x, y, n * 3.1 + 19.1);
             v.set(x + (a - 0.5) * 0.8, 0, y + (b - 0.5) * 0.8);
             // Turned to its own bearing and tipped its own way off the vertical,
-            // far enough that three clumps on a cell are three clumps and not one
-            // stamp printed three times — but not so far that a tuft lies down,
+            // far enough that five clumps on a cell are five clumps and not one
+            // stamp printed five times — but not so far that a tuft lies down,
             // which reads as trodden rather than as grass. A fifth of a radian
             // either way rather than a third: the tuft itself is now five blades
             // of five different lengths on five uneven bearings, so it no longer
@@ -270,14 +321,16 @@ export class DecorView {
             // and half the lightness range clipped at white, so two thirds of the
             // variation this comment used to promise was never on screen. Warm
             // one way and cool the other, dark to light across the whole, and a
-            // shade drier where the ground is worn.
+            // shade drier where the ground is worn — and the year over all of it,
+            // which is why this clump's own jitter and the season are two factors
+            // in one product rather than two colours fighting for the same slot.
             const warm = (k - 0.5) * 0.12;
             // Centred a little over one rather than a little under it, so the
             // average blade is lit slightly brighter than the gradient baked
             // into it — the cheapest half of "grass reads as cover and not as
             // dark marks", the other half being the root colour above.
             const level = (0.86 + g * 0.34) * (1 - wear * 0.12);
-            c.setRGB(level * (1 + warm), level, level * (1 - warm));
+            c.setRGB(level * (1 + warm) * yearR, level * yearG, level * (1 - warm) * yearB);
             this.tufts.setColorAt(tuft, c);
             tuft++;
           }
@@ -350,12 +403,27 @@ function wearAt(world: World, x: number, y: number, farmed: Set<number>): number
 }
 
 /**
- * Everything that can clear a patch of ground: terrain (mining), buildings, and
- * sown plots. Cheaper than rebuilding the scatter every frame, and it catches the
- * three things that actually move it.
+ * Everything that can clear a patch of ground — terrain (mining), buildings and
+ * sown plots — and the year, which clears nothing and repaints all of it.
+ *
+ * The season had to come in here before it could reach a blade. A tuft's colour is
+ * written once, into an instance attribute, at rebuild time; nothing else ever
+ * touches it. So for as long as this checksum was a function of the map alone, the
+ * valley could go gold and then white around a field of grass that stayed exactly
+ * the green it was sown in, and no amount of work on the tint would have shown up
+ * on screen. The year enters as `SEASON_STEPS` whole steps rather than
+ * continuously for the reason `palette.ts` gives: a raw phase would rebuild
+ * seventy-six thousand tufts every frame for a colour change nobody can see.
+ *
+ * The pack is in for the sake of the pair rather than for the tuft — the tint
+ * below reads the year and not the snow — but these are the same two quanta
+ * `terrain.ts` quantises the ground by, and reusing them is what keeps the grass
+ * and the turf it stands on repainting on one clock instead of two that drift.
  */
 export function scatterChecksum(world: World): number {
-  let sum = 0;
+  let sum =
+    Math.floor(yearPhase(world) * SEASON_STEPS) * 7919 +
+    Math.floor(snowDepth(world) * SNOW_STEPS) * 104729;
   const t = world.terrain;
   for (let i = 0; i < t.length; i++) sum = (sum + t[i]! * (i + 1)) | 0;
   const cb = world.cellBuilding;

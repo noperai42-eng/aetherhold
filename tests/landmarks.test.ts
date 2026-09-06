@@ -16,6 +16,7 @@ import * as THREE from 'three';
 import { describe, expect, it } from 'vitest';
 
 import { LandmarkView } from '../src/client/render/landmarks';
+import { TERRAIN_COLOR } from '../src/client/render/palette';
 import { createWorld } from '../src/sim/worldgen';
 import type { World } from '../src/sim/types';
 
@@ -48,6 +49,16 @@ function pins(view: LandmarkView): THREE.InstancedMesh {
 function ground(view: LandmarkView): THREE.Vector3[] {
   const all = meshes(view);
   return all.slice(0, -1).flatMap(placed);
+}
+
+/** Rec. 709 luminance of a linear colour — the space these vertex colours are in. */
+function luminance(c: THREE.Color): number {
+  return 0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b;
+}
+
+/** How far a colour is from grey, before any judgement about how bright it is. */
+function chroma(c: THREE.Color): number {
+  return Math.max(c.r, c.g, c.b) - Math.min(c.r, c.g, c.b);
 }
 
 function view(world: World): LandmarkView {
@@ -259,6 +270,88 @@ describe('what the map shows about what is out there', () => {
     for (const axis of ['x', 'y', 'z'] as const) {
       expect(box.max[axis] - box.min[axis]).toBeGreaterThan(0.2);
     }
+    v.dispose();
+  });
+
+  it('shades the bead from a lit crown down to an underside in shadow', () => {
+    // The previous test asks only that two vertices differ. That passed while
+    // the marker was photographing as dough: the ramp was there but it was
+    // 2.2:1 in linear luminance, and at manager zoom a forty-pixel bead with a
+    // 2.2:1 range is one tone with a hint of another at the rim. Reading the top
+    // half of the silhouette against the bottom half is the number that survives
+    // the pin bobbing and precessing, since half of every ring is turned away
+    // from the sun whatever the azimuth; the built bead measures 1.81:1 there,
+    // and 4.80:1 between its brightest and darkest vertex. The floor is set
+    // below both and well above what the flat bead managed, so the failure it
+    // catches is a return to that flatness and not a tenth of a stop of drift.
+    const world = createWorld(SEED);
+    const v = view(world);
+    const geo = pins(v).geometry;
+    const col = geo.getAttribute('color');
+    const pos = geo.getAttribute('position');
+    geo.computeBoundingBox();
+    const mid = (geo.boundingBox!.min.y + geo.boundingBox!.max.y) / 2;
+    const c = new THREE.Color();
+    let top = 0;
+    let topN = 0;
+    let bottom = 0;
+    let bottomN = 0;
+    let brightest = 0;
+    let darkest = Infinity;
+    for (let i = 0; i < col.count; i++) {
+      const l = luminance(c.fromBufferAttribute(col, i));
+      brightest = Math.max(brightest, l);
+      darkest = Math.min(darkest, l);
+      if (pos.getY(i) >= mid) {
+        top += l;
+        topN++;
+      } else {
+        bottom += l;
+        bottomN++;
+      }
+    }
+    expect(topN).toBeGreaterThan(0);
+    expect(bottomN).toBeGreaterThan(0);
+    expect(top / topN / (bottom / bottomN)).toBeGreaterThan(1.7);
+    expect(brightest / darkest).toBeGreaterThan(4);
+    // The ramp is only affordable because it is baked: one unlit material, one
+    // geometry, one draw call for every marker on the map, and a bead that costs
+    // about what the ground pieces beside it do.
+    const mat = pins(v).material as THREE.Material;
+    expect((mat as THREE.MeshBasicMaterial).isMeshBasicMaterial).toBe(true);
+    expect((mat as THREE.MeshBasicMaterial).vertexColors).toBe(true);
+    const tris = (geo.index ? geo.index.count : pos.count) / 3;
+    expect(tris).toBeLessThanOrEqual(200);
+    v.dispose();
+  });
+
+  it('stands the marker off the pale ground it most often sits on', () => {
+    // A marker is only a marker if the eye finds it without being told where to
+    // look, and the ground it has to beat is sand: the dig sites and the buried
+    // caches cluster on the open pale stuff, and that is where the old bead
+    // vanished. It vanished by being *brighter* than the sand and barely more
+    // coloured than it — 1.85× the luminance at 1.97× the chroma per unit of it,
+    // which through a tone map at exposure 1.3 is two washed creams side by side.
+    // So the separation asked for here is colour and not brightness: at least
+    // twice the sand's chroma for the light it carries, while staying inside a
+    // luminance band that rules out solving it by turning the marker into a lamp.
+    // The built bead measures 2.42× the chroma and 1.47× the luminance.
+    const world = createWorld(SEED);
+    const v = view(world);
+    const col = pins(v).geometry.getAttribute('color');
+    const c = new THREE.Color();
+    const mean = new THREE.Color(0, 0, 0);
+    for (let i = 0; i < col.count; i++) {
+      c.fromBufferAttribute(col, i);
+      mean.r += c.r / col.count;
+      mean.g += c.g / col.count;
+      mean.b += c.b / col.count;
+    }
+    const sand = new THREE.Color(TERRAIN_COLOR.sand);
+    const perLight = (x: THREE.Color): number => chroma(x) / luminance(x);
+    expect(perLight(mean) / perLight(sand)).toBeGreaterThan(2);
+    expect(luminance(mean) / luminance(sand)).toBeGreaterThan(1.2);
+    expect(luminance(mean) / luminance(sand)).toBeLessThan(1.7);
     v.dispose();
   });
 

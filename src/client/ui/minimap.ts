@@ -13,7 +13,7 @@
  * environment is node and the decisions worth pinning down (what colour is
  * unwalked ground, does a raider in the dark show up, does a click land on the
  * cell under the thumb) are all decisions rather than pixels. `Minimap` is the
- * thin part: two canvases and a pointer handler.
+ * thin part: three canvases and a pointer handler.
  *
  * Two rules hold the thing honest:
  *
@@ -36,17 +36,30 @@ import { isSeen } from '../../sim/explore';
 import { yearPhase } from '../../sim/seasons';
 import { snowDepth } from '../../sim/snowpack';
 import { BUILDING_COLOR, SEASON_STEPS, SNOW_STEPS, groundColor } from '../render/palette';
+import { isPhoneLayout } from './layout-mode';
 import type { Pawn, Terrain, World } from '../../sim/types';
 
 /**
  * Ground the colony has never laid eyes on.
  *
- * Not black. A black square in a dark panel has no edge, and the player would
- * lose track of where the map stops and the interface starts — which is the one
- * thing a minimap absolutely must not do. This is dark enough to read as "no
- * information" and light enough to have a shape.
+ * Not black, and — this is the part that was wrong for a long time — not the
+ * panel either. The old value was 0x141a22, and a pixel dropper on the shipped
+ * frame finds the chrome around this panel sitting at exactly that: 20, 26, 34.
+ * So on day one, when the colony has walked a twentieth of the valley and the
+ * rest is haze, there was no edge anywhere between the map and the frame around
+ * it. The whole top left corner read as one dead rectangle with a stamp of
+ * colour floating in the middle of it, which is what a widget that failed to
+ * load looks like, and it was the highest-contrast edge on a lit screen — so it
+ * was also the first thing the eye went to.
+ *
+ * This is the panel's own solid, #0e131a, carried a sixth of the way toward the
+ * dim grey the HUD writes its quiet labels in. Far enough off black that the
+ * face of the map is a surface the player can see the shape of, and still far
+ * enough under everything it borders that no unwalked cell could be mistaken
+ * for walked: the darkest thing that can ever stand on seen ground is a tree,
+ * and a tree comes out seventy per cent brighter than this.
  */
-export const UNSEEN = 0x141a22;
+export const UNSEEN = 0x262b33;
 
 /**
  * How much the terrain is lifted before it is drawn.
@@ -272,23 +285,139 @@ function blend(under: number, over: number, mix: number): number {
 
 // ------------------------------------------------------------------ the canvas
 
-/** How wide the map is drawn, in CSS pixels. Square, because the map is. */
-const FACE = 200;
-/** Marks, in CSS pixels, indexed by `MiniMark.size`. */
+/**
+ * How wide the map is drawn, in CSS pixels. Square, because the map is.
+ *
+ * Two numbers, because the map is drawn at the size it is actually shown at
+ * rather than drawn big and handed to the stylesheet to shrink. Shrinking was
+ * fine for the terrain — a nearest-neighbour blit of a one-pixel-a-cell bitmap
+ * does not care what it is stretched to — and ruinous for everything drawn on
+ * top of it: a settler specified as three pixels of a two-hundred pixel face
+ * arrives on a phone as one and a half real pixels, and a camera outline one
+ * pixel wide arrives as half of one. What the player actually got was a map of
+ * the ground with no people on it, no raiders on it, and no rectangle saying
+ * where they were looking — which is the one thing the instrument exists to say.
+ */
+const FACE_DESK = 200;
+const FACE_PHONE = 96;
+/** Marks, in CSS pixels of the desk face, indexed by `MiniMark.size`. */
 const MARK_PX = [0, 3, 4, 6];
+/**
+ * The smallest a mark may come out, in real pixels of whichever face it lands
+ * on, indexed the same way.
+ *
+ * Three is where a square stops reading as a dot and starts reading as dirt on
+ * the screen, so nothing is allowed below it however small the face gets. The
+ * three numbers are graduated rather than one flat floor because the ranking is
+ * the information: a landmark, a body worth finding and the body you are
+ * standing in have to stay tellable apart, and a floor that flattened all three
+ * to the same square would trade one kind of illegibility for another. Each
+ * stays under its desk size, so applying the floor changes nothing on a desk.
+ */
+const MARK_MIN_PX = [0, 3, 4, 5];
 const MAX_DPR = 2;
 
 /**
- * The panel. One offscreen canvas at one pixel a cell, scaled up with smoothing
- * off — which is the whole trick: the browser does the nearest-neighbour blit in
- * one call, so the cost of drawing the map is the cost of painting it, and the
- * map is only repainted when `mapSignature` says something moved.
+ * The ink everything drawn on the haze is made of — the same grey the HUD writes
+ * its quiet labels in, kept as a colour and spent as an alpha.
+ *
+ * One ink for both the lattice and the frontier, because the two are saying the
+ * same thing in different ways: this is interface, not valley. A second colour
+ * would invite the player to read a difference between them that is not there.
+ */
+const FOG_INK = 0x9aa3ad;
+
+/**
+ * The lattice on the haze, which is there so that unwalked ground reads as a
+ * surface rather than as a void, and which pays for itself twice by saying how
+ * big the valley is while it does it.
+ *
+ * Sixteen cells to a square, and the colony camera shows about thirty — so one
+ * square is half a screenful, which is the unit a player actually thinks in
+ * when they wonder how far it is to the far ridge. On a phone that square would
+ * come out sixteen pixels across and the lattice would be closer to a texture
+ * than to a grid, so the spacing doubles until the square clears twenty-four
+ * pixels: the desk gets sixteen cells at thirty-three pixels, the phone gets
+ * thirty-two at thirty-two. The same graticule, one step coarser for the
+ * smaller face — which is what any map does when you zoom out of it, and it
+ * keeps the scale reading honest instead of shrinking it into mud.
+ *
+ * Nine hundredths of the ink is the whole budget. At a tenth the lines start
+ * competing with the painted ground for the eye, and the ground is the thing
+ * the player came to look at; below about seven they stop arriving at all on a
+ * dim laptop panel. This is a lattice you find when you look for it and stop
+ * seeing the moment you look at the colony.
+ */
+const GRID_INK_ALPHA = 0.09;
+const GRID_CELLS = 16;
+const GRID_MIN_PX = 24;
+
+/**
+ * The frontier: how far the haze thins where it meets ground the colony knows,
+ * and how much it thins by.
+ *
+ * Without it the edge of the explored patch is a cut — a hard stamp of colour
+ * dropped on a dark field, which reads as two unrelated pictures sharing a
+ * panel. A soft light spilling outward off the shape says the other thing
+ * instead, the true one: this is where knowing stops, and it is growing. Ten
+ * pixels of blur is a little under five cells at the desk size, wide enough to
+ * be a gradient rather than an outline; scaled with the face so the phone gets
+ * the same fraction of the map and not the same fraction of the screen. A third
+ * of the ink is where the rim is unmistakable at arm's length without turning
+ * into a halo around a selected object.
+ */
+const FRONTIER_ALPHA = 0.34;
+const FRONTIER_BLUR = 10;
+
+/**
+ * Which face this device gets, asked fresh rather than remembered.
+ *
+ * `hud.ts` reads the layout exactly once and never again, deliberately: panels
+ * that rearrange themselves mid-game move the button out from under the thumb
+ * already reaching for it. This is not that. The face is a resolution, not an
+ * arrangement, and it belongs next to the device-pixel-ratio read in `update`
+ * for exactly the reason that one is taken every frame — it is a property of
+ * the display, and a display can change under a game that is already running.
+ */
+function faceSize(): number {
+  return isPhoneLayout() ? FACE_PHONE : FACE_DESK;
+}
+
+/**
+ * A mark's side, on a face `k` times the size of the desk's: scaled with the
+ * face, then floored, so it shrinks as far as it can still be seen and no
+ * further.
+ */
+function markPx(size: MiniMark['size'], k: number): number {
+  return Math.max(MARK_MIN_PX[size]!, MARK_PX[size]! * k);
+}
+
+/**
+ * The panel. Three canvases, and the reason there are three is that only the
+ * last of them is allowed to cost anything per frame.
+ *
+ * `base` is the map itself at one pixel a cell, painted only when
+ * `mapSignature` says something moved. `page` is what the map is drawn on, at
+ * the size it is shown: the haze, the lattice on it, the frontier where the
+ * haze meets known ground, and the map laid over the lot. It is rebuilt on
+ * exactly the same beat as `base`, plus whenever the face changes size, because
+ * every one of its ingredients is a function of those two things and nothing
+ * else. And `canvas` is the face the player looks at, which every frame clears,
+ * blits the finished page onto in one call, and then draws the moving parts —
+ * the bodies and the camera rectangle — over the top.
+ *
+ * Which means the frame cost of all of this is what it was before any of it
+ * existed: one blit and a handful of small rectangles. A blur and a lattice
+ * that ran every frame would be a real per-pixel loop sixty times a second to
+ * redraw something that changes when a settler walks past a hedge.
  */
 export class Minimap {
   readonly el: HTMLElement;
   private readonly base = document.createElement('canvas');
   private readonly baseCtx: CanvasRenderingContext2D;
-  private readonly face = document.createElement('canvas');
+  private readonly page = document.createElement('canvas');
+  private readonly pageCtx: CanvasRenderingContext2D;
+  private readonly canvas = document.createElement('canvas');
   private readonly ctx: CanvasRenderingContext2D;
   private pixels: ImageData | null = null;
   private buffer: Uint8ClampedArray | null = null;
@@ -300,46 +429,115 @@ export class Minimap {
    */
   private world: World | null = null;
   private sig = NaN;
+  /** The face the canvas is currently sized for, in CSS pixels. */
+  private face = 0;
   private dpr = 0;
 
   constructor(onFocus: (x: number, y: number) => void) {
     this.baseCtx = this.base.getContext('2d')!;
+    this.pageCtx = this.page.getContext('2d')!;
 
-    this.face.style.width = `${FACE}px`;
-    this.face.style.height = `${FACE}px`;
-    this.face.style.display = 'block';
-    this.ctx = this.face.getContext('2d')!;
+    this.canvas.style.display = 'block';
+    this.ctx = this.canvas.getContext('2d')!;
+    this.sizeFace(faceSize(), Math.min(devicePixelRatio || 1, MAX_DPR));
 
     this.el = document.createElement('div');
     this.el.className = 'panel';
     this.el.id = 'minimap';
-    this.el.append(this.face);
+    this.el.append(this.canvas);
 
     // Drag as well as tap: scrubbing a thumb across the valley and watching the
     // colony view follow is how a player finds a place they cannot name.
     let held = false;
     const jump = (e: PointerEvent) => {
       const world = this.world;
-      const r = this.face.getBoundingClientRect();
+      const r = this.canvas.getBoundingClientRect();
       if (!world || r.width === 0 || r.height === 0) return;
       const cell = cellAt(world, (e.clientX - r.left) / r.width, (e.clientY - r.top) / r.height);
       onFocus(cell.x, cell.y);
     };
-    this.face.addEventListener('pointerdown', (e) => {
+    this.canvas.addEventListener('pointerdown', (e) => {
       held = true;
-      this.face.setPointerCapture(e.pointerId);
+      this.canvas.setPointerCapture(e.pointerId);
       jump(e);
       e.preventDefault();
     });
-    this.face.addEventListener('pointermove', (e) => {
+    this.canvas.addEventListener('pointermove', (e) => {
       if (held) jump(e);
     });
     const release = (e: PointerEvent) => {
       held = false;
-      if (this.face.hasPointerCapture(e.pointerId)) this.face.releasePointerCapture(e.pointerId);
+      if (this.canvas.hasPointerCapture(e.pointerId)) this.canvas.releasePointerCapture(e.pointerId);
     };
-    this.face.addEventListener('pointerup', release);
-    this.face.addEventListener('pointercancel', release);
+    this.canvas.addEventListener('pointerup', release);
+    this.canvas.addEventListener('pointercancel', release);
+  }
+
+  /**
+   * Give the canvas a face of `face` CSS pixels backed by `dpr` device pixels to
+   * each one, and remember both.
+   *
+   * The two always move together, because a canvas whose backing store and CSS
+   * size disagree is a blurry canvas, and the size is written onto the element
+   * here rather than left to the stylesheet so that this module and the panel
+   * can never be looking at different numbers.
+   */
+  private sizeFace(face: number, dpr: number): void {
+    this.face = face;
+    this.dpr = dpr;
+    this.canvas.style.width = `${face}px`;
+    this.canvas.style.height = `${face}px`;
+    this.canvas.width = Math.round(face * dpr);
+    this.canvas.height = Math.round(face * dpr);
+    // The page is never shown, so it has no CSS size to keep in step — only the
+    // same backing store, because it is blitted onto the face one for one and a
+    // page a different size would arrive resampled and soft.
+    this.page.width = this.canvas.width;
+    this.page.height = this.canvas.height;
+  }
+
+  /**
+   * Draw the haze, the lattice, the frontier and the map onto the page.
+   *
+   * The order is the whole idea. The haze goes down first as a flat field of
+   * `UNSEEN`, the lattice is ruled across all of it, and then the map is laid
+   * over the top with its unwalked cells lifted out — so the lattice is not
+   * masked to the haze by any arithmetic, it is simply underneath the map and
+   * shows through where there is no map. Ruled as one path — five lines each way
+   * on a desk, two on a phone — rather than as a cached tile: at that count the
+   * strokes cost less than a pattern would cost to build, and far less than one
+   * would cost to keep correct across two face sizes.
+   *
+   * The frontier arrives as the blitted map's own shadow — offset nowhere, so
+   * it is a glow rather than a drop, and drawn under the map so only the half
+   * of it that falls on haze is ever seen. That is exactly the half that is
+   * wanted, and it costs one property instead of an outline nobody has to trace.
+   */
+  private drawPage(face: number, dpr: number, cells: number): void {
+    const ctx = this.pageCtx;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.fillStyle = hex(UNSEEN);
+    ctx.fillRect(0, 0, face, face);
+
+    let step = GRID_CELLS;
+    while ((step / cells) * face < GRID_MIN_PX) step *= 2;
+    const gap = (step / cells) * face;
+    ctx.strokeStyle = rgba(FOG_INK, GRID_INK_ALPHA);
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    for (let at = gap; at < face - 0.5; at += gap) {
+      ctx.moveTo(at, 0);
+      ctx.lineTo(at, face);
+      ctx.moveTo(0, at);
+      ctx.lineTo(face, at);
+    }
+    ctx.stroke();
+
+    ctx.imageSmoothingEnabled = false;
+    ctx.shadowColor = rgba(FOG_INK, FRONTIER_ALPHA);
+    ctx.shadowBlur = FRONTIER_BLUR * (face / FACE_DESK);
+    ctx.drawImage(this.base, 0, 0, face, face);
+    ctx.shadowBlur = 0;
   }
 
   /**
@@ -364,36 +562,55 @@ export class Minimap {
     const buffer = this.buffer;
     if (!pixels || !buffer) return;
 
+    // Both halves of the cache, and the one flag that says the page built off
+    // them is out of date. The map moving and the panel changing size are
+    // different events with the same consequence, and either one alone leaves a
+    // page drawn from something that is no longer true.
+    let stale = false;
     const sig = mapSignature(world);
     if (sig !== this.sig) {
       this.sig = sig;
       paintMap(world, buffer);
       pixels.data.set(buffer);
+      liftUnseen(world, pixels.data);
       this.baseCtx.putImageData(pixels, 0, 0);
+      stale = true;
     }
 
+    const face = faceSize();
     const dpr = Math.min(devicePixelRatio || 1, MAX_DPR);
-    if (dpr !== this.dpr) {
-      this.dpr = dpr;
-      this.face.width = Math.round(FACE * dpr);
-      this.face.height = Math.round(FACE * dpr);
+    if (face !== this.face || dpr !== this.dpr) {
+      this.sizeFace(face, dpr);
+      stale = true;
     }
+    if (stale) this.drawPage(face, dpr, world.width);
+
     const ctx = this.ctx;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    ctx.clearRect(0, 0, FACE, FACE);
+    ctx.clearRect(0, 0, face, face);
     ctx.imageSmoothingEnabled = false;
-    ctx.drawImage(this.base, 0, 0, FACE, FACE);
+    ctx.drawImage(this.page, 0, 0, face, face);
 
-    const scale = FACE / world.width;
+    // How much of a desk face this one is. Everything above the terrain is drawn
+    // through it, because a symbol that kept its desk size on a face less than
+    // half as wide would cover four times as much valley as it means to.
+    const k = face / FACE_DESK;
+    const scale = face / world.width;
     for (const m of marksOf(world, possessed ? possessed.id : null)) {
-      const px = MARK_PX[m.size]!;
+      const px = markPx(m.size, k);
       ctx.fillStyle = hex(m.color);
       ctx.fillRect((m.x + 0.5) * scale - px / 2, (m.y + 0.5) * scale - px / 2, px, px);
     }
 
     if (quad) {
       ctx.strokeStyle = 'rgba(255, 255, 255, 0.7)';
-      ctx.lineWidth = 1;
+      // Divided by the scale rather than multiplied, alone on this panel. Every
+      // mark is a symbol standing on a cell and shrinks with the ground it
+      // stands on; this rectangle is the answer to "where am I looking", it is
+      // the largest and by far the thinnest thing drawn here, and a hairline of
+      // seventy per cent white over terrain is not an answer anybody can read at
+      // arm's length. On a phone it comes out at two pixels, on purpose.
+      ctx.lineWidth = Math.max(1, 1 / k);
       ctx.beginPath();
       for (let i = 0; i < quad.length; i++) {
         const p = quad[i]!;
@@ -407,7 +624,9 @@ export class Minimap {
     } else if (possessed) {
       const x = (possessed.x + 0.5) * scale;
       const y = (possessed.y + 0.5) * scale;
-      const reach = MARK_PX[3]! * 1.8;
+      // Off the dot rather than off the table, so the stub stays the same length
+      // relative to the body it comes out of once the floor has had its say.
+      const reach = markPx(3, k) * 1.8;
       ctx.strokeStyle = 'rgba(255, 255, 255, 0.8)';
       ctx.lineWidth = 2;
       ctx.beginPath();
@@ -418,6 +637,33 @@ export class Minimap {
   }
 }
 
+/**
+ * Take the alpha off every cell the colony has not seen, so the page under the
+ * map can show through where there is no map.
+ *
+ * `paintMap` writes an opaque `UNSEEN` pixel for those cells and goes on doing
+ * so, because it is a pure function over the world and its answer to "what
+ * colour is this cell" has to stand on its own — the tests read it that way and
+ * so would anything else that ever wants a picture of the valley without a
+ * canvas to put it on. The canvas wants the same picture with holes in it, and
+ * that is a property of the canvas, so it is punched here rather than there.
+ * The colour lost is the colour the page is already painted in, from the same
+ * constant, so the two can never disagree about what haze looks like.
+ *
+ * A pass over nine thousand cells, on the same beat as the paint it follows —
+ * which is to say when the map changes, not when the frame does.
+ */
+function liftUnseen(world: World, data: Uint8ClampedArray): void {
+  const cells = world.width * world.height;
+  const seen = world.seen;
+  for (let i = 0; i < cells; i++) if (seen?.[i] !== 1) data[i * 4 + 3] = 0;
+}
+
 function hex(color: number): string {
   return `#${color.toString(16).padStart(6, '0')}`;
+}
+
+/** The same colour, spent as a wash. */
+function rgba(color: number, alpha: number): string {
+  return `rgba(${(color >> 16) & 255}, ${(color >> 8) & 255}, ${color & 255}, ${alpha})`;
 }

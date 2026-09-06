@@ -34,6 +34,29 @@ const PIN_BOB = 0.16;
 /** Amber, the colour the HUD already uses for "you could do something here". */
 const PIN_COLOR = 0xd8a24a;
 /**
+ * How much more saturated than that both ends of the bead's baked light are.
+ *
+ * The lit and shaded tones used to be `PIN_COLOR` moved in lightness alone, and
+ * on an amber in linear light that is a walk toward white: a shade of +0.18 is
+ * 0xf6c27a, which is a pale tan and not an amber at all. A solid of revolution
+ * shows the camera mostly its own sides, whose normals sit near the middle of the
+ * half-lambert term, so most of the bead was parked at that end — and then ACES
+ * at 1.3 exposure lifted and desaturated it once more on the way to the frame.
+ * What arrived was the palest, flattest object in the picture: a lump of dough
+ * beside its cairn, on ground it was supposed to be marking.
+ *
+ * So both ends are pushed back up the saturation axis before they are moved apart
+ * on the lightness one. `PIN_COLOR` sits at 0.82 saturation in linear light and
+ * this takes both tones to a whisker under 1, which drains the blue out of the
+ * pale end and leaves an amber that survives the tone mapper. Measured against
+ * `TERRAIN_COLOR.sand`, which is the pale ground a marker most often stands on:
+ * chroma per unit luminance went from 1.97× the sand's to 2.42×, and the bead's
+ * own light-to-dark range from 2.2:1 to 4.8:1. It also came *down* in mean
+ * luminance, from 1.85× the sand to 1.47×, and that is the trade and not a
+ * regression — brightness was what the colour was being spent on.
+ */
+const PIN_SATURATE = 0.18;
+/**
  * The marker's profile, spun about its own axis: a bead pinched top and bottom.
  *
  * It used to be a bare octahedron, and from the isometric camera that was a
@@ -388,6 +411,16 @@ function coldCamp(site: Site, blocks: Piece[], stones: Piece[]): void {
  * amber never darkens with the hour, and the bead still has a lit top, a shaded
  * underside and a band between them that turns as the pin bobs and precesses.
  *
+ * How far apart those two tones stand is the whole of whether it reads as round.
+ * At the 2.2:1 in linear luminance they were first set to, a marker forty pixels
+ * across at manager zoom was one tone with a hint of another at its rim, which the
+ * eye files as a blob and not as a sphere; at the 4.8:1 `PIN_SATURATE` opens up,
+ * the top of the bead is plainly the lit side of something and the underside is
+ * plainly in its own shadow. Averaged over the top half of the silhouette against
+ * the bottom half — which is the number that survives the azimuth, since half of
+ * every ring is turned away from the sun — that is a ramp of 1.81:1 where it used
+ * to be 1.38:1.
+ *
  * The tone is each vertex's own normal against a high sun leaning a little to
  * one side. Straight up alone was tried first and photographed flat: on a solid
  * of revolution seen side-on, a tone that varies only with height gives the
@@ -406,8 +439,8 @@ function pinGeometry(): THREE.BufferGeometry {
   // mesh the whole map shares.
   geo.deleteAttribute('uv');
   const n = geo.getAttribute('normal') as THREE.BufferAttribute;
-  const lit = new THREE.Color(shade(PIN_COLOR, 0.18));
-  const dark = new THREE.Color(shade(PIN_COLOR, -0.14));
+  const lit = new THREE.Color(PIN_COLOR).offsetHSL(0, PIN_SATURATE, 0.16);
+  const dark = new THREE.Color(PIN_COLOR).offsetHSL(0, PIN_SATURATE, -0.28);
   const sun = new THREE.Vector3(0.34, 0.88, 0.33).normalize();
   const c = new THREE.Color();
   const col = new Float32Array(n.count * 3);

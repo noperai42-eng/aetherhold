@@ -15,12 +15,25 @@ import {
   foldedBladeGeometry,
   scatterChecksum,
 } from '../src/client/render/decor';
-import { TERRAIN_COLOR } from '../src/client/render/palette';
+import { TERRAIN_COLOR, seasonTint } from '../src/client/render/palette';
 import { createWorld } from '../src/sim/worldgen';
-import { TERRAIN_LIST, packCell, terrainAt } from '../src/sim/types';
+import { DAYS_PER_YEAR, SEASONS } from '../src/sim/seasons';
+import { TERRAIN_LIST, TICKS_PER_DAY, packCell, terrainAt } from '../src/sim/types';
 import type { Terrain, World } from '../src/sim/types';
 
 const SEED = 20260729;
+/** Not exported from `seasons.ts`, and it is the two numbers that are. */
+const TICKS_PER_YEAR = DAYS_PER_YEAR * TICKS_PER_DAY;
+/**
+ * The tuft's tip colour, restated here on purpose.
+ *
+ * `decor.ts` keeps it private, and the tests below check that the season reaches a
+ * blade as a *ratio* against exactly this entry. Importing it would let the two
+ * move together and the assertion would pass through a change that repainted every
+ * tuft on the map; written out, a change to the palette entry has to come here and
+ * be argued for.
+ */
+const GRASS_TIP = 0x7fb050;
 
 function setTerrain(world: World, x: number, y: number, kind: Terrain): void {
   world.terrain[packCell(world, x, y)] = TERRAIN_LIST.indexOf(kind);
@@ -86,17 +99,54 @@ describe('what the scatter notices changing', () => {
     expect(scatterChecksum(world)).not.toBe(before);
   });
 
+  it('changes when the year moves on, with the map untouched', () => {
+    // The bug this is the fence around: a tuft's colour is written once, at
+    // rebuild time, and the only thing that asks for a rebuild is this number. So
+    // for as long as it was a function of the map alone, the valley could go gold
+    // and then white around nine thousand blades of high-summer green, and every
+    // line of tinting code in the module would have been dead. A day in each
+    // season, one world, nothing touched but the clock.
+    const world = meadow();
+    const seen = new Set<number>();
+    for (let i = 0; i < SEASONS.length; i++) {
+      world.tick = Math.round(((i + 0.5) / SEASONS.length) * TICKS_PER_YEAR);
+      seen.add(scatterChecksum(world));
+    }
+    expect(seen.size).toBe(SEASONS.length);
+  });
+
   it('says nothing changed when nothing did', () => {
     const world = createWorld(SEED);
     expect(scatterChecksum(world)).toBe(scatterChecksum(world));
   });
+
+  it('does not repaint on every tick of a season it cannot see', () => {
+    // The other half of the same contract, and the reason the year arrives as
+    // whole steps rather than as a raw phase: a checksum that moved with every
+    // tick would rebuild forty-five thousand tufts on every frame of the game for
+    // a colour difference measured in thousandths. One tick apart has to read as
+    // no change at all.
+    const world = meadow();
+    world.tick = Math.round(0.5 * TICKS_PER_YEAR);
+    const before = scatterChecksum(world);
+    world.tick += 1;
+    expect(scatterChecksum(world)).toBe(before);
+  });
 });
 
 describe('where the scatter lands', () => {
-  it('puts three blades on every clear patch of turf', () => {
+  it('puts five clumps on every clear patch of turf', () => {
+    // Five and not the three this said for eight rounds, and the change is a
+    // decision rather than a discovery: round 9 respent the tuft's triangles on
+    // five slim blades instead of three broad ones, which fixed the bird-track
+    // silhouette and cost coverage doing it, and the count is where that coverage
+    // comes back. What this assertion is actually for is unchanged — every clear
+    // cell of turf gets the same number of clumps, so nothing on the map is
+    // quietly bald — and it is written against the pool's own sizing, so a count
+    // raised here without raising the pool would overflow rather than pass.
     const world = meadow();
     const { tufts } = meshes(new DecorView(world));
-    expect(tufts.count).toBe(world.width * world.height * 3);
+    expect(tufts.count).toBe(world.width * world.height * 5);
   });
 
   it('keeps grass out of buildings and off sown plots', () => {
@@ -169,11 +219,14 @@ describe('where the scatter lands', () => {
   });
 
   it('gives every tuft on a cell its own height, bearing and tone', () => {
-    // Three tufts a cell drawn at one height, one bearing and one green is one
-    // stamp printed three times, and a map of that reads as a texture laid over
-    // the ground rather than as ground. The three on a cell have to differ in
+    // Five tufts a cell drawn at one height, one bearing and one green is one
+    // stamp printed five times, and a map of that reads as a texture laid over
+    // the ground rather than as ground. The five on a cell have to differ in
     // all three, and the map as a whole has to take many values of each — a
-    // handful of them would be a pattern the eye finds in a second.
+    // handful of them would be a pattern the eye finds in a second. The count
+    // here follows the tufts-per-cell number on purpose: the first run of
+    // instances is one cell's worth, and a cell that repeated itself is exactly
+    // what this is watching for.
     const world = meadow();
     const { tufts } = meshes(new DecorView(world));
     const m = new THREE.Matrix4();
@@ -182,24 +235,30 @@ describe('where the scatter lands', () => {
     const c = new THREE.Color();
     const heights = new Set<string>();
     const bearings = new Set<string>();
-    const tones = new Set<number>();
-    for (let i = 0; i < 3; i++) {
+    // Read as three floats rather than as a hex: the instance colour is a
+    // multiplier over the baked ramp and the season pushes it past 1 for half
+    // the year, where `getHex` clamps every bright tuft to the same white and
+    // the tones look identical when the tufts are not. Nothing in the shader
+    // clamps, so nothing here should either.
+    const tones = new Set<string>();
+    const tone = (): string => `${c.r.toFixed(6)},${c.g.toFixed(6)},${c.b.toFixed(6)}`;
+    for (let i = 0; i < 5; i++) {
       tufts.getMatrixAt(i, m);
       m.decompose(new THREE.Vector3(), q, scale);
       heights.add(scale.y.toFixed(4));
       bearings.add(`${q.x.toFixed(4)},${q.y.toFixed(4)},${q.z.toFixed(4)}`);
       tufts.getColorAt(i, c);
-      tones.add(c.getHex());
+      tones.add(tone());
     }
-    expect(heights.size).toBe(3);
-    expect(bearings.size).toBe(3);
-    expect(tones.size).toBe(3);
+    expect(heights.size).toBe(5);
+    expect(bearings.size).toBe(5);
+    expect(tones.size).toBe(5);
     for (let i = 0; i < 300; i++) {
       tufts.getMatrixAt(i, m);
       m.decompose(new THREE.Vector3(), q, scale);
       heights.add(scale.y.toFixed(4));
       tufts.getColorAt(i, c);
-      tones.add(c.getHex());
+      tones.add(tone());
     }
     expect(heights.size).toBeGreaterThan(100);
     expect(tones.size).toBeGreaterThan(100);
@@ -233,7 +292,7 @@ describe('where the scatter lands', () => {
     // edge of a trampled yard was the tell that it was a texture and not a
     // place — so a tuft with cleared ground around it stands lower, and the
     // later tufts on that cell nearly not at all. What must *not* change is how
-    // many there are: the pool is sized at three a cell and so is every count
+    // many there are: the pool is sized at five a cell and so is every count
     // in this file, and bare ground is meant to read as bare because almost
     // nothing is standing on it.
     const world = meadow();
@@ -241,7 +300,7 @@ describe('where the scatter lands', () => {
       for (let x = 20; x < 24; x++) world.cellBuilding[packCell(world, x, y)] = 1;
     }
     const { tufts } = meshes(new DecorView(world));
-    expect(tufts.count).toBe((world.width * world.height - 16) * 3);
+    expect(tufts.count).toBe((world.width * world.height - 16) * 5);
     const m = new THREE.Matrix4();
     const pos = new THREE.Vector3();
     const scale = new THREE.Vector3();
@@ -608,7 +667,7 @@ describe('the scatter keeping up with the colony', () => {
     view.sync(world, 100);
 
     const { tufts } = meshes(view);
-    expect(tufts.count).toBe(before - 3);
+    expect(tufts.count).toBe(before - 5);
     expect(occupiedCells(tufts).some((c) => c.x === 30 && c.y === 30)).toBe(false);
     view.dispose();
   });
@@ -635,3 +694,81 @@ describe('the scatter keeping up with the colony', () => {
   });
 });
 
+
+/** Rec. 709 luminance of a linear colour — the same weights the tone map uses. */
+function luminance(c: THREE.Color): number {
+  return 0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b;
+}
+
+/** The tint the first tuft is painted with on a meadow parked at a phase of the year. */
+function tintAt(phase: number): THREE.Color {
+  const world = meadow();
+  world.tick = Math.round(phase * TICKS_PER_YEAR);
+  const view = new DecorView(world);
+  const c = new THREE.Color();
+  meshes(view).tufts.getColorAt(0, c);
+  view.dispose();
+  return c;
+}
+
+describe('the year reaching a blade of grass', () => {
+  it('gives every season its own green', () => {
+    // The ground under the grass has turned with the year since the season
+    // landed; the grass standing on it did not, and a winter frame showed white
+    // ground with high-summer tufts growing out of it. Four seasons, four
+    // colours, and none of them repeated.
+    const seen = new Set<string>();
+    for (let i = 0; i < SEASONS.length; i++) {
+      const c = tintAt((i + 0.5) / SEASONS.length);
+      seen.add(`${c.r.toFixed(4)},${c.g.toFixed(4)},${c.b.toFixed(4)}`);
+    }
+    expect(seen.size).toBe(SEASONS.length);
+  });
+
+  it('lands each season on what that season does to the tip colour', () => {
+    // The instance colour is a multiplier over a baked root-to-tip ramp, so it
+    // cannot be a season's colour — it has to be a season's *ratio* against the
+    // palette entry the ramp was baked from. Read against high summer, every
+    // channel of every season must come out at exactly the ratio the palette
+    // would apply to `GRASS_TIP`, which is what makes the tip of a winter blade
+    // sit on `seasonTint(GRASS_TIP)` and not somewhere near it.
+    const peak = seasonTint(new THREE.Color(GRASS_TIP), 0.125);
+    const summer = tintAt(0.125);
+    for (let i = 0; i < SEASONS.length; i++) {
+      const phase = (i + 0.5) / SEASONS.length;
+      const want = seasonTint(new THREE.Color(GRASS_TIP), phase);
+      const got = tintAt(phase);
+      expect(got.r / summer.r).toBeCloseTo(want.r / peak.r, 4);
+      expect(got.g / summer.g).toBeCloseTo(want.g / peak.g, 4);
+      expect(got.b / summer.b).toBeCloseTo(want.b / peak.b, 4);
+    }
+  });
+
+  it('keeps the root darker than the tip in every season', () => {
+    // The failure this is here to catch is the cheap fix: paint the instance the
+    // season's colour outright. That flattens a blade to one flat tone, because
+    // the instance colour multiplies the baked ramp rather than replacing it —
+    // the clump stops reading as grass and starts reading as a green chip. As a
+    // ratio the ramp survives the turn: summer is 1.79 to 1 root against tip and
+    // deep winter, the flattest the year gets, is still 1.83 to 1.
+    const world = meadow();
+    const view = new DecorView(world);
+    const col = meshes(view).tufts.geometry.getAttribute('color');
+    const c = new THREE.Color();
+    let root = new THREE.Color(1, 1, 1);
+    let tip = new THREE.Color(0, 0, 0);
+    for (let i = 0; i < col.count; i++) {
+      c.fromBufferAttribute(col, i);
+      if (luminance(c) < luminance(root)) root = c.clone();
+      if (luminance(c) > luminance(tip)) tip = c.clone();
+    }
+    view.dispose();
+
+    for (let i = 0; i < SEASONS.length; i++) {
+      const t = tintAt((i + 0.5) / SEASONS.length);
+      const lit = luminance(new THREE.Color(tip.r * t.r, tip.g * t.g, tip.b * t.b));
+      const dark = luminance(new THREE.Color(root.r * t.r, root.g * t.g, root.b * t.b));
+      expect(lit / dark).toBeGreaterThan(1.5);
+    }
+  });
+});

@@ -54,8 +54,8 @@ const CALF_SCALE = 0.45;
 const COLLAR_R = 0.15;
 
 /**
- * How far over an animal's back the hunt marker's point hangs — in world units,
- * which is the whole of the fix.
+ * How far over the top of an animal the hunt marker's point hangs — in world
+ * units, which is the whole of the fix.
  *
  * The height was a number in the animal's own body space, multiplied by the
  * species' size on the way out, so the air under the marker shrank with the
@@ -65,8 +65,18 @@ const COLLAR_R = 0.15;
  * the player gave, it is a wound the animal took. The clearance is the same for
  * every species now, and for a calf too: the marker is drawn for the player and
  * not for the world, so it is sized and hung in the player's units.
+ *
+ * What it is measured from moved as well. It used to be a height each species
+ * declared, and all four declared the crown of the barrel — which on the
+ * mossback leaves the antlers, the ears and the whole head above it, so 0.24 of
+ * air over the back put the marker's point at 1.19 and the mossback's own
+ * silhouette reaches 1.36. The marker sat on the neck and read as a collar. The
+ * rig measures the animal it has just built instead, so a species that grows a
+ * taller crown gets the right clearance without anyone remembering to retype a
+ * number; 0.16 is what that leaves as air, close enough that the eye joins the
+ * marker to the animal and clear of every head on the map.
  */
-const MARK_CLEARANCE = 0.24;
+const MARK_CLEARANCE = 0.16;
 
 /**
  * What `PawnsView` needs from a body, whichever body plan it has. Settlers are
@@ -392,17 +402,101 @@ class PawnRig implements Rig {
  * mossback's olive came out green and a pen of one species was a paintbox.
  * Each animal keeps its species' hue to within a couple of degrees, and what
  * varies is what varies in a real herd.
+ *
+ * The colour space is named because it has to be. `ColorManagement` is on and
+ * the working space is linear-sRGB, so `getHSL` and `setHSL` with no space
+ * argument read and write HSL over linear channels — a scale on which the
+ * lightness of a mid brown is about a tenth rather than about a third. Every
+ * number below was picked by eye against an sRGB swatch, and read in the
+ * working space they meant something else entirely: the 0.15 guard, put here
+ * so no hide could go to mud, sat above five of the mossback's seven lightness
+ * steps and six of the fenwolf's and clamped them all to one value, so a herd
+ * of mossbacks was a herd of one colour and the darkest coat on the map was
+ * lighter than the mid one. Named sRGB, the guard is what it was written to be
+ * — a floor nothing reaches — and the seven steps come back. Across every seed
+ * the mossback's hide now runs 0.064 to 0.187 of linear luminance and the
+ * fenwolf's 0.057 to 0.157, both close to three to one, and the seven lightness
+ * steps taken with the other bits held stand 2.1 to 2.8 points of L* apart on
+ * all four species — where the clamp had held five of the mossback's seven and
+ * six of the fenwolf's at the identical colour, 0.00 apart.
  */
 export function hideTint(base: number, seed: number): THREE.Color {
   const c = new THREE.Color(base);
   const hsl = { h: 0, s: 0, l: 0 };
-  c.getHSL(hsl);
+  c.getHSL(hsl, THREE.SRGBColorSpace);
   c.setHSL(
     hsl.h + ((seed % 7) - 3) * 0.004,
     hsl.s + (((seed >> 3) % 5) - 2) * 0.02,
     Math.max(0.15, Math.min(0.8, hsl.l + (((seed >> 6) % 7) - 3) * 0.025)),
+    THREE.SRGBColorSpace,
   );
   return c;
+}
+
+/**
+ * A hide moved off its own colour without moving its hue, in the space the
+ * colour was picked in. `Color.offsetHSL` cannot be told a space and so does
+ * this arithmetic over linear channels, which is the same bug `hideTint` had
+ * and had it worse: an offset of -0.14 in lightness is a step on a dark coat in
+ * sRGB and a fall off the bottom of it in linear, and that is what painted a
+ * mossback's four hooves as solid black caps with no form in them.
+ */
+function toneShift(base: THREE.Color, ds: number, dl: number): THREE.Color {
+  const c = new THREE.Color(base);
+  const hsl = { h: 0, s: 0, l: 0 };
+  c.getHSL(hsl, THREE.SRGBColorSpace);
+  return c.setHSL(
+    hsl.h,
+    THREE.MathUtils.clamp(hsl.s + ds, 0, 1),
+    THREE.MathUtils.clamp(hsl.l + dl, 0, 1),
+    THREE.SRGBColorSpace,
+  );
+}
+
+/** Rec. 709 luminance: the light a colour returns, which is what its value is. */
+function luminance(c: THREE.Color): number {
+  return 0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b;
+}
+
+/**
+ * The luminance at which a surface stops being a colour and starts being a
+ * hole in the world — the same floor the building materials are held to. Below
+ * it the sun, the sky and the ground bounce all land in the same few codes and
+ * nothing about the shape survives.
+ */
+const SILHOUETTE = 0.025;
+
+/** CIE L*, on the branch that applies above the floor: equal steps look equal. */
+const lstar = (y: number): number => 116 * Math.cbrt(y) - 16;
+
+/**
+ * The coat taken a fixed share of the way down from itself to the floor, in the
+ * scale on which a step is a step.
+ *
+ * A fixed offset cannot do this job. The four species are two and a half stops
+ * apart before the seed touches them, and a pale hare has forty-six points of
+ * L* between its coat and the floor where the darkest fenwolf has nine and a
+ * half of it. Take the same eight points off both and the hare's saddle is a shallow
+ * suggestion while the wolf's hocks are through the floor — which, measured
+ * over every seed, is exactly what the old offsets did: `dark` bottomed out at
+ * 0.0065 of luminance, a quarter of the floor, on all four kinds.
+ *
+ * Sharing out the room each coat actually has fixes both ends at once and needs
+ * no per-species tuning, so a fifth species gets it right for free. A scalar on
+ * the linear channels is what moves a colour along that scale without touching
+ * its hue or its saturation, and the scalar is the ratio of the two luminances.
+ * Measured over all four species and all 4096 seeds, at the shares below:
+ * `dark` never falls under 0.0295 and `shade` never under 0.0457 — both clear
+ * of the floor — while `shade` stays at least 5.6 points of L* above `dark` and
+ * at least 3.1 below the coat, which is the ladder a marking and a hoof need.
+ */
+function deepen(hide: THREE.Color, share: number): THREE.Color {
+  const y = luminance(hide);
+  // A coat already on the floor has no room to give and is left where it is,
+  // which also keeps the L* arithmetic on the branch it is written for.
+  if (y <= SILHOUETTE) return new THREE.Color(hide);
+  const fallen = lstar(y) - share * (lstar(y) - lstar(SILHOUETTE));
+  return new THREE.Color(hide).multiplyScalar(((fallen + 16) / 116) ** 3 / y);
 }
 
 /**
@@ -472,14 +566,6 @@ interface SpeciesModel {
    * way a small animal's collar actually is.
    */
   collarR: number;
-  /**
-   * The top of this species' back in body space — the highest thing it carries
-   * over the spine, which is a hump on one animal and a raised brush on
-   * another. The rig hangs the hunt marker's point `MARK_CLEARANCE` above it,
-   * in world units: this number says where the back is, and the constant says
-   * how much air goes over it.
-   */
-  markAt: number;
   head: THREE.BufferGeometry;
   headAt: Vec3;
   /** On the skull's surface, one side; mirrored for the other. */
@@ -542,8 +628,8 @@ class AnimalRig implements Rig {
   private layer = LAYER_ALL;
   private readonly size: number;
   private readonly legLength: number;
-  /** The species' own marker height, in body space, so a calf's marker comes down with it. */
-  private readonly markAt: number;
+  /** The top of this animal's silhouette in body space, so a calf's marker comes down with it. */
+  private readonly crest: number;
   /** Last growth factor pushed to the body scale, so it is set on change only. */
   private grown = -1;
   /**
@@ -559,14 +645,19 @@ class AnimalRig implements Rig {
     const model = shared.animals[kind];
     this.size = def.size;
     this.legLength = model.legLength;
-    this.markAt = model.markAt;
 
     const hide = hideTint(ANIMAL_COLOR[kind], pawn.colorSeed);
     const hideMat = new THREE.MeshStandardMaterial({ color: hide, roughness: 0.9 });
     // Hooves, the backs of ears, the flag of a tail: the coat's own colour gone
     // darker, which is how those parts differ on the animal and not a second dye.
+    // Most of the way down to the floor, because these are the deepest thing on
+    // the animal and have to read as another substance — but not through it. The
+    // four hooves under a mossback come out between 0.030 and 0.040 of luminance
+    // depending on the seed, where the old offset ran 0.010 to 0.045 and put
+    // eighty-six per cent of its seeds under the floor outright — a scanline
+    // across the fenwolf's darkest ear read 13,13,13 out of 255.
     const darkMat = new THREE.MeshStandardMaterial({
-      color: new THREE.Color(hide).offsetHSL(0, -0.05, -0.14),
+      color: deepen(hide, 0.82),
       roughness: 0.85,
     });
     // The markings on the back, which are hide and nothing else: one step deeper
@@ -574,15 +665,20 @@ class AnimalRig implements Rig {
     // tone a hoof is — the mossback's back marking read at a settler's eye
     // height as a hole burnt through the shoulder rather than as markings, and
     // half of that was the value: a patch four times darker than the hide around
-    // it is a thing missing from the animal, not a thing on it.
+    // it is a thing missing from the animal, not a thing on it. Under a third of
+    // the room down, so it stays plainly the coat: 3.1 to 13.8 points of L*
+    // under it across every species and seed, deep on a pale hare where there is
+    // room for depth and shallow on a dark wolf where there is not.
     const shadeMat = new THREE.MeshStandardMaterial({
-      color: new THREE.Color(hide).offsetHSL(0, 0.02, -0.075),
+      color: toneShift(deepen(hide, 0.3), 0.02, 0),
       roughness: 0.9,
     });
     // The belly, the chest, the scut: lighter and greyer, the way an underside
     // is. Kept a step short of white so the hare stays a hare and not a lamp.
+    // This one goes up, so it needs no floor — only the sRGB space its numbers
+    // were chosen in, which is the whole of what changed here.
     const paleMat = new THREE.MeshStandardMaterial({
-      color: new THREE.Color(hide).offsetHSL(0, -0.15, 0.26),
+      color: toneShift(hide, -0.15, 0.26),
       roughness: 0.92,
     });
     const hornMat = new THREE.MeshStandardMaterial({ color: 0x8f7e62, roughness: 0.7 });
@@ -668,19 +764,37 @@ class AnimalRig implements Rig {
       this.body.add(leg);
     }
 
+    // The top of everything this animal carries, taken off the rig that was
+    // just built and before it is scaled, so the number is in body space and a
+    // calf's shrinks with it. Measured rather than declared: the species used to
+    // name its own marker height and every one of them named the crown of the
+    // barrel, which on a mossback is forty-one centimetres below the tips of its
+    // antlers — so the marker hung inside the head and read as a red collar.
+    // Nothing here is hidden yet; the collar and its tag are hung on the neck
+    // below, after this, because `Box3` measures invisible children too.
+    this.crest = new THREE.Box3().setFromObject(this.body).max.y;
     this.body.scale.setScalar(def.size);
     this.group.add(this.body);
 
-    // Drawn on both sides: the marker is a hollow funnel, and half of what the
-    // camera sees of it at any moment is its inner wall.
-    const markMat = new THREE.MeshBasicMaterial({ color: 0xd8563f, side: THREE.DoubleSide });
-    this.mats.push(markMat);
+    // The marker is a hollow funnel and the camera sees both of its walls at
+    // once. Drawn double-sided in one flat colour that was fifteen thousand
+    // pixels of one value at eye level — the inside and the outside of a cone
+    // lit identically is not a cone, it is a hole cut in the frame. Two shells
+    // on the one buffer instead: the outer wall in the order's own red and the
+    // inner wall, which is what the eye sees down the throat of it, a good deal
+    // deeper. Nothing here is lit, so the two values have to be painted.
+    const markMat = new THREE.MeshBasicMaterial({ color: 0xd8563f, side: THREE.FrontSide });
+    const markInnerMat = new THREE.MeshBasicMaterial({ color: 0x7c2a1c, side: THREE.BackSide });
+    this.mats.push(markMat, markInnerMat);
     this.mark = new THREE.Mesh(shared.huntMark, markMat);
     this.mark.name = 'mark';
-    // The geometry's point is its origin, so this is where the point hangs: the
-    // species' own back, scaled to the animal, and the same clearance over it
-    // whatever the animal is.
-    this.mark.position.y = this.markAt * def.size + MARK_CLEARANCE;
+    const markInner = new THREE.Mesh(shared.huntMark, markInnerMat);
+    markInner.name = 'mark-inner';
+    this.mark.add(markInner);
+    // The geometry's point is its origin, so this is where the point hangs: over
+    // the top of the animal's own silhouette, scaled to it, and the same air
+    // above that whatever the animal is.
+    this.mark.position.y = this.crest * def.size + MARK_CLEARANCE;
     this.mark.visible = false;
     this.group.add(this.mark);
 
@@ -728,7 +842,7 @@ class AnimalRig implements Rig {
     if (grow !== this.grown) {
       this.grown = grow;
       this.body.scale.setScalar(this.size * grow);
-      this.mark.position.y = this.markAt * this.size * grow + MARK_CLEARANCE;
+      this.mark.position.y = this.crest * this.size * grow + MARK_CLEARANCE;
       this.walkPhase = phaseScale(this.legLength * this.size * grow, ANIMAL_SWING);
     }
     this.mark.visible = !!pawn.hunted && !pawn.dead;
@@ -747,9 +861,6 @@ class AnimalRig implements Rig {
         );
       }
     }
-    // Counter-rotate so the marker keeps its shape whichever way the animal faces.
-    this.mark.rotation.y = facing;
-
     if (pawn.dead) {
       // On its side, which is the only cue a player gets in the half-second
       // before the carcass is swept and the meat appears.
@@ -1493,9 +1604,6 @@ function makeMossback(): SpeciesModel {
     neckPitch: 0.7,
     collarAt: 0.08,
     collarR: 0.13,
-    // The hump, which is the highest the back gets; the antlers are higher
-    // still but they are a body-length forward of where the marker hangs.
-    markAt: 0.95,
     head: makeAnimalHead([0.12, 0.11, 0.14], { baseR: 0.085, tipR: 0.05, length: 0.22, drop: 0.03 }),
     headAt: [0, 1.06, 0.56],
     eyeAt: [0.085, 0.035, 0.09],
@@ -1580,9 +1688,6 @@ function makeDunhare(): SpeciesModel {
     neckPitch: 0.6,
     collarAt: 0,
     collarR: 0.085,
-    // The crown of the back. A hare stands a third of a mossback, and the
-    // clearance over it is the same as a mossback's rather than a third of it.
-    markAt: 0.667,
     head: makeAnimalHead([0.1, 0.1, 0.12], { baseR: 0.076, tipR: 0.052, length: 0.13, drop: 0.02 }),
     headAt: [0, 0.62, 0.36],
     eyeAt: [0.075, 0.03, 0.075],
@@ -1637,8 +1742,6 @@ function makeBrambletail(): SpeciesModel {
     neckPitch: 0.7,
     collarAt: 0.02,
     collarR: 0.081,
-    // The brush, which stands higher than this animal's back does.
-    markAt: 0.86,
     head: makeAnimalHead([0.095, 0.09, 0.11], { baseR: 0.065, tipR: 0.028, length: 0.15, drop: 0.02 }),
     headAt: [0, 0.68, 0.53],
     eyeAt: [0.07, 0.03, 0.07],
@@ -1687,8 +1790,6 @@ function makeFenwolf(): SpeciesModel {
     neckPitch: 1.1,
     collarAt: 0.06,
     collarR: 0.111,
-    // The ruff, the highest point on a wolf that carries its head low.
-    markAt: 0.86,
     head: makeAnimalHead([0.11, 0.1, 0.13], { baseR: 0.075, tipR: 0.035, length: 0.17, drop: 0.025 }),
     headAt: [0, 0.72, 0.68],
     eyeAt: [0.08, 0.03, 0.085],
@@ -1758,10 +1859,24 @@ function makeShared(): SharedGeometry {
     // A sphere drawn a touch tall. A rounded box with a radius this generous is
     // the same shape for six times the triangles, which is where the first cut
     // of this rig spent most of its budget.
-    head: new THREE.SphereGeometry(0.13, 20, 12).scale(1, 1.06, 1),
+    //
+    // Twenty round and ten up. It was twenty by twelve, and two of those rings
+    // sat within a few degrees of the poles — the crown of the skull, which the
+    // hair covers, and the underside of the jaw, which nothing looks at from a
+    // camera eleven cells up. Eighty triangles for a curve no player is ever in
+    // a position to see, on the part of the rig that already spent the most.
+    head: new THREE.SphereGeometry(0.13, 20, 10).scale(1, 1.06, 1),
     hair: makeHair(false),
     hairLong: makeHair(true),
-    eye: new THREE.SphereGeometry(0.022, 8, 6),
+    // The one bead on a settler's face, and it was standing off it. At 0.022 of
+    // radius, seated where it is on a skull of 0.13, the outermost point of the
+    // eye stood 26 millimetres proud of the skin — a fifth of the head's own
+    // radius — so from the manager camera the silhouette of a head had two
+    // bumps on the front of it and read as a face pressed against glass. At
+    // 0.016 it stands 20, which is under the skin's own curvature at that angle
+    // and reads as an eye set in a face. Six by five is a bead this size: the
+    // count that stops being visible once the sphere stops sticking out.
+    eye: new THREE.SphereGeometry(0.016, 6, 5),
     // Three rings on the caps: the top of a leg is inside the torso and the
     // bottom inside a boot, so the fourth was paid for and never seen.
     leg: limb(0.075, SETTLER_LEG, 12, 3),
@@ -1780,16 +1895,18 @@ function makeShared(): SharedGeometry {
     // A bead on a body drawn at most a cell across. Six by four was a
     // twelve-sided lump: from eleven cells up that is a dot and reads as an
     // eye, but a settler standing at a hare's head sees a chipped bead with a
-    // flat facet catching the sun where the highlight should be round. Eight by
-    // six is the settler's own eye count on a bead two thirds the size, and it
-    // is a sphere at any range a player can get to.
-    animalEye: new THREE.SphereGeometry(0.027, 8, 6),
+    // flat facet catching the sun where the highlight should be round. Eight
+    // round is what keeps the highlight round, and it is the ring count that
+    // matters here rather than the stack count — the eye is a bead seen from
+    // the side, so the ring above the equator and the ring below it are the
+    // ones the eye reads, and the sixth was between them and the pole.
+    animalEye: new THREE.SphereGeometry(0.027, 8, 5),
     // A dark nose on the end of the muzzle, in the eye's material so it takes
     // the same glint. It is the one thing that marks which end of a lowered
     // head is the front from the manager camera, and at arm's length it is the
     // one thing that says the muzzle ends rather than stops: drawn a little
     // wide and a little flat, the way a nose sits across a snout.
-    animalNose: new THREE.SphereGeometry(0.032, 8, 6).scale(1.15, 0.85, 0.9),
+    animalNose: new THREE.SphereGeometry(0.032, 7, 5).scale(1.15, 0.85, 0.9),
     // A band round the neck. The only thing on the map that separates a tamed
     // mossback from the wild one grazing beside it, so it is a ring of solid
     // colour rather than a tint the isometric camera would lose in shadow.
@@ -1810,13 +1927,24 @@ function makeShared(): SharedGeometry {
     // rather than the colony's. A shape rather than a second collar colour,
     // because the collar already says something — pale gold when there is
     // something to collect — and two meanings on one surface is one meaning lost.
-    petTag: new THREE.SphereGeometry(0.07, 10, 6).scale(0.8, 1.2, 0.45),
+    // Squashed to under a third of its depth, so half of those rings were drawn
+    // flat against each other: ten by six spent a hundred triangles on a
+    // lozenge thirty-two millimetres tall on the largest species and fourteen
+    // on the smallest, and it is a silhouette at both.
+    petTag: new THREE.SphereGeometry(0.07, 8, 5).scale(0.8, 1.2, 0.45),
     huntMark: makeHuntMark(),
     // The caravan's load: one bundle high on the back and a few crates set down
     // in the grass. A trader who is just a differently-tinted settler is a thing
     // the player has to be told about; a pile of freight is a thing they see.
-    pack: new RoundedBoxGeometry(0.38, 0.4, 0.22, 2, 0.06),
-    crate: new RoundedBoxGeometry(0.36, 0.3, 0.36, 1, 0.03),
+    //
+    // Both were rounded and both were rounded past what shows. The bundle's
+    // second segment buys a smoother fillet on a 60-millimetre radius seen from
+    // eleven cells up and cost 192 triangles, more than a settler's whole head;
+    // the crates' 30-millimetre bevel cost 96 apiece and a crate is a box. A
+    // trader carrying all four drew 3,568 against a settler's budget of 3,000,
+    // and no test could see it because no trader stands on the map on turn one.
+    pack: new RoundedBoxGeometry(0.38, 0.4, 0.22, 1, 0.06),
+    crate: new THREE.BoxGeometry(0.36, 0.3, 0.36),
   };
 }
 

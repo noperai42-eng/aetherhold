@@ -18,6 +18,7 @@ import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js
 
 import { BUILDING_COLOR, RESOURCE_COLOR, seasonTint } from './palette';
 import { InstancedPool } from './instanced';
+import { colorOf, occludeParts } from './occlusion';
 import { groundLiftAt } from './terrain';
 import { defOf } from '../../sim/buildings';
 import { treeGrowth } from '../../sim/forest';
@@ -1052,6 +1053,15 @@ export class BuildingsView {
   private readonly c = new THREE.Color();
   /** Cell -> the height the next stack dropped there rests at. Rebuilt every sync. */
   private readonly pile = new Map<number, number>();
+
+  /**
+   * Buildings whose contact shadow has not been measured yet, one entry per
+   * building rather than per pool. See `queueOcclusion` for why the queue exists
+   * at all and `bakeOcclusion` for what draining it does.
+   */
+  private readonly baking: { parts: THREE.BufferGeometry[]; occluders: THREE.BufferGeometry[] }[] = [];
+  /** Cancels the idle callback that is waiting to drain the queue, if one is. */
+  private idle: (() => void) | null = null;
 
   constructor() {
     // Walls read as a timber-framed plank wall with a stone coping line along the
@@ -2609,6 +2619,124 @@ export class BuildingsView {
         ),
       );
     }
+
+    this.queueOcclusion();
+  }
+
+  /**
+   * Sorts every prototype in the view into the assembly it belongs to, gives it
+   * the colour attribute its shadow will be written into, and puts the work in a
+   * queue for later.
+   *
+   * Later, because the measurement is not cheap: this view builds in 37 ms and
+   * the full bake is another 396, which is not a stall the player would forgive
+   * on a load that is otherwise instant. A colour attribute filled with ones is
+   * an exact identity — every channel is multiplied by 1.0 — so attaching it and
+   * turning `vertexColors` on here costs nothing visible and buys two things.
+   * The shader's USE_COLOR branch is compiled once, at first draw, rather than
+   * recompiled at whatever moment the shadow arrives; and the ordering hazard is
+   * settled in one place, because a material whose flag is on without the
+   * attribute under it renders black and never recovers.
+   *
+   * The grouping is what makes the answer right, and prefixes alone do not give
+   * it:
+   *
+   * A building is occluded as a whole, never pool by pool. A pool shaded against
+   * only itself sees none of its siblings, and thirteen of the thirty prototypes
+   * sampled get literally nothing that way — `stove.body` has 0.0 % of its
+   * vertices touched alone against 16.0 % with the rest of the stove present,
+   * `lamp.globe` 0.0 against 93.0. A shadow on the door edge and none on the
+   * shell around it reads as a fault, not as light.
+   *
+   * The two tree crowns are alternatives, not siblings. `tree.lower` and
+   * `tree.lower.b` are the same skirt built off two seeds and no tree in the
+   * wood ever wears both, so occluding them together has each crown standing
+   * inside the other and casting a shadow from a twin that is not there: the
+   * lower skirt comes out at 0.8529 against the 0.9080 it has on its own, five
+   * and a half points of darkness with no cause. They get a domain each. The
+   * trunk is genuinely shared — it stands inside either crown — so it is shaded
+   * with the first and lent to the second as an occluder that is not itself
+   * touched twice.
+   *
+   * Stacks are eight unrelated shapes that happen to share a name. A log pile
+   * and a medkit are never in the same place, so each kind is its own domain,
+   * or the wood gets a shadow from a phantom crate.
+   *
+   * Blueprints are left out entirely. A ghost slab at one-seventh opacity has no
+   * contact to shade, and shading it would darken the plan rather than the
+   * ground.
+   */
+  private queueOcclusion(): void {
+    const groups = new Map<string, THREE.BufferGeometry[]>();
+    const add = (id: string, geo: THREE.BufferGeometry): void => {
+      const had = groups.get(id);
+      if (had) had.push(geo);
+      else groups.set(id, [geo]);
+    };
+    for (const [key, pool] of this.pools) {
+      const geo = pool.mesh.geometry;
+      colorOf(geo);
+      // One material, never an array: a pool is one geometry drawn many times.
+      (pool.mesh.material as THREE.Material).vertexColors = true;
+      add(key.startsWith('tree.') ? (key.endsWith('.b') ? 'tree.b' : 'tree') : key.slice(0, key.indexOf('.')), geo);
+    }
+    // Stacks already carry both the flag and a dyed attribute, because their two
+    // colours ride in their vertices; `colorOf` finds that attribute and the
+    // shadow multiplies into it rather than over it.
+    for (const pool of this.stacks.values()) {
+      const geo = pool.mesh.geometry;
+      colorOf(geo);
+      add(geo.name, geo);
+    }
+    const trunk = this.get('tree.trunk').mesh.geometry;
+    for (const [id, parts] of groups) {
+      this.baking.push({ parts, occluders: id === 'tree.b' ? [trunk] : [] });
+    }
+    this.idle = whenIdle((ms) => this.drain(ms));
+  }
+
+  /** One turn of the idle drain: bake what fits in the time offered, then ask for more. */
+  private drain(ms: number): void {
+    this.idle = null;
+    if (this.bakeOcclusion(ms) > 0) this.idle = whenIdle((next) => this.drain(next));
+  }
+
+  /**
+   * Measures the contact shadows of as many buildings as `budget` milliseconds
+   * allow and returns how many are still waiting.
+   *
+   * At least one building is always done, however small the budget, so a browser
+   * that never reports a spare millisecond still finishes rather than queueing
+   * forever. That rule is also the one sharp edge here, and it is worth stating
+   * plainly: a building is indivisible — occluding half of one would leave the
+   * other half casting no shadow — so the overrun is a whole building, and the
+   * largest is the door at 26 ms. Inside the fifty milliseconds an idle callback
+   * usually offers that is free; handed a shorter deadline it is a long frame.
+   * The whole queue is forty-five jobs and drains in about two dozen turns of an
+   * eight-millisecond budget. The default budget drains it in one call instead,
+   * which is what a test wants and what a headless capture wants — neither has
+   * idle time to be handed.
+   *
+   * Nothing here moves a vertex or resizes an attribute, so it is safe to run
+   * long after the colony is on screen and drawing: it writes into the array the
+   * pools are already reading and flags it for re-upload.
+   */
+  bakeOcclusion(budget = Infinity): number {
+    const started = performance.now();
+    do {
+      const job = this.baking.shift();
+      if (!job) break;
+      // The ground is at y = 0 in every prototype's own space, stated rather
+      // than measured from the parts: a crown's parts start two metres up, and a
+      // floor inferred from their own foot would be a phantom slab hanging in
+      // the middle of the tree. What it buys is the lowest few centimetres of
+      // everything that stands on a cell — the stove's feet come out at 0.8003
+      // instead of 0.9593, brighter than its own lid, which is what a thing
+      // resting on the floor looks like when nothing tells it the floor is
+      // there.
+      occludeParts(job.parts, { ground: true, groundY: 0, occluders: job.occluders });
+    } while (this.baking.length > 0 && performance.now() - started < budget);
+    return this.baking.length;
   }
 
   private pool(key: string, geo: THREE.BufferGeometry, mat: THREE.Material, cap: number): void {
@@ -3155,10 +3283,41 @@ export class BuildingsView {
   }
 
   dispose(): void {
+    // Before the geometries go, because the bake is holding references to them
+    // and an idle callback that fires after this would be writing into a freed
+    // attribute. Cancelling the pending one is not enough on its own — the drain
+    // reschedules itself — so the queue is emptied too, and a `bakeOcclusion`
+    // called by hand after a dispose finds nothing to do rather than a corpse.
+    if (this.idle) this.idle();
+    this.idle = null;
+    this.baking.length = 0;
     for (const p of this.pools.values()) p.dispose();
     this.blueprints.dispose();
     for (const p of this.stacks.values()) p.dispose();
   }
+}
+
+/**
+ * Runs `job` when the browser has nothing better to do, and hands back the way
+ * to call that off.
+ *
+ * Three environments, and only one of them has idle time to offer. A browser
+ * with `requestIdleCallback` gets the real thing and the real remaining
+ * milliseconds. A browser without it — Safari, until recently — gets a timeout
+ * and a conservative 8 ms, which is one building and a bit. Node has neither a
+ * document nor a frame to protect, so nothing is scheduled at all and the queue
+ * simply waits: a test that wants the shadows asks for them by calling
+ * `bakeOcclusion`, and a test that does not must not have a timer firing into a
+ * view it has already disposed.
+ */
+function whenIdle(job: (ms: number) => void): () => void {
+  if (typeof requestIdleCallback === 'function') {
+    const h = requestIdleCallback((d) => job(d.timeRemaining()));
+    return () => cancelIdleCallback(h);
+  }
+  if (typeof document === 'undefined') return () => {};
+  const h = setTimeout(() => job(8), 0);
+  return () => clearTimeout(h);
 }
 
 const UP = new THREE.Vector3(0, 1, 0);

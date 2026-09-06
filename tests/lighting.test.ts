@@ -23,7 +23,19 @@ import * as THREE from 'three';
 import { describe, expect, it } from 'vitest';
 
 import { QUALITY } from '../src/client/render/renderer';
-import { ANIMAL_COLOR, SKIN_TONES } from '../src/client/render/palette';
+import {
+  ANIMAL_COLOR,
+  HORIZON_DAY,
+  HORIZON_NIGHT,
+  HORIZON_WARM,
+  OVERCAST_DAY,
+  SKIN_TONES,
+  SKY_DAY,
+  SKY_DUSK,
+  SKY_NIGHT,
+  SUN_DAY,
+  SUN_DUSK,
+} from '../src/client/render/palette';
 import { HAIR_TONES, PawnsView, hideTint } from '../src/client/render/pawns';
 import { PickiesView } from '../src/client/render/pickies';
 import { SETTLER_LEG } from '../src/client/gait';
@@ -31,7 +43,9 @@ import { POOF_TICKS, summonPicky } from '../src/sim/pickies';
 import {
   SHADOW_FLOOR,
   SkyView,
+  TONE_EXPOSURE,
   environmentStrength,
+  radianceFor,
   shadowNormalBias,
   shadowStrength,
 } from '../src/client/render/sky';
@@ -531,6 +545,194 @@ describe('what colour the day is', () => {
 });
 
 /**
+ * Whether the sky is in the same colour space as the colony standing in it.
+ *
+ * The dome and the precipitation are the only two things in the game that write
+ * `gl_FragColor` by hand, and for a long time they wrote it and stopped — no
+ * tone curve, no encode, their linear numbers going into an sRGB framebuffer to
+ * be shown as though they had already been converted. Photographed, that is a
+ * sky whose pixels are the palette's *linear* components: `r9b-4-firstperson`
+ * runs 0x567ba3 at the top of the frame to about 0x99acbb at the ground, and the
+ * palette calls those two ends 0x7fa6c9 and 0xcfdce6.
+ *
+ * That is a bug with no type error, no console line and no failing test: a
+ * shader is a string, and a missing `#include` at the end of one looks exactly
+ * like a colour somebody chose. So the strings are read as text, the way
+ * `phone-layout.test.ts` reads the stylesheet, and the arithmetic either side of
+ * them is measured.
+ */
+describe('what space the sky is in', () => {
+  const SRC = import.meta.glob('../src/client/render/*.ts', {
+    query: '?raw',
+    import: 'default',
+    eager: true,
+  }) as Record<string, string>;
+  const source = (name: string): string => {
+    const hit = Object.entries(SRC).find(([p]) => p.endsWith(`/${name}`));
+    expect(hit, `${name} has moved out of src/client/render`).toBeDefined();
+    return hit![1];
+  };
+
+  /**
+   * ACES and the sRGB encode, forwards — what the frame actually shows for a
+   * radiance, as code values 0..1.
+   *
+   * Transcribed from three's `tonemapping_pars_fragment` and
+   * `colorspace_pars_fragment` rather than borrowed from `radianceFor`, because
+   * a test that inverts the code under test with the code under test agrees with
+   * it about everything, including being wrong. These are the numbers the GPU
+   * will run; if three ever changes them this fails, which is correct — the
+   * whole claim below is that the sky and the frame use the same curve.
+   */
+  const ACES_IN = new THREE.Matrix3().set(
+    0.59719, 0.35458, 0.04823,
+    0.076, 0.90834, 0.01566,
+    0.0284, 0.13383, 0.83777,
+  );
+  const ACES_OUT = new THREE.Matrix3().set(
+    1.60475, -0.53108, -0.07367,
+    -0.10208, 1.10813, -0.00605,
+    -0.00327, -0.07276, 1.07602,
+  );
+  const fit = (v: number): number =>
+    (v * (v + 0.0245786) - 0.000090537) / (v * (0.983729 * v + 0.432951) + 0.238081);
+  const encode = (x: number): number =>
+    x <= 0.0031308 ? x * 12.92 : Math.pow(Math.max(0, x), 0.41666) * 1.055 - 0.055;
+  /** Code values 0..255, which is the scale a tolerance in this file means something on. */
+  function shown(radiance: THREE.Color): number[] {
+    const v = new THREE.Vector3(radiance.r, radiance.g, radiance.b)
+      .multiplyScalar(TONE_EXPOSURE / 0.6)
+      .applyMatrix3(ACES_IN);
+    v.set(fit(v.x), fit(v.y), fit(v.z)).applyMatrix3(ACES_OUT);
+    return [v.x, v.y, v.z].map((x) => encode(Math.min(1, Math.max(0, x))) * 255);
+  }
+
+  const dome = (sky: SkyView): THREE.ShaderMaterial =>
+    (
+      sky.group.children.find(
+        (o) => o instanceof THREE.Mesh && o.material instanceof THREE.ShaderMaterial,
+      ) as THREE.Mesh
+    ).material as THREE.ShaderMaterial;
+
+  /**
+   * The dome's fragment shader, on the CPU: what it draws `deg` above the
+   * horizon, as the frame will show it. The gradient, the haze band, the warm
+   * band — the glow is left out, because it is the one term that depends on
+   * where the sun is in the frame rather than on how high up you look.
+   */
+  function skyAt(sky: SkyView, deg: number): number[] {
+    const m = dome(sky);
+    const u = (n: string): THREE.Color => m.uniforms[n]!.value as THREE.Color;
+    const h = Math.sin((deg * Math.PI) / 180);
+    const col = u('uBottom')
+      .clone()
+      .lerp(u('uTop'), Math.pow(Math.max(h, 0), m.uniforms.uExponent!.value as number));
+    col.lerp(u('uBottom'), Math.exp(-Math.max(h, 0) * 9) * 0.35);
+    col.lerp(u('uHorizon'), Math.exp(-Math.max(h, 0) * 12) * (m.uniforms.uBand!.value as number));
+    return shown(col);
+  }
+
+  it('ends both hand-written shaders with the tail every other material gets', () => {
+    const sky = source('sky.ts');
+    const skyWrite = sky.indexOf('gl_FragColor = vec4(col, 1.0);');
+    const skyTone = sky.indexOf('#include <tonemapping_fragment>');
+    const skySpace = sky.indexOf('#include <colorspace_fragment>');
+    expect(skyWrite, 'the sky dome no longer writes gl_FragColor from `col`').toBeGreaterThan(0);
+    expect(skyTone, 'the sky dome writes gl_FragColor and never tone maps it').toBeGreaterThan(skyWrite);
+    expect(skySpace, 'the sky dome tone maps but never encodes — it is still raw linear in an sRGB frame').toBeGreaterThan(skyTone);
+
+    const rain = source('weather-view.ts');
+    const rainFog = rain.indexOf('#include <fog_fragment>');
+    const rainTone = rain.indexOf('#include <tonemapping_fragment>');
+    const rainSpace = rain.indexOf('#include <colorspace_fragment>');
+    expect(rainFog, 'the streaks no longer take fog').toBeGreaterThan(0);
+    // Fog is something the air does to light on the way here, so it has to land
+    // while the value is still light. Encode first and the fog is mixed into a
+    // number that is no longer light, which reads as rain that goes flat in the
+    // distance instead of fading into it.
+    expect(rainTone, 'the streaks are fogged but never tone mapped').toBeGreaterThan(rainFog);
+    expect(rainSpace, 'the streaks are tone mapped but never encoded').toBeGreaterThan(rainTone);
+  });
+
+  it('tone maps at the exposure the renderer is actually set to', () => {
+    const renderer = source('renderer.ts');
+    const set = /toneMappingExposure\s*=\s*([\d.]+)/.exec(renderer);
+    expect(set, 'renderer.ts no longer sets toneMappingExposure at all').not.toBeNull();
+    // sky.ts has to carry its own copy of this number, because it runs the curve
+    // backwards to decide what to hand the dome and there is nothing to import.
+    // Two copies of a number is a number that drifts, so this is the guard.
+    expect(
+      Number(set![1]),
+      'sky.ts TONE_EXPOSURE and renderer.ts toneMappingExposure have drifted apart — the sky is now being converted for an exposure the frame is not using',
+    ).toBe(TONE_EXPOSURE);
+    expect(renderer, 'the curve sky.ts inverts is ACES; renderer.ts has been switched to another').toContain(
+      'ACESFilmicToneMapping',
+    );
+  });
+
+  it('hands the dome the light that shows the colour the palette names', () => {
+    const palette = {
+      SKY_DAY,
+      SKY_NIGHT,
+      SKY_DUSK,
+      HORIZON_DAY,
+      HORIZON_NIGHT,
+      HORIZON_WARM,
+      OVERCAST_DAY,
+      SUN_DAY,
+      SUN_DUSK,
+    };
+    for (const [name, look] of Object.entries(palette)) {
+      const got = shown(radianceFor(look, new THREE.Color()));
+      // The palette's sky colours are display values — the pixels the dome came
+      // out as before it had a tail — so their own components are the target.
+      const want = [look.r, look.g, look.b].map((x) => Math.min(1, Math.max(0, x)) * 255);
+      for (let i = 0; i < 3; i++) {
+        expect(got[i]!, `${name} channel ${'rgb'[i]}`).toBeCloseTo(want[i]!, 0);
+      }
+    }
+  });
+
+  /**
+   * And the sky the player meets, at the two hours the look round photographs.
+   *
+   * Pinned as code values on the 0..255 scale a screenshot is read on, so a
+   * tolerance here means what it means in the frames: two counts is invisible,
+   * ten is a different sky. The zenith and the last two degrees above the ground
+   * are the two ends the dome is tuned between, and `r9b-4-firstperson` is the
+   * photograph they were tuned against — its sky runs 0x567ba3 down to about
+   * 0x99acbb, and the noon row below sits inside that.
+   *
+   * The mid-gradient sample is here because it is the one that is allowed to
+   * have moved: the haze and the warm band are mixed inside the shader, which is
+   * now radiance rather than swatch, and lerping light is not lerping paint. It
+   * came out about sixteen counts lighter in red at twenty degrees. That is the
+   * price of the sky being in the frame's space and it is pinned so the next
+   * person pays it once.
+   */
+  it('keeps noon and dusk the sky they were photographed as', () => {
+    const noon = rigAt(0.5).sky;
+    const dusk = rigAt(0.725).sky;
+    const rows: [string, number[], number[]][] = [
+      ['noon zenith', skyAt(noon, 90), [54, 97, 149]],
+      ['noon 20°', skyAt(noon, 20), [128, 156, 184]],
+      ['noon horizon', skyAt(noon, 2), [194, 188, 187]],
+      ['dusk zenith', skyAt(dusk, 90), [49, 40, 49]],
+      ['dusk 20°', skyAt(dusk, 20), [74, 53, 53]],
+      ['dusk horizon', skyAt(dusk, 2), [92, 62, 55]],
+    ];
+    for (const [where, got, want] of rows) {
+      for (let i = 0; i < 3; i++) {
+        expect(
+          Math.abs(got[i]! - want[i]!),
+          `${where}: ${got.map((v) => Math.round(v)).join(',')} against ${want.join(',')}`,
+        ).toBeLessThan(3);
+      }
+    }
+  });
+});
+
+/**
  * What a body is made of.
  *
  * The settlers and the herds went from boxes to capsules, lathes and rounded
@@ -654,6 +856,44 @@ describe('what a body is made of', () => {
     });
     expect(found, `${name} on the rig`).not.toBeNull();
     return found!;
+  }
+
+  /**
+   * The top of everything this animal is actually drawn with, in the rig's own
+   * space — the space the hunt marker's height is set in, so it survives a
+   * carcass lying on its side. The marker itself is left out, because the thing
+   * being measured is how far the marker stands over the animal.
+   *
+   * The barrel is not this. A mossback's antlers stand forty-one centimetres
+   * over the crown of its back, and a marker hung off the barrel's height
+   * landed inside the head.
+   *
+   * Measured with the head up, which is the pose the rig itself measures and the
+   * tallest one the animal takes: a standing animal grazes, and its nose is in
+   * the grass for most of every cycle. Hanging the marker off whatever the head
+   * happens to be doing would make it bob, and an order that bobs reads as part
+   * of the animation rather than as an order.
+   */
+  function crest(rig: THREE.Object3D): number {
+    const head = rig.getObjectByName('head');
+    const nod = head?.rotation.x ?? 0;
+    if (head) head.rotation.x = 0;
+    rig.updateMatrixWorld(true);
+    const toRig = new THREE.Matrix4().copy(rig.matrixWorld).invert();
+    const local = new THREE.Matrix4();
+    const box = new THREE.Box3();
+    const one = new THREE.Box3();
+    rig.traverse((o) => {
+      if (!(o instanceof THREE.Mesh) || !o.visible) return;
+      if (o.name === 'mark' || o.name === 'mark-inner') return;
+      o.geometry.computeBoundingBox();
+      box.union(one.copy(o.geometry.boundingBox!).applyMatrix4(local.multiplyMatrices(toRig, o.matrixWorld)));
+    });
+    if (head) {
+      head.rotation.x = nod;
+      rig.updateMatrixWorld(true);
+    }
+    return box.max.y;
   }
 
   it("ends the settler's neck inside the skull, upright and nodding — a rim that shows is a shelf under the chin", () => {
@@ -931,18 +1171,20 @@ describe('what a body is made of', () => {
       if (!pawn.animal) continue;
       marked.add(pawn.animal);
       const mark = part(rig, 'mark');
-      const barrel = part(rig, 'body');
       mark.geometry.computeBoundingBox();
       const shape = mark.geometry.boundingBox!;
       expect(shape.min.y, 'the marker points at its own origin').toBeCloseTo(0, 6);
       expect(shape.max.x - shape.min.x, 'the marker is under a quarter of a cell across').toBeLessThan(0.25);
-      barrel.geometry.computeBoundingBox();
-      // Both live under the rig's own group: the body is scaled by the species'
-      // size and the marker is not, which is the whole point of hanging it at a
-      // height the model gives in body space.
-      const back = barrel.geometry.boundingBox!.max.y * (barrel.parent as THREE.Object3D).scale.y;
-      expect(mark.position.y, `${pawn.animal}'s marker clears its back`).toBeGreaterThan(back);
-      expect(mark.position.y - back, `${pawn.animal}'s marker hangs close over its back`).toBeLessThan(0.3);
+      // Measured off the whole animal rather than off the barrel. This read the
+      // crown of the barrel for a long time, which is the same proxy the rig
+      // itself used, and both were wrong the same way: on the one species whose
+      // head stands well over its back the marker cleared the barrel by a
+      // comfortable margin and sat on the neck. The bounds below are unchanged;
+      // what they are measured from is the top of the silhouette, which is at or
+      // above the barrel on every species and higher on three of the four.
+      const back = crest(rig);
+      expect(mark.position.y, `${pawn.animal}'s marker clears it`).toBeGreaterThan(back);
+      expect(mark.position.y - back, `${pawn.animal}'s marker hangs close over it`).toBeLessThan(0.3);
     }
     expect(marked.size, 'every species carries a marker').toBe(4);
     view.dispose();
@@ -1147,10 +1389,8 @@ describe('what a body is made of', () => {
     for (const rig of view.group.children) {
       const pawn = world.pawns.find((p) => p.x === rig.position.x && p.y === rig.position.z)!;
       if (!pawn.animal) continue;
-      const barrel = part(rig, 'body');
-      barrel.geometry.computeBoundingBox();
-      const back = barrel.geometry.boundingBox!.max.y * (barrel.parent as THREE.Object3D).scale.y;
-      gaps.push(part(rig, 'mark').position.y - back);
+      // Off the silhouette, not off the barrel: see the note in the test above.
+      gaps.push(part(rig, 'mark').position.y - crest(rig));
     }
     expect(gaps.length, 'there are marked animals to measure').toBeGreaterThan(0);
     expect(
@@ -1423,6 +1663,268 @@ describe('what a body is made of', () => {
       }
     }
     expect(settlers).toBeGreaterThan(0);
+    view.dispose();
+  });
+
+  it("gives every species seven separate hides across the seed's lightness steps — the guard against mud held five of the mossback's seven at one colour", () => {
+    // `hideTint` reads and writes HSL, and three's HSL follows the working
+    // colour space unless it is told otherwise. `ColorManagement` is on here and
+    // the working space is linear-sRGB, so every number in that function — a
+    // lightness step of 0.025, a floor of 0.15 — was being applied on a scale
+    // where a mid brown sits near 0.1 rather than near 0.35. The floor, written
+    // so that no hide could fall into mud, stood above five of the mossback's
+    // seven lightness steps and six of the fenwolf's and clamped every one of
+    // them to the same colour: a herd of mossbacks was a herd of one mossback,
+    // and the animal drawn on the darkest seed came out lighter than the one
+    // drawn on the middle seed.
+    //
+    // The seeds below share a hue index and a saturation index and differ only
+    // in the lightness index, so what is measured is the lightness step alone.
+    // They are searched for rather than written down, because the bit layout
+    // they depend on lives in `hideTint` and should only have to be right once.
+    const ladder = new Map<number, number>();
+    for (let seed = 0; seed < 4096 && ladder.size < 7; seed++) {
+      if (seed % 7 !== 6 || (seed >> 3) % 5 !== 3) continue;
+      const step = (seed >> 6) % 7;
+      if (!ladder.has(step)) ladder.set(step, seed);
+    }
+    expect(ladder.size, 'seven seeds that differ only in the lightness step').toBe(7);
+    const steps = [...ladder.entries()].sort((a, b) => a[0] - b[0]).map(([, seed]) => seed);
+
+    for (const kind of Object.keys(ANIMAL_COLOR) as (keyof typeof ANIMAL_COLOR)[]) {
+      const hides = steps.map((seed) => hideTint(ANIMAL_COLOR[kind], seed));
+      for (const [i, hide] of hides.entries()) {
+        // Nothing on an animal may be the value at which a surface stops being a
+        // colour: the same floor the building materials are held to.
+        expect(luminance(hide), `${kind} hide on lightness step ${i}`).toBeGreaterThan(0.025);
+        if (i === 0) continue;
+        // A just-noticeable step is about one point of L*. The smallest of these
+        // measures 2.11 (the dunhare's) and the largest 2.83 (the mossback's);
+        // under the working-space arithmetic the mossback's first five steps and
+        // the fenwolf's first six measured 0.00 apart.
+        expect(
+          lightness(hide) - lightness(hides[i - 1]!),
+          `${kind} steps up in lightness from seed step ${i - 1} to ${i}`,
+        ).toBeGreaterThan(1.5);
+      }
+    }
+  });
+
+  it("sets a settler's eyes into the face instead of onto it — two beads standing off a skull are a face pressed against glass", () => {
+    // The head is a sphere of 0.13 drawn a touch tall, and the eye was a sphere
+    // of 0.022 seated on the skin at a point 0.135 from the skull's centre. The
+    // skull's own surface along that ray is at 0.131, so the outermost point of
+    // the eye stood 26 millimetres clear of it — a fifth of the head's radius,
+    // enough to show on the outline of the head from the manager camera, which
+    // is the one distance at which a settler is a silhouette and nothing else.
+    // What breaks a silhouette is not the size of the bead, it is how far it
+    // stands off, so what is pinned is the standing off.
+    const { view, world } = bodies();
+    let settlers = 0;
+    for (const rig of view.group.children) {
+      const pawn = world.pawns.find((p) => p.x === rig.position.x && p.y === rig.position.z)!;
+      if (pawn.animal) continue;
+      settlers++;
+      const head = part(rig, 'head');
+      head.geometry.computeBoundingBox();
+      const axes = head.geometry.boundingBox!.max;
+      for (const eye of head.children.filter((c): c is THREE.Mesh => c instanceof THREE.Mesh && c.name === 'eye')) {
+        eye.geometry.computeBoundingBox();
+        const r = eye.geometry.boundingBox!.max.x;
+        const p = eye.position;
+        // Where the ellipsoid's surface cuts the ray the eye sits on: a point is
+        // on it when its coordinates over the half-extents sum to one, squared.
+        const t = p.length() / Math.hypot(p.x / axes.x, p.y / axes.y, p.z / axes.z);
+        expect(p.length() + r - t, 'the eye stands off the skin').toBeLessThan(0.021);
+        expect(p.length() + r - t, 'and still stands off it, or it is a painted dot').toBeGreaterThan(0.01);
+      }
+    }
+    expect(settlers).toBeGreaterThan(0);
+    view.dispose();
+  });
+
+  it('keeps every tone on an animal off the floor and in its order — a hoof was a hole cut in a leg, on all four species and every seed', () => {
+    // The tones under the coat are the coat moved, and they were moved with
+    // `offsetHSL`, which cannot be told a colour space and so did its arithmetic
+    // over linear channels. An offset of -0.14 in lightness is a step down on a
+    // dark coat in sRGB and a fall through the bottom of it in linear: measured
+    // over every seed the `dark` tone bottomed out at 0.0065 of luminance, a
+    // quarter of the floor below which a surface stops returning a colour at
+    // all. A scanline across the fenwolf's far ear read 34,32,27 32,31,31
+    // 17,17,17 13,13,13 against grass at 181,180,138 on both sides, and the
+    // mossback's four hooves were solid black caps on tan legs.
+    //
+    // Every kind is checked on the seed that gives it its darkest possible coat,
+    // because that is the seed the old arithmetic died on and the one a herd of
+    // any size will contain. A calf is checked too: it is its dam's palette on a
+    // smaller body, and a growth factor that reached the materials would show up
+    // here as a calf shading differently from the animal beside it.
+    const world = createWorld(SEED);
+    const kinds = Object.keys(ANIMAL_COLOR) as (keyof typeof ANIMAL_COLOR)[];
+    let nextId = Math.max(...world.pawns.map((p) => p.id)) + 1;
+    const cases = new Map<number, string>();
+    for (const kind of kinds) {
+      const stock = world.pawns.find((p) => p.animal === kind);
+      expect(stock, `the map carries a ${kind} to copy`).toBeDefined();
+      let worst = 0;
+      for (let seed = 1; seed < 4096; seed++) {
+        if (luminance(hideTint(ANIMAL_COLOR[kind], seed)) < luminance(hideTint(ANIMAL_COLOR[kind], worst))) worst = seed;
+      }
+      for (const born of [undefined, world.tick]) {
+        const copy = { ...stock!, id: nextId++, colorSeed: worst, born };
+        cases.set(copy.id, `${kind}${born === undefined ? '' : ' calf'} on its darkest seed`);
+        world.pawns.push(copy);
+      }
+    }
+
+    const view = new PawnsView();
+    view.onTick(world);
+    view.sync(world, 0, null);
+    // Rigs are added in pawn order on the first sync, which is how a cloned pawn
+    // is found again without giving it a position on the map to stand at.
+    const live = world.pawns.filter((p) => !p.buried);
+    expect(view.group.children.length, 'a rig for every pawn').toBe(live.length);
+
+    let checked = 0;
+    for (const [i, pawn] of live.entries()) {
+      if (!pawn.animal) continue;
+      const rig = view.group.children[i]!;
+      const who = cases.get(pawn.id) ?? pawn.animal;
+      const colour = (m: THREE.Mesh): THREE.Color => (m.material as THREE.MeshStandardMaterial).color;
+      const hide = colour(part(rig, 'body'));
+      const dark = colour(part(rig, 'hoof'));
+      // The inside of an ear is the pale tone, and every species wears a pair.
+      const lining = ears(rig)[0]!.children[0] as THREE.Mesh;
+      const pale = colour(lining);
+      // A back marking, where the species has one: the two that carry a saddle.
+      const patch = rig.getObjectByName('saddle') as THREE.Mesh | undefined;
+
+      for (const [name, c] of [['hide', hide], ['dark', dark], ['pale', pale]] as const) {
+        expect(luminance(c), `${who}: ${name}`).toBeGreaterThan(0.025);
+      }
+      expect(lightness(pale), `${who}: the inside of an ear is lighter than the coat`).toBeGreaterThan(lightness(hide));
+      expect(lightness(dark), `${who}: a hoof is darker than the coat`).toBeLessThan(lightness(hide));
+      if (patch) {
+        const shade = colour(patch);
+        expect(luminance(shade), `${who}: shade`).toBeGreaterThan(0.025);
+        expect(lightness(shade), `${who}: a back marking is darker than the coat`).toBeLessThan(lightness(hide));
+        expect(lightness(shade), `${who}: a back marking is lighter than a hoof`).toBeGreaterThan(lightness(dark));
+      }
+      checked++;
+    }
+    expect(checked, 'every species and every calf measured').toBeGreaterThanOrEqual(kinds.length * 2);
+    view.dispose();
+  });
+
+  it('holds a trader, a raider and a prisoner to the settler budget — a trader drew 3,568 against 3,000 and nothing on the map could see it', () => {
+    // The budget test above sweeps the pawns the map starts with, and on turn one
+    // every one of them is a colonist. A trader carries a bundle and three
+    // crates that nobody else does — 624 triangles, all of it bought with
+    // rounded boxes: the bundle's second bevel segment alone cost more than a
+    // settler's head. So the one body on the map that could break the budget was
+    // the one body the budget was never measured on. The other two factions cost
+    // nothing extra today and are here so that the next thing hung off a faction
+    // is measured the day it lands.
+    const world = createWorld(SEED);
+    const settler = world.pawns.find((p) => !p.animal && p.faction === 'colony');
+    expect(settler, 'the map starts with a colonist to copy').toBeDefined();
+    let nextId = Math.max(...world.pawns.map((p) => p.id)) + 1;
+    const cases = new Map<number, string>();
+    for (const faction of ['trader', 'raider', 'prisoner'] as const) {
+      const copy = { ...settler!, id: nextId++, faction };
+      cases.set(copy.id, faction);
+      world.pawns.push(copy);
+    }
+
+    const view = new PawnsView();
+    view.onTick(world);
+    view.sync(world, 0, null);
+    const live = world.pawns.filter((p) => !p.buried);
+    expect(view.group.children.length, 'a rig for every pawn').toBe(live.length);
+
+    const counts = new Map<string, number>();
+    for (const [i, pawn] of live.entries()) {
+      const rig = view.group.children[i]!;
+      const total = drawn(rig).reduce((n, m) => n + triangles(m), 0);
+      const who = cases.get(pawn.id);
+      if (who) counts.set(who, total);
+      if (!pawn.animal) expect(total, `${who ?? 'settler'} rig (${pawn.weapon})`).toBeLessThanOrEqual(3000);
+    }
+    expect([...counts.keys()].sort(), 'all three factions drawn').toEqual(['prisoner', 'raider', 'trader']);
+    // And the trader is really carrying the freight — otherwise the budget above
+    // is measuring a settler in a different coat and proving nothing.
+    expect(counts.get('trader')!, 'a trader draws its load').toBeGreaterThan(counts.get('raider')! + 100);
+    view.dispose();
+  });
+
+  it("paints the inside of the hunt marker darker than the outside — one flat colour on both walls is a hole in the frame, not a funnel", () => {
+    // The marker is unlit on purpose, so a hunt order reads the same at three in
+    // the morning as at noon. That costs it every cue a shape normally gets from
+    // the light, and drawn double-sided in one colour it had none left: at a
+    // settler's eye height it was fifteen thousand pixels of one value, a shape
+    // with no inside and no outside, which the eye resolves as a hole rather
+    // than as a cone. Two shells on the one buffer instead, and the only thing
+    // that can tell them apart is the value they are painted.
+    const { view } = bodies();
+    const mark = part(view.group, 'mark');
+    const inner = part(view.group, 'mark-inner');
+    expect(inner.parent, 'the inner wall rides the marker').toBe(mark);
+    expect(inner.geometry, 'and shares its buffer').toBe(mark.geometry);
+    const outerMat = mark.material as THREE.MeshBasicMaterial;
+    const innerMat = inner.material as THREE.MeshBasicMaterial;
+    expect(outerMat.side, 'the outer shell draws its front faces').toBe(THREE.FrontSide);
+    expect(innerMat.side, 'the inner shell draws its back faces').toBe(THREE.BackSide);
+    // Ten points of L* is the step that survives at a glance against a moving
+    // background; these measure twenty-two apart.
+    expect(
+      lightness(outerMat.color) - lightness(innerMat.color),
+      'the throat of the funnel is a clear step darker than its outside',
+    ).toBeGreaterThan(10);
+    view.dispose();
+  });
+
+  it("hangs the hunt marker over the top of the animal itself, calf or grown — on a mossback it rode the neck and read as a red collar", () => {
+    // The clearance was measured off a height each species declared, and all four
+    // declared the crown of the barrel. On three species the barrel is the top of
+    // the animal and the marker floated correctly; on the mossback the head, the
+    // ears and the antlers stand up to forty-one centimetres above it, so the
+    // marker's point hung at 1.19 against a silhouette that reaches 1.36 and the
+    // marker was inside the animal. The rig measures the body it has just built
+    // now, so what is asserted is the thing that was actually wanted: the point
+    // stands clear of the whole animal, by the same air on every species and at
+    // either size, because a calf is not owed less warning than its dam.
+    const world = createWorld(SEED);
+    let nextId = Math.max(...world.pawns.map((p) => p.id)) + 1;
+    const calves = new Set<number>();
+    for (const kind of Object.keys(ANIMAL_COLOR) as (keyof typeof ANIMAL_COLOR)[]) {
+      const stock = world.pawns.find((p) => p.animal === kind);
+      expect(stock, `the map carries a ${kind} to copy`).toBeDefined();
+      const copy = { ...stock!, id: nextId++, born: world.tick, hunted: true };
+      calves.add(copy.id);
+      world.pawns.push(copy);
+    }
+    const view = new PawnsView();
+    view.onTick(world);
+    view.sync(world, 0, null);
+    const live = world.pawns.filter((p) => !p.buried);
+    const gaps: number[] = [];
+    const kinds = new Set<string>();
+    for (const [i, pawn] of live.entries()) {
+      if (!pawn.animal || pawn.dead) continue;
+      const rig = view.group.children[i]!;
+      const top = crest(rig);
+      const mark = part(rig, 'mark');
+      const who = `${pawn.animal}${calves.has(pawn.id) ? ' calf' : ''}`;
+      expect(mark.position.y, `${who}'s marker clears the top of it`).toBeGreaterThan(top);
+      expect(mark.position.y - top, `${who}'s marker hangs close over it`).toBeLessThan(0.3);
+      gaps.push(mark.position.y - top);
+      kinds.add(who);
+    }
+    expect(kinds.size, 'every species and every calf carries one').toBeGreaterThanOrEqual(8);
+    expect(
+      Math.max(...gaps) - Math.min(...gaps),
+      'a brambletail calf gets as much air over it as a grown mossback',
+    ).toBeLessThan(0.01);
     view.dispose();
   });
 });

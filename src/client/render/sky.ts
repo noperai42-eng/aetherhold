@@ -33,6 +33,102 @@ import type { World } from '../../sim/types';
  */
 const SKY_RADIUS = 360;
 const WHITE = new THREE.Color(0xffffff);
+
+/**
+ * The renderer's exposure, which this file has to know because the dome and the
+ * rain write `gl_FragColor` themselves and so carry their own copy of the
+ * frame's tail. It is set on the one `WebGLRenderer` in `renderer.ts`, and
+ * `tests/lighting.test.ts` reads both files and fails if the two ever disagree,
+ * because a shader that tone maps at the wrong exposure looks like a colour the
+ * artist chose rather than like a bug.
+ */
+export const TONE_EXPOSURE = 1.3;
+
+/**
+ * The two matrices ACES runs a colour through, inverted once at load.
+ *
+ * These are three's own, copied out of `tonemapping_pars_fragment` — the very
+ * chunk the fragment shader will use on the way out — so a reader can check them
+ * against it a line at a time. They look transposed against that chunk because
+ * `Matrix3.set` takes rows where GLSL's `mat3` constructor takes columns.
+ * Inverting them here rather than pasting a hand-computed inverse keeps the only
+ * ACES numbers in this file three's numbers.
+ */
+const ACES_IN_INV = new THREE.Matrix3()
+  .set(0.59719, 0.35458, 0.04823, 0.076, 0.90834, 0.01566, 0.0284, 0.13383, 0.83777)
+  .invert();
+const ACES_OUT_INV = new THREE.Matrix3()
+  .set(1.60475, -0.53108, -0.07367, -0.10208, 1.10813, -0.00605, -0.00327, -0.07276, 1.07602)
+  .invert();
+
+/**
+ * The most radiance a sky colour is ever asked for. ACES flattens as it nears
+ * white, so the light behind a white pixel is unbounded: a lightning flash asks
+ * for about twelve, and the exact white the curve only approaches would ask for
+ * infinity. Anything at or above this is the same white on the screen.
+ */
+const RADIANCE_CEILING = 64;
+
+/** ACES's rational fit, run backwards — the quadratic it turns into. See `radianceFor`. */
+function unfit(y: number): number {
+  const a = 1 - 0.983729 * y;
+  const b = 0.0245786 - 0.432951 * y;
+  const c = -(0.000090537 + 0.238081 * y);
+  if (a <= 1e-6) return RADIANCE_CEILING;
+  const disc = b * b - 4 * a * c;
+  if (disc <= 0) return 0;
+  return Math.max(0, (-b + Math.sqrt(disc)) / (2 * a));
+}
+
+const RADIANCE_SCRATCH = new THREE.Vector3();
+
+/**
+ * The light that has to arrive for the frame to *show* this colour: the tone
+ * curve and the sRGB encode, run backwards.
+ *
+ * Everything else in the game hands the renderer an albedo and lets three's own
+ * fragment tail decide what reaches the screen — ACES at `TONE_EXPOSURE`, then
+ * the encode into the sRGB framebuffer. The dome and the precipitation write
+ * `gl_FragColor` themselves, and until now they wrote it and stopped: their
+ * linear values went into that framebuffer with no encode at all and were shown
+ * as though they had already had one. That is not a subtle error and it is not a
+ * guess. In `.look/shots/r9b/r9b-4-firstperson.png` the sky runs from 0x567ba3
+ * at the top of the frame to about 0x99acbb where the ground cuts it off, and
+ * the palette's own hexes for those two ends are 0x7fa6c9 and 0xcfdce6 — nowhere
+ * near. What the photograph is showing is those hexes' *linear* components,
+ * 0x366194 and 0x9fb7ca, printed straight out as pixels. Read one of them off:
+ * the pixel twenty degrees above the horizon measures (110, 142, 176) and the
+ * gradient's arithmetic for twenty degrees comes to (110, 142, 177).
+ *
+ * So the palette's sky colours are not radiances and never were. They are the
+ * pixels the sky came out as, tuned by eye against a dome with no tail on it.
+ * Now that the dome has the tail, handing it those same numbers would light the
+ * sky far too brightly — `SKY_DAY` alone would go from (54, 97, 149) to
+ * (168, 196, 215), a deep blue turning to milk. This converts instead: it reads
+ * the palette colour as the pixel it is and returns the light that lands on that
+ * pixel once the frame's tail has had it. The sky keeps the colour it was
+ * photographed with, and it keeps it *in the frame's own space*, which is the
+ * point — the fog it has to match, the sun disc drawn on it and the rain drawn
+ * through it are all finally the same arithmetic.
+ *
+ * Writes into `out` and returns it. `sync` runs every frame and must not litter.
+ */
+export function radianceFor(look: THREE.Color, out: THREE.Color): THREE.Color {
+  // The palette colour's components *are* the pixel, so read them as one: the
+  // sRGB code values they were tuned as, decoded to the light that pixel emits.
+  out.setRGB(look.r, look.g, look.b, THREE.SRGBColorSpace);
+  const v = RADIANCE_SCRATCH.set(out.r, out.g, out.b).applyMatrix3(ACES_OUT_INV);
+  v.set(unfit(v.x), unfit(v.y), unfit(v.z))
+    .applyMatrix3(ACES_IN_INV)
+    .multiplyScalar(0.6 / TONE_EXPOSURE);
+  return out.setRGB(
+    Math.min(RADIANCE_CEILING, Math.max(0, v.x)),
+    Math.min(RADIANCE_CEILING, Math.max(0, v.y)),
+    Math.min(RADIANCE_CEILING, Math.max(0, v.z)),
+    THREE.LinearSRGBColorSpace,
+  );
+}
+
 /**
  * What the sky bounce lerps toward by day where it lights shade. The dome's
  * own blue is right for the dome, but as the colour of every surface the sun
@@ -74,6 +170,13 @@ const SKY_VERT = /* glsl */ `
  * first-person frame, the top of that frame still brightens toward it; the
  * bloom is the whole quadrant lifting toward the sun's colour. Tight and pale
  * at noon, wide and warm as it goes down.
+ *
+ * The two chunks at the end are the frame's tail, and they are not optional: a
+ * shader that writes `gl_FragColor` and stops has opted out of the tone curve
+ * and the sRGB encode that every other surface in the scene goes through, which
+ * leaves the sky in a different colour space from the colony standing in front
+ * of it. The uniforms arrive as radiance (see `radianceFor`) precisely so that
+ * these two lines can be here. Order matters — tone map, then encode.
  */
 const SKY_FRAG = /* glsl */ `
   uniform vec3 uTop;
@@ -100,6 +203,8 @@ const SKY_FRAG = /* glsl */ `
     float bloom = pow(s, 1.5) * 0.12;
     col = mix(col, uGlow, min(1.0, (corona + halo + bloom) * uGlowStrength));
     gl_FragColor = vec4(col, 1.0);
+    #include <tonemapping_fragment>
+    #include <colorspace_fragment>
   }
 `;
 
@@ -340,13 +445,25 @@ export class SkyView {
     if (cloud > 0) this.horizon.lerp(this.overcast, cloud * 0.8);
     if (flash > 0) this.horizon.lerp(WHITE, flash * 0.6);
     const band = (0.1 + day * 0.55) * (1 - cloud * 0.7);
-    (this.domeMat.uniforms.uTop!.value as THREE.Color).copy(this.skyTop);
-    (this.domeMat.uniforms.uBottom!.value as THREE.Color).copy(this.skyBottom);
-    (this.domeMat.uniforms.uHorizon!.value as THREE.Color).copy(this.horizon);
+    // Every mix above happened in the colours the palette names, which is where
+    // they were tuned — an hour is two thirds of the way to dusk on the swatch,
+    // not on the sensor. The conversion to radiance is the last step before the
+    // shader, so the gradient keeps the shape it was photographed with.
+    radianceFor(this.skyTop, this.domeMat.uniforms.uTop!.value as THREE.Color);
+    const bottom = radianceFor(this.skyBottom, this.domeMat.uniforms.uBottom!.value as THREE.Color);
+    const warm = radianceFor(this.horizon, this.domeMat.uniforms.uHorizon!.value as THREE.Color);
     this.domeMat.uniforms.uBand!.value = band;
     // What the dome shows where it meets the ground, which is what the fog has
-    // to be: the same mix the shader makes at h = 0.
-    this.fogCol.copy(this.skyBottom).lerp(this.horizon, band);
+    // to be: the same mix the shader makes at h = 0, off the same two uniforms.
+    //
+    // Taken from the converted pair rather than from the palette pair, because
+    // `THREE.Fog`'s colour is mixed into a surface *before* three's tail runs on
+    // it — it is radiance, exactly as the dome's uniforms now are. It was not,
+    // and the two could not agree on screen at any tuning: at noon both sides
+    // held the same number and the dome drew it as (199, 192, 175) while a fully
+    // fogged surface an inch in front of it drew it as (227, 226, 223), a warm
+    // haze against a neutral one with a seam down the middle.
+    this.fogCol.copy(bottom).lerp(warm, band);
     this.dome.position.set(focusX, 0, focusY);
 
     const up = Math.max(0, Math.sin(elev + 0.02));
@@ -357,7 +474,15 @@ export class SkyView {
     // The disc itself is drawn separately; this is the sky around it.
     (this.domeMat.uniforms.uSunDir!.value as THREE.Vector3).copy(dir);
     this.glowCol.copy(SUN_DAY).lerp(SUN_DUSK, twilight);
-    (this.domeMat.uniforms.uGlow!.value as THREE.Color).copy(this.glowCol);
+    // The corona is where the old path came closest to right and still missed.
+    // `SUN_DAY`'s red is already at the top of the range, so writing it raw put
+    // 255 on the screen and looked correct; its green and blue went in as 0.855
+    // and 0.578 and came out as 218 and 147, where the palette asks for 238 and
+    // 200. A white-hot sun with an orange cast, and the drawn disc — an ordinary
+    // material, so tone mapped like everything else — sitting in the middle of
+    // it. It costs 2.02 in red to put that corona back, which is why the
+    // conversion has to allow a value above one at all.
+    radianceFor(this.glowCol, this.domeMat.uniforms.uGlow!.value as THREE.Color);
     const glowUp = Math.max(0, Math.min(1, (elev + 0.12) / 0.2));
     this.domeMat.uniforms.uGlowStrength!.value = glowUp * (0.7 + twilight * 0.9) * (1 - cloud * 0.85);
 
