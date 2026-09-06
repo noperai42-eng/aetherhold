@@ -93,6 +93,20 @@ function clearCell(world: World): { x: number; y: number } {
   throw new Error('no clear cell');
 }
 
+/** The start of a run of `n` clear cells stepping by (dx, dy) — somewhere to build a wall. */
+function clearRun(world: World, dx: number, dy: number, n: number): { x: number; y: number } {
+  for (let y = 2; y < world.height - 2 - Math.abs(dy) * n; y++) {
+    for (let x = 2; x < world.width - 2 - Math.abs(dx) * n; x++) {
+      let clear = true;
+      for (let i = 0; i < n; i++) {
+        if (world.cellBuilding[(y + dy * i) * world.width + (x + dx * i)] !== -1) clear = false;
+      }
+      if (clear) return { x, y };
+    }
+  }
+  throw new Error('no clear run');
+}
+
 function place(world: World, kind: BuildingKind, x: number, y: number): void {
   const b = addBuilding(world, kind, x, y, true);
   expect(b, `${kind} could not be placed at ${x},${y}`).not.toBeNull();
@@ -406,27 +420,128 @@ describe('a wall', () => {
     // the set of vertical board ends on the +z face must change from each
     // course to the one above it, while the boards stay inside the coping's
     // footprint so the wall is still the box the sim collides with.
+    //
+    // The number of courses is checked as a range rather than a number,
+    // because it is a read and not a constant: at five, a block over a
+    // two-and-a-half-metre wall is very nearly half a metre tall and the wall
+    // reads as breeze block; past eight the courses close up into a stripe at
+    // the distance the manager camera watches from.
     const view = new BuildingsView();
-    const pos = partGeometry(view, 'wall.planks').attributes.position;
+    const g = partGeometry(view, 'wall.planks');
+    const pos = g.attributes.position;
     const cap = partGeometry(view, 'wall.cap');
     cap.computeBoundingBox();
+    // Every board of a course shares the course's two heights, so the sorted
+    // levels are the courses in pairs — bottom, top, bottom, top — and that is
+    // how many courses there are without the test knowing the pitch.
     const ends = new Map<number, Set<number>>();
     let reach = 0;
     for (let k = 0; k < pos.count; k++) {
       reach = Math.max(reach, Math.abs(pos.getX(k)), Math.abs(pos.getZ(k)));
-      if (pos.getZ(k) < 0.52) continue;
-      const course = Math.round((pos.getY(k) - 0.27) / 0.48);
-      if (!ends.has(course)) ends.set(course, new Set());
-      ends.get(course)!.add(Math.round(pos.getX(k) * 100));
+      // Only the boards on the +z face, and on those only the vertices out on
+      // the weather side: the ones behind are the board's thickness, not its
+      // ends. The face itself is at 0.52 and the back of a board at 0.485.
+      if (pos.getZ(k) < 0.5) continue;
+      const level = Math.round(pos.getY(k) * 1000);
+      if (!ends.has(level)) ends.set(level, new Set());
+      ends.get(level)!.add(Math.round(pos.getX(k) * 100));
     }
-    expect(ends.size, 'fewer than five courses of planking').toBe(5);
-    for (let c = 0; c + 1 < 5; c++) {
-      const below = [...ends.get(c)!].sort().join(',');
-      const above = [...ends.get(c + 1)!].sort().join(',');
+    const rows = [...ends.keys()].sort((a, b) => a - b);
+    const courses = rows.length / 2;
+    expect(courses, `${courses} courses of planking`).toBeGreaterThanOrEqual(6);
+    expect(courses, `${courses} courses of planking`).toBeLessThanOrEqual(8);
+    for (let c = 0; c + 1 < courses; c++) {
+      const below = [...ends.get(rows[c * 2]!)!].sort().join(',');
+      const above = [...ends.get(rows[c * 2 + 2]!)!].sort().join(',');
       expect(above, `course ${c + 1} has its joints where course ${c} has them`).not.toBe(below);
+    }
+    // The joint between two courses is a shadow line, not a black one: a
+    // six-centimetre groove three deep read as mortar at eye level, and mortar
+    // that wide is what made the wall breeze block rather than timber.
+    for (let c = 0; c + 1 < courses; c++) {
+      const joint = (rows[c * 2 + 2]! - rows[c * 2 + 1]!) / 1000;
+      expect(joint, `a joint ${joint} wide is a line, not a shadow`).toBeLessThanOrEqual(0.04);
     }
     expect(reach, 'the planking stands out past the coping').toBeLessThanOrEqual(cap.boundingBox!.max.x);
     view.dispose();
+  });
+
+  it('dyes one board off another, because a face at one tone is a painted plane', () => {
+    // A pool has one material, so the only place a difference between two
+    // boards of the same wall can live is in the vertices. Without it a run of
+    // wall is one flat brown from any distance and the bond might as well be
+    // printed on; with it every board catches the light as its own board.
+    const view = new BuildingsView();
+    const g = partGeometry(view, 'wall.planks');
+    const col = g.attributes.color;
+    expect(col, 'the planking carries no vertex colours').toBeDefined();
+    const tones = new Set<number>();
+    for (let k = 0; k < col.count; k++) tones.add(Math.round(col.getX(k) * 100));
+    expect(tones.size, 'every board of the wall is the same timber').toBeGreaterThanOrEqual(3);
+    view.dispose();
+  });
+
+  it('closes its courses onto the wall next door, and onto a doorway not at all', () => {
+    // The one place the bond used to break down was the jamb. A run of wall
+    // that stops has every course stopping in the same place, so beside a door
+    // the vertical joints stacked into one unbroken column the full height of
+    // the wall — the filing cabinet again, in the one spot a settler stands
+    // closest to. The two-board courses are held back from the cell's edge now
+    // and closed by a part of their own, pushed only where the planking really
+    // does run on: so a wall between two walls is closed both ways, a wall
+    // beside a door is closed on the wall side only, and at the opening the
+    // closed courses end short of the unclosed ones with the alternation
+    // intact.
+    const world = createWorld(SEED);
+    const view = new BuildingsView();
+    const { x, y } = clearCell(world);
+    place(world, 'wall', x, y);
+    place(world, 'wall', x + 1, y);
+    place(world, 'wall', x + 2, y);
+    place(world, 'door', x + 3, y);
+    view.sync(world);
+    expect(partsAt(view, 'wall.closer', x + 1, y), 'a wall between two walls closes both ways').toBe(2);
+    expect(partsAt(view, 'wall.closer', x, y), 'the far end of a run closes onto nothing').toBe(1);
+    expect(partsAt(view, 'wall.closer', x + 2, y), 'the wall beside a door closes onto the doorway').toBe(1);
+    view.dispose();
+  });
+});
+
+describe('a door', () => {
+  it('is hung across the run of wall it is set in, not along it', () => {
+    // Every part of a door — the jambs, the hinge the leaf swings on, the
+    // handle on the far stile — is built along the x axis, and it used to be
+    // drawn that way whatever it was hung in. So a door in a wall running north
+    // to south stood broadside to it: jambs across the opening, a lintel lying
+    // along the wall instead of over the gap, and a leaf that swung into the
+    // wall beside it. The frame is twice as wide as it is deep, so which way
+    // round it is hung is a question its bounding box answers, and it has to
+    // come out the other way round in the other run.
+    const span = (dx: number, dy: number): THREE.Vector3 => {
+      const world = createWorld(SEED);
+      const view = new BuildingsView();
+      const { x, y } = clearRun(world, dx, dy, 3);
+      place(world, 'wall', x, y);
+      place(world, 'door', x + dx, y + dy);
+      place(world, 'wall', x + dx * 2, y + dy * 2);
+      view.sync(world);
+      const g = partGeometry(view, 'door.frame');
+      g.computeBoundingBox();
+      // Worldgen hangs doors of its own in the starting cabin, so it is the
+      // frame standing on this cell that is measured, not the first one found.
+      const pos = new THREE.Vector3();
+      const hung = matricesOf(view, 'door.frame').find((m) => {
+        pos.setFromMatrixPosition(m);
+        return Math.round(pos.x) === x + dx && Math.round(pos.z) === y + dy;
+      });
+      const box = new THREE.Box3().copy(g.boundingBox!).applyMatrix4(hung!);
+      view.dispose();
+      return box.getSize(new THREE.Vector3());
+    };
+    const eastWest = span(1, 0);
+    const northSouth = span(0, 1);
+    expect(eastWest.x, 'a door in an east-west wall stands along the wall').toBeGreaterThan(eastWest.z);
+    expect(northSouth.z, 'a door in a north-south wall stands across the wall').toBeGreaterThan(northSouth.x);
   });
 });
 

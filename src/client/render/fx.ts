@@ -87,11 +87,35 @@ export function markHeight(world: World, x: number, y: number, lift: number): nu
 }
 
 /**
- * A ripe crop's colour. Squared blend so it stays green until it is nearly ready.
- * Straw gold, not lemon: the brighter yellow this used to be lit a ripe plot up
- * like a warning light, and a field of wheat is warm rather than neon.
+ * The leaf colour a sown plant is tinted, from its first sprouts to the day it
+ * is ready. Green at every stage and only deepening as the plant fills out: the
+ * yellow-olive a crop used to ripen *into* made a finished field read as a dead
+ * one, and a player scanning for food was scanning for the colour of drought.
+ * What turns gold is the produce and nothing else.
  */
-const RIPE_COLOR = new THREE.Color(0xc9a445);
+const LEAF_YOUNG = new THREE.Color(0x8cbb57);
+const LEAF_RIPE = new THREE.Color(0x63903a);
+/**
+ * A ripe grain's colour. Straw gold, not lemon: the brighter yellow this used to
+ * be lit a ripe plot up like a warning light, and a field of wheat is warm
+ * rather than neon.
+ */
+const RIPE_GRAIN = new THREE.Color(0xc9a445);
+/**
+ * The head's vertex colour — a multiplier on the plant's tint, like every other
+ * part (see `paint`), so it is written as the ratio that turns the one into the
+ * other rather than as three numbers that would silently stop meaning "gold" the
+ * next time the leaves changed. Componentwise, and in whatever space three is
+ * holding these colours in, because that is the space the shader multiplies them
+ * in too. It is a large number in red because the green it has to overcome has
+ * almost none; over the lighter tint of a plant that has only just headed the
+ * same ratio gives a paler gold, which is what a head still filling should be.
+ */
+const HEAD_GOLD = new THREE.Vector3(
+  RIPE_GRAIN.r / LEAF_RIPE.r,
+  RIPE_GRAIN.g / LEAF_RIPE.g,
+  RIPE_GRAIN.b / LEAF_RIPE.b,
+);
 /**
  * Growth at which a sown cell stops being sprouts and becomes a leafy plant,
  * and at which the plant puts up heads. Three shapes, not three sizes: a
@@ -110,6 +134,15 @@ const BERRY_GREEN = new THREE.Color(0x5f7a3a);
 const BERRY_RIPE = new THREE.Color(0x8c1e3c);
 /** A bush in full leaf. Deeper than the lawn, so the thicket stands off the turf. */
 const BUSH_GREEN = new THREE.Color(0x3f6a2e);
+/**
+ * A bush that has just been picked over. Grey-green rather than the near-black
+ * olive it was: the crown carries this colour and the base half of it (the
+ * shading baked into `bushGeometry`), and half of a dark olive is a boulder —
+ * a stripped bush sat in the frame looking exactly like the loose stones. Paler
+ * and greyer than `BUSH_GREEN` so "picked" still reads at a glance, but plainly
+ * foliage; that it is also the smaller of the two is what `syncBushes` scales.
+ */
+const BUSH_STRIPPED = new THREE.Color(0x84986a);
 
 export class FxView {
   readonly group = new THREE.Group();
@@ -341,12 +374,21 @@ export class FxView {
       if (g < 0) continue;
       // Height and girth run on through a stage change, so the plant that just
       // put up leaves is the size the sprouts had reached, not a fresh start.
-      const h = 0.16 + g * 0.74;
+      // A sown cell starts at a quarter of a grown plant and not a sixth: at the
+      // old floor a fresh seedling was a few centimetres of leaf on bare brown,
+      // and a plot nobody can tell from unsown soil is a plot the player forgets
+      // they made. The girth floor moves with it, since what is missing from
+      // overhead is leaf area rather than height.
+      const h = 0.22 + g * 0.7;
+      const girth = 0.62 + g * 0.38;
       this.v.set(unpackX(world, cell), 0, unpackY(world, cell));
       this.q.identity();
-      this.s.set(0.5 + g * 0.5, h, 0.5 + g * 0.5);
+      this.s.set(girth, h, girth);
       this.m.compose(this.v, this.q, this.s);
-      this.c.setHex(0x6f9c3e).lerp(RIPE_COLOR, g * g);
+      // Green the whole way, deepening as the plant matures. Ripeness is told by
+      // the gold of the heads and by a plant standing half as tall again as a
+      // mid one — never by the leaves going yellow, which is a failed crop.
+      this.c.copy(LEAF_YOUNG).lerp(LEAF_RIPE, g);
       this.crops[cropStage(g)]!.push(this.m, this.c);
     }
     for (const pool of this.crops) pool.end();
@@ -374,7 +416,7 @@ export class FxView {
       this.m.compose(this.v, this.q, this.s);
       // Grey-green when it has just been picked over, filling back to a full
       // green as it recovers. Never yellow: the fruit says when it is ready.
-      this.c.setHex(0x5c6a48).lerp(BUSH_GREEN, g);
+      this.c.copy(BUSH_STRIPPED).lerp(BUSH_GREEN, g);
       this.bushes.push(this.m, this.c);
       if (g < BERRIES_AT) continue;
       // The cluster is built on the bush's own lobes in the bush's own units, so
@@ -597,36 +639,57 @@ function weld(parts: THREE.BufferGeometry[]): THREE.BufferGeometry {
  * 0.45 of a cell from its stem: neighbours in a field just touch, and nothing
  * pokes across a path.
  *
- * Three shapes rather than one scaled: a seedling is two or three thin sprouts
- * with nothing between them; the leafy plant is a stalk with two tiers of broad
- * leaves bowing off it; the headed plant is three stalks each carrying a fat
- * grain head, with the leaves left low. The head is the one part with its own
- * vertex colour — warmer and darker than the straw — so from overhead a ripe
- * plot is a field of gold beads rather than a field of yellow stars.
+ * Three shapes rather than one scaled: a seedling is a low rosette of first
+ * leaves; the leafy plant is a stalk with two tiers of broad leaves bowing off
+ * it; the headed plant is three taller stalks each carrying a cluster of grains,
+ * with the leaves left low. Each stage tops out higher than the one it takes
+ * over from, at the growth where it takes over, so a plant never shrinks as it
+ * crosses a boundary. The grains are the one part with a vertex colour of their
+ * own — `HEAD_GOLD`, which turns the plant's green into straw where and only
+ * where the crop is — so from overhead a ripe plot is green leaves carrying
+ * gold, which is what a field ready to cut looks like, and never a field of
+ * yellow stars.
  */
 export function cropGeometry(stage: CropStage): THREE.BufferGeometry {
   const parts: THREE.BufferGeometry[] = [];
   if (stage === 'seedling') {
-    for (let i = 0; i < 3; i++) {
-      const sprout = bladeGeometry(0.1, 3, 0.15);
-      sprout.scale(1, 1 - i * 0.18, 1);
-      sprout.rotateX(0.2 + i * 0.08);
+    // Four broad leaves splayed out low, not three thin sprouts standing on
+    // end. A sprout held upright shows the manager camera its edge and
+    // disappears: a sown cell read as bare brown soil, and the player could not
+    // tell a plot that was coming up from one nobody had got to yet. The first
+    // leaf stays nearly upright so the stage still has a height; the rest fall
+    // further out as they get shorter, which is what a seedling does with its
+    // first leaves, and what puts leaf area under an overhead eye.
+    const leaves = [
+      { len: 0.92, lean: 0.14 },
+      { len: 0.64, lean: 0.46 },
+      { len: 0.58, lean: 0.58 },
+      { len: 0.5, lean: 0.68 },
+    ];
+    for (const [i, leaf] of leaves.entries()) {
+      const sprout = bladeGeometry(0.2, 3, 0.12);
+      sprout.scale(1, leaf.len, 1);
+      sprout.rotateX(leaf.lean);
       sprout.translate(0, 0, 0.03);
       sprout.rotateY(i * 2.1 + 0.4);
-      parts.push(paint(sprout, 0.95, 1.05, 0.9));
+      parts.push(paint(sprout, 1, 1, 1));
     }
     return weld(parts);
   }
 
   if (stage === 'leafy') {
-    const stalk = new THREE.CylinderGeometry(0.02, 0.04, 1, 5, 1, true);
-    stalk.translate(0, 0.5, 0);
-    parts.push(paint(stalk, 0.9, 0.95, 0.8));
+    // The stalk stops just above the upper leaves rather than at the top of the
+    // unit. The spare length was a bare stick standing out of the rosette from
+    // overhead, and leaving it out is also what gives the headed plant below the
+    // room to read as taller rather than merely wider.
+    const stalk = new THREE.CylinderGeometry(0.02, 0.04, 0.9, 5, 1, true);
+    stalk.translate(0, 0.45, 0);
+    parts.push(paint(stalk, 0.92, 0.96, 0.78));
     // Two tiers, the lower one broader and bowing further, so the plant fills
     // its cell from the ground up rather than being a rosette on a stick.
     const tiers = [
-      { n: 5, y: 0.06, len: 0.5, width: 0.3, bow: 0.5, turn: 0 },
-      { n: 4, y: 0.42, len: 0.45, width: 0.26, bow: 0.4, turn: 0.7 },
+      { n: 5, y: 0.1, len: 0.5, width: 0.3, bow: 0.5, turn: 0 },
+      { n: 4, y: 0.52, len: 0.44, width: 0.26, bow: 0.42, turn: 0.7 },
     ];
     for (const tier of tiers) {
       for (let i = 0; i < tier.n; i++) {
@@ -641,28 +704,38 @@ export function cropGeometry(stage: CropStage): THREE.BufferGeometry {
     return weld(parts);
   }
 
-  // Headed. The stalks lean a little apart so the heads do not merge into one
-  // blob from overhead, and the head sits on the tip of its stalk: the stalk is
-  // a blade bowing `bend` forward at y = 1, scaled to 0.84, so its tip is at
-  // (0, 0.84, 0.84 * bend) before the lean.
+  // Headed. The stalks stand taller than the leafy plant's and lean a little
+  // apart so the clusters do not merge into one blob from overhead. Each cluster
+  // sits on the tip of its own stalk, and that tip is (0, stalkLen, bend): the
+  // stalk is a blade bowing `bend` forward at y = 1, scaled in height alone, so
+  // the bow does not scale with it — which is the centimetre and a half the head
+  // used to sit behind the end of its stalk by.
   const bend = 0.1;
+  const stalkLen = 0.88;
   for (let i = 0; i < 3; i++) {
     const stalk = bladeGeometry(0.05, 3, bend);
-    stalk.scale(1, 0.84, 1);
-    // Knocked out of true and lit as one smooth grain, then stretched into an
-    // ear: taller than it is wide, and nodding a little forward with the stalk.
-    const head = lumpyGeometry(new THREE.IcosahedronGeometry(0.07, 1), 0.06, 11 + i);
-    head.scale(1, 1.9, 1);
-    head.translate(0, 0.86, 0.84 * bend);
-    const ear = weld([paint(stalk, 0.9, 0.95, 0.75), paint(head, 1.1, 0.9, 0.55)]);
-    ear.rotateX(0.12 + i * 0.03);
-    ear.translate(0, 0, 0.05);
-    ear.rotateY((i / 3) * Math.PI * 2 + 0.5);
-    parts.push(ear);
+    stalk.scale(1, stalkLen, 1);
+    const ear = [paint(stalk, 0.92, 0.96, 0.78)];
+    // Four grains packed round the tip, rather than one bead stretched into an
+    // ear. What says "ready" from twenty cells up is the weight of gold on the
+    // plant, and one bead per stalk is three dots on a green plant. Each grain
+    // is the cheapest solid knocked out of true and welded smooth — a centimetre
+    // across, so what it needs is a highlight and not a silhouette — and each
+    // takes its own seed, so a head is four grains and not one repeated.
+    for (const grain of CROP_GRAINS) {
+      const bead = lumpyGeometry(new THREE.IcosahedronGeometry(grain.r, 0), 0.15, 13 + i * 3 + grain.s);
+      bead.translate(grain.x, stalkLen + grain.y, bend + grain.z);
+      ear.push(paint(bead, HEAD_GOLD.x, HEAD_GOLD.y, HEAD_GOLD.z));
+    }
+    const whole = weld(ear);
+    whole.rotateX(0.12 + i * 0.03);
+    whole.translate(0, 0, 0.05);
+    whole.rotateY((i / 3) * Math.PI * 2 + 0.5);
+    parts.push(whole);
   }
   for (let i = 0; i < 4; i++) {
     const leaf = bladeGeometry(0.22, 4, 0.2);
-    leaf.scale(1, 0.4, 1);
+    leaf.scale(1, 0.45, 1);
     leaf.rotateX(0.55);
     leaf.translate(0, 0.05, 0.02);
     leaf.rotateY((i / 4) * Math.PI * 2 + 0.3);
@@ -670,6 +743,20 @@ export function cropGeometry(stage: CropStage): THREE.BufferGeometry {
   }
   return weld(parts);
 }
+
+/**
+ * Where the grains of one head sit, in the stalk's own units with the origin at
+ * the tip of the stalk. Stacked up the last ten centimetres and nudged off the
+ * axis by turns, so a head is an ear of grain rather than a column of beads —
+ * and short enough that the topmost of them, leaning with its stalk, stays
+ * inside the one unit a plant is allowed.
+ */
+const CROP_GRAINS = [
+  { x: 0, y: 0, z: 0, r: 0.055, s: 0 },
+  { x: 0.035, y: 0.055, z: 0.012, r: 0.05, s: 1 },
+  { x: -0.032, y: 0.052, z: -0.014, r: 0.05, s: 2 },
+  { x: 0.004, y: 0.098, z: 0.004, r: 0.042, s: 3 },
+] as const;
 
 /**
  * A wild bush: five lobes grown into one another, the three big ones welded

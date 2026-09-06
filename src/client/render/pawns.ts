@@ -395,6 +395,12 @@ interface SpeciesModel {
   neckPitch: number;
   /** Where along the neck the collar rings it, in the neck's own frame. */
   collarAt: number;
+  /**
+   * Where the hunt marker's point hovers, in body space: a hand's width over the
+   * back, clear of whatever the species carries up there. One height for all four
+   * put the point half a body above a hare and among a mossback's antlers.
+   */
+  markAt: number;
   head: THREE.BufferGeometry;
   headAt: Vec3;
   /** On the skull's surface, one side; mirrored for the other. */
@@ -456,6 +462,8 @@ class AnimalRig implements Rig {
   private layer = LAYER_ALL;
   private readonly size: number;
   private readonly legLength: number;
+  /** The species' own marker height, in body space, so a calf's marker comes down with it. */
+  private readonly markAt: number;
   /** Last growth factor pushed to the body scale, so it is set on change only. */
   private grown = -1;
   /**
@@ -471,6 +479,7 @@ class AnimalRig implements Rig {
     const model = shared.animals[kind];
     this.size = def.size;
     this.legLength = model.legLength;
+    this.markAt = model.markAt;
 
     const hide = hideTint(ANIMAL_COLOR[kind], pawn.colorSeed);
     const hideMat = new THREE.MeshStandardMaterial({ color: hide, roughness: 0.9 });
@@ -558,11 +567,15 @@ class AnimalRig implements Rig {
     this.body.scale.setScalar(def.size);
     this.group.add(this.body);
 
-    const markMat = new THREE.MeshBasicMaterial({ color: 0xd8563f });
+    // Drawn on both sides: the marker is a hollow funnel, and half of what the
+    // camera sees of it at any moment is its inner wall.
+    const markMat = new THREE.MeshBasicMaterial({ color: 0xd8563f, side: THREE.DoubleSide });
     this.mats.push(markMat);
     this.mark = new THREE.Mesh(shared.huntMark, markMat);
     this.mark.name = 'mark';
-    this.mark.position.y = 0.55 + def.size * 0.9;
+    // The geometry's point is its origin, so this is where the point hangs: over
+    // the species' own back, and lower on a small animal than on a large one.
+    this.mark.position.y = this.markAt * def.size;
     this.mark.visible = false;
     this.group.add(this.mark);
 
@@ -606,7 +619,7 @@ class AnimalRig implements Rig {
     if (grow !== this.grown) {
       this.grown = grow;
       this.body.scale.setScalar(this.size * grow);
-      this.mark.position.y = 0.55 + this.size * grow * 0.9;
+      this.mark.position.y = this.markAt * this.size * grow;
       this.walkPhase = phaseScale(this.legLength * this.size * grow, ANIMAL_SWING);
     }
     this.mark.visible = !!pawn.hunted && !pawn.dead;
@@ -1077,6 +1090,9 @@ function makeMossback(): SpeciesModel {
     neckAt: [0, 0.84, 0.36],
     neckPitch: 0.7,
     collarAt: 0.08,
+    // Over the hump, which is the highest the back gets; the antlers are higher
+    // still but they are a body-length forward of where the marker hangs.
+    markAt: 1.18,
     head: makeAnimalHead([0.12, 0.11, 0.14], { baseR: 0.085, tipR: 0.05, length: 0.22, drop: 0.03 }),
     headAt: [0, 1.06, 0.56],
     eyeAt: [0.085, 0.035, 0.09],
@@ -1111,9 +1127,17 @@ function makeDunhare(): SpeciesModel {
   const egg = new THREE.SphereGeometry(1, 12, 9).scale(0.22, 0.24, 0.3).rotateX(0.3).translate(0, 0.42, 0);
   const haunchL = blob([0.1, 0.13, 0.15], [-0.16, 0.3, -0.17]);
   const haunchR = blob([0.1, 0.13, 0.15], [0.16, 0.3, -0.17]);
+  // The same egg, a shade smaller and set a shade higher, so only the crown of
+  // it clears the coat: a dark saddle from the shoulders back over the rump.
+  // The manager camera sees the top of an animal and nothing else, and a sand
+  // hare on sand grass at that angle was a pale lump with ears — the darker
+  // back is the one surface that camera can read, and it is the coat's own
+  // colour gone deeper, which is what a hare's back actually is.
+  const saddle = new THREE.SphereGeometry(1, 12, 9).scale(0.205, 0.235, 0.285).rotateX(0.3).translate(0, 0.465, 0);
   return {
     body: weld([egg, haunchL, haunchR]),
     markings: [
+      { geometry: saddle, tone: 'dark' },
       { geometry: blob([0.2, 0.16, 0.26], [0, 0.33, 0.04]), tone: 'pale' },
       { geometry: new THREE.SphereGeometry(0.065, 8, 6).translate(0, 0.55, -0.31), tone: 'pale' },
     ],
@@ -1121,12 +1145,20 @@ function makeDunhare(): SpeciesModel {
     neckAt: [0, 0.5, 0.26],
     neckPitch: 0.6,
     collarAt: 0,
+    // Low: a hare stands a third of a mossback, and a marker hung at a mossback's
+    // height over one floated half a body clear of it with nothing in between.
+    markAt: 0.88,
     head: makeAnimalHead([0.1, 0.1, 0.12], { baseR: 0.07, tipR: 0.045, length: 0.1, drop: 0.02 }),
     headAt: [0, 0.62, 0.36],
     eyeAt: [0.075, 0.03, 0.075],
     noseAt: [0, -0.01, 0.19],
     crowns: [
-      { geometry: makeEar(0.03, 0.34), at: [0.05, 0.07, -0.03], roll: 0.22, pitch: -0.3, tone: 'hide', mirrored: false },
+      // Dark, and leaned further back and out than they stood. Straight up, an
+      // ear this thin is edge-on to the manager camera and disappears — which
+      // took the hare's one unmistakable feature away in the view the player
+      // spends their time in. Raked, each ear lays a dark stroke beside the
+      // skull that reads from directly overhead.
+      { geometry: makeEar(0.03, 0.34), at: [0.05, 0.07, -0.03], roll: 0.42, pitch: -0.42, tone: 'dark', mirrored: false },
     ],
     leg: limb(0.04, 0.34, 9, 1),
     hoof: makeHoof(0.045),
@@ -1160,6 +1192,8 @@ function makeBrambletail(): SpeciesModel {
     neckAt: [0, 0.56, 0.42],
     neckPitch: 0.7,
     collarAt: 0.02,
+    // Just over the brush, which stands higher than this animal's back does.
+    markAt: 0.95,
     head: makeAnimalHead([0.095, 0.09, 0.11], { baseR: 0.065, tipR: 0.028, length: 0.15, drop: 0.02 }),
     headAt: [0, 0.68, 0.53],
     eyeAt: [0.07, 0.03, 0.07],
@@ -1203,6 +1237,8 @@ function makeFenwolf(): SpeciesModel {
     neckAt: [0, 0.61, 0.464],
     neckPitch: 1.1,
     collarAt: 0.06,
+    // Over the ruff, the highest point on a wolf that carries its head low.
+    markAt: 1,
     head: makeAnimalHead([0.11, 0.1, 0.13], { baseR: 0.075, tipR: 0.035, length: 0.17, drop: 0.025 }),
     headAt: [0, 0.72, 0.68],
     eyeAt: [0.08, 0.03, 0.085],
@@ -1278,8 +1314,19 @@ function makeShared(): SharedGeometry {
     // because the collar already says something — pale gold when there is
     // something to collect — and two meanings on one surface is one meaning lost.
     petTag: new THREE.SphereGeometry(0.07, 10, 6).scale(0.8, 1.2, 0.45),
-    // A downward cone, the universal "this one" marker in a colony sim.
-    huntMark: new THREE.ConeGeometry(0.16, 0.28, 24).rotateX(Math.PI),
+    // A downward chevron, the universal "this one" marker in a colony sim: a
+    // narrow open funnel with its point at its own origin, so the rig hangs the
+    // point over the back and the marker grows upward from there.
+    //
+    // It was a capped cone a third of a cell across floating a body-length over
+    // the animal, and both halves of that were wrong. From the manager camera the
+    // cap was a solid red disc wider than the hare under it; in first person, at
+    // the range a settler actually stands from a marked animal, it filled the
+    // middle of the screen while the animal itself sat below the frame. Open, and
+    // a third narrower, it reads as an arrowhead pointing at something rather
+    // than a lid over it — and the whole marker now costs twenty triangles where
+    // the cap alone cost twenty-four.
+    huntMark: new THREE.ConeGeometry(0.11, 0.26, 20, 1, true).rotateX(Math.PI).translate(0, 0.13, 0),
     // The caravan's load: one bundle high on the back and a few crates set down
     // in the grass. A trader who is just a differently-tinted settler is a thing
     // the player has to be told about; a pile of freight is a thing they see.

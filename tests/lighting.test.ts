@@ -726,6 +726,69 @@ describe('what a body is made of', () => {
     view.dispose();
   });
 
+  it("hangs the hunt marker's point just over the animal's back, and keeps it narrow — it was a red disc wider than the hare under it", () => {
+    // The marker is the one thing on an animal drawn for the player rather than
+    // for the world, so it is the one thing that can shout. It did: a capped cone
+    // a third of a cell across, hung at one height for every species, floated a
+    // body-length over a hare and filled the middle of the first-person frame
+    // while the animal itself sat below it, out of shot. Its point is its own
+    // origin now, so what is checked is where the point hangs: above the back it
+    // marks — never buried in it — and near enough that the eye joins the two.
+    const { view, world } = bodies();
+    const marked = new Set<string>();
+    for (const rig of view.group.children) {
+      const pawn = world.pawns.find((p) => p.x === rig.position.x && p.y === rig.position.z)!;
+      if (!pawn.animal) continue;
+      marked.add(pawn.animal);
+      const mark = part(rig, 'mark');
+      const barrel = part(rig, 'body');
+      mark.geometry.computeBoundingBox();
+      const shape = mark.geometry.boundingBox!;
+      expect(shape.min.y, 'the marker points at its own origin').toBeCloseTo(0, 6);
+      expect(shape.max.x - shape.min.x, 'the marker is under a quarter of a cell across').toBeLessThan(0.25);
+      barrel.geometry.computeBoundingBox();
+      // Both live under the rig's own group: the body is scaled by the species'
+      // size and the marker is not, which is the whole point of hanging it at a
+      // height the model gives in body space.
+      const back = barrel.geometry.boundingBox!.max.y * (barrel.parent as THREE.Object3D).scale.y;
+      expect(mark.position.y, `${pawn.animal}'s marker clears its back`).toBeGreaterThan(back);
+      expect(mark.position.y - back, `${pawn.animal}'s marker hangs close over its back`).toBeLessThan(0.3);
+    }
+    expect(marked.size, 'every species carries a marker').toBe(4);
+    view.dispose();
+  });
+
+  it("puts a tone darker than the coat over the dunhare's back — from overhead a sand hare on sand grass was a pale lump", () => {
+    // The manager camera sees the top of an animal and nothing else. The hare's
+    // top was all coat, at the grass's own lightness, and the pale belly and scut
+    // that make it read as a hare in first person are underneath where that
+    // camera never looks. The saddle is what it has instead: the coat's own
+    // colour gone deeper, riding proud of the crown of the back — so what has to
+    // hold is that something darker than the coat stands above it.
+    const { view, world } = bodies();
+    const coat = { h: 0, s: 0, l: 0 };
+    const patch = { h: 0, s: 0, l: 0 };
+    let hares = 0;
+    for (const rig of view.group.children) {
+      const pawn = world.pawns.find((p) => p.x === rig.position.x && p.y === rig.position.z)!;
+      if (pawn.animal !== 'dunhare') continue;
+      hares++;
+      const barrel = part(rig, 'body');
+      barrel.geometry.computeBoundingBox();
+      (barrel.material as THREE.MeshStandardMaterial).color.getHSL(coat);
+      const over = (barrel.parent as THREE.Object3D).children.filter((o) => {
+        if (!(o instanceof THREE.Mesh) || o === barrel) return false;
+        (o.material as THREE.MeshStandardMaterial).color.getHSL(patch);
+        if (patch.l >= coat.l - 0.05) return false;
+        o.geometry.computeBoundingBox();
+        return o.geometry.boundingBox!.max.y > barrel.geometry.boundingBox!.max.y;
+      });
+      expect(over.length, 'a darker tone stands above the coat on the hare').toBeGreaterThan(0);
+    }
+    expect(hares).toBeGreaterThan(0);
+    view.dispose();
+  });
+
   it("keeps every species' hide in its own hue on every seed — the tint built for cloth turned the fenwolf lavender", () => {
     // `pawnTint` swings a hue up to a fifth of the way round the wheel, which
     // is what makes a crew's shirts differ and what turned a cold grey wolf

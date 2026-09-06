@@ -71,6 +71,17 @@ const CORNERS: ReadonlyArray<readonly [number, number, number]> = [
 ];
 
 /**
+ * The four sides of a cell, as the direction each faces and the yaw that turns
+ * a part built for the +x side onto it. Same convention as `CORNERS`.
+ */
+const SIDES: ReadonlyArray<readonly [number, number, number]> = [
+  [1, 0, 0],
+  [0, 1, -Math.PI / 2],
+  [-1, 0, Math.PI],
+  [0, -1, Math.PI / 2],
+];
+
+/**
  * Where a dropped stack comes to rest on a cell that already has furniture on it.
  *
  * The simulation has no notion of "on a table" and does not need one — a stack's
@@ -115,6 +126,28 @@ function rbox(w: number, h: number, d: number, y: number, x = 0, z = 0, r = 0.03
 }
 
 /**
+ * A box with the face that lies against something else left off. Boards on a
+ * wall are buried a centimetre or so in the body behind them, so their back
+ * face is never in front of anything, and a wall carries forty of them: leaving
+ * it off is a sixth of the wall's triangles, which is what pays for the extra
+ * courses. `BoxGeometry` lays its six faces down in the order +x, −x, +y, −y,
+ * +z, −z, six vertices each once flattened, so the back face is simply the last
+ * six and the trim is a slice.
+ */
+function board(w: number, h: number, d: number, y: number, x: number, z: number): THREE.BufferGeometry {
+  const src = new THREE.BoxGeometry(w, h, d);
+  const g = src.toNonIndexed();
+  src.dispose();
+  g.clearGroups();
+  for (const name of Object.keys(g.attributes)) {
+    const a = g.attributes[name] as THREE.BufferAttribute;
+    g.setAttribute(name, new THREE.BufferAttribute((a.array as Float32Array).slice(0, 30 * a.itemSize), a.itemSize));
+  }
+  g.translate(x, y, z);
+  return g;
+}
+
+/**
  * Which way a fishing stage faces: at the water beside it.
  *
  * Same sign convention as the turret's `aimYaw` — a yaw about the up axis turns
@@ -129,6 +162,28 @@ function waterYaw(world: World, b: Building): number {
     if (nx < 0 || ny < 0 || nx >= world.width || ny >= world.height) continue;
     if (terrainAt(world, nx, ny) === 'water') return -Math.atan2(dy, dx);
   }
+  return 0;
+}
+
+/**
+ * Which way a door faces: across the run of wall it is set in.
+ *
+ * Every part of a door — the frame's two jambs, the hinge the leaf swings on,
+ * the handle on the far stile — is built along the x axis, and until now it was
+ * drawn that way whatever it was hung in. A door in a wall running north to
+ * south therefore stood broadside to it: jambs across the opening, a lintel
+ * lying along the wall instead of over the gap, and a leaf that swung into the
+ * masonry beside it. The wall either side is what a door is hung in, so the wall
+ * either side is what picks the yaw, and a door standing on its own keeps the
+ * default. Same sign convention as `CORNERS`.
+ */
+function doorYaw(world: World, b: Building): number {
+  const linked = (dx: number, dz: number): boolean => {
+    const n = buildingAt(world, b.x + dx, b.y + dz);
+    return n !== null && n.built && WALL_LINKS.has(n.kind);
+  };
+  if (linked(1, 0) || linked(-1, 0)) return 0;
+  if (linked(0, 1) || linked(0, -1)) return Math.PI / 2;
   return 0;
 }
 
@@ -263,44 +318,119 @@ function rumple(g: THREE.LatheGeometry, amp: number, phase = 0): THREE.BufferGeo
 }
 
 /**
- * Timber planking for a wall: five courses of proud boards on all four faces,
- * the vertical joints of one course broken against the next the way a
- * carpenter lays boards. The odd courses are one board a hair short of the
- * cell, so their joints fall at the cell's edges; the even courses are two
- * boards run flush to the edges with their joint in the middle of the cell,
- * and flush is the point — the board ends of one cell's even course meet the
- * next cell's end to end, so the only vertical line on those courses is the
- * one at the centre. A run of wall therefore reads as a half bond of metre
- * boards rather than as cells, which is what it read as when every course had
- * its joints at the same edge and a post up it: a row of filing cabinets.
+ * The bond of a plank wall, in the numbers everything else about it is derived
+ * from. Seven courses over the same two and a half metres, not five: at five a
+ * block was very nearly half a metre tall and the wall read as breeze block
+ * rather than as the cabin's timber. The joint is the other half of that read —
+ * a six-centimetre groove three deep is a black line at eye level, and the same
+ * groove at three and a half by two is a shadow line, which is what a joint
+ * between boards actually looks like.
+ */
+const PLANK_COURSES = 7;
+const PLANK_FOOT = 0.04;
+const PLANK_HEAD = 2.4;
+const PLANK_JOINT = 0.036;
+/** The outer face of a board, and how thick it is; the rest of it is inside the body. */
+const PLANK_FACE = 0.52;
+const PLANK_DEPTH = 0.035;
+/** How much of a two-board course is carried by the closer at the cell's edge. */
+const PLANK_CLOSE = 0.1;
+const PLANK_PITCH = (PLANK_HEAD - PLANK_FOOT) / PLANK_COURSES;
+
+/** The middle of course `c`. Every cell of wall puts its courses here, so a run lines up. */
+function courseY(c: number): number {
+  return PLANK_FOOT + PLANK_PITCH * (c + 0.5);
+}
+
+/**
+ * How much lighter or darker than the wall's tint the `s`th board of course `c`
+ * is: a twentieth either way, in five steps, hashed off the board's place in the
+ * bond. Not decoration — a face of boards all at exactly one tone is one flat
+ * brown from any distance, and a run of it is a painted plane. The hash reads
+ * only the course and the board's place along it: the four faces of a cell are
+ * one face turned, so a tone cannot depend on which face it lands on, and it
+ * has no reason to — the eye is never on two faces of the same cell at once.
+ */
+function courseTone(c: number, s: number): number {
+  return 0.95 + (((c * 7 + s * 3) % 5) / 4) * 0.1;
+}
+
+/** One board of a course, on the +z face, spanning `a`..`b` across the cell. */
+function plank(a: number, b: number, c: number, s: number): THREE.BufferGeometry {
+  const t = courseTone(c, s);
+  return dye(
+    board(b - a, PLANK_PITCH - PLANK_JOINT, PLANK_DEPTH, courseY(c), (a + b) / 2, PLANK_FACE - PLANK_DEPTH / 2),
+    t,
+    t,
+    t,
+  );
+}
+
+/**
+ * Timber planking for a wall: seven courses of proud boards on all four faces,
+ * the vertical joints of one course broken against the next the way a carpenter
+ * lays boards. The even courses are one board a hair short of the cell, so
+ * their joints fall at the cell's edges; the odd courses are two boards with
+ * their joint in the middle of the cell and their ends stopped a tenth of a
+ * metre back from each edge, for `closers` to carry the rest of the way. A run
+ * of wall therefore reads as a half bond of boards rather than as cells, which
+ * is what it read as when every course had its joints at the same edge and a
+ * post up it: a row of filing cabinets.
  *
- * The boards sit a centimetre into the body so the joint is never a coplanar
- * face, and they are at the same heights on every cell so the courses run on
- * through. On a face that meets a neighbour they are buried inside it, which
- * costs nothing to draw and nothing to see; on an outside corner the small
- * notch where two faces' boards meet is under the corner post. There is no
- * post per cell any more: `wall.post` stands only on the outside corners the
- * draw finds, and a post on every cell was most of the cabinet look.
+ * The boards sit a centimetre and a half into the body so the joint is never a
+ * coplanar face, and they are at the same heights on every cell so the courses
+ * run on through. On a face that meets a neighbour they are buried inside it,
+ * which costs nothing to see; on an outside corner the small notch where two
+ * faces' boards meet is under the corner post.
  */
 function planks(): THREE.BufferGeometry {
-  const parts: THREE.BufferGeometry[] = [];
-  for (let i = 0; i < 5; i++) {
-    const y = 0.27 + i * 0.48;
+  const face: THREE.BufferGeometry[] = [];
+  for (let c = 0; c < PLANK_COURSES; c++) {
     const spans: ReadonlyArray<readonly [number, number]> =
-      i % 2 === 1
-        ? [[-0.48, 0.48]]
+      c % 2 === 0
+        ? [[-0.5 + PLANK_JOINT / 2, 0.5 - PLANK_JOINT / 2]]
         : [
-            [-0.5, -0.02],
-            [0.02, 0.5],
+            [-0.5 + PLANK_CLOSE, -PLANK_JOINT / 2],
+            [PLANK_JOINT / 2, 0.5 - PLANK_CLOSE],
           ];
-    for (const [a, b] of spans) {
-      const w = b - a;
-      const u = (a + b) / 2;
-      parts.push(box(w, 0.42, 0.05, y, u, 0.505));
-      parts.push(box(w, 0.42, 0.05, y, u, -0.505));
-      parts.push(box(0.05, 0.42, w, y, 0.505, u));
-      parts.push(box(0.05, 0.42, w, y, -0.505, u));
-    }
+    spans.forEach(([a, b], s) => face.push(plank(a, b, c, s)));
+  }
+  // Built once for the +z face and turned a quarter at a time onto the other
+  // three, so the four faces cannot drift apart as the bond is tuned.
+  const parts: THREE.BufferGeometry[] = [];
+  for (let q = 0; q < 4; q++) for (const p of face) parts.push(p.clone().rotateY(q * (Math.PI / 2)));
+  for (const p of face) p.dispose();
+  return merge(...parts);
+}
+
+/**
+ * The short board that closes a two-board course onto the cell next door,
+ * pushed once for each side the run of wall actually continues along. It is
+ * what makes the bond survive an opening.
+ *
+ * A course that simply ran flush to the cell's edge had nothing to say about
+ * whether the wall went on past it, so where a run stopped — and a door is
+ * where a run stops most often — every course stopped in the same place and the
+ * vertical joints stacked into one unbroken column beside the jamb, which was
+ * the one spot in a wall where the bond visibly broke down. Held back a tenth
+ * of a metre and closed by a separate part instead, a course that continues is
+ * unbroken as before, and a course that does not ends a tenth short of the
+ * one-board course above it. The alternation goes right up to the opening.
+ *
+ * Two boards per course, one for each face that meets the side being closed;
+ * the geometry is built for the +x side and turned onto the others at draw
+ * time. The far end runs a couple of millimetres past the cell so it laps the
+ * neighbour's closer rather than meeting it on a shared plane.
+ */
+function closers(): THREE.BufferGeometry {
+  const parts: THREE.BufferGeometry[] = [];
+  const a = 0.5 - PLANK_CLOSE + PLANK_JOINT;
+  const b = 0.502;
+  for (let c = 1; c < PLANK_COURSES; c += 2) {
+    const near = plank(a, b, c, 2);
+    // The same board on the −z face: turned to put its open back into the wall,
+    // then carried back across to the +x side it belongs to.
+    parts.push(near, near.clone().rotateY(Math.PI).translate(a + b, 0, 0));
   }
   return merge(...parts);
 }
@@ -406,6 +536,17 @@ function tone(color: number, rough: number, metal = 0.04): THREE.MeshStandardMat
 function lifted(r: number, g: number, b: number, rough: number, metal = 0.04): THREE.MeshStandardMaterial {
   const m = new THREE.MeshStandardMaterial({ roughness: rough, metalness: metal });
   m.color.setRGB(r, g, b);
+  return m;
+}
+
+/**
+ * Timber under the wall's tint. The planking and the closers are two pools and
+ * so two materials, hence a function rather than a const; `vertexColors` is what
+ * lets one pool of forty boards carry forty tones of the same timber.
+ */
+function plankMat(): THREE.MeshStandardMaterial {
+  const m = tone(0xb9ad98, 0.9);
+  m.vertexColors = true;
   return m;
 }
 
@@ -746,7 +887,8 @@ export class BuildingsView {
     // top. The body keeps the exact box the sim collides with; the planking and
     // the coping are thin parts laid over it.
     this.pool('wall.body', box(1, 2.44, 1, 1.22), solidMat(0.92), 256);
-    this.pool('wall.planks', planks(), tone(0xb9ad98, 0.9), 256);
+    this.pool('wall.planks', planks(), plankMat(), 256);
+    this.pool('wall.closer', closers(), plankMat(), 256);
     this.pool('wall.cap', rbox(1.06, 0.18, 1.06, 2.51, 0, 0, 0.06), solidMat(0.8), 256);
     // A square post standing proud at a corner of the wall — pushed once per
     // outside corner, which the draw works out from the neighbours, so a
@@ -1056,13 +1198,27 @@ export class BuildingsView {
     // another grey cabinet in the isometric distance, where the wheel behind it
     // is only a few pixels of moving edge. It is the one honestly faceted thing
     // here, and it keeps its facets.
+    //
+    // A gable now rather than the hip pyramid it was. Straight down from twenty
+    // cells up a hip is a diamond, and a diamond drawn on the top of a box is a
+    // box with a lid on it, which is what the mill read as; a ridge running
+    // across the machine is a roof from any angle the manager camera takes. It
+    // is extruded from a triangle, so the two slopes are two planes and nothing
+    // else, and it oversails the house by a hand's width all round: the shadow
+    // an eaves throws down the wall is most of what says roof.
     this.pool(
       'mill.roof',
       (() => {
-        const g = cone(0.62, 0.34, 1.22, 4);
-        g.rotateY(Math.PI / 4);
-        g.translate(-0.3, 0, 0);
-        return faceted(g);
+        const gable = new THREE.Shape();
+        gable.moveTo(-0.47, 0);
+        gable.lineTo(0.47, 0);
+        gable.lineTo(0, 0.36);
+        gable.closePath();
+        const g = new THREE.ExtrudeGeometry(gable, { depth: 0.94, bevelEnabled: false, curveSegments: 1 });
+        g.translate(-0.3, 1.05, -0.47);
+        // A ridge board over the join, because the one line of the roof the
+        // top-down camera always has square on is the ridge.
+        return faceted(merge(g, box(0.09, 0.07, 0.98, 1.4, -0.3, 0)));
       })(),
       lifted(1.25, 1.1, 1.0, 0.8),
       8,
@@ -1846,6 +2002,7 @@ export class BuildingsView {
       case 'wall':
         this.flat('wall.body', b);
         this.flat('wall.planks', b);
+        this.pushClosers(world, b);
         this.flat('wall.cap', b);
         this.pushCorners(world, b);
         break;
@@ -1868,14 +2025,23 @@ export class BuildingsView {
       case 'door': {
         // The hinge swing is read straight from the sim, so a door standing open
         // in the manager view is standing open when you walk up to it in person.
+        // The yaw is not: a door is hung in the run of wall it interrupts, and
+        // the whole assembly turns onto it.
         const open = b.open ?? 0;
-        this.v.set(b.x - 0.45, 0, b.y);
-        this.q.setFromAxisAngle(UP, -open * (Math.PI / 2));
+        const yaw = doorYaw(world, b);
+        this.q.setFromAxisAngle(UP, yaw);
+        // The hinge sits on one jamb, so its offset from the cell's centre turns
+        // with the doorway; the swing is then composed after the yaw, which
+        // makes it a swing in the door's own frame rather than in the world's.
+        this.v.set(-0.45, 0, 0).applyQuaternion(this.q);
+        this.v.set(b.x + this.v.x, 0, b.y + this.v.z);
+        this.spin.setFromAxisAngle(UP, -open * (Math.PI / 2));
+        this.q.multiply(this.spin);
         this.s.set(1, 1, 1);
         this.m.compose(this.v, this.q, this.s);
         this.get('door.panel').push(this.m, this.tint(b));
         this.get('door.handle').push(this.m, this.tint(b));
-        this.flat('door.frame', b);
+        this.flat('door.frame', b, yaw);
         break;
       }
       case 'bed':
@@ -2146,6 +2312,20 @@ export class BuildingsView {
     for (const [sx, sz, yaw] of CORNERS) {
       if (linked(sx, 0) || linked(0, sz)) continue;
       this.flat('wall.post', b, yaw);
+    }
+  }
+
+  /**
+   * A closer on each side the planking actually runs on into: another plank
+   * wall, and nothing else. A stone wall is a different bond and a door is an
+   * opening, so a course that meets either of them stops where it is — which is
+   * the point of the part. See `closers` for what that does to the jamb.
+   */
+  private pushClosers(world: World, b: Building): void {
+    for (const [dx, dz, yaw] of SIDES) {
+      const n = buildingAt(world, b.x + dx, b.y + dz);
+      if (n === null || !n.built || n.kind !== 'wall') continue;
+      this.flat('wall.closer', b, yaw);
     }
   }
 

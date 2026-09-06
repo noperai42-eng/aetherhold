@@ -9,7 +9,7 @@
 import * as THREE from 'three';
 import { describe, expect, it } from 'vitest';
 
-import { DecorView, scatterChecksum } from '../src/client/render/decor';
+import { DecorView, bladeGeometry, scatterChecksum } from '../src/client/render/decor';
 import { TERRAIN_COLOR } from '../src/client/render/palette';
 import { createWorld } from '../src/sim/worldgen';
 import { TERRAIN_LIST, packCell, terrainAt } from '../src/sim/types';
@@ -308,6 +308,27 @@ describe('what a blade and a stone are made of', () => {
     }
     expect(seen.size).toBeGreaterThan(1);
     view.dispose();
+  });
+
+  it('ends a blade in one tip, at the height and the bow the callers hang things on', () => {
+    // The blade is not only grass: the crops in `fx.ts` build their leaves,
+    // sprouts and stalks out of it, and a headed plant hangs a cluster of grain
+    // on the *tip* of a stalk. That caller has to be able to say where the tip
+    // is without reading this geometry, and the answer is (0, 1, bend) — one
+    // vertex, at full height, carrying the whole of the forward bow. A head
+    // placed on a tip that had quietly moved floats off the end of its stalk.
+    const bend = 0.3;
+    const geo = bladeGeometry(0.2, 3, bend);
+    const p = geo.getAttribute('position');
+    let tips = 0;
+    for (let i = 0; i < p.count; i++) {
+      if (Math.abs(p.getY(i) - 1) > 1e-6) continue;
+      tips++;
+      expect(p.getX(i)).toBeCloseTo(0, 6);
+      expect(p.getZ(i)).toBeCloseTo(bend, 6);
+    }
+    expect(tips).toBe(1);
+    geo.dispose();
   });
 });
 

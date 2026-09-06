@@ -4,6 +4,61 @@ One round, one measured gap, one fix. Newest first.
 
 ---
 
+## 2026-09-05 — Round five, and a probe that asked one animal at a time
+
+**Track: the rendered game.** The first round driven entirely from inside the repo — the harness in
+`scripts/look`, the round workflow in `.claude/workflows/look-round.js`, the method in
+[LOOK.md](LOOK.md) — and briefed straight off round 4's leftovers. Four lanes, four builders, the
+same five frames plus the zoo, read by eye afterwards.
+
+### The brief, and what came back
+
+**Buildings.** The wall was breeze block at 1.6 m: five courses over two and a half metres put a
+half-metre block on a timber cabin, and heavy mortar between them. It is seven courses now, with a
+3.6 cm recessed joint that reads as a shadow line rather than as grout, every board a hair lighter or
+darker than its neighbours, and the vertical joints of one course broken against the next. A course
+that stops at a doorway stops short and is closed by a separate part, so the joints beside a jamb no
+longer stack into one column. The watermill got a pitched roof.
+
+**Decor and crops.** A crop is green at every stage now and only the produce turns gold — the old
+plant ripened *into* yellow-olive, so a field ready to cut read as a field that had died, and a
+player scanning for food was scanning for the colour of drought. The seedling is a rosette of four
+broad leaves instead of a nearly invisible spike, and the leafy stage bows two tiers of leaves off a
+stalk. Gold is a vertex-colour ratio on the heads rather than three fixed numbers, so it stays gold
+the next time the leaves move.
+
+**Pawns.** The hunt mark was an orange traffic cone in first person; it is a small hollow teardrop
+that hugs the animal, sitting at a height each species names itself. The dunhare, which from manager
+zoom was a pale smudge, got a dark saddle and dark ears raked back over its spine.
+
+**Terrain.** Per-patch luminance noise on the ground, so the grass is no longer one flat sheet under
+the camera at manager zoom.
+
+### The verdict, from the frames
+
+**Better,** in all four lanes: the wall reads as boards at first-person distance, the mill has a
+roof, the ground has variation, a ripe plot is green carrying gold, the seedling is visible, the mark
+is small, and the hare is legible from above.
+
+**Still wrong.** The stripped bramble overshot. It was near-black and read as a stone; lifted to a
+pale grey-green it now reads as a lichened stone. Colour was the wrong instrument — the shape is what
+says foliage.
+
+**Two frames, one question, one probe.** In both the round-4 and round-5 zoo frames the hunt mark
+appeared to hover over the animal *beside* the hunted one. The code says it cannot: the mark is a
+child of the animal's own rig and its visibility is that animal's `hunted` flag. So rather than brief
+a bug from a crowded row, the scene was reduced to the claim — one hunted dunhare, alone, nearest
+other animal thirty-three cells away. The mark is over the hare. The reading was mine, not the
+renderer's; the zoo row is simply dense, and it ticks twice before the shot.
+
+The gate: `tsc` clean, eleven render test files, 215 tests green — run again by hand before the
+commit, because a builder's green is a claim and the tests are the thing being changed.
+
+Leftovers for round 6: the stripped bush's silhouette; the hare's ears, which at close zoom collapse
+into a single dark sliver; and the grass tufts, which at that zoom are flat two-blade chevrons.
+
+---
+
 ## 2026-09-05 — Four rounds of looking, and the camera that made them repeatable
 
 **Track: the rendered game.** Every other entry here is a grid answering a number. This one is a

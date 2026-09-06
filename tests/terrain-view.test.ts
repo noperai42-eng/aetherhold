@@ -19,7 +19,8 @@ import {
   rockShapeAt,
   rockTopAt,
 } from '../src/client/render/terrain';
-import { TERRAIN_COLOR } from '../src/client/render/palette';
+import { TERRAIN_COLOR, groundColor } from '../src/client/render/palette';
+import { yearPhase } from '../src/sim/seasons';
 import { createWorld } from '../src/sim/worldgen';
 import { TERRAIN_LIST, packCell, terrainAt } from '../src/sim/types';
 import type { Terrain, World } from '../src/sim/types';
@@ -53,6 +54,36 @@ function rockCells(world: World): { x: number; y: number }[] {
     for (let x = 0; x < world.width; x++) if (terrainAt(world, x, y) === 'rock') out.push({ x, y });
   }
   return out;
+}
+
+/** The same world with nothing in it but grass: the mottle on its own, no seams. */
+function meadow(): World {
+  const world = createWorld(SEED);
+  const grass = TERRAIN_LIST.indexOf('grass' as Terrain);
+  for (let i = 0; i < world.terrain.length; i++) world.terrain[i] = grass;
+  return world;
+}
+
+/**
+ * One corner of every cell in a field, and how far the four corners of each cell
+ * disagree — the two scales the ground's colour varies at, measured apart.
+ */
+function fieldLuma(view: TerrainView, world: World): { corners: number[]; cellSpread: number[] } {
+  const corners: number[] = [];
+  const cellSpread: number[] = [];
+  for (let y = 0; y < world.height; y++) {
+    for (let x = 0; x < world.width; x++) {
+      const cell = cellColors(view, world, x, y).map(luma);
+      corners.push(cell[0]!);
+      cellSpread.push(Math.max(...cell) - Math.min(...cell));
+    }
+  }
+  return { corners, cellSpread };
+}
+
+function spreadOf(v: number[]): number {
+  const mean = v.reduce((a, b) => a + b, 0) / v.length;
+  return Math.sqrt(v.reduce((a, b) => a + (b - mean) ** 2, 0) / v.length);
 }
 
 /** A small world with one deliberate grass/sand seam and one lone rock. */
@@ -495,6 +526,65 @@ describe('how the ground reads', () => {
     const clear = cellColors(view, world, 10, 10);
     // The corner of (4,4) that meets the rock at (5,5) is its far corner.
     expect(luma(touching[2]!)).toBeLessThan(luma(clear[2]!) * 0.92);
+    view.dispose();
+  });
+
+  /**
+   * The manager camera is where the ground is most of the frame, and it is the
+   * camera that averages away everything finer than a cell. A field whose
+   * corners all sit within a few percent of one another is one flat tint there,
+   * however carefully that tint was chosen — grass came out as a single green
+   * for four rounds because the only variation it had was three percent of
+   * luminance hashed per corner, which is under a level of the two hundred and
+   * fifty-six the screen has and disappears the moment two corners share a
+   * pixel. Nine percent, spread across whole handfuls of cells, is a meadow with
+   * light and dark in it.
+   */
+  it('spreads a field of one terrain wide enough to see from the manager camera', () => {
+    const world = meadow();
+    const view = new TerrainView(world);
+    const { corners } = fieldLuma(view, world);
+    const mean = corners.reduce((a, b) => a + b, 0) / corners.length;
+    expect(spreadOf(corners) / mean).toBeGreaterThan(0.07);
+    view.dispose();
+  });
+
+  /**
+   * And spends nothing to get it. The mottle darkens patches and lifts what is
+   * left over to pay for them, which is only honest if the two cancel: a valley
+   * that came out darker or brighter than the palette meant it to would be a
+   * repaint of every ground colour in the game, made here, in a renderer, where
+   * nobody would think to look for it.
+   */
+  it('leaves the field at the brightness the palette chose for it', () => {
+    const world = meadow();
+    const view = new TerrainView(world);
+    const { corners } = fieldLuma(view, world);
+    const mean = corners.reduce((a, b) => a + b, 0) / corners.length;
+    const own = groundColor(new THREE.Color(), 'grass', yearPhase(world), 0);
+    const ratio = mean / luma([own.r, own.g, own.b]);
+    expect(ratio).toBeGreaterThan(0.97);
+    expect(ratio).toBeLessThan(1.03);
+    view.dispose();
+  });
+
+  /**
+   * Where that variation is allowed to live. A cell is four corners of one quad,
+   * and the whole point of colouring ground at its corners is that neighbouring
+   * cells bleed together; a cell whose own corners disagree as loudly as the map
+   * does has stopped bleeding and started reading as a tile, which is the seam
+   * test above failing for the opposite reason. So the mottle is spent between
+   * cells and not inside them — a statement about its wavelength, and the reason
+   * the luminance patch is eight cells wide while the hue drift, which costs the
+   * cell nothing, is four.
+   */
+  it('varies between cells rather than inside one, so a seam is still a seam', () => {
+    const world = meadow();
+    const view = new TerrainView(world);
+    const { corners, cellSpread } = fieldLuma(view, world);
+    const sorted = [...cellSpread].sort((a, b) => a - b);
+    const typical = sorted[Math.floor(sorted.length / 2)]!;
+    expect(spreadOf(corners)).toBeGreaterThan(typical * 1.5);
     view.dispose();
   });
 
