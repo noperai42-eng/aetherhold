@@ -699,6 +699,125 @@ describe('what a body is made of', () => {
     view.dispose();
   });
 
+  /** The ears on a skull: the crowns that carry a lining. An antler carries none. */
+  function ears(rig: THREE.Object3D): THREE.Mesh[] {
+    return part(rig, 'head').children.filter(
+      (c): c is THREE.Mesh => c instanceof THREE.Mesh && c.children.length > 0,
+    );
+  }
+
+  /** One of every species, so a per-species check runs once rather than per animal. */
+  function oneOfEach(view: PawnsView, world: World): Map<string, THREE.Object3D> {
+    const out = new Map<string, THREE.Object3D>();
+    for (const rig of view.group.children) {
+      const pawn = world.pawns.find((p) => p.x === rig.position.x && p.y === rig.position.z)!;
+      if (pawn.animal && !out.has(pawn.animal)) out.set(pawn.animal, rig);
+    }
+    expect(out.size, 'every species on the map').toBe(4);
+    return out;
+  }
+
+  it("leaves daylight between an animal's ears and gives each one a blade's width — a thin dark pair rooted a finger apart was one stick through the head", () => {
+    // The photograph that started this round: a dunhare at a metre and a half,
+    // its two ears collapsed into a single sliver angled off the skull. Three
+    // things did it, and this holds two of them for every species. Each ear was
+    // a capsule squashed to under half its width, which is a stick at any range
+    // a settler can walk to; and the roots sat close enough that the pair never
+    // showed a gap the eye could put a background through. A blade less than a
+    // quarter as wide as it is long is the first fault; a pair whose gap is
+    // narrower than half an ear is the second.
+    const { view, world } = bodies();
+    const v = new THREE.Vector3();
+    for (const [kind, rig] of oneOfEach(view, world)) {
+      const pair = ears(rig);
+      expect(pair.length, `${kind} wears a pair of ears`).toBe(2);
+      for (const e of pair) {
+        e.updateMatrix();
+        const pos = e.geometry.attributes.position!;
+        // How close this ear comes to the skull's midline, over its real
+        // vertices: the box round a raked blade reaches places the blade does not.
+        let inner = Infinity;
+        for (let i = 0; i < pos.count; i++) {
+          inner = Math.min(inner, Math.abs(v.fromBufferAttribute(pos, i).applyMatrix4(e.matrix).x));
+        }
+        e.geometry.computeBoundingBox();
+        const box = e.geometry.boundingBox!;
+        const width = box.max.x - box.min.x;
+        expect(2 * inner, `${kind}'s ears leave a gap between them`).toBeGreaterThan(0.4 * width);
+        expect(width, `${kind}'s ear is a blade, not a stick`).toBeGreaterThan(0.25 * (box.max.y - box.min.y));
+      }
+    }
+    view.dispose();
+  });
+
+  it('lines every ear on its inner face in a lighter tone, proud of the front and inside the outline — a dark blade on both faces is a horn', () => {
+    // The third thing that made the hare's pair read as one object: both faces
+    // were the coat's darkest tone, so nothing told the front of an ear from
+    // its back and two of them overlapping were one shape. The lining is the
+    // fix and it has to sit exactly so — lighter than the blade or it says
+    // nothing; standing out through the front face or it is invisible; and
+    // inside the blade's outline in every other direction, or it pokes out of
+    // the back of the ear and the two surfaces fight for the same pixels.
+    const { view, world } = bodies();
+    const hsl = { h: 0, s: 0, l: 0 };
+    for (const [kind, rig] of oneOfEach(view, world)) {
+      for (const e of ears(rig)) {
+        const lining = e.children[0] as THREE.Mesh;
+        (e.material as THREE.MeshStandardMaterial).color.getHSL(hsl);
+        const back = hsl.l;
+        (lining.material as THREE.MeshStandardMaterial).color.getHSL(hsl);
+        expect(hsl.l, `${kind}'s inner ear is lighter than its back`).toBeGreaterThan(back);
+        e.geometry.computeBoundingBox();
+        lining.geometry.computeBoundingBox();
+        const blade = e.geometry.boundingBox!;
+        const inside = lining.geometry.boundingBox!;
+        expect(inside.max.z, `${kind}'s lining stands out of the front of the ear`).toBeGreaterThan(blade.max.z);
+        expect(inside.min.z, `${kind}'s lining stays out of the back of the ear`).toBeGreaterThan(blade.min.z);
+        expect(inside.max.x, `${kind}'s lining stays inside the ear's outline`).toBeLessThanOrEqual(blade.max.x);
+        expect(inside.max.y, `${kind}'s lining stops short of the ear's tip`).toBeLessThan(blade.max.y);
+      }
+    }
+    view.dispose();
+  });
+
+  it("cuts each animal's collar to the neck it rings — one width for all four hung off a hare like a hoop with daylight all round it", () => {
+    // The collar is one buffer shared by every species, and it was cut to the
+    // widest throat on the map. On a mossback it lay on the neck; on the other
+    // three it was a ring floating clear of one, which from a settler's eye
+    // height is a hoop somebody has thrown over the animal. The strap has to
+    // straddle the hide: the neck's own radius where the collar crosses it must
+    // fall inside the tube, which is what wearing a collar means.
+    const { view, world } = bodies();
+    for (const [kind, rig] of oneOfEach(view, world)) {
+      const neck = part(rig, 'neck');
+      const collar = part(rig, 'collar');
+      collar.geometry.computeBoundingBox();
+      const box = collar.geometry.boundingBox!;
+      // The torus lies in the neck's cross-section, so its half-height is the
+      // strap's thickness and its half-width is that plus the ring's radius.
+      const tube = box.max.y * collar.scale.y;
+      const ring = (box.max.x - box.max.y) * collar.scale.x;
+      // The neck is a lathe: rings of vertices at the profile's own heights.
+      // Take the two that bracket the collar and read the radius between them.
+      const pos = neck.geometry.attributes.position!;
+      const rings = new Map<number, number>();
+      const v = new THREE.Vector3();
+      for (let i = 0; i < pos.count; i++) {
+        v.fromBufferAttribute(pos, i);
+        const y = Math.round(v.y * 1e5) / 1e5;
+        rings.set(y, Math.max(rings.get(y) ?? 0, Math.hypot(v.x, v.z)));
+      }
+      const levels = [...rings.entries()].sort((a, b) => a[0] - b[0]);
+      const above = levels.findIndex(([y]) => y >= collar.position.y);
+      expect(above, `${kind}'s collar sits on the neck, not past the end of it`).toBeGreaterThan(0);
+      const [y0, r0] = levels[above - 1]!;
+      const [y1, r1] = levels[above]!;
+      const hide = r0 + ((r1 - r0) * (collar.position.y - y0)) / (y1 - y0);
+      expect(Math.abs(ring - hide), `${kind}'s collar straddles its neck`).toBeLessThan(tube);
+    }
+    view.dispose();
+  });
+
   it('puts a hoof on every animal leg with its sole at the sole of the leg — a cap that floats is a ring round the ankle', () => {
     // The hoof is a separate mesh in a darker tone, parented to the leg so it
     // swings from the hip with it. It stands on its own origin and is set at
@@ -995,3 +1114,4 @@ describe('what a Picky is made of', () => {
     for (const o of materials) expect(freed.has(o), `material ${o.type}`).toBe(true);
   });
 });
+

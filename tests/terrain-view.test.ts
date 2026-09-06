@@ -602,3 +602,70 @@ describe('how the ground reads', () => {
     view.dispose();
   });
 });
+
+describe('what the mottling on the ground says', () => {
+  /** One corner per cell, as hues, sorted — the field's colour, not its brightness. */
+  function fieldHues(view: TerrainView, world: World): number[] {
+    const c = new THREE.Color();
+    const hsl = { h: 0, s: 0, l: 0 };
+    const hues: number[] = [];
+    for (let y = 0; y < world.height; y++) {
+      for (let x = 0; x < world.width; x++) {
+        const [r, g, b] = cellColors(view, world, x, y)[0]!;
+        c.setRGB(r!, g!, b!);
+        c.getHSL(hsl);
+        hues.push(hsl.h);
+      }
+    }
+    return hues.sort((a, b) => a - b);
+  }
+
+  /**
+   * Trodden ground has to be a different colour from grass and not a dimmer
+   * green. Luminance is already spent here — the season tint takes most of it
+   * and the mottle takes what is left, and both are bounded by the field having
+   * to come out at the brightness the palette chose. So the fact that a patch is
+   * *earth* is written in hue, which is the axis with room in it. Written in
+   * shade instead it reads as a shadow with nothing casting it, which is exactly
+   * what the trampled ground round the cabins looked like from the manager
+   * camera: a soft dark blob on green, and nothing in the boundary.
+   */
+  it('turns worn ground toward earth rather than only darkening it', () => {
+    const world = meadow();
+    const view = new TerrainView(world);
+    const hues = fieldHues(view, world);
+    const median = hues[Math.floor(hues.length / 2)]!;
+    const worn = hues[Math.floor(hues.length * 0.05)]!;
+    // A twentieth of the map is at least this far round the wheel from the green
+    // the rest of it is — three percent, which is eleven degrees: olive against
+    // grass, and the smallest step that survives being averaged with its
+    // neighbours on the way to the screen.
+    expect(median - worn).toBeGreaterThan(0.03);
+    view.dispose();
+  });
+
+  /**
+   * And none of that story is told on snow. The grit, the wear and the hue drift
+   * are all things that happen to living ground; a drift with dark corners
+   * hashed into it is a dirty drift, and a frozen pond with them is a stained
+   * one. Everything the ground's colour varies by is scaled to
+   * `GROUND_MOTTLE_COVERED` under a full pack — the speckle included, which used
+   * to be subtracted after that scaling rather than inside it and so lay on the
+   * snow at its full strength however deep the winter got.
+   */
+  it('leaves a full snowpack unstippled by the ground it is covering', () => {
+    const spread = (world: World): number => {
+      const view = new TerrainView(world);
+      const { corners, cellSpread } = fieldLuma(view, world);
+      const mean = corners.reduce((a, b) => a + b, 0) / corners.length;
+      const sorted = [...cellSpread].sort((a, b) => a - b);
+      view.dispose();
+      // Relative to the field's own brightness, because snow is four times the
+      // luminance of grass and an absolute spread would flatter it.
+      return sorted[Math.floor(sorted.length / 2)]! / mean;
+    };
+    const winter = meadow();
+    winter.snow = 1;
+    expect(spread(winter)).toBeLessThan(spread(meadow()) * 0.28);
+  });
+});

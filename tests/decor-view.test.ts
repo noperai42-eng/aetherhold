@@ -163,6 +163,80 @@ describe('where the scatter lands', () => {
     expect(tallest).toBeLessThanOrEqual(0.4);
   });
 
+  it('gives every tuft on a cell its own height, bearing and tone', () => {
+    // Three tufts a cell drawn at one height, one bearing and one green is one
+    // stamp printed three times, and a map of that reads as a texture laid over
+    // the ground rather than as ground. The three on a cell have to differ in
+    // all three, and the map as a whole has to take many values of each — a
+    // handful of them would be a pattern the eye finds in a second.
+    const world = meadow();
+    const { tufts } = meshes(new DecorView(world));
+    const m = new THREE.Matrix4();
+    const q = new THREE.Quaternion();
+    const scale = new THREE.Vector3();
+    const c = new THREE.Color();
+    const heights = new Set<string>();
+    const bearings = new Set<string>();
+    const tones = new Set<number>();
+    for (let i = 0; i < 3; i++) {
+      tufts.getMatrixAt(i, m);
+      m.decompose(new THREE.Vector3(), q, scale);
+      heights.add(scale.y.toFixed(4));
+      bearings.add(`${q.x.toFixed(4)},${q.y.toFixed(4)},${q.z.toFixed(4)}`);
+      tufts.getColorAt(i, c);
+      tones.add(c.getHex());
+    }
+    expect(heights.size).toBe(3);
+    expect(bearings.size).toBe(3);
+    expect(tones.size).toBe(3);
+    for (let i = 0; i < 300; i++) {
+      tufts.getMatrixAt(i, m);
+      m.decompose(new THREE.Vector3(), q, scale);
+      heights.add(scale.y.toFixed(4));
+      tufts.getColorAt(i, c);
+      tones.add(c.getHex());
+    }
+    expect(heights.size).toBeGreaterThan(100);
+    expect(tones.size).toBeGreaterThan(100);
+  });
+
+  it('thins the grass where the ground around it has gone bare', () => {
+    // Turf does not stop at a line. Grass drawn at full height right up to the
+    // edge of a trampled yard was the tell that it was a texture and not a
+    // place — so a tuft with cleared ground around it stands lower, and the
+    // later tufts on that cell nearly not at all. What must *not* change is how
+    // many there are: the pool is sized at three a cell and so is every count
+    // in this file, and bare ground is meant to read as bare because almost
+    // nothing is standing on it.
+    const world = meadow();
+    for (let y = 20; y < 24; y++) {
+      for (let x = 20; x < 24; x++) world.cellBuilding[packCell(world, x, y)] = 1;
+    }
+    const { tufts } = meshes(new DecorView(world));
+    expect(tufts.count).toBe((world.width * world.height - 16) * 3);
+    const m = new THREE.Matrix4();
+    const pos = new THREE.Vector3();
+    const scale = new THREE.Vector3();
+    let yard = 0;
+    let yardN = 0;
+    let open = 0;
+    let openN = 0;
+    for (let i = 0; i < tufts.count; i++) {
+      tufts.getMatrixAt(i, m);
+      m.decompose(pos, new THREE.Quaternion(), scale);
+      const d = Math.max(Math.abs(pos.x - 21.5), Math.abs(pos.z - 21.5));
+      if (d < 3) {
+        yard += scale.y;
+        yardN++;
+      } else if (d > 8) {
+        open += scale.y;
+        openN++;
+      }
+    }
+    expect(yardN).toBeGreaterThan(0);
+    expect(yard / yardN).toBeLessThan((open / openN) * 0.9);
+  });
+
   it('puts the same blades in the same places every time', () => {
     const a = occupiedCells(meshes(new DecorView(meadow())).tufts);
     const b = occupiedCells(meshes(new DecorView(meadow())).tufts);
@@ -221,6 +295,25 @@ describe('what a blade and a stone are made of', () => {
       expect(Math.hypot(p.getX(i), p.getZ(i))).toBeLessThan(0.3);
     }
     expect(roots).toBeGreaterThanOrEqual(6);
+    view.dispose();
+  });
+
+  it('gives a tuft a footprint from straight overhead, not just from the side', () => {
+    // The manager camera looks almost straight down, and a clump of upright
+    // blades seen from there is three lines meeting at a point: no matter how
+    // the tuft is turned, the cell under it reads as bare. The blades have to
+    // fall away from the root on bearings far apart, so that whichever third of
+    // the compass the eye comes from, something is spread out under it. Read as
+    // the furthest any vertex gets from the root in each third of the circle.
+    const view = new DecorView(meadow());
+    const p = meshes(view).tufts.geometry.getAttribute('position');
+    const reach = [0, 0, 0];
+    for (let i = 0; i < p.count; i++) {
+      const a = Math.atan2(p.getZ(i), p.getX(i));
+      const third = Math.min(2, Math.floor((a + Math.PI) / ((Math.PI * 2) / 3)));
+      reach[third] = Math.max(reach[third]!, Math.hypot(p.getX(i), p.getZ(i)));
+    }
+    for (const r of reach) expect(r).toBeGreaterThan(0.3);
     view.dispose();
   });
 

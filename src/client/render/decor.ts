@@ -19,12 +19,31 @@ import type { World } from '../../sim/types';
 /** Tufts per grass cell. Three is enough to cover a map without carpeting it. */
 const TUFTS_PER_CELL = 3;
 /**
- * Blades in one tuft. A single blade is a shard wherever it stands; three
- * leaning out from a shared root are a clump, which is what grass does. Three
- * rather than five because the tuft is instanced tens of thousands of times and
- * the whole clump has to stay inside the sixteen-triangle budget below.
+ * The blades of one tuft, in "one tuft tall" units: how wide each is at the
+ * root, how long, how far it is tipped out of the vertical, how far it bows
+ * forward, and which way it faces.
+ *
+ * A single blade is a shard wherever it stands; three leaning out from a shared
+ * root are a clump, which is what grass does. Three rather than five because
+ * the tuft is instanced tens of thousands of times and the whole clump has to
+ * stay inside the sixteen-triangle budget the tests hold it to.
+ *
+ * What matters as much as the count is that the three do not stand in one
+ * plane and do not stand upright. A tripod of near-vertical blades is three
+ * lines meeting at a point when the manager camera looks straight down at it,
+ * which is how a field of them came to read as one flat stamp repeated; the
+ * first blade keeps the height (its tip is the y = 1 the instance scale means)
+ * and the other two fall further and further out on bearings a long way apart,
+ * so the clump has a footprint from directly overhead and a silhouette from
+ * every side. The leans and bows are picked so no vertex reaches a whole unit
+ * from the root: the tuft is scaled to a fifth of a cell across, and a blade
+ * that overshot would be grass growing out of the cell next door.
  */
-const BLADES_PER_TUFT = 3;
+const TUFT_BLADES = [
+  { width: 0.5, len: 1, lean: 0, bend: 0.34, turn: 0.9 },
+  { width: 0.44, len: 0.82, lean: 0.5, bend: 0.5, turn: 3.2 },
+  { width: 0.38, len: 0.6, lean: 0.78, bend: 0.5, turn: 5.3 },
+] as const;
 /** Fraction of bare cells that get a stone. Sparse on purpose — scatter, not gravel. */
 const STONE_CHANCE = 0.16;
 /**
@@ -35,6 +54,21 @@ const STONE_CHANCE = 0.16;
  */
 const TUFT_HEIGHT = 0.3;
 const TUFT_HEIGHT_SPREAD = 0.1;
+/**
+ * How much of a tuft is left where the turf runs out.
+ *
+ * Grass at one height and one density from the middle of the moor right up to
+ * the edge of a trampled yard is the tell that the ground is a texture rather
+ * than a place. `wearAt` says how bare a cell's surroundings are; this is what
+ * that costs the tuft — the first one on a cell keeps most of itself, and each
+ * one after it gives way faster, so worn ground ends up with a straggler and
+ * two scraps of stubble where open turf has three full clumps. The count is
+ * untouched either way: three tufts a cell is what the pool is sized for and
+ * what the tests count, and what makes ground read as bare is that there is
+ * almost nothing standing on it, not that the draw is cheaper.
+ */
+const WEAR_COST = 0.3;
+const WEAR_COST_PER_TUFT = 0.22;
 
 /**
  * Root and tip of a blade. The root sits a shade *above* the turf it grows from
@@ -89,7 +123,7 @@ export class DecorView {
     // leaves and from eye level a bent stem instead of a green pyramid. Roots at
     // the origin so per-instance scale is a height, and so the shader can use
     // object-space y directly as "how far from the roots am I".
-    const tuft = tuftGeometry(BLADES_PER_TUFT, 0.5, 3, 0.6, GRASS_ROOT, GRASS_TIP);
+    const tuft = tuftGeometry(3, GRASS_ROOT, GRASS_TIP);
     this.tufts = new THREE.InstancedMesh(
       tuft,
       grassMaterial(this.time, this.wind),
@@ -153,6 +187,7 @@ export class DecorView {
     const s = new THREE.Vector3();
     const m = new THREE.Matrix4();
     const c = new THREE.Color();
+    const e = new THREE.Euler();
     let tuft = 0;
     let stone = 0;
 
@@ -165,23 +200,43 @@ export class DecorView {
         const kind = terrainAt(world, x, y);
 
         if (kind === 'grass') {
+          const wear = wearAt(world, x, y, farmed);
           for (let n = 0; n < TUFTS_PER_CELL; n++) {
+            // Five draws rather than three, because a tuft that took its lean
+            // from the same number as its offset leaned the same way everywhere
+            // it stood to the right of its cell — a correlation the eye finds
+            // long before it finds the numbers.
             const a = hash(x, y, n * 3.1 + 1.7);
             const b = hash(x, y, n * 3.1 + 5.3);
             const d = hash(x, y, n * 3.1 + 9.7);
+            const g = hash(x, y, n * 3.1 + 14.3);
+            const k = hash(x, y, n * 3.1 + 19.1);
             v.set(x + (a - 0.5) * 0.8, 0, y + (b - 0.5) * 0.8);
-            // Turned and tipped a little off vertical, each tuft its own way. The
-            // blades inside the tuft already lean apart, so the whole clump only
-            // needs enough tilt that three of them on a cell are not one stamp.
-            q.setFromEuler(new THREE.Euler((d - 0.5) * 0.3, a * Math.PI * 2, (b - 0.5) * 0.3));
-            const h = TUFT_HEIGHT + (d - 0.5) * 2 * TUFT_HEIGHT_SPREAD;
-            s.set(0.2 + a * 0.08, h, 0.2 + b * 0.08);
+            // Turned to its own bearing and tipped its own way off the vertical,
+            // far enough that three clumps on a cell are three clumps and not one
+            // stamp printed three times — but not so far that a tuft lies down,
+            // which reads as trodden rather than as grass.
+            e.set((d - 0.5) * 0.5, g * Math.PI * 2, (k - 0.5) * 0.5);
+            q.setFromEuler(e);
+            // Where the ground around the cell has gone bare, the clump goes with
+            // it: shorter, thinner, and the later tufts nearly gone.
+            const left = 1 - wear * (WEAR_COST + n * WEAR_COST_PER_TUFT);
+            const h = (TUFT_HEIGHT + (d - 0.5) * 2 * TUFT_HEIGHT_SPREAD) * left;
+            const girth = (0.17 + a * 0.13) * (0.55 + left * 0.45);
+            s.set(girth, h, girth);
             m.compose(v, q, s);
             this.tufts.setMatrixAt(tuft, m);
             // The root-to-tip gradient rides in the geometry; this is only the
-            // tuft's own cast — a touch yellower or bluer, a touch lighter or
-            // darker — so a lawn is a lawn and not a print.
-            c.setRGB(1, 1, 1).offsetHSL((d - 0.5) * 0.03, 0, (a - 0.5) * 0.1);
+            // tuft's own cast, and it is a multiplier on that gradient rather
+            // than a colour, so it is written per channel. `offsetHSL` from white
+            // could not do it: white has no saturation for a hue offset to turn,
+            // and half the lightness range clipped at white, so two thirds of the
+            // variation this comment used to promise was never on screen. Warm
+            // one way and cool the other, dark to light across the whole, and a
+            // shade drier where the ground is worn.
+            const warm = (k - 0.5) * 0.12;
+            const level = (0.82 + g * 0.34) * (1 - wear * 0.12);
+            c.setRGB(level * (1 + warm), level, level * (1 - warm));
             this.tufts.setColorAt(tuft, c);
             tuft++;
           }
@@ -194,7 +249,8 @@ export class DecorView {
           // rolled there, not a ball that was placed.
           const r = 0.08 + a * 0.17;
           v.set(x + (a - 0.5) * 0.6, r * 0.45, y + (b - 0.5) * 0.6);
-          q.setFromEuler(new THREE.Euler(a * 3, b * 3, (a + b) * 2));
+          e.set(a * 3, b * 3, (a + b) * 2);
+          q.setFromEuler(e);
           s.set(r * 2 * (0.85 + d * 0.3), r * 1.3, r * 2 * (1.15 - d * 0.3));
           m.compose(v, q, s);
           this.stones.setMatrixAt(stone, m);
@@ -219,6 +275,37 @@ export class DecorView {
     this.stones.geometry.dispose();
     (this.stones.material as THREE.Material).dispose();
   }
+}
+
+/**
+ * How bare the ground around a cell is, from 0 in the middle of the moor to 1
+ * with nothing but dirt, stone, water or cleared ground on every side.
+ *
+ * Turf does not stop at a line. Where a yard has been trodden down to earth,
+ * where a plot has been broken, where the shore begins — the grass thins for a
+ * cell or two before it gives out, and drawing it at full height right up to
+ * the boundary is what made the ground read as a texture laid over the map
+ * rather than as ground. This is read once per grass cell during a rebuild,
+ * which happens when the map changes and not per frame, so eight neighbours a
+ * cell is affordable where a distance field would not be.
+ */
+function wearAt(world: World, x: number, y: number, farmed: Set<number>): number {
+  let bare = 0;
+  let seen = 0;
+  for (let dy = -1; dy <= 1; dy++) {
+    for (let dx = -1; dx <= 1; dx++) {
+      if (dx === 0 && dy === 0) continue;
+      const nx = x + dx;
+      const ny = y + dy;
+      // Off the map is not bare ground: the edge of the world is where the map
+      // stops, and thinning the border would draw a mown stripe round it.
+      if (nx < 0 || ny < 0 || nx >= world.width || ny >= world.height) continue;
+      seen++;
+      const i = ny * world.width + nx;
+      if (world.cellBuilding[i]! >= 0 || farmed.has(i) || terrainAt(world, nx, ny) !== 'grass') bare++;
+    }
+  }
+  return seen === 0 ? 0 : bare / seen;
 }
 
 /**
@@ -331,69 +418,70 @@ export function bladeGeometry(width: number, segments: number, bend: number): TH
 }
 
 /**
- * A clump of `blades` leaves sharing one root, in "one tuft tall" units.
+ * A clump of leaves sharing one root, in "one tuft tall" units — one blade per
+ * entry in `TUFT_BLADES`, each with `segments` rows.
  *
  * The first blade stands straight so the clump's tallest point is exactly y = 1
  * and the instance matrix's y scale goes on meaning "height". The rest are
- * shorter and lean outwards, each on its own bearing, so the tuft has a
- * silhouette from every side rather than being one strip seen edge-on half the
- * time. Blades are the shared `bladeGeometry`, `width` across and bowing `bend`
- * forward, with `segments` rows each.
+ * shorter and fall further out, each on its own bearing, so the tuft has a
+ * silhouette from every side and a footprint from straight above rather than
+ * being one strip seen edge-on half the time.
  *
  * Two things are baked in here that the shader then leans on. Vertex colours
- * run from `root` at the ground to `tip` at the top — faster than linearly, so
- * the upper half a manager camera mostly sees is already the lit colour — which
- * is what stops a blade going black where its normal turns away from the sun.
- * And the normals themselves are tipped towards the sky: a strip's true normal
+ * run from `root` at the base of each blade to `tip` at its point — faster than
+ * linearly, so the upper half a manager camera mostly sees is already the lit
+ * colour — which is what stops a blade going black where its normal turns away
+ * from the sun. Along the blade and not up the clump: once the outer blades
+ * lean far enough to give the tuft a footprint, their tips are barely off the
+ * ground, and a gradient read off world height would hand them the root colour
+ * for their whole length and put the dark chevrons straight back. What is left
+ * of that idea is the reach below — an outer blade tops out a little short of
+ * the upright one's colour, the way the outer leaves of a clump sit in the
+ * shade of the middle. And the normals themselves are tipped towards the sky: a strip's true normal
  * is horizontal, so under a high sun a field of them takes almost no direct
  * light and reads as dark chevrons on bright turf. Blending each towards up
  * lights a blade like the ground it grows from, with what is left of the true
  * normal keeping the sides of a tuft from shading identically.
  */
 function tuftGeometry(
-  blades: number,
-  width: number,
   segments: number,
-  bend: number,
   root: THREE.Color,
   tip: THREE.Color,
 ): THREE.BufferGeometry {
   const parts: THREE.BufferGeometry[] = [];
-  for (let i = 0; i < blades; i++) {
-    const blade = bladeGeometry(width, segments, bend);
-    if (i > 0) {
-      // Each successive blade a little shorter and a little further over, so
-      // the clump tapers to its one upright leaf rather than to a flat top.
-      blade.scale(1, 1 - i * 0.12, 1);
-      blade.rotateX(0.22 + i * 0.08);
-      blade.translate(0, 0, 0.04);
+  const c = new THREE.Color();
+  for (const shape of TUFT_BLADES) {
+    const blade = bladeGeometry(shape.width, segments, shape.bend);
+    // Painted while the blade is still upright and one unit long, which is the
+    // only moment its own y *is* how far along it a vertex sits.
+    const bp = blade.getAttribute('position') as THREE.BufferAttribute;
+    const bc = new Float32Array(bp.count * 3);
+    for (let i = 0; i < bp.count; i++) {
+      c.copy(root).lerp(tip, Math.sqrt(bp.getY(i)) * (0.55 + 0.45 * shape.len));
+      bc[i * 3] = c.r;
+      bc[i * 3 + 1] = c.g;
+      bc[i * 3 + 2] = c.b;
     }
-    blade.rotateY((i / blades) * Math.PI * 2 + 0.9);
+    blade.setAttribute('color', new THREE.Float32BufferAttribute(bc, 3));
+    // Scaled in height alone and then tipped over about its root, so the root
+    // vertices stay exactly on y = 0 where the clump shares them and the tip
+    // swings out rather than the blade stretching.
+    blade.scale(1, shape.len, 1);
+    if (shape.lean !== 0) blade.rotateX(shape.lean);
+    blade.rotateY(shape.turn);
     parts.push(blade);
   }
   const geo = mergeGeometries(parts);
   for (const p of parts) p.dispose();
 
-  const pos = geo.getAttribute('position') as THREE.BufferAttribute;
   const nrm = geo.getAttribute('normal') as THREE.BufferAttribute;
-  const colors = new Float32Array(pos.count * 3);
-  const c = new THREE.Color();
   const n = new THREE.Vector3();
-  for (let i = 0; i < pos.count; i++) {
-    // Height along the tallest blade is the gradient's parameter, so a shorter,
-    // leaning blade is a little darker at its tip than the upright one — which
-    // is what a clump looks like, the outer leaves in the shade of the middle.
-    const t = Math.sqrt(THREE.MathUtils.clamp(pos.getY(i), 0, 1));
-    c.copy(root).lerp(tip, t);
-    colors[i * 3] = c.r;
-    colors[i * 3 + 1] = c.g;
-    colors[i * 3 + 2] = c.b;
+  for (let i = 0; i < nrm.count; i++) {
     n.fromBufferAttribute(nrm, i).multiplyScalar(0.5);
     n.y += 1;
     n.normalize();
     nrm.setXYZ(i, n.x, n.y, n.z);
   }
-  geo.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
   return geo;
 }
 

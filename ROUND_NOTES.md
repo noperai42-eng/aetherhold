@@ -4,6 +4,74 @@ One round, one measured gap, one fix. Newest first.
 
 ---
 
+## 2026-09-06 — Round six, and a grain the frame never got
+
+**Track: the rendered game.** Four lanes again, briefed off the round-5 frames: the grass, the
+trees, the furniture at manager zoom, the ears at a metre and a half, and the trampled ground.
+
+### Better
+
+**The wood.** A tree was three bowls stacked — each tier's widest point sat *above* where it met the
+trunk, so every underside faced up and the whole thing was three cones standing on their points. It
+is four skirts now, each running out and *down* from the trunk to a rim that hangs below the joint,
+with radius and droop both falling off with height, a bole better than a third of the tree, and
+girth hashed separately from height so a stand is tall-thin beside squat-wide instead of one shape
+repeated. At eye level the horizon is a forest; from above a tree has a trunk.
+
+**The grass.** It was one stamp: same size, same green, same lean, uniform density, carrying on
+unchanged across bare earth. Per-tuft height, rotation, lean and tone now vary deterministically and
+the density falls where the ground is bare. The wallpaper read is gone at both cameras — this is the
+single biggest change to how a frame of this game looks, and it is the cheapest geometry in it.
+
+**The beds.** A bed was a brown tile with a paler tile on it. It has legs, side and end rails, head
+posts, a mattress dropped inside the rails and standing proud of them, a pillow with a pillow's
+proportion and a blanket folded over the foot. Tables got an apron and legs that taper the right way
+round — they were thin at the top and thick at the floor, which is a stool.
+
+**The ears.** The dunhare's two ears were 6 cm wide, 2.7 cm thick and nearly coplanar, so at a metre
+and a half they collapsed into one dark stick through the head. They are lathe blades now, 11 cm
+across with a 7 cm gap at the midline and a pale lining that stands proud down the middle and sinks
+into the rim at the edges — a lit cup in a dark blade, nothing coplanar. Same pass on all four
+species; eyes, noses, muzzles and tail tips all gained a segment or two. Paid for inside the 2,500
+budget by cutting a hidden second egg out of the hare's saddle and taking the collar torus from
+10×24 to 6×22.
+
+**A bug the lane found on its own.** One shared collar torus is cut to a mossback's throat and every
+species wore it unscaled: on a dunhare it was a hoop nearly half again the width of the animal's own
+head, hanging in the air, touching nothing. It scales to each species' neck radius now, with a test
+that reads the neck lathe's own rings and asserts the strap straddles the hide.
+
+### Still wrong, and one of them measured
+
+**The ground grain never reached the frame.** The terrain lane raised the speckle share, the speckle
+depth and the mottle lift, and the frames look exactly as they did. Not a judgement call: fit a plane
+to every 32×32 tile of a frame and measure what is left, and the flat-ground residual is 0.185 →
+0.209 grey levels in the closeup and 0.325 → 0.321 in the colony frame. A quarter of one grey level
+is a smooth gradient with nothing on it.
+
+The reason is structural and it is in the file's own first line: *one non-indexed quad per cell,
+coloured at its corners*, on a lattice where a corner is shared by neighbouring cells. A per-corner
+value cannot be grain. It is bilinearly ramped across a whole cell — two hundred pixels at closeup —
+and averaged with its neighbours before that. The instrument cannot produce the thing being asked
+for, however the constants are tuned. If the ground is to have texture it has to come from the
+material (noise in the fragment shader, or a small tiled map multiplied into the vertex colour) or
+from scattered geometry, the way the loose stones already are. That is the round-7 brief, and it is
+worth writing down as a general lesson: *before briefing an amplitude, check the instrument can carry
+the frequency.*
+
+**The stripped bush, twice overcorrected.** Round 4 left it near-black and it read as a stone; round
+5 lifted the colour and it read as a lichened stone; round 6 opened the silhouette into a cage of
+thin branches and from directly overhead it now reads as a dead spider. Three rounds on one small
+object says the object is being briefed from the wrong camera.
+
+**Smaller.** From directly overhead a tree is still a set of concentric rings — the outline is not
+broken enough. The mossback's dark saddle reads as a hole burnt in its shoulder at eye level.
+
+Gate re-run by hand: `tsc` clean, eleven render test files, 227 tests (twelve new, and every test
+change in the diff is an addition — no assertion was relaxed to make a lane green).
+
+---
+
 ## 2026-09-05 — Round five, and a probe that asked one animal at a time
 
 **Track: the rendered game.** The first round driven entirely from inside the repo — the harness in

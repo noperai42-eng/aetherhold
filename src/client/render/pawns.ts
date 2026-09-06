@@ -46,6 +46,14 @@ const ANIMAL_SWING = 0.55;
 const CALF_SCALE = 0.45;
 
 /**
+ * The radius the one shared collar buffer is cut to — a mossback's throat, the
+ * widest neck on the map. Every other species wears the same buffer scaled by
+ * its own `collarR` over this, so the ring is a strap on the neck rather than
+ * a hoop around it.
+ */
+const COLLAR_R = 0.15;
+
+/**
  * What `PawnsView` needs from a body, whichever body plan it has. Settlers are
  * two-legged and carry things; the herds are four-legged and do not. Keeping one
  * interface means interpolation, layer assignment and cleanup are written once.
@@ -364,6 +372,12 @@ type Vec3 = readonly [number, number, number];
 /** Something rooted on the skull — an antler or an ear — one side, mirrored for the other. */
 interface Crown {
   geometry: THREE.BufferGeometry;
+  /**
+   * A second surface riding the first in a lighter tone: the inside of an ear.
+   * Parented to the prong rather than to the skull, so it rakes and dips with
+   * the ear it lines, and so the head still carries exactly one mesh per ear.
+   */
+  lining?: { geometry: THREE.BufferGeometry; tone: Tone };
   at: Vec3;
   /** Lean outward from the skull's midline, in radians; the far side leans the other way. */
   roll: number;
@@ -396,6 +410,17 @@ interface SpeciesModel {
   /** Where along the neck the collar rings it, in the neck's own frame. */
   collarAt: number;
   /**
+   * How wide that ring is — the neck's own radius where the strap crosses it.
+   *
+   * One shared torus wide enough for a mossback's throat used to ring all four,
+   * and on the three narrower species it was a hoop hanging clear of the neck
+   * with daylight all the way round: a hare wore a collar half again the width
+   * of the animal's head, touching nothing. The buffer is still shared and the
+   * mesh is scaled to this, which thins the strap on a small animal too, the
+   * way a small animal's collar actually is.
+   */
+  collarR: number;
+  /**
    * Where the hunt marker's point hovers, in body space: a hand's width over the
    * back, clear of whatever the species carries up there. One height for all four
    * put the point half a body above a hare and among a mossback's antlers.
@@ -422,6 +447,7 @@ function speciesGeometries(m: SpeciesModel): THREE.BufferGeometry[] {
     m.neck,
     m.head,
     ...m.crowns.map((c) => c.geometry),
+    ...m.crowns.flatMap((c) => (c.lining ? [c.lining.geometry] : [])),
     m.leg,
     m.hoof,
   ];
@@ -533,6 +559,13 @@ class AnimalRig implements Rig {
         prong.rotation.set(crown.pitch, 0, side * -crown.roll);
         if (crown.mirrored) prong.scale.x = side;
         prong.castShadow = true;
+        // The pale inside of an ear, seated on the blade's own origin so it
+        // needs no second set of angles and cannot drift off the ear it lines.
+        if (crown.lining) {
+          const inner = new THREE.Mesh(crown.lining.geometry, tone(crown.lining.tone));
+          inner.castShadow = true;
+          prong.add(inner);
+        }
         this.head.add(prong);
       }
     }
@@ -586,6 +619,10 @@ class AnimalRig implements Rig {
     // On the neck, square to it, so it rings the neck the way a collar does
     // rather than lying level across a sloping one.
     this.collar.position.set(0, model.collarAt, 0);
+    // The buffer is cut to a mossback's throat, so every narrower species wears
+    // it scaled down to its own. The tag rides the ring and scales with it,
+    // which is what a hare's tag should do anyway.
+    this.collar.scale.setScalar(model.collarR / COLLAR_R);
     this.collar.visible = false;
     neck.add(this.collar);
 
@@ -893,8 +930,8 @@ function makeNeck(): THREE.BufferGeometry {
  */
 function makeAnimalNeck(baseR: number, topR: number, length: number): THREE.BufferGeometry {
   const profile: THREE.Vector2[] = [new THREE.Vector2(baseR, -length / 2), new THREE.Vector2(topR, length / 2)];
-  for (let i = 1; i <= 4; i++) {
-    const a = (i / 4) * (Math.PI / 2);
+  for (let i = 1; i <= 3; i++) {
+    const a = (i / 3) * (Math.PI / 2);
     profile.push(new THREE.Vector2(topR * Math.cos(a), length / 2 + topR * Math.sin(a)));
   }
   return new THREE.LatheGeometry(profile, 12);
@@ -959,7 +996,7 @@ function makeAntler(): THREE.BufferGeometry {
     [0.16, -0.8, -0.25],
     [0.23, -0.6, 0.1],
   ] as const) {
-    const tine = new THREE.CapsuleGeometry(0.013, 0.08, 1, 6);
+    const tine = new THREE.CapsuleGeometry(0.013, 0.08, 1, 5);
     tine.translate(0, 0.053, 0);
     tine.rotateZ(lean);
     tine.rotateX(spread);
@@ -969,27 +1006,86 @@ function makeAntler(): THREE.BufferGeometry {
   return weld([beam, ...tines]);
 }
 
+/** An ear's proportions, in body space: the numbers a species picks between. */
+interface Blade {
+  /** Half the ear's width at its widest, a third of the way up. */
+  halfWidth: number;
+  length: number;
+  /** Half its thickness front-to-back. */
+  halfDepth: number;
+  /** 0 for a hare's round tip, 1 for a fox's point. */
+  point: number;
+}
+
 /**
- * An ear that stands up: a capsule flattened front-to-back, rooted at its
- * origin so it rotates about where it meets the skull. The hare's, at more
- * than three times the length of its skull, is what makes it a hare.
+ * An ear: a tapered blade rooted at its origin and standing up +Y, widest a
+ * third of the way along and thinning to a tip.
+ *
+ * It was a capsule squashed to under half its width front to back, which at
+ * eleven cells up laid the dark stroke beside the skull that the manager camera
+ * needs and did its job. At a metre and a half it did not: a pair that thin,
+ * that dark and that nearly coplanar read as one stick driven through the head,
+ * not as two ears. A blade has a width you can see from the front, a thickness
+ * you can see from the side, and a tip whose roundness is the difference
+ * between a hare and a fox — and with `makeEarLining` down the front of it, an
+ * inside lighter than its back, which is the cue that says ear at all.
+ *
+ * Eight segments round the lathe rather than the twelve the rest of the animal
+ * uses: the section is an ellipse squashed to a third, so the two long faces
+ * are nearly flat and the segments that would round them are spent on nothing.
  */
-function makeEar(radius: number, length: number): THREE.BufferGeometry {
-  const g = new THREE.CapsuleGeometry(radius, length - 2 * radius, 1, 7);
-  g.translate(0, length / 2, 0);
-  g.scale(1, 1, 0.45);
+function makeEarBlade(blade: Blade): THREE.BufferGeometry {
+  const g = new THREE.LatheGeometry(bladeProfile(blade), 8);
+  g.scale(1, 1, blade.halfDepth / blade.halfWidth);
+  g.computeVertexNormals();
+  return g;
+}
+
+/** The outline both faces of an ear are turned from, in the blade's own units. */
+function bladeProfile({ halfWidth, length, point }: Blade): THREE.Vector2[] {
+  const keys: [number, number][] = [
+    [0, -0.05],
+    [0.68, 0.02],
+    [1, 0.4],
+    [0.85 - 0.42 * point, 0.72],
+    [0.46 - 0.34 * point, 0.92],
+    [0, 1],
+  ];
+  return keys.map(([r, t]) => new THREE.Vector2(r * halfWidth, t * length));
+}
+
+/**
+ * The inside of an ear: the same outline, but only the front half of the turn,
+ * narrowed across the ear and swelled through it — so it stands a tenth proud
+ * of the blade's front down the middle of the ear and sinks back inside it
+ * towards either edge. What a settler in front of the animal sees is a pale cup
+ * inside a dark rim, which is what the inside of an ear looks like; from behind
+ * there is nothing to see, because the shell's rim is buried in the blade and
+ * the blade is closed and opaque. Nothing is coplanar with anything, so there
+ * is no surface for the two to fight over.
+ */
+function makeEarLining(blade: Blade): THREE.BufferGeometry {
+  const g = new THREE.LatheGeometry(bladeProfile(blade), 6, -Math.PI / 2, Math.PI);
+  g.scale(0.86, 0.97, (blade.halfDepth / blade.halfWidth) * 1.14);
+  g.computeVertexNormals();
   return g;
 }
 
 /**
- * A pricked ear: a cone flattened front-to-back, rooted at its origin. The
- * point is the whole difference between a fox's ear and a hare's.
+ * One ear, ready to hang on a skull: the blade in the coat's darker tone with
+ * its lining in the pale one. Both sides of the head share these two buffers —
+ * an ear is symmetric about its own axis, so the rig only mirrors its angles.
  */
-function makePrickEar(radius: number, height: number): THREE.BufferGeometry {
-  const g = new THREE.ConeGeometry(radius, height, 7);
-  g.translate(0, height / 2, 0);
-  g.scale(1, 1, 0.45);
-  return g;
+function ear(blade: Blade, at: Vec3, roll: number, pitch: number): Crown {
+  return {
+    geometry: makeEarBlade(blade),
+    lining: { geometry: makeEarLining(blade), tone: 'pale' },
+    at,
+    roll,
+    pitch,
+    tone: 'dark',
+    mirrored: false,
+  };
 }
 
 /**
@@ -1015,11 +1111,11 @@ function makeMuzzle(baseR: number, tipR: number, length: number): THREE.BufferGe
     new THREE.Vector2((baseR + tipR) * 0.52, length * 0.5),
     new THREE.Vector2(tipR, length),
   ];
-  for (let i = 1; i <= 4; i++) {
-    const a = (i / 4) * (Math.PI / 2);
+  for (let i = 1; i <= 3; i++) {
+    const a = (i / 3) * (Math.PI / 2);
     profile.push(new THREE.Vector2(tipR * Math.cos(a), length + tipR * Math.sin(a)));
   }
-  return new THREE.LatheGeometry(profile, 10).rotateX(Math.PI / 2);
+  return new THREE.LatheGeometry(profile, 12).rotateX(Math.PI / 2);
 }
 
 /**
@@ -1073,13 +1169,16 @@ function makeMossback(): SpeciesModel {
       new THREE.Vector3(0, 1.02, 0.1),
       new THREE.Vector3(0, 0.92, 0.36),
     ),
-    7,
+    6,
     0.04,
     5,
     false,
   ).scale(1.5, 1, 1);
-  // Short and hanging, rooted just under the rump's skin.
-  const flag = new THREE.CapsuleGeometry(0.035, 0.03, 1, 7).translate(0, -0.05, 0).rotateX(0.6).translate(0, 0.77, -0.4);
+  // Short and hanging, rooted just under the rump's skin. It was a bud barely
+  // wider than the coat it sat in, which from a settler's eye height is a
+  // pucker on the rump rather than a tail; half again as thick and half again
+  // as long, it is a thing that hangs.
+  const flag = new THREE.CapsuleGeometry(0.05, 0.06, 1, 9).translate(0, -0.07, 0).rotateX(0.6).translate(0, 0.77, -0.4);
   return {
     body: weld([barrel, hump]),
     markings: [
@@ -1090,6 +1189,7 @@ function makeMossback(): SpeciesModel {
     neckAt: [0, 0.84, 0.36],
     neckPitch: 0.7,
     collarAt: 0.08,
+    collarR: 0.13,
     // Over the hump, which is the highest the back gets; the antlers are higher
     // still but they are a body-length forward of where the marker hangs.
     markAt: 1.18,
@@ -1100,7 +1200,7 @@ function makeMossback(): SpeciesModel {
     crowns: [
       { geometry: makeAntler(), at: [0.06, 0.09, -0.02], roll: 0.5, pitch: -0.35, tone: 'horn', mirrored: true },
       // Out sideways under the antlers, the way an elk's are.
-      { geometry: makeEar(0.028, 0.11), at: [0.09, 0.06, -0.03], roll: 0.95, pitch: -0.1, tone: 'dark', mirrored: false },
+      ear({ halfWidth: 0.05, length: 0.14, halfDepth: 0.019, point: 0.3 }, [0.098, 0.055, -0.03], 1.0, -0.1),
     ],
     leg: limb(0.062, 0.6, 9, 1),
     hoof: makeHoof(0.07),
@@ -1133,32 +1233,49 @@ function makeDunhare(): SpeciesModel {
   // hare on sand grass at that angle was a pale lump with ears — the darker
   // back is the one surface that camera can read, and it is the coat's own
   // colour gone deeper, which is what a hare's back actually is.
-  const saddle = new THREE.SphereGeometry(1, 12, 9).scale(0.205, 0.235, 0.285).rotateX(0.3).translate(0, 0.465, 0);
+  // Only the crown of it ever cleared the coat, so only the crown is drawn: a
+  // cap swept two thirds of the way down the egg, whose open rim lies a clear
+  // tenth of a body inside the body it sits in and is never a hole anyone sees.
+  // The whole second egg cost a fifth of the animal to hide four fifths of
+  // itself, and the ears are where that went.
+  const saddle = new THREE.SphereGeometry(1, 12, 5, 0, Math.PI * 2, 0, Math.PI * 0.62)
+    .scale(0.205, 0.235, 0.285)
+    .rotateX(0.3)
+    .translate(0, 0.465, 0);
   return {
     body: weld([egg, haunchL, haunchR]),
     markings: [
       { geometry: saddle, tone: 'dark' },
-      { geometry: blob([0.2, 0.16, 0.26], [0, 0.33, 0.04]), tone: 'pale' },
-      { geometry: new THREE.SphereGeometry(0.065, 8, 6).translate(0, 0.55, -0.31), tone: 'pale' },
+      { geometry: blob([0.2, 0.16, 0.26], [0, 0.33, 0.04], 9, 6), tone: 'pale' },
+      // The scut. A hare's tail is the one pale thing on its back end and the
+      // last of it a settler sees as it bolts, so it is a ball with a bit of
+      // size to it rather than the bead it was.
+      { geometry: new THREE.SphereGeometry(0.078, 9, 7).translate(0, 0.552, -0.312), tone: 'pale' },
     ],
     neck: makeAnimalNeck(0.09, 0.075, 0.14),
     neckAt: [0, 0.5, 0.26],
     neckPitch: 0.6,
     collarAt: 0,
+    collarR: 0.085,
     // Low: a hare stands a third of a mossback, and a marker hung at a mossback's
     // height over one floated half a body clear of it with nothing in between.
     markAt: 0.88,
-    head: makeAnimalHead([0.1, 0.1, 0.12], { baseR: 0.07, tipR: 0.045, length: 0.1, drop: 0.02 }),
+    head: makeAnimalHead([0.1, 0.1, 0.12], { baseR: 0.076, tipR: 0.052, length: 0.13, drop: 0.02 }),
     headAt: [0, 0.62, 0.36],
     eyeAt: [0.075, 0.03, 0.075],
-    noseAt: [0, -0.01, 0.19],
+    noseAt: [0, -0.014, 0.222],
     crowns: [
-      // Dark, and leaned further back and out than they stood. Straight up, an
-      // ear this thin is edge-on to the manager camera and disappears — which
-      // took the hare's one unmistakable feature away in the view the player
-      // spends their time in. Raked, each ear lays a dark stroke beside the
-      // skull that reads from directly overhead.
-      { geometry: makeEar(0.03, 0.34), at: [0.05, 0.07, -0.03], roll: 0.42, pitch: -0.42, tone: 'dark', mirrored: false },
+      // Dark, and leaned back and out rather than standing straight up: an ear
+      // that thin held vertical is edge-on to the manager camera and
+      // disappears, which took the hare's one unmistakable feature away in the
+      // view the player spends their time in. Raked, each lays a dark stroke
+      // beside the skull that reads from directly overhead.
+      //
+      // The roots then sit nearly two ear-widths apart and the rake carries the
+      // tips further out again, which is the other half of the fix: at a metre
+      // and a half a pair rooted a finger apart and squashed to a third of their
+      // width read as a single stick through the head, not as ears.
+      ear({ halfWidth: 0.055, length: 0.34, halfDepth: 0.021, point: 0.2 }, [0.066, 0.072, -0.028], 0.38, -0.4),
     ],
     leg: limb(0.04, 0.34, 9, 1),
     hoof: makeHoof(0.045),
@@ -1185,13 +1302,14 @@ function makeBrambletail(): SpeciesModel {
   return {
     body: weld([barrel, brush]),
     markings: [
-      { geometry: blob([0.11, 0.1, 0.14], [0, 0.38, 0.3]), tone: 'pale' },
-      { geometry: new THREE.SphereGeometry(0.055, 8, 5).translate(0, 0.836, -0.636), tone: 'pale' },
+      { geometry: blob([0.11, 0.1, 0.14], [0, 0.38, 0.3], 9, 6), tone: 'pale' },
+      { geometry: new THREE.SphereGeometry(0.062, 9, 7).translate(0, 0.838, -0.641), tone: 'pale' },
     ],
     neck: makeAnimalNeck(0.09, 0.07, 0.14),
     neckAt: [0, 0.56, 0.42],
     neckPitch: 0.7,
     collarAt: 0.02,
+    collarR: 0.081,
     // Just over the brush, which stands higher than this animal's back does.
     markAt: 0.95,
     head: makeAnimalHead([0.095, 0.09, 0.11], { baseR: 0.065, tipR: 0.028, length: 0.15, drop: 0.02 }),
@@ -1199,7 +1317,7 @@ function makeBrambletail(): SpeciesModel {
     eyeAt: [0.07, 0.03, 0.07],
     noseAt: [0, -0.01, 0.227],
     crowns: [
-      { geometry: makePrickEar(0.042, 0.11), at: [0.06, 0.07, -0.02], roll: 0.35, pitch: -0.1, tone: 'dark', mirrored: false },
+      ear({ halfWidth: 0.068, length: 0.17, halfDepth: 0.024, point: 0.85 }, [0.076, 0.068, -0.02], 0.36, -0.12),
     ],
     leg: limb(0.04, 0.45, 9, 1),
     hoof: makeHoof(0.045),
@@ -1227,8 +1345,8 @@ function makeFenwolf(): SpeciesModel {
   return {
     body: weld([barrel, ruff, brush]),
     markings: [
-      { geometry: blob([0.15, 0.13, 0.3], [0, 0.5, 0.02]), tone: 'pale' },
-      { geometry: new THREE.SphereGeometry(0.05, 8, 5).translate(0, 0.408, -0.752), tone: 'dark' },
+      { geometry: blob([0.15, 0.13, 0.3], [0, 0.5, 0.02], 9, 6), tone: 'pale' },
+      { geometry: new THREE.SphereGeometry(0.057, 9, 7).translate(0, 0.406, -0.757), tone: 'dark' },
     ],
     neck: makeAnimalNeck(0.13, 0.1, 0.24),
     // Pitched nearly flat, so the neck comes down with the head: pitched
@@ -1237,6 +1355,7 @@ function makeFenwolf(): SpeciesModel {
     neckAt: [0, 0.61, 0.464],
     neckPitch: 1.1,
     collarAt: 0.06,
+    collarR: 0.111,
     // Over the ruff, the highest point on a wolf that carries its head low.
     markAt: 1,
     head: makeAnimalHead([0.11, 0.1, 0.13], { baseR: 0.075, tipR: 0.035, length: 0.17, drop: 0.025 }),
@@ -1244,7 +1363,7 @@ function makeFenwolf(): SpeciesModel {
     eyeAt: [0.08, 0.03, 0.085],
     noseAt: [0, -0.012, 0.26],
     crowns: [
-      { geometry: makePrickEar(0.045, 0.12), at: [0.07, 0.07, -0.03], roll: 0.3, pitch: -0.15, tone: 'dark', mirrored: false },
+      ear({ halfWidth: 0.058, length: 0.15, halfDepth: 0.022, point: 0.8 }, [0.078, 0.068, -0.03], 0.32, -0.15),
     ],
     leg: limb(0.05, 0.58, 9, 1),
     hoof: makeHoof(0.055),
@@ -1294,21 +1413,32 @@ function makeShared(): SharedGeometry {
       brambletail: makeBrambletail(),
       fenwolf: makeFenwolf(),
     },
-    // A bead a fifth the size of a settler's eye on a body that is drawn at
-    // most a cell across; the settler's eight-by-six would be forty per cent
-    // more triangles for a dot.
-    animalEye: new THREE.SphereGeometry(0.022, 6, 4),
-    // A dark bead on the end of the muzzle, in the eye's material so it takes
+    // A bead on a body drawn at most a cell across. Six by four was a
+    // twelve-sided lump: from eleven cells up that is a dot and reads as an
+    // eye, but a settler standing at a hare's head sees a chipped bead with a
+    // flat facet catching the sun where the highlight should be round. Eight by
+    // six is the settler's own eye count on a bead two thirds the size, and it
+    // is a sphere at any range a player can get to.
+    animalEye: new THREE.SphereGeometry(0.027, 8, 6),
+    // A dark nose on the end of the muzzle, in the eye's material so it takes
     // the same glint. It is the one thing that marks which end of a lowered
-    // head is the front from the manager camera.
-    animalNose: new THREE.SphereGeometry(0.03, 6, 4),
+    // head is the front from the manager camera, and at arm's length it is the
+    // one thing that says the muzzle ends rather than stops: drawn a little
+    // wide and a little flat, the way a nose sits across a snout.
+    animalNose: new THREE.SphereGeometry(0.032, 8, 6).scale(1.15, 0.85, 0.9),
     // A band round the neck. The only thing on the map that separates a tamed
     // mossback from the wild one grazing beside it, so it is a ring of solid
     // colour rather than a tint the isometric camera would lose in shadow.
-    // Ten round the tube and twenty-four round the ring: sixteen by thirty-two
-    // was a thousand triangles on a strap, and with the tag hung off it a
-    // bonded mossback stood seven hundred over the animal budget.
-    animalCollar: new THREE.TorusGeometry(0.15, 0.035, 10, 24).rotateX(Math.PI / 2),
+    //
+    // Six round the tube and twenty-two round the ring. Sixteen by thirty-two
+    // was a thousand triangles on a strap and put a bonded mossback seven
+    // hundred over the animal budget; ten by twenty-four was still four hundred
+    // and eighty, a fifth of an animal spent rounding a section that is thirty
+    // millimetres across on the largest species and nine on the smallest. A
+    // collar is a flat strap of leather with edges, so the edges are the honest
+    // shape and the triangles they release go into the head, where a settler
+    // standing at arm's length is actually looking.
+    animalCollar: new THREE.TorusGeometry(COLLAR_R, 0.034, 6, 22).rotateX(Math.PI / 2),
     // A little lozenge hung off the collar: the tell that this one is somebody's
     // rather than the colony's. A shape rather than a second collar colour,
     // because the collar already says something — pale gold when there is

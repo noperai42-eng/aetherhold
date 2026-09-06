@@ -136,11 +136,14 @@ const BERRY_RIPE = new THREE.Color(0x8c1e3c);
 const BUSH_GREEN = new THREE.Color(0x3f6a2e);
 /**
  * A bush that has just been picked over. Grey-green rather than the near-black
- * olive it was: the crown carries this colour and the base half of it (the
- * shading baked into `bushGeometry`), and half of a dark olive is a boulder —
- * a stripped bush sat in the frame looking exactly like the loose stones. Paler
- * and greyer than `BUSH_GREEN` so "picked" still reads at a glance, but plainly
- * foliage; that it is also the smaller of the two is what `syncBushes` scales.
+ * olive it was, and paler than `BUSH_GREEN` so "picked" reads at a glance from
+ * the manager camera.
+ *
+ * It is not what makes a stripped bush legible as a plant, though — two rounds
+ * of moving this colour taught that. Dark, it was a boulder; lifted, it was a
+ * stone with lichen on it. What says "plant" is the shape, and that is what a
+ * stripped bush now changes to (`strippedBushGeometry`); this only tints it,
+ * and the twigs take most of the green back out of it again.
  */
 const BUSH_STRIPPED = new THREE.Color(0x84986a);
 
@@ -150,6 +153,7 @@ export class FxView {
   /** One pool per growth stage, `CROP_STAGES` long. */
   private readonly crops: InstancedPool[];
   private readonly bushes: InstancedPool;
+  private readonly stripped: InstancedPool;
   private readonly berries: InstancedPool;
   private readonly soil: InstancedPool;
   private readonly zonePaint: InstancedPool;
@@ -212,6 +216,19 @@ export class FxView {
       bushGeometry(),
       new THREE.MeshLambertMaterial({ color: 0xffffff, vertexColors: true }),
       512,
+      { tinted: true, castShadow: false },
+    );
+    // The same bramble with the fruit and most of the leaf taken off it: a
+    // second shape rather than a second colour, for the reason
+    // `strippedBushGeometry` gives. Its own pool and its own material, since a
+    // pool disposes the material it was handed and two pools sharing one would
+    // dispose it twice. A draw call for the picked-over half of the moor is the
+    // price of a stripped bush being legible as a bush.
+    this.stripped = new InstancedPool(
+      this.group,
+      strippedBushGeometry(),
+      new THREE.MeshLambertMaterial({ color: 0xffffff, side: THREE.DoubleSide, vertexColors: true }),
+      256,
       { tinted: true, castShadow: false },
     );
     this.berries = new InstancedPool(
@@ -402,9 +419,10 @@ export class FxView {
    */
   private syncBushes(world: World): void {
     this.bushes.begin();
+    this.stripped.begin();
     this.berries.begin();
     for (const b of world.bushes ?? []) {
-      // A stripped bush is still a bush — smaller and grey-green, never gone.
+      // A stripped bush is still a bush — smaller, and a bare frame, never gone.
       // Removing it would tell the player the plant died when what happened is
       // that something ate the fruit, and the whole reason to walk past one again
       // in four days is knowing it is still standing there.
@@ -417,8 +435,14 @@ export class FxView {
       // Grey-green when it has just been picked over, filling back to a full
       // green as it recovers. Never yellow: the fruit says when it is ready.
       this.c.copy(BUSH_STRIPPED).lerp(BUSH_GREEN, g);
+      // The same threshold the fruit appears at, so a bush says one thing about
+      // itself with its whole shape: below it there is nothing to pick and the
+      // bramble is a bare frame, above it there are leaves and berries on it.
+      if (g < BERRIES_AT) {
+        this.stripped.push(this.m, this.c);
+        continue;
+      }
       this.bushes.push(this.m, this.c);
-      if (g < BERRIES_AT) continue;
       // The cluster is built on the bush's own lobes in the bush's own units, so
       // it takes the bush's matrix as it is and sits on the surface at every
       // size; what ripening changes is the fruit's colour — green, then dark
@@ -430,6 +454,7 @@ export class FxView {
       this.berries.push(this.m, this.c);
     }
     this.bushes.end();
+    this.stripped.end();
     this.berries.end();
   }
 
@@ -574,6 +599,7 @@ export class FxView {
     this.bullets.dispose();
     for (const pool of this.crops) pool.dispose();
     this.bushes.dispose();
+    this.stripped.dispose();
     this.berries.dispose();
     this.soil.dispose();
     this.zonePaint.dispose();
@@ -802,6 +828,105 @@ const BUSH_LOBES = [
 ] as const;
 /** The height the base shading has finished lightening by: the top of the main lobe. */
 const BUSH_CROWN = 0.3 + 0.3 * 0.86;
+
+/**
+ * A bush somebody has just picked over: an open cage of thin branches with the
+ * last few leaves left on it, in the same units and the same frame as
+ * `bushGeometry`, and shorter and narrower than it at every ripeness.
+ *
+ * Colour was tried for this job and colour cannot do it. A stripped bush drawn
+ * as the same clump of lobes in a paler green is a rock with lichen on it from
+ * the manager camera, and lifting the green further only made it a paler rock —
+ * a silhouette says "plant" long before a hue does. So what changes when the
+ * fruit is taken is the shape: the leaf mass goes and what is left is the
+ * frame it hung on, which is legible as foliage from twenty cells up because
+ * you can see the ground through it, and legible up close because the few
+ * leaves still on it are the same leaves the crops are built from.
+ *
+ * The branches are the only part of the plant that is wood-coloured, and they
+ * say so as a multiplier on the instance tint like every other part here, so a
+ * bush recovering towards full green takes its twigs with it.
+ */
+export function strippedBushGeometry(): THREE.BufferGeometry {
+  const parts: THREE.BufferGeometry[] = [];
+  const wood = (geo: THREE.BufferGeometry): THREE.BufferGeometry =>
+    paint(geo, BRANCH_WOOD.x, BRANCH_WOOD.y, BRANCH_WOOD.z);
+  // The knot the branches come out of, squashed so it sits on the ground rather
+  // than in it, and wide enough to cover where their feet meet.
+  const knot = lumpyGeometry(new THREE.IcosahedronGeometry(0.075, 0), 0.12, 3.1);
+  knot.scale(1, 0.55, 1);
+  knot.translate(0, BRANCH_FOOT, 0);
+  parts.push(wood(knot));
+
+  for (let i = 0; i < 6; i++) {
+    // Deterministic, from the same hash idiom the berries use: a bramble that
+    // rearranged itself between sessions would be the one thing on the moor
+    // that moved while nobody was looking.
+    const reach = 0.14 + 0.08 * fract(Math.sin(i * 12.9898 + 7.7) * 43758.5453);
+    const rise = 0.28 + 0.14 * fract(Math.sin(i * 78.233 + 3.3) * 43758.5453);
+    const bearing = (i / 6) * Math.PI * 2 + 0.35 + reach;
+    // Two lengths per branch, the second leaning further out than the first, so
+    // a branch arcs the way a cane does instead of leaving the ground like a
+    // spoke. Thinner as it goes, down to something the eye reads as a twig.
+    const knee = { y: BRANCH_FOOT + rise * 0.55, z: reach * 0.28 };
+    const tip = { y: BRANCH_FOOT + rise, z: reach };
+    parts.push(wood(branch({ y: BRANCH_FOOT, z: 0 }, knee, 0.024, 0.016, bearing)));
+    parts.push(wood(branch(knee, tip, 0.016, 0.009, bearing)));
+    // A leaf on every other cane, hanging off the last third of it. Four in all:
+    // enough that the thing is plainly a plant, few enough that it is plainly a
+    // plant with nothing left on it.
+    if (i % 2 === 0) parts.push(bushLeaf(tip.y - rise * 0.12, tip.z * 0.88, bearing));
+  }
+  parts.push(bushLeaf(BRANCH_FOOT + 0.1, 0.06, 2.1));
+  return weld(parts);
+}
+
+/** Where a bush's canes leave the ground, high enough that no rim dips under it. */
+const BRANCH_FOOT = 0.04;
+/**
+ * What the canes do to the bush's tint: warmer, and most of the green taken out
+ * of them. A multiplier and not a colour, like `HEAD_GOLD`, so the twigs are
+ * still the same plant as the leaves beside them.
+ */
+const BRANCH_WOOD = new THREE.Vector3(1.05, 0.82, 0.58);
+
+/**
+ * One length of cane, from `a` to `b` in the bush's own y–z plane and then
+ * swung round to `bearing`. Tapered, and open at both ends: the joints overlap
+ * and the far end is nine millimetres across, so a cap there would be triangles
+ * spent on something nobody can see.
+ */
+function branch(
+  a: { y: number; z: number },
+  b: { y: number; z: number },
+  rBottom: number,
+  rTop: number,
+  bearing: number,
+): THREE.BufferGeometry {
+  const dy = b.y - a.y;
+  const dz = b.z - a.z;
+  const len = Math.hypot(dy, dz);
+  const geo = new THREE.CylinderGeometry(rTop, rBottom, len, 5, 1, true);
+  geo.rotateX(Math.atan2(dz, dy));
+  geo.translate(0, (a.y + b.y) / 2, (a.z + b.z) / 2);
+  geo.rotateY(bearing);
+  return geo;
+}
+
+/** One surviving leaf, hung at (`y`, `z`) on the cane facing `bearing`. */
+function bushLeaf(y: number, z: number, bearing: number): THREE.BufferGeometry {
+  // The bow is in the blade's own units and does not scale with its length, so
+  // it is written small: at a fifth of a unit long, the crop's bow would fold
+  // the leaf back on itself.
+  const leaf = bladeGeometry(0.13, 3, 0.05);
+  leaf.scale(1, 0.18, 1);
+  // Bowed over past the horizontal, which is what a leaf on a bare cane does,
+  // and what puts leaf area under an eye looking straight down at it.
+  leaf.rotateX(1.15);
+  leaf.translate(0, y, z);
+  leaf.rotateY(bearing);
+  return paint(leaf, 1, 1, 1);
+}
 
 /**
  * The fruit on a bush: a dozen berries sitting on the upper skin of the lobes,

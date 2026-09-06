@@ -220,6 +220,24 @@ function partGeometry(view: BuildingsView, key: string): THREE.BufferGeometry {
   return found!;
 }
 
+const X = new THREE.Vector3(1, 0, 0);
+const Z = new THREE.Vector3(0, 0, 1);
+
+/**
+ * How many faces a ray crosses through one part — a headless probe of where a
+ * piece of furniture is solid and where it is air. A bounding box cannot tell a
+ * frame from a slab and a vertex count cannot either, because a rounded box
+ * keeps all its vertices at its corners; a ray through the middle can.
+ */
+function crossings(g: THREE.BufferGeometry, from: THREE.Vector3, dir: THREE.Vector3): number {
+  const mat = new THREE.MeshBasicMaterial({ side: THREE.DoubleSide });
+  const mesh = new THREE.Mesh(g, mat);
+  mesh.updateMatrixWorld();
+  const n = new THREE.Raycaster(from, dir, 0, 4).intersectObject(mesh).length;
+  mat.dispose();
+  return n;
+}
+
 /** Every live instance matrix in one pool. */
 function matricesOf(view: BuildingsView, key: string): THREE.Matrix4[] {
   const out: THREE.Matrix4[] = [];
@@ -254,6 +272,53 @@ describe('a bed', () => {
       const want = defOf(kind).standHeight;
       expect(Math.abs(top - want), `${kind} mattress tops out at ${top}, sleeper lies at ${want}`).toBeLessThan(0.005);
     }
+    view.dispose();
+  });
+
+  it('stands on legs with daylight under it, rather than on a slab', () => {
+    // From the manager camera a dormitory is read at a glance, and what says
+    // "bed" rather than "brown tile with a paler tile on it" is the space: legs
+    // at the corners, rails round the edge, floor visible between them. The
+    // carcass used to be one solid block the size of the cell, which is the
+    // silhouette of a rug. So a ray fired along the bed at ankle height, down
+    // the middle where the legs are not, must pass clean through — and the same
+    // ray at the rail line must not. A slab fails the first; four legs with no
+    // rails between them fail the second. Whichever bed it is.
+    const view = new BuildingsView();
+    for (const prefix of ['bed', 'med', 'prison']) {
+      const g = partGeometry(view, `${prefix}.frame`);
+      expect(crossings(g, new THREE.Vector3(-1, 0.08, 0), X), `the ${prefix} bed is solid under its own mattress`).toBe(0);
+      expect(crossings(g, new THREE.Vector3(-1, 0.24, 0), X), `the ${prefix} bed has no rails to lie on`).toBeGreaterThan(0);
+    }
+    view.dispose();
+  });
+});
+
+describe('a table', () => {
+  it('carries an apron under its top and tapers its legs toward the floor', () => {
+    // A top on four posts has nothing between the underside of the top and the
+    // floor, so from above the top floats and the legs read as its shadow. A
+    // real table has a frame the legs are jointed into immediately under the
+    // top, and that band of timber is what closes the silhouette: a ray fired
+    // across the table at that height crosses it, and the same ray halfway down
+    // the legs crosses nothing. The taper is the other half — the two radii
+    // were the wrong way round, thin at the top and thick at the foot, which is
+    // a stool leg — so the legs must be at their widest where they meet the
+    // apron.
+    const view = new BuildingsView();
+    const g = partGeometry(view, 'table.legs');
+    expect(crossings(g, new THREE.Vector3(0, 0.76, -1), Z), 'nothing bridges the table legs under the top').toBeGreaterThan(0);
+    expect(crossings(g, new THREE.Vector3(0, 0.4, -1), Z), 'the table is boxed in below the apron').toBe(0);
+    const pos = g.attributes.position;
+    let atFloor = 0;
+    let atApron = 0;
+    for (let k = 0; k < pos.count; k++) {
+      const y = pos.getY(k);
+      const r = Math.abs(pos.getX(k));
+      if (y < 0.02) atFloor = Math.max(atFloor, r);
+      if (y > 0.8) atApron = Math.max(atApron, r);
+    }
+    expect(atApron, `a leg ${atFloor} wide at the floor and ${atApron} at the apron`).toBeGreaterThan(atFloor);
     view.dispose();
   });
 });
@@ -344,6 +409,60 @@ describe('a wood', () => {
       if (pos.getY(k) > trunk.boundingBox!.max.y - 0.01) tip = Math.max(tip, r);
     }
     expect(tip, 'the trunk is a post, not a taper').toBeLessThan(root * 0.4);
+    view.dispose();
+  });
+
+  it('hangs each skirt of boughs rather than standing it in a bowl', () => {
+    // What made a crown read as a stack of party hats from the manager camera
+    // was not the number of tiers but which way each one sloped: the widest
+    // point sat above where the tier met the trunk, so its underside faced up
+    // and out and every tier was a cone standing on its point. A conifer's
+    // boughs come out of the trunk and droop, which means the lowest thing
+    // about a skirt is its rim — out at nearly its full reach — rather than
+    // the joint at the trunk. So the lowest vertex of each skirt must be a
+    // long way out from the axis, which is false for a bowl and true for
+    // anything that hangs.
+    const view = new BuildingsView();
+    for (const key of ['tree.lower', 'tree.mid', 'tree.upper', 'tree.top']) {
+      const pos = partGeometry(view, key).attributes.position;
+      // Measured from the skirt's own axis, not the tree's: the leader is hung
+      // off centre on purpose, and a radius taken from the trunk would read
+      // that offset as reach.
+      const g = partGeometry(view, key);
+      g.computeBoundingBox();
+      const cx = (g.boundingBox!.max.x + g.boundingBox!.min.x) / 2;
+      const cz = (g.boundingBox!.max.z + g.boundingBox!.min.z) / 2;
+      let rMax = 0;
+      let lowest = Infinity;
+      let rAtLowest = 0;
+      for (let k = 0; k < pos.count; k++) rMax = Math.max(rMax, Math.hypot(pos.getX(k) - cx, pos.getZ(k) - cz));
+      for (let k = 0; k < pos.count; k++) {
+        if (pos.getY(k) >= lowest) continue;
+        lowest = pos.getY(k);
+        rAtLowest = Math.hypot(pos.getX(k) - cx, pos.getZ(k) - cz);
+      }
+      expect(rAtLowest, `${key} bottoms out at ${rAtLowest} from the trunk, of ${rMax}`).toBeGreaterThan(rMax * 0.5);
+    }
+    view.dispose();
+  });
+
+  it('varies girth and height apart, so a stand is not one tree at four sizes', () => {
+    // Scaling one tree up and down gives a wood of the same tree photographed
+    // at several distances — which from the manager camera, where every crown
+    // is seen from one angle at one range, is exactly the row of stamps the
+    // wood read as. Height and girth are hashed separately and girth goes on
+    // the ground plane only, so the wood holds tall thin trees and squat wide
+    // ones. The ratio of the two is what carries that, and the growth scale
+    // divides out of it, so it is the ratio that is counted.
+    const world = createWorld(SEED);
+    const view = new BuildingsView();
+    view.sync(world);
+    const shapes = new Set<number>();
+    for (const m of matricesOf(view, 'tree.trunk')) {
+      const s = new THREE.Vector3().setFromMatrixScale(m);
+      shapes.add(Math.round((s.x / s.y) * 100));
+    }
+    expect(shapes.size, `only ${shapes.size} trunk proportions in the whole wood`).toBeGreaterThanOrEqual(4);
     view.dispose();
   });
 });
@@ -712,3 +831,4 @@ describe('a fence line', () => {
     expect(withGhost).toBe(instancesAt(view2, x, y));
   });
 });
+

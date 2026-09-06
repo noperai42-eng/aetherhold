@@ -210,23 +210,40 @@ const AO_PER_ROCK = 0.12;
  * are what the snowpack, the ice and the lake are measured against, and none of
  * this touches them.
  *
- * Five things ride the same corner lattice, so a corner shared by two cells is
+ * Six things ride the same corner lattice, so a corner shared by two cells is
  * still the same colour in both. A luminance patch moves whole handfuls of cells
- * together — the only one of the five that survives the manager camera, and the
- * reason the rest were never going to be enough on their own. A grain hashes
- * each corner alone, which is the texture a body's-height view finds and the
- * manager view averages away. A speckle darkens a share of corners again: a
- * pebble or a bare scrape close up, grit from above. A hue drift pushes the hue
- * and the saturation with it, so two stretches of the same grass are two greens.
- * And wear pulls patches of living ground toward bare earth, which is the one of
- * the five that says what the variation *is*.
+ * together — the only one of the six that survives the manager camera, and the
+ * reason the rest were never going to be enough on their own. A clod breaks that
+ * patch up every two or three cells: too coarse for the camera to average away
+ * and too fine to be a patch of its own, which is the band the ground was empty
+ * in and the reason a mottle that measured wide enough still looked airbrushed.
+ * A grain hashes each corner alone, which is the texture a body's-height view
+ * finds and the manager view averages away. A speckle darkens a share of corners
+ * again: a pebble or a bare scrape close up, grit from above. A hue drift pushes
+ * the hue and the saturation with it, so two stretches of the same grass are two
+ * greens. And wear pulls patches of living ground toward bare earth, which is the
+ * one of the six that says what the variation *is*.
  *
  * All of them are scaled back on water and under snow, and the last two right
  * out: neither has a hue worth drifting, nothing wears through a lake, and a
  * saturated corner of ice would be a stain.
  */
-const GROUND_SPECKLE_SHARE = 0.1;
-const GROUND_SPECKLE = 0.04;
+/**
+ * The speckle: what share of corners carry grit, how far the grittiest darkens,
+ * and how far the same hash frays the edge of a worn patch.
+ *
+ * Graded from the threshold rather than switched at it, so grit thins out
+ * instead of stopping, and one hash does both jobs: the corners that darken are
+ * also the corners that go earliest to earth, because a speckle of bare soil and
+ * a scrape of bare soil are the same thing seen at two distances. That coupling
+ * is what puts something *in* the boundary between grass and trodden ground —
+ * `GROUND_DRY_FRAY` is worth a seventh of the noise it frays, which breaks the
+ * threshold into a gritty margin a few corners deep rather than the clean
+ * gradient it drew before.
+ */
+const GROUND_SPECKLE_SHARE = 0.2;
+const GROUND_SPECKLE = 0.07;
+const GROUND_DRY_FRAY = 0.14;
 /**
  * Wavelength of the luminance patch and of the hue drift, in cells per noise
  * cell, and how hard the patch is pushed toward its own ends.
@@ -249,6 +266,28 @@ const GROUND_SPECKLE = 0.04;
  */
 const GROUND_PATCH_SCALE = 0.12;
 const GROUND_PATCH_GAIN = 3.2;
+/**
+ * The clod: its wavelength in cells per noise cell, how hard it is pushed toward
+ * its own ends, and how far it moves a corner's luminance.
+ *
+ * Three cells — the shortest wavelength that still spends most of its swing
+ * *between* cells rather than inside one, which is the whole constraint on
+ * luminance here. The patch says where the ground is dark; the clod says the
+ * dark is made of lumps. Without it the ground is one soft airbrushed blob at
+ * every zoom, because eight cells is wider than anything the eye reads as soil
+ * and a corner-sized grain is finer than anything the manager camera keeps.
+ *
+ * It is added to the patch's *relief* rather than mixed into its noise, and that
+ * is the whole trick: the patch is bent through a power curve that is nearly
+ * flat across the middle of its range, so a clod folded in upstream survives
+ * only inside the darkest patches and vanishes from the mid-tone the map is
+ * mostly made of — which is exactly where the airbrushed look lived. Added
+ * afterwards it is the same lump everywhere, at the one amplitude chosen for it,
+ * and being symmetric it costs the field's mean nothing.
+ */
+const GROUND_CLOD_SCALE = 0.34;
+const GROUND_CLOD_GAIN = 2.6;
+const GROUND_CLOD_AMP = 0.1;
 const GROUND_DRIFT_SCALE = 0.26;
 const GROUND_DRIFT_HUE = 0.045;
 const GROUND_DRIFT_SAT = 0.2;
@@ -256,12 +295,15 @@ const GROUND_DRIFT_SAT = 0.2;
  * How much of the corner's luminance mottle is per-corner grain rather than
  * patch.
  *
- * A seventh, for the same reason the patch is wide: grain is the part that lands
- * entirely inside one cell, so every point of it is paid for out of the cell's
- * own flatness. This much is a texture you find standing in the grass and cannot
- * see from the manager camera, which is exactly what grain is for.
+ * An eleventh, for the same reason the patch is wide: grain is the part that
+ * lands entirely inside one cell, so every point of it is paid for out of the
+ * cell's own flatness. It used to be a seventh; the clod and the speckle both
+ * spend from the same budget and both give more back at the manager camera than
+ * white noise on a corner does, so the grain gave some of it up to them. What is
+ * left is still a texture you find standing in the grass and cannot see from
+ * above, which is exactly what grain is for.
  */
-const GROUND_GRAIN = 0.14;
+const GROUND_GRAIN = 0.09;
 /**
  * The luminance mottle's shape: how far it may darken a corner, how sharply the
  * darkening comes on, how far it may lighten one, and the lift that puts the
@@ -281,7 +323,7 @@ const GROUND_GRAIN = 0.14;
 const GROUND_MOTTLE_DOWN = 0.62;
 const GROUND_MOTTLE_POW = 1.6;
 const GROUND_MOTTLE_UP = 0.05;
-const GROUND_MOTTLE_LIFT = 0.052;
+const GROUND_MOTTLE_LIFT = 0.068;
 /**
  * How much of the mottle survives on covered ground.
  *
@@ -301,14 +343,23 @@ const GROUND_MOTTLE_COVERED = 0.2;
  * the same month — so a dry patch in a meadow and the packed ground a cabin
  * stands on are the same earth at two strengths, and the boundary between them
  * comes out as a gradient of patches instead of one airbrushed blob. Half the
- * corners are dry to some degree and the driest go a third of the way, which is
- * a long way in hue — green to olive — and almost nothing in luminance. That
- * trade is the point: hue is the axis with room left in it once the season tint
- * has spent most of the luminance the ground had to spend.
+ * corners are dry to some degree and the driest go nearly half the way, which is
+ * a long way in hue — green to olive to bare soil — and almost nothing in
+ * luminance. That trade is the point: hue is the axis with room left in it once
+ * the season tint has spent most of the luminance the ground had to spend.
+ *
+ * The tone is pushed a little off the palette's dirt before any of that: warmer
+ * by a fiftieth of the wheel and a third again as saturated, which is the far end
+ * of a lerp nothing else in the game reads, so it costs the mined stone and the
+ * built floors nothing. It is spent on the one thing this mottle is for — a
+ * worn corner has to be able to read as *earth* and not as grass that has been
+ * turned down, and green to olive was still green.
  */
 const GROUND_DRY_SCALE = 0.26;
 const GROUND_DRY_SHARE = 0.5;
-const GROUND_DRY_MAX = 0.34;
+const GROUND_DRY_MAX = 0.46;
+const GROUND_EARTH_HUE = -0.02;
+const GROUND_EARTH_SAT = 0.14;
 const UP = new THREE.Vector3(0, 1, 0);
 
 /**
@@ -727,7 +778,11 @@ export class TerrainView {
     // this month, asked for without any pack on it, because the pack is already
     // accounted for corner by corner in `bare`. Hoisted because it is the same
     // colour at every corner and this loop runs thirty-seven thousand times.
-    const dry = groundColor(new THREE.Color(), 'dirt', phase, 0);
+    const dry = groundColor(new THREE.Color(), 'dirt', phase, 0).offsetHSL(
+      GROUND_EARTH_HUE,
+      GROUND_EARTH_SAT,
+      0,
+    );
     /**
      * How much of the lake bed's drop is still a drop.
      *
@@ -791,15 +846,28 @@ export class TerrainView {
         // one that lifts the gloom out of it, so a frozen lake cannot come out
         // flat and still shadowed like a hole.
         const deep = (open === 0 ? 0 : wet / open) * submerged;
-        const speckle = hash(cx, cy, 71.7) > 1 - GROUND_SPECKLE_SHARE ? GROUND_SPECKLE : 0;
+        // One hash, drawn once and spent twice — on the grit at this corner and,
+        // further down, on how far this corner is dragged past the edge of a worn
+        // patch. See `GROUND_SPECKLE_SHARE`.
+        const grit = hash(cx, cy, 71.7);
+        const speckle =
+          grit > 1 - GROUND_SPECKLE_SHARE
+            ? ((grit - (1 - GROUND_SPECKLE_SHARE)) / GROUND_SPECKLE_SHARE) * GROUND_SPECKLE
+            : 0;
         // How much of this corner is living ground the weather can get at, which
         // is what the mottle, the hue drift and the wear are all stories about.
         // A corner in open water or under a full pack keeps the one colour the
         // palette gave it.
         const bare = (1 - (open === 0 ? 0 : wet / open)) * (1 - depth);
         const mottle = groundMottle(cx, cy);
+        // The grit goes in with the mottle rather than after it, so it is scaled
+        // back on covered ground with everything else — a drift stippled with
+        // dark corners is a dirty drift — and so the one lift pays for both
+        // means at once.
         const relief =
-          GROUND_MOTTLE_LIFT +
+          GROUND_MOTTLE_LIFT -
+          speckle +
+          groundClod(cx, cy) * GROUND_CLOD_AMP +
           (mottle < 0
             ? -Math.pow(-mottle, GROUND_MOTTLE_POW) * GROUND_MOTTLE_DOWN
             : mottle * GROUND_MOTTLE_UP);
@@ -808,8 +876,7 @@ export class TerrainView {
           1 -
             rock * AO_PER_ROCK -
             deep * WATER_SHADE +
-            relief * THREE.MathUtils.lerp(GROUND_MOTTLE_COVERED, 1, bare) -
-            speckle,
+            relief * THREE.MathUtils.lerp(GROUND_MOTTLE_COVERED, 1, bare),
         );
         c.setRGB((r / n) * k, (g / n) * k, (b / n) * k);
         // The hue drift and the dry patches, on bare living ground only. The hue
@@ -822,9 +889,14 @@ export class TerrainView {
           const noise = valueNoise(cx * GROUND_DRIFT_SCALE + 5.5, cy * GROUND_DRIFT_SCALE + 2.5, 0.5);
           const drift = (noise - 0.5) * 2 * bare;
           c.offsetHSL(drift * GROUND_DRIFT_HUE, drift * GROUND_DRIFT_SAT, 0);
-          const wear = valueNoise(cx * GROUND_DRY_SCALE + 19.7, cy * GROUND_DRY_SCALE + 13.1, 3.5);
+          const wear =
+            valueNoise(cx * GROUND_DRY_SCALE + 19.7, cy * GROUND_DRY_SCALE + 13.1, 3.5) +
+            (grit - 0.5) * GROUND_DRY_FRAY;
           if (wear > 1 - GROUND_DRY_SHARE) {
-            const dryness = (wear - (1 - GROUND_DRY_SHARE)) / GROUND_DRY_SHARE;
+            // Clamped, because the fray can push a corner past the top of the
+            // noise's own range and the driest corner is a number the palette
+            // was chosen against, not one the grit gets to raise.
+            const dryness = Math.min(1, (wear - (1 - GROUND_DRY_SHARE)) / GROUND_DRY_SHARE);
             c.lerp(dry, dryness * GROUND_DRY_MAX * bare);
           }
         }
@@ -876,7 +948,8 @@ function floorShade(kind: Terrain, x: number, y: number): number {
 /**
  * How far the ground at a lattice corner wants to move off its terrain's own
  * luminance, in [−1, 1]: a patch a manager camera can find, with the per-corner
- * grain a first-person one can, laid over it.
+ * grain a first-person one can, laid over it. The clod that goes between the two
+ * is applied further downstream — see `GROUND_CLOD_SCALE`.
  *
  * The patch is opened out with a tanh, the same trick and for the same reason as
  * the boulder's skin: value noise huddles round its middle, so a field built
@@ -894,6 +967,18 @@ function groundMottle(x: number, y: number): number {
     -1,
     1,
   );
+}
+
+/**
+ * The lumps the patch is made of, in [−1, 1]: one more octave of the same value
+ * noise, three cells wide, opened out with the same tanh.
+ *
+ * Kept apart from `groundMottle` because it is applied apart from it — see
+ * `GROUND_CLOD_SCALE` for why the power curve is the reason.
+ */
+function groundClod(x: number, y: number): number {
+  const clod = valueNoise(x * GROUND_CLOD_SCALE + 3.1, y * GROUND_CLOD_SCALE + 27.4, 8.5);
+  return Math.tanh((clod - 0.5) * GROUND_CLOD_GAIN);
 }
 
 function hash(x: number, y: number, salt: number): number {

@@ -45,8 +45,30 @@ const BARK = 0x5a4331;
 const TREE_SIZE_MIN = 0.85;
 const TREE_SIZE_MAX = 1.2;
 const TREE_LEAN_MAX = 0.07;
+/**
+ * And how much thicker or thinner it is than that height would suggest. Height
+ * alone is not variation: a wood scaled uniformly is one tree photographed at
+ * several distances, which from the manager camera — where every crown is seen
+ * from the same angle at the same range — is exactly the row of stamps it read
+ * as. Girth goes on x and z only, so a tall thin spruce stands next to a squat
+ * wide one and the two are different trees rather than the same tree twice.
+ */
+const TREE_GIRTH_MIN = 0.82;
+const TREE_GIRTH_MAX = 1.12;
+/**
+ * The angle each skirt of boughs is turned past the one below it. The skirts
+ * are lobed rather than round, so turning them relative to each other means a
+ * tree's outline is built out of four different silhouettes stacked — and since
+ * the turn is hashed per tree, no two trees stack theirs the same way. It costs
+ * a quaternion per skirt and nothing on the GPU: the pools and their geometry
+ * are untouched, only the matrices differ.
+ */
+const TREE_TWIST_MIN = 0.4;
+const TREE_TWIST_MAX = 1.7;
 /** The axis a tree leans about, in its own frame; the hashed yaw turns it. */
 const LEAN_AXIS = new THREE.Vector3(1, 0, 0);
+/** The skirts of a crown, bottom to top. Pushed in this order; the twist stacks. */
+const TREE_SKIRTS = ['tree.lower', 'tree.mid', 'tree.upper', 'tree.top'] as const;
 
 const NEIGHBOURS: ReadonlyArray<readonly [number, number]> = [
   [1, 0],
@@ -833,17 +855,31 @@ function itemRest(world: World, x: number, y: number): number {
   return Math.max(0, groundLiftAt(world, cx, cy));
 }
 
-/** Four legs on a rail, for anything that stands on a top: `pitch` is half the leg spacing. */
+/**
+ * Four legs under an apron, for anything that stands on a top: `pitch` is half
+ * the leg spacing, and the legs taper from `rTop` at the apron down to
+ * `rBottom` at the floor.
+ *
+ * The apron is the part that was missing. A top on four posts is a plate on
+ * sticks from the manager camera — there is nothing between the underside of
+ * the top and the floor but daylight, so the top reads as floating and the legs
+ * as a shadow. A real table has a frame the legs are jointed into, immediately
+ * under the top, and the band of timber it puts round the table at that height
+ * is what closes the silhouette. It is set a centimetre inside the leg line
+ * rather than flush with it, so the legs still stand out as legs and each one
+ * catches its own highlight down the corner.
+ */
 function legs(pitch: number, h: number, rTop: number, rBottom: number): THREE.BufferGeometry {
   const parts: THREE.BufferGeometry[] = [];
   for (const x of [-pitch, pitch]) {
     for (const z of [-pitch, pitch]) parts.push(cylinder(rTop, rBottom, h, h / 2, 12).translate(x, 0, z));
   }
-  const rail = h - 0.09;
-  parts.push(box(pitch * 2, 0.06, 0.05, rail, 0, pitch));
-  parts.push(box(pitch * 2, 0.06, 0.05, rail, 0, -pitch));
-  parts.push(box(0.05, 0.06, pitch * 2, rail, pitch, 0));
-  parts.push(box(0.05, 0.06, pitch * 2, rail, -pitch, 0));
+  const inset = pitch - 0.012;
+  const apron = h - 0.06;
+  parts.push(rbox(pitch * 2, 0.12, 0.045, apron, 0, inset, 0.015, 1));
+  parts.push(rbox(pitch * 2, 0.12, 0.045, apron, 0, -inset, 0.015, 1));
+  parts.push(rbox(0.045, 0.12, pitch * 2, apron, inset, 0, 0.015, 1));
+  parts.push(rbox(0.045, 0.12, pitch * 2, apron, -inset, 0, 0.015, 1));
   return merge(...parts);
 }
 
@@ -875,6 +911,8 @@ export class BuildingsView {
   private readonly m = new THREE.Matrix4();
   private readonly q = new THREE.Quaternion();
   private readonly spin = new THREE.Quaternion();
+  /** A tree's base rotation with one skirt's twist folded in; see the tree draw. */
+  private readonly crown = new THREE.Quaternion();
   private readonly hub = new THREE.Vector3();
   private readonly v = new THREE.Vector3();
   private readonly s = new THREE.Vector3(1, 1, 1);
@@ -1029,16 +1067,27 @@ export class BuildingsView {
     this.pool(
       'prison.bars',
       (() => {
-        const parts: THREE.BufferGeometry[] = [box(0.9, 0.04, 0.05, 0.22, 0, -0.46), box(0.9, 0.04, 0.05, 0.72, 0, -0.46)];
-        for (let i = 0; i < 7; i++) parts.push(cylinder(0.015, 0.015, 0.62, 0.45, 8).translate(-0.39 + i * 0.13, 0, -0.46));
+        // The grille starts above the bed's own end rail rather than inside it:
+        // a cross-rail buried in the frame is a rail nobody sees and two faces a
+        // millimetre apart for the depth buffer to argue over. The uprights run
+        // down through the rail so the grille is still bolted to something.
+        const parts: THREE.BufferGeometry[] = [box(0.9, 0.04, 0.05, 0.38, 0, -0.46), box(0.9, 0.04, 0.05, 0.86, 0, -0.46)];
+        for (let i = 0; i < 7; i++) parts.push(cylinder(0.015, 0.015, 0.62, 0.57, 12).translate(-0.39 + i * 0.13, 0, -0.46));
         return merge(...parts);
       })(),
       tone(0x4a4c50, 0.5, 0.4),
       16,
     );
 
-    this.pool('table.top', rbox(0.98, 0.08, 0.98, 0.86), solidMat(0.7), 32);
-    this.pool('table.legs', legs(0.4, 0.82, 0.035, 0.05), solidMat(0.8), 32);
+    // A dining table: a top with a properly eased edge on an apron and four
+    // legs that taper toward the floor. The taper was the wrong way round —
+    // thin at the top and thick at the foot, which is a stool leg, not a
+    // table's — and reading the two numbers as "at the apron" and "at the
+    // floor" is the whole fix. The top's height is fixed by `ITEM_REST`, which
+    // is where a hauled stack comes to rest on it: 0.9, and the slab is built
+    // down from that.
+    this.pool('table.top', rbox(0.98, 0.08, 0.98, 0.86, 0, 0, 0.035), solidMat(0.7), 32);
+    this.pool('table.legs', legs(0.4, 0.82, 0.055, 0.034), solidMat(0.8), 32);
 
     // A games table: a smaller top than the dining table, a dark board laid on
     // it with pale pieces standing on the board, and a stool either side. The
@@ -1046,8 +1095,8 @@ export class BuildingsView {
     // same silhouette, and the dark square on top is what tells you which one
     // your settlers are playing at. Its material multiplies under the palette
     // tint, the same trick the grave uses to get two tones from one entry.
-    this.pool('game.top', rbox(0.74, 0.08, 0.74, 0.77), solidMat(0.7), 24);
-    this.pool('game.legs', legs(0.28, 0.73, 0.03, 0.04), solidMat(0.8), 24);
+    this.pool('game.top', rbox(0.74, 0.08, 0.74, 0.77, 0, 0, 0.035), solidMat(0.7), 24);
+    this.pool('game.legs', legs(0.28, 0.73, 0.048, 0.03), solidMat(0.8), 24);
     this.pool('game.board', rbox(0.5, 0.03, 0.5, 0.825, 0, 0, 0.01, 1), tone(0x4e6b46, 0.95), 24);
     this.pool(
       'game.pieces',
@@ -1121,8 +1170,13 @@ export class BuildingsView {
     this.pool(
       'bench.top',
       (() => {
+        // Five boards at a fifth of a metre, each 0.15 wide: the five centimetres
+        // between them is the point. At 0.17 the gap was three centimetres, which
+        // at the manager camera's range is a seam the eased edges close up
+        // entirely, and a slatted top with no visible slots is a plank. The top
+        // still lands at 0.92 — `ITEM_REST` puts a hauled stack there.
         const parts: THREE.BufferGeometry[] = [];
-        for (let i = 0; i < 5; i++) parts.push(rbox(0.17, 0.1, 0.78, 0.87, -0.4 + i * 0.2, 0, 0.02, 1));
+        for (let i = 0; i < 5; i++) parts.push(rbox(0.15, 0.1, 0.78, 0.87, -0.4 + i * 0.2, 0, 0.02, 1));
         return merge(...parts);
       })(),
       solidMat(0.75),
@@ -1736,36 +1790,47 @@ export class BuildingsView {
       16,
     );
 
-    // A tree is a trunk that flares at the root and three tiers of foliage, each
-    // a lathe roughed up so the edge of the crown is lobed rather than turned.
-    // The tiers rather than one cone is what keeps it a conifer from overhead —
-    // the steps between them are the silhouette — and the underside of each
-    // tier is closed, because from inside a body you look up into it. The
-    // shelves under each tier are eased over three profile points rather than
-    // one, and the tips are rounded rather than brought to a mathematical point,
-    // so no part of the crown has the hard rim that made it read as a cone with
-    // another cone on top. Each tier is rumpled with its own phase, so the lobes
-    // of one do not line up with the lobes of the next; the topmost is small and
-    // hung off centre, which is what breaks the symmetry a lathe cannot help
-    // having.
+    // A tree is a trunk that flares at the root and four skirts of boughs hung
+    // off it, each a lathe roughed up so the edge of the crown is lobed rather
+    // than turned.
     //
-    // A third of the tree is bare trunk. The crown used to start a metre up,
-    // which from inside a body was a bush with a stump under it; a pine
-    // carries its crown on a length of clean bole, and that length is what
-    // reads as "tree" rather than "shrub" from both cameras. The trunk tapers
-    // the whole way to keep the root flare a flare, and runs on up inside the
-    // crown so no tier can show daylight under it.
+    // A skirt, not a tier. The tiers this replaces were bowls: each one's widest
+    // point sat *above* where it met the trunk, so its underside sloped up and
+    // out and the whole crown was three cones with their bases in the air. From
+    // the manager camera, which sees the crown from above and slightly to one
+    // side, that is a party hat, and three of them stacked is three party hats.
+    // A conifer's boughs come out of the trunk and hang: the widest point of a
+    // skirt is its rim, the rim is *below* the trunk joint, and the surface the
+    // player sees from underneath is the one that droops. Each profile below
+    // therefore runs out and down from the trunk to the rim, then back in and up
+    // over the top to the leader — a closed shell whose lower half faces down,
+    // which is what gives a stand of them the layered, shadowed edge a wood has
+    // and a pile of cones does not.
+    //
+    // Radius and droop both fall off with height — 0.86 wide and 0.3 of droop at
+    // the bottom, 0.36 and 0.18 at the leader — so the crown tapers by the shape
+    // of its boughs rather than by scaling one bough four times. Each skirt is
+    // rumpled with its own phase, and the draw turns each one a further hashed
+    // angle about the trunk, so the lobes never line up and the outline is never
+    // the circle a lathe wants to give.
+    //
+    // Better than a third of the tree is bare trunk, and the trunk is thick at
+    // the foot: a 0.44 root flare against a 0.86 crown is a bole a quarter of the
+    // crown's width, which is what makes it a tree rather than a cone with a
+    // stick under it when the camera is looking down at it. The taper runs the
+    // whole way to keep the flare a flare, and the trunk continues up inside the
+    // crown so no skirt can show daylight under it.
     this.pool(
       'tree.trunk',
       lathe(
         [
-          [0.36, 0],
-          [0.28, 0.12],
-          [0.22, 0.35],
-          [0.18, 0.9],
-          [0.15, 1.6],
-          [0.12, 2.4],
-          [0.09, 3.2],
+          [0.44, 0],
+          [0.3, 0.18],
+          [0.24, 0.45],
+          [0.2, 1.0],
+          [0.17, 1.9],
+          [0.14, 2.7],
+          [0.1, 3.3],
           [0.06, 3.9],
         ],
         20,
@@ -1777,19 +1842,36 @@ export class BuildingsView {
       'tree.lower',
       rumple(
         lathe([
-          [0.16, 1.56],
-          [0.6, 1.6],
-          [0.9, 1.69],
-          [0.95, 1.88],
-          [0.82, 2.25],
-          [0.6, 2.7],
-          [0.38, 3.05],
-          [0.18, 3.3],
-          [0.06, 3.42],
-          [0, 3.46],
+          [0.17, 2.0],
+          [0.48, 1.9],
+          [0.75, 1.78],
+          [0.86, 1.7],
+          [0.78, 1.95],
+          [0.57, 2.28],
+          [0.3, 2.6],
+          [0, 2.82],
         ]),
-        0.12,
+        0.14,
         0.3,
+      ),
+      solidMat(0.85),
+      256,
+    );
+    this.pool(
+      'tree.mid',
+      rumple(
+        lathe([
+          [0.15, 2.78],
+          [0.42, 2.7],
+          [0.64, 2.6],
+          [0.74, 2.52],
+          [0.66, 2.75],
+          [0.48, 3.05],
+          [0.26, 3.3],
+          [0, 3.48],
+        ]),
+        0.14,
+        1.4,
       ),
       solidMat(0.85),
       256,
@@ -1798,37 +1880,40 @@ export class BuildingsView {
       'tree.upper',
       rumple(
         lathe([
-          [0.14, 2.7],
-          [0.45, 2.75],
-          [0.62, 2.88],
-          [0.6, 3.1],
-          [0.46, 3.42],
-          [0.3, 3.72],
-          [0.15, 3.98],
-          [0.05, 4.1],
-          [0, 4.15],
+          [0.12, 3.38],
+          [0.32, 3.32],
+          [0.47, 3.22],
+          [0.55, 3.14],
+          [0.48, 3.35],
+          [0.34, 3.6],
+          [0.18, 3.82],
+          [0, 3.98],
         ]),
-        0.12,
-        2.1,
+        0.14,
+        2.6,
       ),
       solidMat(0.85),
       256,
     );
+    // The leader is small, droops least — a young shoot stands up — and is hung
+    // off the axis, which is the one asymmetry a lathe cannot be talked into.
+    // Its top is `def.height` exactly, so the tree is as tall as the sim says.
     this.pool(
       'tree.top',
       rumple(
         lathe([
-          [0.1, 3.5],
-          [0.3, 3.55],
-          [0.4, 3.7],
-          [0.33, 4.0],
-          [0.2, 4.24],
-          [0.08, 4.42],
+          [0.1, 3.92],
+          [0.22, 3.86],
+          [0.31, 3.79],
+          [0.36, 3.74],
+          [0.3, 3.95],
+          [0.2, 4.2],
+          [0.1, 4.38],
           [0, 4.5],
         ]),
-        0.1,
+        0.12,
         4.4,
-      ).translate(0.14, 0, -0.1),
+      ).translate(0.1, 0, -0.06),
       solidMat(0.85),
       256,
     );
@@ -1897,11 +1982,21 @@ export class BuildingsView {
   }
 
   /**
-   * The three beds are one bed. A frame with a headboard, a mattress, a blanket
-   * turned down over the foot end and a pillow at the head; what makes one a
-   * sickbed and another a bunk in a cell is the material each part is given and
-   * what is bolted on afterwards, not the carpentry. `head` is the headboard's
-   * height above the frame, and zero means none.
+   * The three beds are one bed. A frame on four legs with rails round it, a
+   * mattress dropped inside those rails, a blanket folded across the foot and a
+   * pillow at the head; what makes one a sickbed and another a bunk in a cell is
+   * the material each part is given and what is bolted on afterwards, not the
+   * carpentry. `head` is the headboard's height above the rails, and zero means
+   * none.
+   *
+   * The carcass used to be one slab with a board on the end, which from the
+   * manager camera was a brown tile with a paler tile on it — the reason a
+   * dormitory read as a floor pattern rather than as furniture. What tells the
+   * eye "bed" at that range is the *gap*: legs with daylight between them, a
+   * rail line along the side, and a mattress whose eased edge stands proud of
+   * that rail. So the frame is built the way a bed is built. The legs at the
+   * head run on up past the rails to carry the headboard, because that is where
+   * a bed's posts come from, and it costs nothing over standing separate ones.
    */
   private bedSet(
     prefix: string,
@@ -1912,19 +2007,48 @@ export class BuildingsView {
     blanket: THREE.Material,
     pillow: THREE.Material,
   ): void {
-    const carcass = [rbox(0.9, 0.2, 0.98, 0.1)];
-    if (head > 0) carcass.push(rbox(0.9, head, 0.06, 0.2 + head / 2, 0, -0.46));
+    // Where the rails sit: a hand's width of timber whose top is under the
+    // mattress top, so the mattress is visibly *in* the frame rather than on it.
+    const rail = 0.235;
+    const carcass: THREE.BufferGeometry[] = [];
+    for (const x of [-0.42, 0.42]) {
+      for (const z of [-0.43, 0.43]) {
+        const h = z < 0 ? 0.3 + head : 0.3;
+        carcass.push(cylinder(0.042, 0.055, h, h / 2, 12).translate(x, 0, z));
+      }
+    }
+    carcass.push(rbox(0.06, 0.14, 0.98, rail, -0.44, 0, 0.02, 1));
+    carcass.push(rbox(0.06, 0.14, 0.98, rail, 0.44, 0, 0.02, 1));
+    carcass.push(rbox(0.86, 0.14, 0.06, rail, 0, -0.46, 0.02, 1));
+    carcass.push(rbox(0.86, 0.14, 0.06, rail, 0, 0.46, 0.02, 1));
+    if (head > 0) carcass.push(rbox(0.8, head * 0.8, 0.05, 0.3 + head * 0.5, 0, -0.45, 0.02, 1));
     this.pool(`${prefix}.frame`, merge(...carcass), frame, cap);
     // The mattress top is the sim's `standHeight` for a bed — 0.34 — because
     // that is the height a sleeper is drawn lying at. Two centimetres over and
     // the body sinks into the ticking; two under and it floats on air. The sim
     // number is the one that is right, so the mesh is built down from it: the
-    // blanket and pillow rest on that top, a few millimetres in so the joint is
-    // never a coplanar face.
+    // blanket and pillow rest on that top, a couple of centimetres in so the
+    // joint is never a coplanar face and nothing appears to hover.
     const top = BED_TOP;
-    this.pool(`${prefix}.mattress`, rbox(0.8, 0.16, 0.88, top - 0.08, 0, 0, 0.05), mattress, cap);
-    this.pool(`${prefix}.blanket`, rbox(0.82, 0.06, 0.56, top + 0.025, 0, 0.14, 0.03), blanket, cap);
-    this.pool(`${prefix}.pillow`, rbox(0.56, 0.12, 0.24, top + 0.06, 0, -0.3, 0.05), pillow, cap);
+    this.pool(`${prefix}.mattress`, rbox(0.8, 0.16, 0.86, top - 0.08, 0, 0, 0.06), mattress, cap);
+    // A blanket is folded down over the foot half and rolled at the fold. The
+    // roll is what carries it from above: a flat slab of cloth on a flat slab of
+    // ticking is one silhouette, and a bolster across the middle of the bed is
+    // two. It laps three centimetres past the mattress on each side, so the
+    // cloth reads as hanging over the edge rather than as inlaid into the top.
+    this.pool(
+      `${prefix}.blanket`,
+      merge(
+        rbox(0.86, 0.07, 0.52, top + 0.02, 0, 0.2, 0.03, 1),
+        cylinder(0.055, 0.055, 0.84, 0, 12).rotateZ(Math.PI / 2).translate(0, top + 0.035, -0.06),
+      ),
+      blanket,
+      cap,
+    );
+    // A pillow is nearly twice as wide as it is deep and thick enough to have a
+    // shadow under its own edge. The old one was a quarter-metre strip the same
+    // thickness as the blanket, which read as a second blanket at the head.
+    this.pool(`${prefix}.pillow`, rbox(0.54, 0.14, 0.3, top + 0.05, 0, -0.28, 0.06), pillow, cap);
   }
 
   private pushBed(prefix: string, b: Building): void {
@@ -2269,6 +2393,7 @@ export class BuildingsView {
         // parallel trunks in a first-person view of the treeline, not enough to
         // read as a tree about to fall.
         const size = TREE_SIZE_MIN + (TREE_SIZE_MAX - TREE_SIZE_MIN) * (((b.x * 11 + b.y * 5) % 7) / 6);
+        const girth = TREE_GIRTH_MIN + (TREE_GIRTH_MAX - TREE_GIRTH_MIN) * (((b.x * 5 + b.y * 19) % 6) / 5);
         const lean = TREE_LEAN_MAX * (((b.x * 3 + b.y * 17) % 5) / 4);
         const k = (0.55 + 0.45 * grow) * size;
         this.v.set(b.x, 0, b.y);
@@ -2276,8 +2401,13 @@ export class BuildingsView {
         // the hashed yaw that already turns each crown also picks which way the
         // trunk leans, for free.
         this.spin.setFromAxisAngle(LEAN_AXIS, lean);
-        this.q.setFromAxisAngle(UP, (b.x * 1.7 + b.y * 0.9) % (Math.PI * 2)).multiply(this.spin);
-        this.s.set(k, k, k);
+        this.q.setFromAxisAngle(UP, (b.x * 1.7 + b.y * 0.9) % TAU).multiply(this.spin);
+        // Girth on the ground plane only: the growth scale and the size hash set
+        // how tall the tree is, and this sets how heavy it is for that height.
+        // The scale is axis-aligned and applied before the rotation, so a
+        // leaning tree still leans by exactly `lean` — a basis vector through
+        // `compose` picks up the scale as a length, not as a shear.
+        this.s.set(k * girth, k, k * girth);
         this.m.compose(this.v, this.q, this.s);
         this.get('tree.trunk').push(this.m, this.tint(b, BARK));
         // The per-tree hue jitter goes on first and the season over the top, so a
@@ -2289,9 +2419,19 @@ export class BuildingsView {
         // standing there.
         if (grow < 1) this.c.offsetHSL(0.02 * (1 - grow), 0.05 * (1 - grow), 0.09 * (1 - grow));
         seasonTint(this.c, yearPhase(world));
-        this.get('tree.lower').push(this.m, this.c);
-        this.get('tree.upper').push(this.m, this.c);
-        this.get('tree.top').push(this.m, this.c);
+        // Each skirt is turned a further hashed angle about the trunk before the
+        // lean and the yaw, so the four lobed outlines stack differently on
+        // every tree in the wood. The turn goes on the inside of the product —
+        // spun about its own axis first, then leaned, then yawed — because a
+        // turn applied after the lean would swing each skirt off the trunk it is
+        // supposed to be growing out of.
+        const twist = TREE_TWIST_MIN + (TREE_TWIST_MAX - TREE_TWIST_MIN) * (((b.x * 13 + b.y * 3) % 6) / 5);
+        for (let i = 0; i < TREE_SKIRTS.length; i++) {
+          this.spin.setFromAxisAngle(UP, twist * (i + 1));
+          this.crown.copy(this.q).multiply(this.spin);
+          this.m.compose(this.v, this.crown, this.s);
+          this.get(TREE_SKIRTS[i]).push(this.m, this.c);
+        }
         break;
       }
     }
