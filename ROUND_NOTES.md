@@ -4,6 +4,106 @@ One round, one measured gap, one fix. Newest first.
 
 ---
 
+## 2026-09-06 — The interface round, and the panels that clipped in silence
+
+**Track: the HUD, not the world.** The first round on this project whose subject is the
+instrument rather than the thing it points at, and it needed a new instrument of its own to run:
+`scripts/look/shot.mjs` had been hiding the HUD before every frame since it was written, which
+meant nine rounds of look work had been done against a game with its interface deliberately
+switched off. The harness now takes sixteen frames — the six model frames unchanged and in their
+places, plus `0-hud-help`, `6-hud-colony`, `7-hud-selected`, and seven phone frames at 390x844 on
+a device-pixel ratio of three.
+
+### Better
+
+**Contrast, measured rather than eyeballed.** Every colour a player reads was put through the
+sRGB-to-linear ratio against its real backdrop, which is not the panel: `.panel` is
+`rgba(14,19,26,0.82)` over live 3D, so the effective ground is 0.82 of the panel plus 0.18 of
+whatever the camera is looking at, and the brightest terrain in the round-8 frames is
+rgb(156,185,124). Against that, twelve places were below 4.5:1 and are not now. The alert red
+moved #e0745f to #e47661 (4.36 to 4.51). Twelve `opacity` multipliers on text became stated
+colours, which is the whole class: an unaffordable blueprint's cost went 2.21 to 4.26, the locked
+research, trade and road rows 2.11 and 2.21 to 5.25, the panel close cross 2.42 to 3.68, the drag
+grip 2.65 to 4.24. The tutorial's dismiss link was on `--edge` at 1.99:1 — a control at twice the
+contrast of nothing — and is now #7f878f with a 44-pixel square under it on a phone.
+
+**Panels that ran out of room stopped hiding it.** The alert strip drew the first six rows of a
+list that is routinely twenty long and then stopped, so a burning colony under raid with four
+settlers down was never told it had run out of food, because "No food left" was the seventh row.
+The cap is ten and the list ends with `+N more`. The log sliced a fixed seven lines because the
+box was once a fixed 132px; it has had a resize grip and a viewport-relative height for some time,
+so the count is derived from `clientHeight` now and a dragged panel fills.
+
+**Fourteen scroll containers, one of which said so.** This is the finding of the round and it came
+out of the phone frames rather than out of the code. On the desk a panel that overflows shows a
+scrollbar and can be dragged bigger, so the cut announces itself twice. The phone has neither —
+the scrollbar is hidden by rule and `makeMovable` returns early because there is nowhere to move a
+panel to. So three separate panels were photographed clipping in perfect silence: the top bar cut
+the clock to "12:0" and stopped; the next-steps panel ended on "Steel is what everything after
+this costs" with the rest below the fold; and the build sheet showed four of its eleven
+categories, so seven whole tabs of things to build were reachable only by a swipe that nothing on
+the screen suggested. Every phone container that scrolls now carries a `mask-image` fade in the
+axis it scrolls — 26px sideways, where a cut glyph has to be unmistakable, 20px down, which is
+about a line and a half. The desk's one instance of the same defect is different in cause and got
+its own fix: `.card .acts` is opaque and stuck to the floor of the help card, and on an 800-tall
+window its hard edge lands immediately below the heading "How a run ends", so the section that
+explains how the game is won photographed as a heading with nothing beneath it. A gradient stands
+on the button row and the text fades under it instead.
+
+**A key you can see is a key you can press.** Four of the seventeen colony bindings are one thin
+glyph — the apostrophe for the work board, the semicolon for the story, the backtick for a Picky,
+the erase glyph for cancel. Set bare in twelve-pixel mono on a dark panel each is three or four
+lit pixels, so the row beside it read as an action with no key at all. Every key in the help card
+now sits on a plate, which costs the wide rows nothing and is the difference between a mark and a
+key for the narrow ones.
+
+**"Walking to 4 meal."** The line on a settler card is on screen more than any other sentence in
+the game and had no test whatsoever, and it was printing the internal key straight into English:
+a settler carrying supper to the store was "walking to 4 meal", one fetching turnips "walking to
+51 rawfood". `resourceWord` was written for exactly this and its own comment argues the case —
+one table, not a second one that drifts out of step with the first — and this call site simply
+did not use it. It does now, and because the strip's headings are already plural for the things
+you count and bare for the things you weigh, "4 meals" and "169 wood" both come out right for
+free. Six tests, sweeping every resource in the game.
+
+**Small things that were wrong for small reasons.** A run of identical log lines collapses to one
+row and a count, and collapses before the slice rather than after, so eight repeated fences buy
+the player more of their afternoon rather than less of it. The watts cell was the only lowercase
+heading in the top bar, because eight resources come out of a table capitalised and the ninth was
+written by hand. A control-stack row said the cell at 86, 103 as "86,103", which every other
+number in this HUD trains you to read as eighty-six thousand. A blueprint tile with no hotkey lost
+its whole top line, because an empty block is a block of no height, so the Fence sat a line out of
+step with the Wall and the Door either side of it. The help button is a "?" in a crowded top bar
+and the word "Help" in the More drawer, where all ten of its neighbours are words.
+
+### Still wrong
+
+- **The minimap is a black box.** In every one of the nine HUD frames, desk and phone. On day one
+  the explored patch is a fraction of the panel and the rest is very nearly pure black, which does
+  not read as ground you have not walked yet — it reads as a widget that failed to load. It is the
+  largest dead area in the desk HUD and the highest-contrast edge on the screen, so it is also the
+  first thing the eye lands on. Being fixed in its own pass.
+- **The next-steps panel's close cross sits on its own row**, below the header rather than in the
+  corner of it, spending a whole line of a panel that is 19vh tall to hold one glyph.
+- **"Quality: medium" is the only button in the More drawer that wraps to two lines.**
+- **No frame has been taken of a colony in trouble.** Every HUD frame in this round is day one at
+  noon with three settlers, full bars and no alerts — which is exactly the state in which an alert
+  panel, a mood breakdown and a red bar cannot be judged at all. The contrast work above was
+  measured against terrain rather than photographed against it for the same reason.
+
+### Next
+
+The interface has no equivalent of the `2b-closeup` frame: a state deliberately composed to put
+the instruments under load. A fourth day, a raid landing, two settlers down, a fire, twenty alerts
+and a mood breakdown with six lines in it would photograph every panel this round touched in the
+condition it was built for, and none of them have ever been seen that way.
+
+**Gate.** `npx tsc --noEmit -p .` clean. Six interface test files, 109 tests, all passing —
+`scroll-cues` and `errand-line` are new this round, `alert-panel` gained seven. Sixteen frames in
+`.look/shots/r10ui/`, 0 console errors.
+
+---
+
 ## 2026-09-06 — Round nine, and a class of bug that missed a member of itself
 
 **Track: the rendered game.** Six lanes through the workflow — pawns, buildings, decor, terrain,

@@ -32,7 +32,7 @@ import type { ResearchDef, ResearchId } from '../../sim/research';
 import { weatherLabel } from '../../sim/weather';
 import { isBreaking, moodBreakdown } from '../../sim/needs';
 import { tediumOf } from '../../sim/tedium';
-import { alerts } from '../../sim/alerts';
+import { alerts, type Alert } from '../../sim/alerts';
 import { idleReason } from '../../sim/idle';
 import { nextObjectives, objectiveScore } from '../../sim/objectives';
 import { HOLD_DAYS, charters, foundingLeft, hasWon } from '../../sim/victory';
@@ -280,14 +280,126 @@ const TOOL_GROUPS: { name: string; tools: [Tool, string, string, string, PickyEr
 /** How big the drag corner is, in px. Matches the grip drawn in the stylesheet. */
 const GRIP = 20;
 /**
- * Alerts shown at once. A colony in real trouble raises a dozen at a time and a
- * wall of red is the same as no alert at all — the worst six are the ones the
- * player can act on this minute, and the rest follow as those clear.
+ * The ink a control wears when it cannot be pressed. 3.69:1 against the panel —
+ * a stated ratio, which is the whole point: faded controls used to be done with
+ * `opacity`, and opacity is a ratio nobody chose, because it multiplies the text
+ * against whatever the panel is sitting over that frame.
  */
-const MAX_ALERTS = 6;
+const DISABLED_INK = '#7f878f';
+/**
+ * Alerts shown at once, and the reason the panel now counts what it left out.
+ *
+ * Six was chosen because a wall of red is the same as no alert at all, and that
+ * reasoning holds — but it rested on "the rest follow as those clear", which was
+ * never true. `alerts()` sorts urgent before warn and is otherwise source order,
+ * and four of its rows are per-settler: downed, untended, breaking, and close to
+ * breaking. So an eight-settler colony can stand twenty at once, and a colony on
+ * fire, under raid, with four settlers down filled all six slots before reaching
+ * "No food left" — which is further down the same source order. The panel simply
+ * ended, with nothing on screen to say a list had been cut. The starving colony
+ * was told nothing about food.
+ *
+ * Ten, because `#alerts` is `overflow: auto` in the stylesheet and the extra
+ * four cost a scroll rather than a screen. The load-bearing half is not the
+ * number, it is the `+N more` row underneath: whatever the ceiling is, the
+ * player has to be able to see that it was reached.
+ */
+export const MAX_ALERTS = 10;
 /** Milestones shown at once. Three is a to-do list; fourteen is wallpaper. */
 const MAX_GOALS = 3;
 const LAYOUT_KEY = 'aetherhold.hud.v1';
+
+/**
+ * One line of the alert strip. Either an alert, or — as the last row of a list
+ * that did not fit — the count of the ones underneath it.
+ */
+export interface AlertRow {
+  /** The alert this row stands for, or null when the row is the overflow count. */
+  alert: Alert | null;
+  /** The line the row leads with: the alert's own words, or `+4 more`. */
+  text: string;
+  /** What to do about it. Empty on the count row, which is not a problem. */
+  hint: string;
+}
+
+/**
+ * What the alert panel actually draws, given everything the colony has to say.
+ *
+ * Kept out of the panel and pure so it can be read without a browser, and so
+ * that the rule it enforces is stated once: at most `MAX_ALERTS` problems, and
+ * then a row that says how many were left out. The second half is the one that
+ * matters. A list cut at ten with nothing underneath it looks exactly like a
+ * colony with ten problems, and a player who cannot tell those apart will never
+ * scroll — which is how "No food left" sat one row below the fold of a burning,
+ * raided colony and was never read.
+ */
+export function alertRows(all: Alert[]): AlertRow[] {
+  const rows: AlertRow[] = all
+    .slice(0, MAX_ALERTS)
+    .map((a) => ({ alert: a, text: a.text, hint: a.hint }));
+  const hidden = all.length - rows.length;
+  if (hidden > 0) rows.push({ alert: null, text: `+${hidden} more`, hint: '' });
+  return rows;
+}
+
+/**
+ * How many log lines fit in a box this tall.
+ *
+ * The log used to slice a fixed seven, which was right exactly as long as the
+ * panel was a fixed 132px. It has a resize grip and a viewport-relative height
+ * now, so a player who drags it taller was given the same seven lines and a band
+ * of empty space, and one who drags it shorter had the eighth line clipped in
+ * half by `overflow`.
+ *
+ * The arithmetic: a line is 11px type at 1.35 line-height (14.85px) plus the 2px
+ * gap the flex column puts between rows, which rounds to 17; the 12 is the
+ * panel's own vertical padding, 6px at the top and 6px at the bottom. Four is
+ * the floor because a log that can only say one thing is not a log — below that
+ * the panel is better off scrolling than shrinking, and it already can.
+ */
+export function logLines(boxHeight: number): number {
+  return Math.max(4, Math.floor((boxHeight - 12) / 17));
+}
+
+/** One row of the log: a message, and how many times in a row it was said. */
+export interface LogRow {
+  readonly kind: Message['kind'];
+  readonly text: string;
+  readonly n: number;
+}
+
+/**
+ * The last `lines` rows of the log, with runs of the same sentence collapsed.
+ *
+ * A crew putting up a fence says "Corwin Verrow finished a fence." once per
+ * panel, so the opening minutes of a colony push everything else out of an
+ * eight-line box with the same sentence four times over — and the repetition is
+ * not even the information, the number is.
+ *
+ * Collapsing before the slice rather than after is the whole point. Slice first
+ * and the box holds eight raw messages of which five are the same, which is
+ * three lines of history for the price of eight; collapse first and it holds
+ * eight *visible* rows, so a run of duplicates buys the player more of their
+ * colony's afternoon rather than less of it.
+ *
+ * Only consecutive duplicates, and only when the kind matches too. Two identical
+ * sentences with something else between them are two things that happened at two
+ * different moments, and folding those together would rewrite the order of the
+ * afternoon rather than tidy it.
+ *
+ * Pure, and exported, for the reason `logLines` is: it is a decision this panel
+ * makes, and a decision that only exists inside a DOM update is a decision no
+ * test in this suite can ask about.
+ */
+export function logRows(messages: readonly Message[], lines: number): LogRow[] {
+  const rows: Array<{ kind: Message['kind']; text: string; n: number }> = [];
+  for (const m of messages) {
+    const prev = rows[rows.length - 1];
+    if (prev && prev.text === m.text && prev.kind === m.kind) prev.n++;
+    else rows.push({ kind: m.kind, text: m.text, n: 1 });
+  }
+  return rows.slice(-lines);
+}
 
 /**
  * Where the player has put their panels. Kept apart from the save file: a colony
@@ -433,7 +545,7 @@ const RESOURCE_LABEL: Record<ResourceKind, string> = {
  * cut for. One table with one exception, rather than a second table that can
  * drift out of step with the first.
  */
-function resourceWord(kind: ResourceKind): string {
+export function resourceWord(kind: ResourceKind): string {
   return kind === 'rawfood' ? 'raw food' : RESOURCE_LABEL[kind].toLowerCase();
 }
 
@@ -650,7 +762,7 @@ export class Hud {
     // colony spends. Hidden entirely until there is something on the grid, so a
     // colony with no machines is not shown a meter reading nothing.
     this.power = el('span', 'num');
-    this.power.innerHTML = '<i>power</i><b>—</b>';
+    this.power.innerHTML = '<i>Power</i><b>—</b>';
     this.power.title = 'Made / wanted right now, and what the batteries are holding';
     this.power.style.display = 'none';
     res.append(this.power);
@@ -720,7 +832,14 @@ export class Hud {
     const backupBtn = el('button', 'btn', {}, 'Backup') as HTMLButtonElement;
     backupBtn.title = 'Copy the colony out as text, or paste one in — survives a changed address';
     backupBtn.onclick = () => this.openBackup();
-    const helpBtn = el('button', 'btn', {}, '?') as HTMLButtonElement;
+    // A question mark last in a crowded top bar is a convention every player
+    // already knows, and the bar has no room for a word. The same button in the
+    // More drawer sits in a three-wide grid where every one of its ten
+    // neighbours is a word, so a lone glyph there is not terse, it is the one
+    // cell on the sheet that does not say what it does — and it is the cell a
+    // player who is lost would most like to find.
+    const helpBtn = el('button', 'btn', {}, this.phone ? 'Help' : '?') as HTMLButtonElement;
+    helpBtn.title = 'Controls, and how a run is won or lost';
     helpBtn.onclick = () => this.toggleHelp();
     sys.append(viewBtn, workBtn, boardBtn, techBtn, this.tradeBtn, this.roadBtn, this.chronicleBtn, this.stewardBtn, this.qualityBtn, saveBtn, loadBtn, this.continueBtn, backupBtn, helpBtn);
     top.append(this.clock, speeds, res, sys);
@@ -1128,8 +1247,16 @@ export class Hud {
     for (let i = 0; i < this.speedBtns.length; i++) {
       this.speedBtns[i]!.classList.toggle('on', SPEEDS[i] === shown);
       // Time controls belong to the manager; in person you live at one speed.
-      this.speedBtns[i]!.disabled = !isManager && SPEEDS[i]! > 1;
-      this.speedBtns[i]!.style.opacity = !isManager && SPEEDS[i]! > 1 ? '0.35' : '1';
+      const off = !isManager && SPEEDS[i]! > 1;
+      this.speedBtns[i]!.disabled = off;
+      // Stated as a colour rather than as `opacity: 0.35`, which is the same
+      // mistake every faded label in this HUD used to make: opacity multiplies
+      // the ink *and* the border against whatever happens to be behind them, so
+      // the result is a contrast ratio nobody chose and nobody can read off the
+      // source. #7f878f is the control grey, 3.69:1 on the panel — quiet enough
+      // to read as unavailable, dark enough to still be a word. Cleared rather
+      // than set back to `--ink`, so the `.on` rule keeps its dark-on-amber.
+      this.speedBtns[i]!.style.color = off ? DISABLED_INK : '';
     }
     for (const k of RESOURCE_ROW) {
       this.resources.get(k)!.textContent = String(countResource(world, k));
@@ -1595,7 +1722,11 @@ export class Hud {
       row.append(
         el('i', 'stack-n', {}, i === 0 ? 'NOW' : String(i)),
         el('span', 'stack-what', {}, JOB_LABEL[job.kind]),
-        el('em', 'stack-at', {}, `${job.tx},${job.ty}`),
+        // A middle dot and not a comma. Every other number in this HUD is a
+        // quantity, so a comma between two of them is read as a thousands
+        // separator: the cell at 86, 103 came out as "86,103", which is a
+        // number a colony could plausibly have of something.
+        el('em', 'stack-at', {}, `${job.tx} · ${job.ty}`),
       );
       if (manual) {
         const x = el('button', 'stack-x', { title: 'Cancel this order' }, '✕') as HTMLButtonElement;
@@ -2485,12 +2616,21 @@ export class Hud {
     // length never changes again — keying off it froze this panel permanently on
     // whatever the crew happened to be doing that afternoon.
     const last = world.messages[world.messages.length - 1];
-    const sig = `${world.messages.length}:${last?.tick ?? -1}:${last?.text ?? ''}`;
+    // …and how many lines the box can hold, because that is no longer a constant.
+    // The panel has a resize grip and its height is viewport-relative, so the
+    // player can change how many lines fit without the world changing a thing.
+    // Keyed off the derived count rather than the raw height on purpose: a drag
+    // reports a new `clientHeight` every pixel, and only the pixels that cross a
+    // line boundary are worth a repaint.
+    const lines = logLines(this.log.clientHeight);
+    const sig = `${world.messages.length}:${last?.tick ?? -1}:${last?.text ?? ''}:${lines}`;
     if (sig === this.logSig) return;
     this.logSig = sig;
-    const recent = world.messages.slice(-7);
-    this.log.innerHTML = recent
-      .map((m) => `<div class="${m.kind}">${escapeHtml(m.text)}</div>`)
+    this.log.innerHTML = logRows(world.messages, lines)
+      .map(
+        (r) =>
+          `<div class="${r.kind}">${escapeHtml(r.text)}${r.n > 1 ? `<i>×${r.n}</i>` : ''}</div>`,
+      )
       .join('');
   }
 
@@ -2500,18 +2640,30 @@ export class Hud {
    * would eat a click that landed between two frames.
    */
   private syncAlerts(world: World): void {
-    const list = alerts(world).slice(0, MAX_ALERTS);
-    const sig = list.map((a) => `${a.level}:${a.id}:${a.text}`).join('|');
-    this.alertPanel.style.display = list.length === 0 ? 'none' : 'flex';
+    const rows = alertRows(alerts(world));
+    // Every row, including the count, so that the eleventh alert arriving repaints
+    // a panel whose first ten did not change. Keyed off the count row's own text
+    // rather than the raw total, because that text is the only part of it that can
+    // go stale on screen.
+    const sig = rows
+      .map((r) => `${r.alert?.level ?? 'more'}:${r.alert?.id ?? ''}:${r.text}`)
+      .join('|');
+    this.alertPanel.style.display = rows.length === 0 ? 'none' : 'flex';
     if (sig === this.alertSig) return;
     this.alertSig = sig;
     this.alertPanel.innerHTML = '';
-    for (const a of list) {
-      const row = el('div', `alert ${a.level}`);
-      row.innerHTML = `<b>${escapeHtml(a.text)}</b><span>${escapeHtml(a.hint)}</span>`;
+    for (const r of rows) {
+      const a = r.alert;
+      const row = el('div', a ? `alert ${a.level}` : 'alert');
+      // The count row gets the small dim line and not the bold one, because it is
+      // not a problem — it is the panel admitting it ran out of room, and it
+      // should read as the quietest thing on the strip.
+      row.innerHTML = a
+        ? `<b>${escapeHtml(r.text)}</b><span>${escapeHtml(r.hint)}</span>`
+        : `<span>${escapeHtml(r.text)}</span>`;
       // Clicking an alert answers "where?" — select whoever it is about and put
       // the camera on them. An alert you cannot find is barely an alert.
-      if (a.pawnId !== undefined || a.at) {
+      if (a && (a.pawnId !== undefined || a.at)) {
         row.classList.add('go');
         row.onclick = () => {
           if (a.pawnId !== undefined) this.hooks.select({ type: 'pawn', id: a.pawnId });
@@ -3636,7 +3788,14 @@ function errandPlace(world: World, job: Job): string {
   const heading = job.kind === 'haulToBlueprint' && job.stage !== 'deliver' ? null : b;
   if (heading) return `the ${defOf(heading.kind).label.toLowerCase()}`;
   const it = findItem(world, job.itemId);
-  if (it) return `${it.amount} ${it.kind}`;
+  // Through `resourceWord`, not the raw kind. The kind is a key and reads like
+  // one: a settler fetching supper was described as "walking to 4 meal", and one
+  // fetching turnips as "walking to 51 rawfood". The table two hundred lines up
+  // exists precisely so a resource named in the middle of a sentence is named
+  // the way a person would say it, and its labels are already plural where the
+  // resource is something you can count — meals, hides, parts — and mass where
+  // it is not, so "169 wood" and "4 meals" both come out right for free.
+  if (it) return `${it.amount} ${resourceWord(it.kind)}`;
   const target = findPawn(world, job.targetPawnId ?? null);
   if (target) return target.name;
   const zone = zoneAt(world, job.tx, job.ty)?.kind;
@@ -3655,7 +3814,7 @@ function errandPlace(world: World, job: Job): string {
  * rather than `activity`, which reads `walking` for a tick or two after the last
  * step lands.
  */
-function errandLine(world: World, p: Pawn): string {
+export function errandLine(world: World, p: Pawn): string {
   if (p.dead || p.downed || p.jobId === null || !p.path) return jobLabel(world, p);
   const job = world.jobs.find((j) => j.id === p.jobId);
   if (!job) return jobLabel(world, p);
