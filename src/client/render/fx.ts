@@ -135,17 +135,24 @@ const BERRY_RIPE = new THREE.Color(0x8c1e3c);
 /** A bush in full leaf. Deeper than the lawn, so the thicket stands off the turf. */
 const BUSH_GREEN = new THREE.Color(0x3f6a2e);
 /**
- * A bush that has just been picked over. Grey-green rather than the near-black
- * olive it was, and paler than `BUSH_GREEN` so "picked" reads at a glance from
- * the manager camera.
+ * A bush that has just been picked over: the bush's own green, a little duller
+ * and a little darker.
  *
- * It is not what makes a stripped bush legible as a plant, though — two rounds
- * of moving this colour taught that. Dark, it was a boulder; lifted, it was a
- * stone with lichen on it. What says "plant" is the shape, and that is what a
- * stripped bush changes to (`strippedBushGeometry`); this only tints the leaves
- * that are left, and the canes under them take it warmer and browner.
+ * Which is the whole of the point. What a picked bush has lost is its berries,
+ * not its chlorophyll, and the grey-beige this used to be put the leaves in a
+ * different colour family from the ripe bush beside them — the two read as two
+ * species rather than as one plant in two states. Same hue, a third off the
+ * saturation and a little off the lightness, which is what a leaf that has been
+ * stood in the sun a week without fruit on it actually looks like.
+ *
+ * The colour was never what made a stripped bush legible as a plant, though —
+ * three rounds of moving it taught that. Dark, it was a boulder; lifted, it was
+ * a stone with lichen on it; grey-beige and broad-leaved, a pressed dried
+ * flower. What says "plant" is the shape, and that is what a stripped bush
+ * changes to (`strippedBushGeometry`); this only tints the leaves that are
+ * left, and the canes under them take it warmer and browner.
  */
-const BUSH_STRIPPED = new THREE.Color(0x84986a);
+const BUSH_STRIPPED = new THREE.Color(0x3d6034);
 
 export class FxView {
   readonly group = new THREE.Group();
@@ -429,7 +436,13 @@ export class FxView {
       const g = Math.min(1, Math.max(0, b.ripe));
       const size = 0.62 + g * 0.38;
       this.v.set(unpackX(world, b.c), 0, unpackY(world, b.c));
-      this.q.identity();
+      // Every bush on the moor is one geometry instanced, so without a bearing
+      // of its own each one is the same plant printed again with the same leaf
+      // pointing the same way — a stamp, which is exactly what a hedge is not.
+      // The yaw comes off the cell it grows on, so it is the same bush in the
+      // same place in every session and neighbours never line up; the berries
+      // ride this matrix too, so the fruit turns with the lobes it sits on.
+      this.q.setFromAxisAngle(UP, fract(Math.sin(b.c * 12.9898 + 4.898) * 43758.5453) * Math.PI * 2);
       this.s.set(size, size, size);
       this.m.compose(this.v, this.q, this.s);
       // Grey-green when it has just been picked over, filling back to a full
@@ -846,11 +859,23 @@ const BUSH_CROWN = 0.3 + 0.3 * 0.86;
  * of its leaf gone rather than a plant with none: a rounded mass with holes in
  * it, the broad leaves that are left overlapping enough to read as foliage at
  * forty pixels across, and the branch structure showing *through* those holes
- * instead of standing in for the leaves. So the canes are four rather than six,
- * they stop short of the canopy's edge, and every one of them fans up into a
+ * instead of standing in for the leaves. So the canes are three rather than
+ * six, they stop short of the canopy's edge, and every one of them lies in a
  * gap between two leaves. The leaves are the same folded blade the grass is
  * built from, for the same reason: a flat cutout seen from straight above is a
  * scrap of paper, and a creased one has a lit half and a shaded half.
+ *
+ * Two things the round-7 frames caught, once the silhouette was finally right.
+ * The canes rose *through* the canopy and read as a cage built over it, when a
+ * stem is a thing under its own leaves — so every cane now tops out below the
+ * lowest leaf and is seen only where the canopy is gappy, which is where a
+ * branch is seen on a real bush. And the whole plant was radially symmetric,
+ * evenly spaced leaves round a centre like a compass rose, which nothing that
+ * grows is: the leaves are seven now at uneven bearings with one wide gap, two
+ * of them plainly bigger than the rest, at their own heights and tilts and in
+ * their own shades of the one green, and the knot they all come out of is off
+ * the axis they are arranged about. Instances take a seeded bearing of their
+ * own on top of that (`syncBushes`), so a hedge is not one plant printed.
  *
  * The branches are the only part of the plant that is wood-coloured, and they
  * say so as a multiplier on the instance tint like every other part here, so a
@@ -861,20 +886,30 @@ export function strippedBushGeometry(): THREE.BufferGeometry {
   const wood = (geo: THREE.BufferGeometry): THREE.BufferGeometry =>
     paint(geo, BRANCH_WOOD.x, BRANCH_WOOD.y, BRANCH_WOOD.z);
   // The knot the branches come out of, squashed so it sits on the ground rather
-  // than in it, and wide enough to cover where their feet meet.
+  // than in it, and wide enough to cover where their feet meet. Set off the
+  // centre the leaves are arranged about: a stem coming up through the exact
+  // middle of its own canopy is the last piece of the compass rose, and three
+  // centimetres of offset is enough for the eye to stop finding the axis.
   const knot = lumpyGeometry(new THREE.IcosahedronGeometry(0.075, 0), 0.12, 3.1);
   knot.scale(1, 0.55, 1);
-  knot.translate(0, BRANCH_FOOT, 0);
+  knot.translate(BUSH_KNOT_X, BRANCH_FOOT, BUSH_KNOT_Z);
   parts.push(wood(knot));
 
   for (const cane of STRIPPED_CANES) {
     // Two lengths per cane, the second leaning further out than the first, so
     // it arcs the way a cane does instead of leaving the ground like a spoke.
-    // Thinner as it goes, down to something the eye reads as a twig.
+    // Thinner as it goes, down to something the eye reads as a twig. Both are
+    // built about the origin and then carried out to the knot, so the frame
+    // hangs together wherever the knot has been moved to.
     const knee = { y: BRANCH_FOOT + cane.rise * 0.55, z: cane.reach * 0.28 };
     const tip = { y: BRANCH_FOOT + cane.rise, z: cane.reach };
-    parts.push(wood(branch({ y: BRANCH_FOOT, z: 0 }, knee, 0.024, 0.016, cane.bearing)));
-    parts.push(wood(branch(knee, tip, 0.016, 0.009, cane.bearing)));
+    for (const length of [
+      branch({ y: BRANCH_FOOT, z: 0 }, knee, 0.024, 0.016, cane.bearing),
+      branch(knee, tip, 0.016, 0.009, cane.bearing),
+    ]) {
+      length.translate(BUSH_KNOT_X, 0, BUSH_KNOT_Z);
+      parts.push(wood(length));
+    }
   }
   for (const leaf of STRIPPED_LEAVES) parts.push(bushLeaf(leaf));
   return weld(parts);
@@ -883,49 +918,73 @@ export function strippedBushGeometry(): THREE.BufferGeometry {
 /**
  * The canes of a picked-over bush, laid out rather than sampled: what has to
  * come out right is where they sit relative to the leaves above them, and a
- * hash cannot be told that. Four, on bearings that are not a wheel, each one
- * rising into a gap between two of `STRIPPED_LEAVES` and stopping well inside
- * the canopy's edge — so from overhead the frame is what shows through the
- * holes in the leaf mass, and never the outline of the plant.
+ * hash cannot be told that. Three, on bearings that are not a wheel, each one
+ * arcing out under a gap between two of `STRIPPED_LEAVES` and stopping well
+ * inside the canopy's edge — so from overhead the frame is what shows through
+ * the holes in the leaf mass, and never the outline of the plant.
+ *
+ * Every rise is picked so the tip of the cane stays under the lowest point of
+ * any leaf, which is not the height in `STRIPPED_LEAVES` but a good six
+ * centimetres below it: a leaf bowed past the horizontal carries its keel
+ * downward, and the underside of the canopy is where the wood has to stop. A
+ * cane that climbs past its own leaves is drawn across them from every camera
+ * and turns the bush into a cage with foliage caught in it, which is what the
+ * round-7 frames showed and what this fixes.
  */
 const STRIPPED_CANES = [
-  { bearing: 0.35, reach: 0.2, rise: 0.3 },
-  { bearing: 1.9, reach: 0.17, rise: 0.26 },
-  { bearing: 3.25, reach: 0.22, rise: 0.32 },
-  { bearing: 4.8, reach: 0.18, rise: 0.24 },
+  { bearing: 5.85, reach: 0.19, rise: 0.09 },
+  { bearing: 3.75, reach: 0.16, rise: 0.075 },
+  { bearing: 2.6, reach: 0.21, rise: 0.1 },
 ] as const;
 
 /**
- * What is left on it. Five broad leaves bowed past the horizontal, on uneven
- * bearings and at four heights, reaching a quarter of a cell out — a little
- * over half the span of a bush in full leaf, and two thirds of its height, so
- * the two shapes are never each other at a different size.
+ * What is left on it. Seven broad leaves bowed past the horizontal, reaching a
+ * third of a cell out — a little over half the span of a bush in full leaf, and
+ * under three quarters of its height before the instance scale takes another
+ * quarter off, so the two shapes are never each other at a different size.
  *
- * Four of them stand off the middle and the fifth lies across it. That is what
+ * Six of them stand off the middle and the seventh lies across it. That is what
  * makes the mass gappy rather than solid: leaves that all started at the stem
  * overlapped into one disc with a ragged edge, which from above is a green
  * pebble, and leaves that all stood off it would leave the middle to the knot,
- * which is a wreath. Pushed out with one across the centre, about two thirds of
- * the ground under the canopy is covered, the holes are wide enough to see a
- * cane through at forty pixels, and what shows in them is the frame — which is
- * the difference between a plant that has been picked over and a dead one.
+ * which is a wreath.
+ *
+ * Nothing about the arrangement is even, and that is the point of the table
+ * being written out. The bearings crowd on one side and leave a gap of nearly a
+ * radian and three quarters on the other; two leaves are half again the length
+ * of the smallest; the heights, the tilts and the distances out all differ; and
+ * each carries its own multiplier on the bush's tint, so the canopy is not one
+ * flat green disc. A plant is lopsided — it grew towards the light on one side
+ * and got eaten on the other — and evenly spaced leaves of one size are the
+ * single loudest tell that a thing was generated rather than grown.
  */
 const STRIPPED_LEAVES = [
-  { bearing: 1.05, out: 0.11, y: 0.24, tilt: 1.5, len: 0.2, width: 0.2 },
-  { bearing: 2.5, out: 0.1, y: 0.21, tilt: 1.62, len: 0.19, width: 0.18 },
-  { bearing: 4.05, out: 0.12, y: 0.26, tilt: 1.44, len: 0.21, width: 0.21 },
-  { bearing: 5.5, out: 0.1, y: 0.2, tilt: 1.58, len: 0.18, width: 0.18 },
-  { bearing: 0.2, out: 0.02, y: 0.3, tilt: 1.3, len: 0.17, width: 0.17 },
+  { bearing: 0.55, out: 0.12, y: 0.3, tilt: 1.5, len: 0.24, width: 0.23, shade: 1.04 },
+  { bearing: 1.32, out: 0.1, y: 0.26, tilt: 1.62, len: 0.17, width: 0.16, shade: 0.92 },
+  { bearing: 2.05, out: 0.11, y: 0.32, tilt: 1.44, len: 0.22, width: 0.21, shade: 1.08 },
+  { bearing: 3.2, out: 0.08, y: 0.24, tilt: 1.68, len: 0.15, width: 0.15, shade: 0.88 },
+  { bearing: 4.3, out: 0.11, y: 0.28, tilt: 1.54, len: 0.19, width: 0.18, shade: 1 },
+  { bearing: 5.1, out: 0.08, y: 0.23, tilt: 1.72, len: 0.14, width: 0.14, shade: 0.9 },
+  { bearing: 2.55, out: 0.03, y: 0.35, tilt: 1.26, len: 0.16, width: 0.16, shade: 1.06 },
 ] as const;
+
+/** How far the knot and its canes sit off the centre the leaves are arranged about. */
+const BUSH_KNOT_X = -0.035;
+const BUSH_KNOT_Z = 0.025;
 
 /** Where a bush's canes leave the ground, high enough that no rim dips under it. */
 const BRANCH_FOOT = 0.04;
 /**
- * What the canes do to the bush's tint: warmer, and most of the green taken out
- * of them. A multiplier and not a colour, like `HEAD_GOLD`, so the twigs are
- * still the same plant as the leaves beside them.
+ * What the canes do to the bush's tint: warmer, lighter, and most of the green
+ * taken out of them. A multiplier and not a colour, like `HEAD_GOLD`, so the
+ * twigs are still the same plant as the leaves beside them.
+ *
+ * Lighter than the leaves rather than darker, which is the opposite of what a
+ * twig in shade would be and is what the frames asked for: at the size a bush
+ * is drawn, a cane a shade under a dark green canopy is a black hair scratched
+ * across it, and the eye reads a crack rather than a stem.
  */
-const BRANCH_WOOD = new THREE.Vector3(1.05, 0.82, 0.58);
+const BRANCH_WOOD = new THREE.Vector3(1.25, 0.98, 0.7);
 
 /**
  * One length of cane, from `a` to `b` in the bush's own y–z plane and then
@@ -964,7 +1023,11 @@ function bushLeaf(leaf: (typeof STRIPPED_LEAVES)[number]): THREE.BufferGeometry 
   geo.rotateX(leaf.tilt);
   geo.translate(0, leaf.y, leaf.out);
   geo.rotateY(leaf.bearing);
-  return paint(geo, 1, 1, 1);
+  // Its own shade of the bush's green, a multiplier on the instance tint like
+  // every other part here. A canopy of seven leaves all at exactly the tint
+  // reads as one cut-out disc from overhead however uneven its outline is; a
+  // tenth either way is enough for the eye to count leaves instead.
+  return paint(geo, leaf.shade, leaf.shade, leaf.shade);
 }
 
 /**

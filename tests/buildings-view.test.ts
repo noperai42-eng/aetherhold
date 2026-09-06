@@ -353,6 +353,101 @@ describe('a machine', () => {
   });
 });
 
+describe('a grave and a deadfall', () => {
+  it('stands both of them up off the turf, because a shape lying flat on the ground is a decal', () => {
+    // From the manager camera the round-7 grave was a rectangle lying in the
+    // grass and the round-7 trap was a plate lying beside it: two marks on the
+    // floor, either of which could have been a patch of dirt. What makes a
+    // grave read as a grave from up there is a heap of turned earth with a
+    // marker standing clear of it, and arms on the marker long enough to be a
+    // crossbar rather than a dot; what makes a trap read as a mechanism is the
+    // jaws standing proud of the frame with the pan up between them. Each is
+    // measured for the one thing that was missing, at the part that carries
+    // the meaning: how far off the ground it gets.
+    const view = new BuildingsView();
+
+    const mound = partGeometry(view, 'grave.mound');
+    const marker = partGeometry(view, 'grave.stone');
+    mound.computeBoundingBox();
+    marker.computeBoundingBox();
+    expect(mound.boundingBox!.max.y, 'the grave is level with the ground it was dug out of').toBeGreaterThan(0.2);
+    expect(
+      marker.boundingBox!.max.y - mound.boundingBox!.max.y,
+      'the marker is lost in the mound it stands at the head of',
+    ).toBeGreaterThan(0.25);
+    // The arms of the marker, taken at the height they cross the post: a bar
+    // several times longer than it is thick reads as a cross from directly
+    // overhead, where a peg of the same height reads as a speck.
+    const pos = marker.attributes.position;
+    let xMin = Infinity;
+    let xMax = -Infinity;
+    let zMin = Infinity;
+    let zMax = -Infinity;
+    for (let k = 0; k < pos.count; k++) {
+      if (pos.getY(k) < 0.44 || pos.getY(k) > 0.56) continue;
+      xMin = Math.min(xMin, pos.getX(k));
+      xMax = Math.max(xMax, pos.getX(k));
+      zMin = Math.min(zMin, pos.getZ(k));
+      zMax = Math.max(zMax, pos.getZ(k));
+    }
+    expect((xMax - xMin) / (zMax - zMin), 'the marker is as thick as it is wide, which is a post').toBeGreaterThan(3);
+
+    const frame = partGeometry(view, 'trap.plate');
+    const jaws = partGeometry(view, 'trap.jaws');
+    const trigger = partGeometry(view, 'trap.trigger');
+    frame.computeBoundingBox();
+    jaws.computeBoundingBox();
+    trigger.computeBoundingBox();
+    expect(
+      jaws.boundingBox!.max.y - frame.boundingBox!.max.y,
+      'the jaws are folded down flush with the frame, where nobody would see them',
+    ).toBeGreaterThan(0.15);
+    expect(
+      trigger.boundingBox!.max.y,
+      'the pan is bedded level with the frame, so the trap has no visible trigger',
+    ).toBeGreaterThan(frame.boundingBox!.max.y);
+    view.dispose();
+  });
+});
+
+describe('a statue', () => {
+  it('carries something with shoulders and a pose, because a mass on a plinth is a rock', () => {
+    // A statue is a hundred pixels tall from the manager camera and every one
+    // of them is silhouette: there is no room for a face, but there is room
+    // for the two things that say "figure" at that size — a body that narrows
+    // at the waist and widens at the shoulders, and an arm held away from the
+    // line of the body. The round-7 statue had neither and read as a boulder
+    // somebody had set on a block. Both are checked from the outline alone,
+    // which is all the camera gets.
+    const view = new BuildingsView();
+    const pos = partGeometry(view, 'statue.figure').attributes.position;
+    const halfWidth = (lo: number, hi: number): number => {
+      let w = 0;
+      for (let k = 0; k < pos.count; k++) {
+        if (pos.getY(k) >= lo && pos.getY(k) <= hi) w = Math.max(w, Math.abs(pos.getX(k)));
+      }
+      return w;
+    };
+    expect(
+      halfWidth(1.5, 1.6) / halfWidth(1.1, 1.25),
+      'the figure is as broad at the waist as it is across the shoulders',
+    ).toBeGreaterThan(1.6);
+    // Above the shoulders there is a head on the axis and a fist out at arm's
+    // length on one side of it. A lump would be even about the axis; a raised
+    // arm throws the whole of that band off to one side, which is the pose.
+    let reach = -Infinity;
+    let back = Infinity;
+    for (let k = 0; k < pos.count; k++) {
+      if (pos.getY(k) < 1.8) continue;
+      reach = Math.max(reach, pos.getX(k));
+      back = Math.min(back, pos.getX(k));
+    }
+    expect(reach, 'nothing is held out above the shoulders, so both arms hang').toBeGreaterThan(0.25);
+    expect(reach + back, 'the mass above the shoulders is even about the axis, which is a head and no pose').toBeGreaterThan(0.2);
+    view.dispose();
+  });
+});
+
 describe('a wood', () => {
   it('gives every skirt an outline of its own, so a crown from overhead is not a set of rings', () => {
     // The round-6 crown was lobed, and from directly overhead it still read as
@@ -422,6 +517,59 @@ describe('a wood', () => {
       }
       expect(onRim, `${key} has a full ring of ${onRim} vertices at its widest`).toBeLessThan(17);
       expect(Math.max(...rimY) - Math.min(...rimY), `${key}'s rim is a horizontal circle`).toBeGreaterThan(0.05);
+    }
+    view.dispose();
+  });
+
+  it('breaks its rim at the scale of a branch, and grows more than one crown', () => {
+    // Round 7 rumpled a skirt with two to six waves at a quarter of its
+    // radius, and from directly overhead that is broccoli: three or four fat
+    // limbs, the same three or four on every tree, because one set of skirts
+    // turned by a twist is one outline however you spin it. So the waves run
+    // three to eight and a sixth as deep, and there are two crowns to draw
+    // from. A rim that crosses its own mean radius six times has at least
+    // three bulges in it rather than one limb and a dent; two crowns that
+    // part company by a fifth of the radius somewhere round the rim cannot be
+    // read as the same tree turned to face another way.
+    const view = new BuildingsView();
+    const rimOf = (key: string): number[] => {
+      const g = partGeometry(view, key) as THREE.LatheGeometry;
+      const { points, segments } = g.parameters;
+      const P = points.length;
+      const pos = g.attributes.position;
+      g.computeBoundingBox();
+      const cx = (g.boundingBox!.max.x + g.boundingBox!.min.x) / 2;
+      const cz = (g.boundingBox!.max.z + g.boundingBox!.min.z) / 2;
+      const rim: number[] = [];
+      // The seam meridian is a duplicate of the first, so it is left off: it
+      // would count as a crossing that is not there.
+      for (let m = 0; m < segments; m++) {
+        let r = 0;
+        for (let j = 0; j < P; j++) {
+          const k = m * P + j;
+          r = Math.max(r, Math.hypot(pos.getX(k) - cx, pos.getZ(k) - cz));
+        }
+        rim.push(r);
+      }
+      return rim;
+    };
+    for (const key of ['tree.lower', 'tree.mid', 'tree.upper', 'tree.top']) {
+      for (const crown of [key, `${key}.b`]) {
+        const rim = rimOf(crown);
+        const mean = rim.reduce((a, b) => a + b, 0) / rim.length;
+        let breaks = 0;
+        for (let i = 0; i < rim.length; i++) {
+          const here = rim[i]! - mean;
+          const next = rim[(i + 1) % rim.length]! - mean;
+          if (here <= 0 !== next <= 0) breaks++;
+        }
+        expect(breaks, `${crown} runs in and out of its own girth only ${breaks} times`).toBeGreaterThanOrEqual(6);
+      }
+      const a = rimOf(key);
+      const b = rimOf(`${key}.b`);
+      let apart = 0;
+      for (let i = 0; i < a.length; i++) apart = Math.max(apart, Math.abs(a[i]! - b[i]!) / a[i]!);
+      expect(apart, `both crowns hang ${key} on the same outline`).toBeGreaterThan(0.2);
     }
     view.dispose();
   });

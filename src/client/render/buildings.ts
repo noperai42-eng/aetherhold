@@ -66,18 +66,38 @@ const TREE_GIRTH_MAX = 1.12;
 const TREE_TWIST_MIN = 0.4;
 const TREE_TWIST_MAX = 1.7;
 /**
- * How deep a skirt's lobes cut, as a fraction of its radius. A quarter is what
- * it takes for the outline to read as boughs rather than as a rimmed disc from
- * directly overhead — at the seventh of it that round 6 shipped, a crown seen
- * from the manager camera was a circle with a wobble in it, and four of those
- * stacked were concentric rings. The leader takes a little less: a young shoot
- * has not put out boughs long enough to be ragged yet.
+ * How deep a skirt's lobes cut, as a fraction of its radius, and how many
+ * meridians it is turned on.
+ *
+ * Round 7 took a quarter out of a sixteen-segment ring with waves of two to six
+ * lobes, and from directly overhead — the camera that has sent every tree round
+ * back — the crowns came out as broccoli: three or four great bulges with a
+ * valley between each, which is the scale of a limb and not of a bough. What
+ * breaks a real crown's outline is a branch, so the amplitude comes down to a
+ * sixth and the waves run from three lobes to eight, turned on a
+ * twenty-four-segment ring that can carry the fine ones without aliasing them
+ * back into big ones. The outline is nibbled the whole way round instead of
+ * scalloped four times. The leader takes a little less: a young shoot has not
+ * put out boughs long enough to be ragged yet.
  */
-const TREE_LOBE = 0.24;
+const TREE_LOBE = 0.15;
+/** Meridians round a skirt: three to the finest lobe, which is where a wave stops aliasing. */
+const SKIRT_SEG = 24;
 /** The axis a tree leans about, in its own frame; the hashed yaw turns it. */
 const LEAN_AXIS = new THREE.Vector3(1, 0, 0);
 /** The skirts of a crown, bottom to top. Pushed in this order; the twist stacks. */
 const TREE_SKIRTS = ['tree.lower', 'tree.mid', 'tree.upper', 'tree.top'] as const;
+/**
+ * How many crowns the wood is built out of. Every skirt is turned twice, off a
+ * different hash of lobes, and a tree takes one whole set or the other out of
+ * the cell it stands on. A twist alone was not enough: a lobe pattern turned a
+ * few degrees is the same lobe pattern, and from directly overhead a stand of
+ * them was one silhouette repeated however the trunks were leaned. Two sets of
+ * four skirts is four more pools and four more draw calls for eight outlines
+ * that never nest, which against a wood of several hundred trees is the
+ * cheapest variation there is.
+ */
+const TREE_VARIANTS = ['', '.b'] as const;
 
 const NEIGHBOURS: ReadonlyArray<readonly [number, number]> = [
   [1, 0],
@@ -309,13 +329,15 @@ function hash01(n: number): number {
 }
 
 /**
- * How many lobes a skirt's outline is built out of. Two is the fattest — one
- * side of the tree heavier than the other — and six is the finest a sixteen
- * segment ring can carry without the wave landing between vertices and coming
- * back as noise.
+ * How many lobes a skirt's outline is built out of. Three is the fattest — a
+ * crown heavier on one flank than the other two — and eight is the finest a
+ * twenty-four segment ring can carry without the wave landing between vertices
+ * and coming back as a big one. Both counts went up a notch in round 8: at two
+ * the deepest wave put one bulge on a whole crown, which from overhead is what
+ * made a tree read as a head of broccoli.
  */
-const LOBE_MIN = 2;
-const LOBE_MAX = 6;
+const LOBE_MIN = 3;
+const LOBE_MAX = 8;
 /**
  * The furthest one meridian may run from the mean, in multiples of the waves'
  * RMS. Without it a rare meridian where four lobes happen to line up would
@@ -352,14 +374,19 @@ const LOBE_CLAMP = 1.4;
 function rumple(g: THREE.LatheGeometry, amp: number, seed: number): THREE.BufferGeometry {
   const { points, segments } = g.parameters;
   const P = points.length;
-  // One gain, one phase and one twist per lobe count. The gain falls off with
-  // the count because a tree's outline is carried by a few big boughs and only
-  // notched by the small ones; the hash decides how much of each this skirt got.
+  // One gain, one phase and one twist per lobe count. The gain still falls off
+  // with the count — a tree's outline is carried by its boughs and only notched
+  // by its branches — but on a square root rather than straight down the count,
+  // which is what round 8 changed. Divided by the count outright, the eight-lobe
+  // wave came out at a fifth of the three-lobe one and the crown was three
+  // bulges with a ripple on them; against the root it is two fifths, which is a
+  // rim broken at branch scale all the way round. The hash decides how much of
+  // each this skirt got.
   const gain: number[] = [];
   const phase: number[] = [];
   const twist: number[] = [];
   for (let n = LOBE_MIN; n <= LOBE_MAX; n++) {
-    gain.push((0.3 + 0.7 * hash01(seed * 131 + n)) / (n - LOBE_MIN + 1.5));
+    gain.push((0.3 + 0.7 * hash01(seed * 131 + n)) / Math.sqrt(n - LOBE_MIN + 1.2));
     phase.push(hash01(seed * 977 + n * 29) * TAU);
     twist.push(1.2 + 3 * hash01(seed * 31 + n * 7));
   }
@@ -596,9 +623,14 @@ function masonry(parity: 0 | 1): THREE.BufferGeometry {
   return faceted(merge(...parts));
 }
 
-/** The lamp's globe. Built twice — once lit, once not — so `globe()` rather than a const. */
+/**
+ * The lamp's globe. Built twice — once lit, once not — so `globe()` rather than
+ * a const. It hangs a little lower and a little smaller than it used to, which
+ * is what makes room for the shade over it: the top of the glass clears the
+ * shade's inner surface by a centimetre and a half, so the two never meet.
+ */
 function globe(): THREE.BufferGeometry {
-  return sphere(0.18, 1.5);
+  return sphere(0.165, 1.44);
 }
 
 function solidMat(rough: number): THREE.MeshStandardMaterial {
@@ -1711,25 +1743,67 @@ export class BuildingsView {
       24,
     );
 
-    // A deadfall reads from the isometric camera as a pale plate with two rows
-    // of teeth standing up off it, and from inside a body as something you can
-    // see over the top of — which it must, since the sim says it is neither
-    // solid nor cover.
-    this.pool('trap.plate', rbox(0.9, 0.06, 0.9, 0.03, 0, 0, 0.02, 1), solidMat(0.9), 128);
+    // A deadfall is a machine, and until round 8 it was a tile: a flat pale
+    // plate with two straight bars of teeth standing on it, which from the
+    // manager camera is a doormat with a comb at each end and from a body's eye
+    // height is a mark on the floor. What makes a trap read as a trap is that
+    // its parts are clearly *sprung* — a frame bedded in the ground, two curved
+    // jaws hinged off it standing open with their teeth leaning in over the
+    // pan, a coil at each hinge, and the pan itself held up on a dog waiting to
+    // be trodden on. All of it stays under the knee, because the sim says a
+    // raider must be able to walk onto this and get nothing back for standing
+    // there: no cover, nothing to see over.
+    //
+    // The frame is timber, which is what the trap costs; everything that
+    // springs is lifted well over the palette entry, because that entry is a
+    // dark brown and iron under it came out as more timber.
+    this.pool(
+      'trap.plate',
+      merge(
+        rbox(0.92, 0.1, 0.12, 0.05, 0, -0.4, 0.025, 1),
+        rbox(0.92, 0.1, 0.12, 0.05, 0, 0.4, 0.025, 1),
+        rbox(0.12, 0.1, 0.68, 0.05, -0.4, 0, 0.025, 1),
+        rbox(0.12, 0.1, 0.68, 0.05, 0.4, 0, 0.025, 1),
+        box(0.72, 0.035, 0.72, 0.018),
+      ),
+      solidMat(0.9),
+      128,
+    );
     this.pool(
       'trap.jaws',
       (() => {
-        const parts: THREE.BufferGeometry[] = [];
-        for (const z of [-0.36, 0.36]) {
-          parts.push(box(0.88, 0.1, 0.08, 0.1, 0, z));
-          for (let i = 0; i < 6; i++) parts.push(cone(0.03, 0.14, 0.22, 8).translate(-0.35 + i * 0.14, 0, z));
+        // One jaw: a half hoop lying in the ground plane with five teeth
+        // standing on it, tipped up half a radian about the hinge line so the
+        // teeth lean in over the pan the way an open trap's do. The second is
+        // the same jaw turned to face it, so the two cannot drift apart.
+        const R = 0.3;
+        const parts: THREE.BufferGeometry[] = [new THREE.TorusGeometry(R, 0.035, 6, 14, Math.PI).rotateX(Math.PI / 2)];
+        for (let i = 0; i < 5; i++) {
+          const a = Math.PI * (0.14 + (i / 4) * 0.72);
+          parts.push(cone(0.032, 0.11, 0.055, 8).translate(Math.cos(a) * R, 0.01, Math.sin(a) * R));
         }
-        return merge(...parts);
+        const jaw = merge(...parts);
+        jaw.rotateX(-0.5);
+        jaw.translate(0, 0.075, 0);
+        return merge(jaw, jaw.clone().rotateY(Math.PI));
       })(),
-      solidMat(0.6),
+      lifted(1.9, 1.9, 2.1, 0.4, 0.55),
       128,
     );
-    this.pool('trap.trigger', rbox(0.26, 0.04, 0.26, 0.08, 0, 0, 0.01, 1), solidMat(0.5), 128);
+    this.pool(
+      'trap.trigger',
+      merge(
+        // The pan, the shaft it pivots on, a coil at each hinge and the dog
+        // that holds the near jaw open against it.
+        rbox(0.28, 0.035, 0.28, 0.135, 0, 0, 0.012, 1),
+        cylinder(0.018, 0.018, 0.4, 0, 12).rotateZ(Math.PI / 2).translate(0, 0.105, 0),
+        new THREE.TorusGeometry(0.055, 0.018, 5, 10).rotateY(Math.PI / 2).translate(-0.28, 0.09, 0),
+        new THREE.TorusGeometry(0.055, 0.018, 5, 10).rotateY(Math.PI / 2).translate(0.28, 0.09, 0),
+        rbox(0.05, 0.02, 0.24, 0.15, 0, 0.15, 0.008, 1),
+      ),
+      lifted(1.5, 1.5, 1.6, 0.45, 0.5),
+      128,
+    );
 
     // Sandbags: three courses of bags, each course laid across the one below the
     // way a wall of them is actually built, so the stack reads as bags from a
@@ -1742,30 +1816,63 @@ export class BuildingsView {
       64,
     );
 
-    // A grave is a low mound of turned earth with a headstone standing at its
-    // head. The mound's material is a multiplier under the instance tint rather
-    // than a colour of its own, which is what gives one palette entry two tones:
-    // dark soil for the plot, pale stone for the marker above it.
+    // A grave is a mound of turned earth with a marker standing at its head.
+    // The mound's material is a multiplier under the instance tint rather than
+    // a colour of its own, which is what gives one palette entry two tones:
+    // dark soil for the plot, pale timber for the marker above it.
     //
-    // The stone is deliberately the loud part, and it took a screenshot to learn
-    // how loud. A knee-high 30 cm marker over a full-cell mound rendered at
-    // manager range as four dark squares of dirt and nothing else — a graveyard
-    // has to read as a row of uprights or it reads as a scorch mark. So the
-    // marker is most of `def.height`, and the mound gives it a cell's width to
-    // stand out of rather than covering the whole tile.
+    // Round 8's frames caught it lying down. The mound was a fifth of a metre
+    // proud at its crown and a shallow ellipse in plan, and the marker was a
+    // tablet a hand thick: from the manager camera, which is looking down at
+    // it, a tablet edge-on is a line and a shallow mound is a stain, and the
+    // whole thing read as a doormat. Two things fix that and both are about
+    // plan rather than elevation. The mound is heaped — a third of a metre at
+    // the ridge, longer than it is wide, with clods of turned soil standing off
+    // it so the light breaks across it instead of sliding over one smooth
+    // dome. And the marker is a cross, which is the one shape that is as
+    // legible from directly overhead as it is in silhouette: a plus sign at the
+    // head of an oval, on a tile nothing else in the colony is shaped like.
+    // The sim already calls it a wooden marker over turned earth — this is
+    // finally that.
     this.pool(
       'grave.mound',
       (() => {
-        const g = new THREE.SphereGeometry(0.42, 16, 8, 0, TAU, 0, Math.PI / 2);
-        g.scale(1, 0.33, 1.1);
-        return g;
+        const heap = new THREE.SphereGeometry(0.4, 20, 10, 0, TAU, 0, Math.PI / 2);
+        heap.scale(0.88, 0.8, 1.05);
+        const parts: THREE.BufferGeometry[] = [heap];
+        // Clods, half-buried in the heap: a spadeful of earth is lumps, and a
+        // lump is what gives a mound a shadow of its own from twenty cells up.
+        for (const [x, z, y, r] of [
+          [0.13, 0.19, 0.22, 0.09],
+          [-0.16, -0.05, 0.24, 0.1],
+          [0.05, -0.22, 0.21, 0.085],
+          [-0.08, 0.3, 0.15, 0.08],
+          [0.19, -0.02, 0.19, 0.075],
+        ] as const) {
+          const clod = new THREE.SphereGeometry(r, 10, 7);
+          clod.scale(1.25, 0.75, 1);
+          clod.rotateY(x * 9 + z * 5);
+          clod.translate(x, y, z);
+          parts.push(clod);
+        }
+        return merge(...parts);
       })(),
       tone(0x8a8078, 1.0),
       32,
     );
+    // The marker: a post with a crossbar halfway up its head, a collar at the
+    // joint where the two timbers are lashed, and a kerbstone set at the foot
+    // of the plot. The kerb is what stops a row of graves reading as a row of
+    // crosses in a field — it gives each plot an end, so the eye can see where
+    // one grave stops and the next begins.
     this.pool(
       'grave.stone',
-      merge(rbox(0.36, 0.6, 0.1, 0.34, 0, -0.3, 0.06), rbox(0.46, 0.08, 0.18, 0.06, 0, -0.3, 0.015, 1)),
+      merge(
+        rbox(0.1, 0.66, 0.1, 0.33, 0, -0.32, 0.025, 1),
+        rbox(0.42, 0.1, 0.085, 0.5, 0, -0.32, 0.025, 1),
+        cylinder(0.075, 0.075, 0.05, 0, 16).rotateX(Math.PI / 2).translate(0, 0.5, -0.32),
+        rbox(0.3, 0.18, 0.12, 0.09, 0, 0.4, 0.03, 1),
+      ),
       solidMat(0.8),
       32,
     );
@@ -1775,27 +1882,66 @@ export class BuildingsView {
     // worth looking at, and a person is the shape a person looks at. The
     // pedestal is darkened under the tint so the pale figure stands off it
     // instead of reading as one solid block from above.
+    //
+    // Round 8's frames called the figure a featureless mass, and the profile
+    // was why: a lathe that ran from the plinth to the neck at one width is a
+    // bollard, and two capsules laid against it are a bollard with handles. A
+    // person is read from a distance by three things and none of them is the
+    // torso — the shoulders being wider than the waist, a head that is a
+    // separate ball on a neck, and the arms being *away* from the body. So the
+    // lathe has a robe that flares to the plinth and draws in at the waist, the
+    // shoulders are a bar across the top of it, and the arms leave the shoulder
+    // line: one down and out with daylight between it and the hip, one raised
+    // clear over the head. From directly overhead that silhouette is a cross of
+    // shoulders with a head in the middle, which is a figure; from a body's eye
+    // height it is a person with an arm up. Smooth throughout, and the whole
+    // thing is one merged part instanced sixteen times.
     this.pool('statue.plinth', merge(rbox(0.7, 0.34, 0.7, 0.17), rbox(0.56, 0.1, 0.56, 0.39, 0, 0, 0.02, 1)), tone(0x9a968c, 0.9), 16);
     this.pool(
       'statue.figure',
       (() => {
-        const body = lathe([
-          [0.1, 0.44],
-          [0.16, 0.5],
-          [0.18, 0.9],
-          [0.15, 1.05],
-          [0.2, 1.35],
-          [0.22, 1.45],
-          [0.06, 1.52],
-          [0.06, 1.58],
-        ]);
-        const left = new THREE.CapsuleGeometry(0.05, 0.5, 3, 10);
-        left.rotateZ(-0.15);
-        left.translate(-0.27, 1.12, 0);
-        const right = new THREE.CapsuleGeometry(0.05, 0.5, 3, 10);
-        right.rotateZ(-0.4);
-        right.translate(0.32, 1.5, 0);
-        return merge(body, sphere(0.15, 1.7, 0, 0, 16, 12), left, right);
+        // Robe to waist to chest: the widest part of the profile is the hem it
+        // stands on and the second widest is the chest, with the waist drawn in
+        // between them, so the figure has a line rather than a taper.
+        const body = lathe(
+          [
+            [0.27, 0.44],
+            [0.28, 0.52],
+            [0.24, 0.78],
+            [0.185, 1.02],
+            [0.16, 1.16],
+            [0.2, 1.36],
+            [0.21, 1.48],
+            [0.15, 1.56],
+          ],
+          18,
+        );
+        // The shoulders, and the neck standing out of them.
+        const shoulders = new THREE.CapsuleGeometry(0.1, 0.24, 3, 10);
+        shoulders.rotateZ(Math.PI / 2);
+        shoulders.scale(1, 1, 0.85);
+        shoulders.translate(0, 1.55, 0);
+        const neck = cylinder(0.055, 0.075, 0.11, 1.62, 12);
+        // Scaled before it is lifted: an ovoid head reads as a head where a
+        // ball reads as a knob, and scaling a geometry already sitting at 1.74
+        // would move it as well as shape it.
+        const head = new THREE.SphereGeometry(0.115, 12, 9);
+        head.scale(1, 1.12, 0.95);
+        head.translate(0, 1.74, 0);
+        // The hanging arm: held out from the shoulder by more than its own
+        // thickness, because the daylight between arm and hip is what says arm.
+        const down = new THREE.CapsuleGeometry(0.048, 0.46, 2, 10);
+        down.rotateZ(0.18);
+        down.translate(-0.31, 1.26, 0.01);
+        // The raised arm, in two lengths with a fist at the top: the upper arm
+        // out and up off the shoulder, the forearm standing straight, which
+        // tops out at `def.height` exactly.
+        const upper = new THREE.CapsuleGeometry(0.048, 0.26, 2, 10);
+        upper.rotateZ(-0.85);
+        upper.translate(0.24, 1.6, 0.01);
+        const fore = new THREE.CapsuleGeometry(0.045, 0.26, 2, 10);
+        fore.translate(0.35, 1.7, 0.01);
+        return merge(body, shoulders, neck, head, down, upper, fore, sphere(0.055, 1.84, 0.35, 0.01, 8, 6));
       })(),
       solidMat(0.55),
       16,
@@ -1825,19 +1971,57 @@ export class BuildingsView {
       32,
     );
 
-    // Lamp: a tapered post on a foot, an iron bracket with four ribs caging the
-    // globe, and the globe itself.
+    // Lamp: a tapered post on a foot, and a fitting on top of it — a stem, a
+    // shade, and a guard of two crossed hoops with the globe hanging inside
+    // them.
+    //
+    // The fitting is what round 8 added. Four straight ribs and a cap the size
+    // of a saucer left the globe standing out in the open, and at dusk — which
+    // is the hour a player looks at a lamp — that is a white ball on a stick,
+    // with nothing round the light to say what is making it. A light source has
+    // a body: a shade over it wide enough to throw the beam down and catch the
+    // glow on its own underside, and a cage under it so the globe is held
+    // rather than balanced. The shade is a shell rather than a cone, turned
+    // down the outside and back up the inside in one profile, because an open
+    // cone seen from underneath is a hole in the sky. And it stops at
+    // `def.height` on the nose: the sky hangs this lamp's point light at 1.62,
+    // just inside the shade's mouth, and a shade the light sat above would be
+    // lit from the wrong side.
     this.pool('lamp.post', merge(cylinder(0.045, 0.07, 1.3, 0.65, 16), cylinder(0.13, 0.16, 0.06, 0.03, 20)), solidMat(0.6), 24);
     this.pool(
       'lamp.bracket',
-      merge(
-        cylinder(0.09, 0.07, 0.08, 1.34, 16),
-        box(0.02, 0.36, 0.02, 1.5, 0.2, 0),
-        box(0.02, 0.36, 0.02, 1.5, -0.2, 0),
-        box(0.02, 0.36, 0.02, 1.5, 0, 0.2),
-        box(0.02, 0.36, 0.02, 1.5, 0, -0.2),
-        cone(0.1, 0.08, 1.66, 16),
-      ),
+      (() => {
+        const parts: THREE.BufferGeometry[] = [
+          cylinder(0.09, 0.07, 0.08, 1.34, 16),
+          // The stem the shade hangs off. It runs up through the globe, which
+          // is opaque and hides it, and shows again between the globe and the
+          // shade, which is where a pendant fitting's stem is.
+          cylinder(0.028, 0.034, 0.34, 1.53, 12),
+          lathe(
+            [
+              [0.26, 1.575],
+              [0.245, 1.6],
+              [0.14, 1.665],
+              [0.045, 1.7],
+              [0.035, 1.692],
+              [0.13, 1.645],
+              [0.235, 1.58],
+            ],
+            20,
+          ),
+        ];
+        // Two hoops, crossed, running from under the shade's mouth down around
+        // the globe and back up the other side: four ribs for the price of two
+        // parts, and curved ones, which a bent iron guard is.
+        for (const turn of [0, Math.PI / 2]) {
+          const hoop = new THREE.TorusGeometry(0.24, 0.013, 5, 20, Math.PI * (5 / 3));
+          hoop.rotateZ(Math.PI * (2 / 3));
+          hoop.rotateY(turn);
+          hoop.translate(0, 1.44, 0);
+          parts.push(hoop);
+        }
+        return merge(...parts);
+      })(),
       tone(0x3c3835, 0.5, 0.4),
       24,
     );
@@ -2160,85 +2344,108 @@ export class BuildingsView {
       solidMat(0.9),
       256,
     );
-    this.pool(
-      'tree.lower',
-      rumple(
-        lathe([
-          [0.17, 2.0],
-          [0.48, 1.9],
-          [0.75, 1.78],
-          [0.86, 1.7],
-          [0.78, 1.95],
-          [0.57, 2.28],
-          [0.3, 2.6],
-          [0, 2.82],
-        ]),
-        TREE_LOBE,
-        1,
-      ),
-      solidMat(0.85),
-      256,
-    );
-    this.pool(
-      'tree.mid',
-      rumple(
-        lathe([
-          [0.15, 2.78],
-          [0.42, 2.7],
-          [0.64, 2.6],
-          [0.74, 2.52],
-          [0.66, 2.75],
-          [0.48, 3.05],
-          [0.26, 3.3],
-          [0, 3.48],
-        ]),
-        TREE_LOBE,
-        2,
-      ),
-      solidMat(0.85),
-      256,
-    );
-    this.pool(
-      'tree.upper',
-      rumple(
-        lathe([
-          [0.12, 3.38],
-          [0.32, 3.32],
-          [0.47, 3.22],
-          [0.55, 3.14],
-          [0.48, 3.35],
-          [0.34, 3.6],
-          [0.18, 3.82],
-          [0, 3.98],
-        ]),
-        TREE_LOBE,
-        3,
-      ),
-      solidMat(0.85),
-      256,
-    );
-    // The leader is small, droops least — a young shoot stands up — and is hung
-    // off the axis, which is the one asymmetry a lathe cannot be talked into.
-    // Its top is `def.height` exactly, so the tree is as tall as the sim says.
-    this.pool(
-      'tree.top',
-      rumple(
-        lathe([
-          [0.1, 3.92],
-          [0.22, 3.86],
-          [0.31, 3.79],
-          [0.36, 3.74],
-          [0.3, 3.95],
-          [0.2, 4.2],
-          [0.1, 4.38],
-          [0, 4.5],
-        ]),
-        TREE_LOBE * 0.9,
-        4,
-      ).translate(0.1, 0, -0.06),
-      solidMat(0.85),
-      256,
-    );
+    //
+    // Each skirt is built once per crown variant, off a seed that no other
+    // skirt in the wood shares, so neither the four skirts of one tree nor the
+    // two trees standing next to each other can be turned from the same
+    // outline. Everything else about a skirt — its profile, its droop, where it
+    // meets the trunk — is the same in both variants, because those are what
+    // make it that skirt of that tree.
+    for (let v = 0; v < TREE_VARIANTS.length; v++) {
+      const suffix = TREE_VARIANTS[v];
+      const seed = v * 61;
+      this.pool(
+        `tree.lower${suffix}`,
+        rumple(
+          lathe(
+            [
+              [0.17, 2.0],
+              [0.48, 1.9],
+              [0.75, 1.78],
+              [0.86, 1.7],
+              [0.78, 1.95],
+              [0.57, 2.28],
+              [0.3, 2.6],
+              [0, 2.82],
+            ],
+            SKIRT_SEG,
+          ),
+          TREE_LOBE,
+          1 + seed,
+        ),
+        solidMat(0.85),
+        256,
+      );
+      this.pool(
+        `tree.mid${suffix}`,
+        rumple(
+          lathe(
+            [
+              [0.15, 2.78],
+              [0.42, 2.7],
+              [0.64, 2.6],
+              [0.74, 2.52],
+              [0.66, 2.75],
+              [0.48, 3.05],
+              [0.26, 3.3],
+              [0, 3.48],
+            ],
+            SKIRT_SEG,
+          ),
+          TREE_LOBE,
+          2 + seed,
+        ),
+        solidMat(0.85),
+        256,
+      );
+      this.pool(
+        `tree.upper${suffix}`,
+        rumple(
+          lathe(
+            [
+              [0.12, 3.38],
+              [0.32, 3.32],
+              [0.47, 3.22],
+              [0.55, 3.14],
+              [0.48, 3.35],
+              [0.34, 3.6],
+              [0.18, 3.82],
+              [0, 3.98],
+            ],
+            SKIRT_SEG,
+          ),
+          TREE_LOBE,
+          3 + seed,
+        ),
+        solidMat(0.85),
+        256,
+      );
+      // The leader is small, droops least — a young shoot stands up — and is hung
+      // off the axis, which is the one asymmetry a lathe cannot be talked into.
+      // Its top is `def.height` exactly, so the tree is as tall as the sim says.
+      this.pool(
+        `tree.top${suffix}`,
+        rumple(
+          lathe(
+            [
+              [0.1, 3.92],
+              [0.22, 3.86],
+              [0.31, 3.79],
+              [0.36, 3.74],
+              [0.3, 3.95],
+              [0.2, 4.2],
+              [0.1, 4.38],
+              [0, 4.5],
+            ],
+            SKIRT_SEG,
+          ),
+          TREE_LOBE * 0.9,
+          4 + seed,
+        ).translate(0.1, 0, -0.06),
+        solidMat(0.85),
+        256,
+      );
+    }
 
     // Blueprints: a low translucent slab on each planned cell, with a lip
     // round its edge, so a plan reads as marked ground from either view. It
@@ -2756,11 +2963,15 @@ export class BuildingsView {
         // turn applied after the lean would swing each skirt off the trunk it is
         // supposed to be growing out of.
         const twist = TREE_TWIST_MIN + (TREE_TWIST_MAX - TREE_TWIST_MIN) * (((b.x * 13 + b.y * 3) % 6) / 5);
+        // Which of the two crowns this tree grew. Hashed off a different pair
+        // of primes from the twist, so the two do not fall into step and hand
+        // every tree with one variant the same turn as well.
+        const crown = TREE_VARIANTS[(b.x * 23 + b.y * 41) % TREE_VARIANTS.length];
         for (let i = 0; i < TREE_SKIRTS.length; i++) {
           this.spin.setFromAxisAngle(UP, twist * (i + 1));
           this.crown.copy(this.q).multiply(this.spin);
           this.m.compose(this.v, this.crown, this.s);
-          this.get(TREE_SKIRTS[i]).push(this.m, this.c);
+          this.get(`${TREE_SKIRTS[i]}${crown}`).push(this.m, this.c);
         }
         break;
       }

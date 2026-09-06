@@ -993,7 +993,12 @@ function makeHand(): THREE.BufferGeometry {
  * and a star on each end, in exchange for five degrees.
  */
 function makeBoot(): THREE.BufferGeometry {
-  const g = new THREE.CapsuleGeometry(0.072, 0.1, 2, 10);
+  // Twelve round the capsule, not ten. The boot is the darkest thing a settler
+  // wears and the smallest thing the manager camera looks straight down on, so
+  // it is the one part of the body whose facets show as a polygon against the
+  // grass rather than as a shaded curve. Twelve is forty triangles for the pair
+  // and the rig has the room.
+  const g = new THREE.CapsuleGeometry(0.072, 0.1, 2, 12);
   g.rotateX(Math.PI / 2);
   g.scale(1.05, 0.68, 1);
   const pos = g.attributes.position!;
@@ -1190,6 +1195,91 @@ function makeBrush(radius: number, length: number): THREE.BufferGeometry {
 }
 
 /**
+ * A tail: a tube swept back and down along a curve, narrowing as it goes and
+ * turned round at the end. Its root ring is left open, because the root belongs
+ * inside the rump.
+ *
+ * What it replaces was a capsule stub cut with nine sides and one ring in each
+ * cap, painted the tone a hoof is. The colony camera holds an animal at its
+ * back end more often than at any other angle, and from there that cap is a
+ * flat near-black polygon set into the rump — which reads as a hole punched in
+ * the animal rather than as anything growing out of it. Round 6 rebuilt the
+ * stripe beside it for exactly that reason and left this alone; this is the
+ * same fix, a round late.
+ *
+ * So nothing here is end-on to anybody. The rings stand square to a curve that
+ * leaves the body level and is hanging by the time it ends, the tip is a dome
+ * rather than a cut, and the tone the rig paints it in is the coat's own gone
+ * one step deeper rather than the bottom of the palette.
+ */
+function makeTail(rootR: number, tipR: number, reach: number, drop: number): THREE.BufferGeometry {
+  const radial = 8;
+  const shaft = 4;
+  const dome = 2;
+  const centre: THREE.Vector3[] = [];
+  const radius: number[] = [];
+  for (let i = 0; i <= shaft; i++) {
+    const t = i / shaft;
+    // Back at an even rate and down at a quickening one: a tail that left the
+    // rump already falling reads as a rope tied on, and one that never falls
+    // is the stub this replaces.
+    centre.push(new THREE.Vector3(0, -drop * t * t, -reach * t));
+    radius.push(rootR + (tipR - rootR) * t);
+  }
+  // The tip, turned about the end of the shaft along the direction it is
+  // travelling, so the last thing anybody sees of the tail is a dome.
+  const tip = centre[shaft]!.clone().sub(centre[shaft - 1]!).normalize();
+  for (let i = 1; i <= dome; i++) {
+    const a = (i / dome) * (Math.PI / 2);
+    centre.push(centre[shaft]!.clone().addScaledVector(tip, tipR * Math.sin(a)));
+    radius.push(tipR * Math.cos(a));
+  }
+
+  const pos: number[] = [];
+  const idx: number[] = [];
+  const step = new THREE.Vector3();
+  for (let i = 0; i < centre.length; i++) {
+    // Each ring stands square to the curve: across the animal in X, and in the
+    // sagittal plane along the tangent turned a quarter turn. The tangent is
+    // read across the ring rather than ahead of it, so the bend has no corner.
+    step
+      .subVectors(centre[Math.min(i + 1, centre.length - 1)]!, centre[Math.max(i - 1, 0)]!)
+      .normalize();
+    const c = centre[i]!;
+    const r = radius[i]!;
+    for (let j = 0; j < radial; j++) {
+      const a = (j / radial) * Math.PI * 2;
+      pos.push(Math.cos(a) * r, c.y + Math.sin(a) * r * step.z, c.z - Math.sin(a) * r * step.y);
+    }
+  }
+  for (let i = 0; i < centre.length - 1; i++) {
+    for (let j = 0; j < radial; j++) {
+      const jn = (j + 1) % radial;
+      const a = i * radial + j;
+      const b = i * radial + jn;
+      const c = (i + 1) * radial + jn;
+      const d = (i + 1) * radial + j;
+      idx.push(a, b, c);
+      // The last ring is the tip and has no width, so its half of the cell
+      // would be a triangle with no area: one triangle per cell there, the way
+      // `skullPatch` treats its pole.
+      if (i < centre.length - 2) idx.push(a, c, d);
+    }
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setIndex(idx);
+  g.computeVertexNormals();
+  // The tip is one point stored once per meridian, and each copy would take the
+  // normal of its own lone triangle: a star on the end of the tail. Pinned
+  // along the curve, the way the hair's crown is pinned up.
+  const n = g.attributes.normal!;
+  const last = (centre.length - 1) * radial;
+  for (let j = 0; j < radial; j++) n.setXYZ(last + j, 0, tip.y, tip.z);
+  return g;
+}
+
+/**
  * A marking on a hide: a patch of the ellipsoid the body is already made of,
  * a finger's width outside it, cut to a hem that wanders round the animal.
  *
@@ -1319,16 +1409,16 @@ function makeMossback(): SpeciesModel {
     10,
     4,
   ).translate(0, 0.78, 0.18);
-  // Short and hanging, rooted just under the rump's skin. It was a bud barely
-  // wider than the coat it sat in, which from a settler's eye height is a
-  // pucker on the rump rather than a tail; half again as thick and half again
-  // as long, it is a thing that hangs.
-  const flag = new THREE.CapsuleGeometry(0.05, 0.06, 1, 9).translate(0, -0.07, 0).rotateX(0.6).translate(0, 0.77, -0.4);
+  // The flag: rooted a finger inside the rump's skin, out along the body's own
+  // axis and then down, so it clears the haunches and hangs behind them. In the
+  // coat gone one step deeper — a tail is hair, not horn, and the tone a hoof
+  // is put a black shape on a lit rump where the animal's outline should be.
+  const flag = makeTail(0.05, 0.016, 0.15, 0.19).translate(0, 0.74, -0.38);
   return {
     body: weld([barrel, hump]),
     markings: [
       { geometry: saddle, tone: 'shade', name: 'saddle' },
-      { geometry: flag, tone: 'dark', name: 'flag' },
+      { geometry: flag, tone: 'shade', name: 'tail' },
     ],
     neck: makeAnimalNeck(0.16, 0.12, 0.3),
     neckAt: [0, 0.84, 0.36],
@@ -1550,6 +1640,35 @@ function makeFenwolf(): SpeciesModel {
   };
 }
 
+/**
+ * A downward chevron, the universal "this one" marker in a colony sim: an
+ * arrowhead with its point at its own origin, so the rig hangs the point over
+ * the back and the marker grows upward from there.
+ *
+ * It was a capped cone a third of a cell across floating a body-length over the
+ * animal, then an open funnel a third narrower at the same width. Both were
+ * still the largest flat colour in the frame whenever a marked animal came near
+ * the camera, because the marker is drawn unlit — a hunt order has to read the
+ * same at three in the morning as at noon — and an unlit surface has no shading
+ * to tell the eye how big the thing is. So what shrinks is the surface itself:
+ * a hair over half the area it had, hung at the same height over the same back.
+ *
+ * The rim is where the rest of the answer is. The funnel ended on a hard circle
+ * at its widest point, which is the outline of a decal; this one carries on
+ * past its widest and rolls back inward and up, so the top edge is a turned lip
+ * with a curve to it. Against a flat fill the outline is the only thing that
+ * can say a marker has thickness, and now it does.
+ */
+function makeHuntMark(): THREE.BufferGeometry {
+  const profile = [
+    [0, 0],
+    [0.056, 0.128],
+    [0.078, 0.182],
+    [0.07, 0.208],
+  ].map(([r, y]) => new THREE.Vector2(r, y));
+  return new THREE.LatheGeometry(profile, 14);
+}
+
 function makeShared(): SharedGeometry {
   // The belt is an open band a hair wider than the waist of the lathe, squashed
   // the same way, so it hugs the cloth instead of cutting through it.
@@ -1598,33 +1717,24 @@ function makeShared(): SharedGeometry {
     // mossback from the wild one grazing beside it, so it is a ring of solid
     // colour rather than a tint the isometric camera would lose in shadow.
     //
-    // Six round the tube and twenty-two round the ring. Sixteen by thirty-two
-    // was a thousand triangles on a strap and put a bonded mossback seven
-    // hundred over the animal budget; ten by twenty-four was still four hundred
-    // and eighty, a fifth of an animal spent rounding a section that is thirty
+    // Four round the tube and twenty round the ring. Sixteen by thirty-two was
+    // a thousand triangles on a strap and put a bonded mossback seven hundred
+    // over the animal budget; six by twenty-two was still two hundred and
+    // sixty-four, a tenth of an animal spent rounding a section that is thirty
     // millimetres across on the largest species and nine on the smallest. A
-    // collar is a flat strap of leather with edges, so the edges are the honest
-    // shape and the triangles they release go into the head, where a settler
-    // standing at arm's length is actually looking.
-    animalCollar: new THREE.TorusGeometry(COLLAR_R, 0.034, 6, 22).rotateX(Math.PI / 2),
+    // collar is a flat strap of leather with edges, and four is the section a
+    // strap actually has — the twenty that stayed are the ones the eye reads,
+    // because what shows at any distance is the ring's own curve and not the
+    // shape of the leather's edge. The hundred triangles that buys go into the
+    // mossback's tail, which every animal on the map wears and which no player
+    // has to tame anything to see.
+    animalCollar: new THREE.TorusGeometry(COLLAR_R, 0.034, 4, 20).rotateX(Math.PI / 2),
     // A little lozenge hung off the collar: the tell that this one is somebody's
     // rather than the colony's. A shape rather than a second collar colour,
     // because the collar already says something — pale gold when there is
     // something to collect — and two meanings on one surface is one meaning lost.
     petTag: new THREE.SphereGeometry(0.07, 10, 6).scale(0.8, 1.2, 0.45),
-    // A downward chevron, the universal "this one" marker in a colony sim: a
-    // narrow open funnel with its point at its own origin, so the rig hangs the
-    // point over the back and the marker grows upward from there.
-    //
-    // It was a capped cone a third of a cell across floating a body-length over
-    // the animal, and both halves of that were wrong. From the manager camera the
-    // cap was a solid red disc wider than the hare under it; in first person, at
-    // the range a settler actually stands from a marked animal, it filled the
-    // middle of the screen while the animal itself sat below the frame. Open, and
-    // a third narrower, it reads as an arrowhead pointing at something rather
-    // than a lid over it — and the whole marker now costs twenty triangles where
-    // the cap alone cost twenty-four.
-    huntMark: new THREE.ConeGeometry(0.11, 0.26, 20, 1, true).rotateX(Math.PI).translate(0, 0.13, 0),
+    huntMark: makeHuntMark(),
     // The caravan's load: one bundle high on the back and a few crates set down
     // in the grass. A trader who is just a differently-tinted settler is a thing
     // the player has to be told about; a pile of freight is a thing they see.

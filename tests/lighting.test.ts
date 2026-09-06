@@ -296,6 +296,38 @@ describe('what a shadow leaves you', () => {
     }
   });
 
+  /**
+   * The other side of that rescue, and the round-8 photograph.
+   *
+   * 17:24, sun 8° up, a colony wall two and a half metres tall standing on open
+   * grass: it threw nothing. Not a soft shadow — nothing. The reason was not the
+   * floor, it was what the floor multiplies. A shadow can only take away the
+   * light the sun was putting there, and the sun at that hour was worth 21% of
+   * what fell on the grass (the hemisphere, the fill and the night-time ambient
+   * floor supplied the rest), so 0.38 × 0.21 left a shadow 8% darker than the
+   * ground beside it, which is nothing at all after ACES.
+   *
+   * So this asserts the *cause*, not the symptom: at a low sun the one light
+   * that casts still has to lead the ones that cannot. Everything else about the
+   * evening follows from it.
+   */
+  it('keeps the low sun leading the sky terms, so there is something to take away', () => {
+    for (const frac of [0.3, 0.7, 0.725]) {
+      const { sky } = rigAt(frac);
+      const skyOnly = shadowed(sky, UP);
+      const direct = irradiance(sky, UP) - skyOnly;
+      expect(direct, `${hhmm(frac)} direct vs sky-only`).toBeGreaterThan(skyOnly);
+    }
+  });
+
+  it('throws a shadow you can see an hour before sundown — that was the photograph', () => {
+    // 17:24, the frame the harness takes. Pre-fix this was 0.921: the wall's
+    // shadow was 8% darker than the grass and invisible. It is bounded from
+    // below three tests up; this is the bound from above that was missing.
+    const { sky } = rigAt(0.725);
+    expect(shadedRatio(sky, UP)).toBeLessThan(0.8);
+  });
+
   it('leaves midday alone — the softening is for the low sun only', () => {
     const { sky } = rigAt(0.5);
     // Noon was tuned by eye against the real renderer and photographed. Whatever
@@ -435,6 +467,44 @@ describe('what colour the day is', () => {
     const midnight = domeOf(rigAt(0).sky);
     expect(midnight.uniforms.uBand!.value as number).toBeLessThan(0.15);
     expect(colorU(midnight, 'uHorizon').r).toBeLessThan(0.15);
+  });
+
+  /**
+   * Put the noon frame beside the dusk frame and the colour barely moved: the
+   * same flat green, no warmth on the lit faces, no sun colour reaching the
+   * ground. The sky had a dusk colour all along — the dome computes one, and the
+   * sun's own light was already amber by then — but the *surfaces* never saw it,
+   * because at 8° the sun was a fifth of the light landing on them and a cool
+   * ambient floor was most of the rest. So it is not enough to check that the
+   * sun goes orange. What has to be checked is that its orange arrives.
+   */
+  it('makes the evening reach the ground, not just the sky', () => {
+    const noon = rigAt(0.5).sky;
+    const dusk = rigAt(0.725).sky;
+    // The light itself goes warmer as it goes down. This half was already true.
+    expect(dusk.sun.color.r - dusk.sun.color.b).toBeGreaterThan(noon.sun.color.r - noon.sun.color.b);
+    // And this half is the one that was not: everything arriving on open ground,
+    // sun and sky together, is warmer at 17:24 than at midday by a margin an eye
+    // reads as a different hour rather than as the same hour slightly dimmer.
+    const onGround = (sky: SkyView): THREE.Color => {
+      const total = new THREE.Color(0, 0, 0);
+      const l = new THREE.Vector3();
+      const term = new THREE.Color();
+      for (const obj of sky.group.children) {
+        if (obj instanceof THREE.DirectionalLight) {
+          l.copy(obj.position).sub(obj.target.position).normalize();
+          total.add(term.copy(obj.color).multiplyScalar(obj.intensity * Math.max(0, UP.dot(l))));
+        } else if (obj instanceof THREE.HemisphereLight) {
+          total.add(term.copy(obj.color).multiplyScalar(obj.intensity));
+        } else if (obj instanceof THREE.AmbientLight) {
+          total.add(term.copy(obj.color).multiplyScalar(obj.intensity));
+        }
+      }
+      return total;
+    };
+    const day = onGround(noon);
+    const evening = onGround(dusk);
+    expect(evening.r / evening.b).toBeGreaterThan((day.r / day.b) * 1.15);
   });
 
   it('fogs the map edge in the colour the dome shows at the horizon, round the clock', () => {
@@ -952,6 +1022,112 @@ describe('what a body is made of', () => {
       expect(lowest, `${pawn.animal}'s saddle lies along the back and never turns under it`).toBeGreaterThan(0);
     }
     expect(marked.size, 'the two species that carry a back marking still carry one').toBe(2);
+    view.dispose();
+  });
+
+  it("hangs a tail off the mossback's rump that leaves the body, falls, and is coloured like hide — the stub that was there read as a hole", () => {
+    // The colony camera holds an animal at its back end more often than at any
+    // other angle, and what was back there was a nine-sided capsule stub with a
+    // ring in each cap: from behind, the cap and nothing else, a flat polygon
+    // set into the rump. A tail cannot be read as a tail from the one angle it
+    // is usually seen from unless it actually leaves the body, so that is what
+    // is measured — it reaches past the rump the barrel ends at, and it hangs
+    // well below where it is rooted rather than sticking out level.
+    const { view, world } = bodies();
+    let moss = 0;
+    for (const rig of view.group.children) {
+      const pawn = world.pawns.find((p) => p.x === rig.position.x && p.y === rig.position.z)!;
+      if (pawn.animal !== 'mossback') continue;
+      moss++;
+      const tail = part(rig, 'tail');
+      const barrel = part(rig, 'body');
+      tail.geometry.computeBoundingBox();
+      barrel.geometry.computeBoundingBox();
+      const shape = tail.geometry.boundingBox!;
+      expect(shape.min.z, 'the tail reaches out past the rump').toBeLessThan(
+        barrel.geometry.boundingBox!.min.z,
+      );
+      expect(shape.max.y - shape.min.y, 'the tail hangs rather than sticking out level').toBeGreaterThan(0.12);
+      // And it is hair, so it is painted in the coat's own value gone a step
+      // deeper. In the tone a hoof is — which is where it was — a shape that
+      // leaves the body only makes the hole bigger.
+      const hide = lightness((barrel.material as THREE.MeshStandardMaterial).color);
+      const worn = lightness((tail.material as THREE.MeshStandardMaterial).color);
+      const horn = lightness((part(rig, 'hoof').material as THREE.MeshStandardMaterial).color);
+      expect(worn, "the tail is the coat gone deeper, not the tone a hoof is").toBeGreaterThan(horn + 5);
+      expect(worn, 'and it is deeper than the coat, so the rump has an outline').toBeLessThan(hide);
+    }
+    expect(moss, 'the map starts with a mossback to check').toBeGreaterThan(0);
+    view.dispose();
+  });
+
+  it('narrows that tail to a turned tip — a blunt end of constant width shows the camera its cap, and a cap is what read as a hole', () => {
+    // The bug this part exists to undo was never the shape of the tail so much
+    // as its end: a stub as thick where it stopped as where it started, closed
+    // with a cap of few enough sides to be a polygon. Both halves of that are
+    // checkable without a picture. It has to taper, so there is little left at
+    // the end to present; and the little that is left has to be turned, so its
+    // normals sweep round the dome instead of facing one way together.
+    const { view, world } = bodies();
+    const a = new THREE.Vector3();
+    const b = new THREE.Vector3();
+    let moss = 0;
+    for (const rig of view.group.children) {
+      const pawn = world.pawns.find((p) => p.x === rig.position.x && p.y === rig.position.z)!;
+      if (pawn.animal !== 'mossback') continue;
+      moss++;
+      const tail = part(rig, 'tail');
+      const pos = tail.geometry.attributes.position!;
+      const normals = tail.geometry.attributes.normal!;
+      tail.geometry.computeBoundingBox();
+      const { min, max } = tail.geometry.boundingBox!;
+      // The last fifth of the tail, which is all a camera behind the animal sees.
+      const end = min.z + (max.z - min.z) * 0.2;
+      const tip: number[] = [];
+      let root = 0;
+      let stub = 0;
+      for (let i = 0; i < pos.count; i++) {
+        root = Math.max(root, Math.abs(pos.getX(i)));
+        if (pos.getZ(i) > end) continue;
+        tip.push(i);
+        stub = Math.max(stub, Math.abs(pos.getX(i)));
+      }
+      expect(stub, 'the tail is a fraction of its own thickness by the time it ends').toBeLessThan(root * 0.4);
+      let widest = 0;
+      for (const i of tip) {
+        a.fromBufferAttribute(normals, i);
+        for (const j of tip) widest = Math.max(widest, a.angleTo(b.fromBufferAttribute(normals, j)));
+      }
+      expect(tip.length, 'the tail has an end to look at').toBeGreaterThan(4);
+      expect(widest, 'the normals turn through the tip rather than facing one way').toBeGreaterThan(1.5);
+    }
+    expect(moss, 'the map starts with a mossback to check').toBeGreaterThan(0);
+    view.dispose();
+  });
+
+  it('rolls the hunt marker over its own rim and halves its footprint — near the camera it was the largest flat colour in the frame', () => {
+    // The marker is drawn unlit on purpose: a hunt order has to read the same at
+    // three in the morning as at noon. That costs it the one cue that tells an
+    // eye how big something is, so a funnel a quarter of a cell across parked
+    // between the player and the animal was a sheet of orange with a hole in it.
+    // Two things answer that and both are measured here: it is smaller, and its
+    // top edge is a rolled lip rather than the hard circle a cone ends on —
+    // which means the widest ring is no longer the last one.
+    const { view } = bodies();
+    const mark = part(view.group, 'mark');
+    mark.geometry.computeBoundingBox();
+    const shape = mark.geometry.boundingBox!;
+    expect(shape.max.x - shape.min.x, 'the marker is under a sixth of a cell across').toBeLessThan(0.16);
+    expect(shape.max.y, 'and no taller than it is wide, twice over').toBeLessThan(0.21);
+    const pos = mark.geometry.attributes.position!;
+    let widest = 0;
+    let atTop = 0;
+    for (let i = 0; i < pos.count; i++) {
+      const r = Math.hypot(pos.getX(i), pos.getZ(i));
+      widest = Math.max(widest, r);
+      if (pos.getY(i) > shape.max.y - 1e-6) atTop = Math.max(atTop, r);
+    }
+    expect(atTop, 'the rim turns back inward above its widest point').toBeLessThan(widest - 0.004);
     view.dispose();
   });
 

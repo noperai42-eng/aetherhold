@@ -205,6 +205,29 @@ describe('where the scatter lands', () => {
     expect(tones.size).toBeGreaterThan(100);
   });
 
+  it('tips every tuft off the vertical without ever laying one down', () => {
+    // The lean is the cheap half of why a lawn reads as cover rather than as a
+    // scatter of identical marks: a tuft that stands straight shows the manager
+    // camera the same chevron its neighbour does, however the two are turned.
+    // It is also the one thing here that can be overdone — a clump tipped a long
+    // way over is trodden grass, and its instance scale stops being its height,
+    // which is the number every knee-height check in this file reads.
+    const world = meadow();
+    const { tufts } = meshes(new DecorView(world));
+    const m = new THREE.Matrix4();
+    const q = new THREE.Quaternion();
+    const up = new THREE.Vector3();
+    let leaning = 0;
+    for (let i = 0; i < tufts.count; i++) {
+      tufts.getMatrixAt(i, m);
+      m.decompose(new THREE.Vector3(), q, new THREE.Vector3());
+      up.set(0, 1, 0).applyQuaternion(q);
+      expect(up.y).toBeGreaterThan(0.76);
+      if (up.y < 0.999) leaning++;
+    }
+    expect(leaning).toBeGreaterThan(tufts.count * 0.9);
+  });
+
   it('thins the grass where the ground around it has gone bare', () => {
     // Turf does not stop at a line. Grass drawn at full height right up to the
     // edge of a trampled yard was the tell that it was a texture and not a

@@ -103,8 +103,25 @@ const SKY_FRAG = /* glsl */ `
   }
 `;
 
-/** The softest a shadow ever gets. Below this the colony reads as unlit, not shaded. */
-export const SHADOW_FLOOR = 0.38;
+/**
+ * The softest a shadow ever gets. Below this the colony reads as unlit, not shaded.
+ *
+ * What the eye reads is not this number, it is this number times the sun's share
+ * of the light falling on the cell — a shadow can only take away what the sun was
+ * putting there. It was 0.38, chosen when the low sun was worth a fifth of the
+ * light on open ground: 0.38 × 0.21 is eight per cent, and eight per cent, once
+ * ACES has had it, is nothing at all. Measured at 17:24 on the dusk frame, a
+ * shadowed cell kept 92% of the light of the grass beside it, which is why a wall
+ * two and a half metres tall threw nothing across that grass.
+ *
+ * The share is fixed below and the floor moves with it. The guard that matters is
+ * still the one the black-wedge photograph set — a long shadow must leave at least
+ * 60% of the light — and the product now takes 37% of it at sixteen degrees and
+ * 32% at eight, where it used to take 16% and 8%. That guard is what caps the
+ * floor: 0.59 is the most that clears it at sixteen degrees with room to spare.
+ * See `tests/lighting.test.ts`, "what a shadow leaves you".
+ */
+export const SHADOW_FLOOR = 0.59;
 /** Elevation below which the sun is treated as grazing, in radians (~3.4°). */
 const GRAZING = 0.06;
 
@@ -153,9 +170,15 @@ export function shadowNormalBias(mapSize: number): number {
  * to fill a shadow, falling to a trace after dark so the moon still has a face
  * to glint off. Cloud pulls it down too — the room's light is a small bright
  * source, and a small bright source is the one thing an overcast sky lacks.
+ *
+ * Squared in daylight rather than linear, and for the same reason the ambient
+ * floor below is cubed: half a day's light is not half a day's *sky*, and an
+ * omnidirectional term held up through the evening is the one that quietly
+ * cancels a low sun. Noon and midnight are exactly where they were; the hour
+ * before sundown gets nine hundredths instead of sixteen.
  */
 export function environmentStrength(day: number, cloud: number): number {
-  return (0.05 + day * 0.3) * (1 - cloud * 0.4);
+  return (0.05 + day * day * 0.3) * (1 - cloud * 0.4);
 }
 
 export class SkyView {
@@ -367,12 +390,32 @@ export class SkyView {
     this.sun.shadow.intensity = shadowStrength(elev);
 
     if (elev > -0.05) {
-      this.lightCol.copy(SUN_DUSK).lerp(SUN_DAY, Math.min(1, up * 2.2));
-      // The sun no longer climbs to the zenith, so `up` never reaches 1; the
-      // coefficient keeps noon as bright as it was before the curve flattened.
+      // How much of the sun is left, and what colour it has gone.
+      //
+      // The strength used to be `up` itself, the sine of the elevation. That is
+      // the right factor for how much of the sun a *horizontal* surface catches,
+      // and the shading maths already applies it: using it here as well applied
+      // it twice, and the sun at eight degrees came out worth a fifth of the
+      // light on open ground (0.207 of it, measured at 17:24) with the hemisphere
+      // and the ambient floor supplying the other four fifths. A key light worth
+      // a fifth is not a key light, and it casts a shadow nobody can see.
+      //
+      // Air does not work that way round. It takes the low sun's blue long before
+      // it takes its power: an hour before sundown the sun is still the brightest
+      // thing in the sky by a wide margin, and it has gone orange. So the strength
+      // falls slowly — a fifth root of the sine, near flat until the last degrees
+      // — and the *colour* carries the hour. `up` never reaches 1, since the sun
+      // no longer climbs to the zenith, so the coefficient is set to leave noon
+      // exactly where it was photographed.
+      //
       // Cloud takes most of the direct sun away — which is precisely what makes
       // an overcast colony read as flat, so the ambient below is raised to match.
-      this.sun.intensity = (0.25 + up * 2.9) * (1 - cloud * 0.78);
+      const key = Math.pow(up, 0.2);
+      this.sun.intensity = (0.15 + key * 2.536) * (1 - cloud * 0.78);
+      // And the colour holds the dusk end far longer than it did. The old mix
+      // reached halfway to daylight by six degrees, so the one hour of the day
+      // with a colour of its own spent it looking like a slightly dim noon.
+      this.lightCol.copy(SUN_DUSK).lerp(SUN_DAY, Math.min(1, Math.max(0, (up - 0.1) / 0.62)));
       this.sun.color.copy(this.lightCol).lerp(WHITE, cloud * 0.5);
     } else {
       // Moonlight: dim, cold, and coming from the opposite side of the sky. Dim
@@ -393,7 +436,12 @@ export class SkyView {
     this.fill.position.set(focusX + Math.cos(fillAzi) * 44, 20, focusY + Math.sin(fillAzi) * 44);
     this.fill.target.position.set(focusX, 0, focusY);
     this.fill.target.updateMatrixWorld();
-    this.fill.color.copy(this.skyTop).lerp(WHITE, 0.45);
+    // Cooled back off the twilight tint that `skyTop` carries. The fill stands on
+    // the opposite side of the sky from the sun, and at sundown that half of the
+    // sky is the blue one — a fill that goes orange with the sunset is a second
+    // sun behind you, and it cancels exactly the warm-against-cool split the
+    // evening is made of.
+    this.fill.color.copy(this.skyTop).lerp(SHADE_BLUE, twilight * 0.5).lerp(WHITE, 0.45);
     // Overcast is all fill and no sun: the light stops coming from one place and
     // starts coming from the whole sky, so the fill takes over what the sun lost.
     //
@@ -402,7 +450,20 @@ export class SkyView {
     // negative at night — otherwise a midnight storm renders brighter than a
     // clear midnight, which is exactly backwards.
     const cloudLift = 1 + cloud * (day * 1.15 - 0.3);
-    this.fill.intensity = (0.06 + day * 0.62) * cloudLift;
+    // And all three sky terms step back together in the last degrees before
+    // sundown.
+    //
+    // `twilight` is the only factor in this file concentrated exactly there — one
+    // at the horizon, gone by seventeen degrees — and those are the degrees where
+    // the arithmetic goes wrong. A sun eight degrees up puts little on flat
+    // ground no matter how strong it is, because the ground is nearly edge-on to
+    // it; the sky terms, sized for the rest of the day, then supply most of what
+    // lands there, and a shadow can only take away what the sun was putting.
+    // Two thirds of them at eight degrees, and within three per cent of untouched
+    // by sixteen, so the morning the black-wedge photograph was taken in is not
+    // disturbed. Midday and midnight are outside the window entirely.
+    const lowSun = 1 - twilight * 0.62;
+    this.fill.intensity = (0.06 + day * 0.62) * cloudLift * lowSun;
 
     // At night the sky tint is nearly black, and a hemisphere light that colour
     // contributes nothing. Lerping it toward white as the day fades keeps the
@@ -410,15 +471,29 @@ export class SkyView {
     // day it goes the other way, toward a cooler blue than the dome's: this is
     // the light in every shadow, and it is the key's warmth against this that
     // makes noon read as sunlit rather than as evenly grey.
-    this.hemi.color.copy(this.skyTop).lerp(SHADE_BLUE, day * 0.5).lerp(WHITE, (1 - day) * 0.4);
-    this.hemi.intensity = (0.24 + day * 0.62) * Math.max(0.6, cloudLift * 0.85);
+    //
+    // Squared, though, because it is a night rescue and the evening is not night:
+    // held linear it lifted the sky bounce a quarter of the way to white with the
+    // sun still up, which is a second ambient term in the one hour that most needs
+    // the sun to be doing the work. Midnight and midday are untouched by the change.
+    const lateLift = (1 - day) * (1 - day) * 0.4;
+    this.hemi.color.copy(this.skyTop).lerp(SHADE_BLUE, day * 0.5).lerp(WHITE, lateLift);
+    this.hemi.intensity = (0.24 + day * 0.62) * Math.max(0.6, cloudLift * 0.85) * lowSun;
 
     // Ambient is the readability floor and works in the opposite direction to
     // everything else: strongest at night, when it is nearly all there is, and
     // pulled back at midday so the sun still carves shape into the colony. Cloud
     // and lightning both push it back up — the point of an overcast day is soft
     // light everywhere, not a dark colony.
-    this.ambient.intensity = (2.2 - day * 1.9) * Math.max(0.62, cloudLift) + flash * 1.6;
+    //
+    // Cubed in the dark rather than linear in the daylight, which is the same two
+    // endpoints and a completely different evening. Linear, it was already at
+    // 1.49 with the sun eight degrees up and still worth 0.72 — the floor built
+    // for a moonless colony was outshouting the sun two to one, from every
+    // direction at once, and that is what made the dusk frame read as an
+    // overcast noon. Cubed it is 0.77 there and unchanged at both ends of the day.
+    const dark = 1 - day;
+    this.ambient.intensity = (0.3 + 1.9 * dark * dark * dark) * Math.max(0.62, cloudLift) * lowSun + flash * 1.6;
 
     this.sunDisc.position.set(
       focusX + Math.cos(azi) * Math.cos(elev) * 300,
@@ -526,6 +601,12 @@ export class SkyView {
     (this.moonDisc.material as THREE.Material).dispose();
     this.stars.geometry.dispose();
     (this.stars.material as THREE.Material).dispose();
+    // The shadow map is the largest thing this view owns — a 2048-square depth
+    // texture at high quality, next to which every geometry above is a rounding
+    // error — and it was the one thing not handed back. `applyQuality` already
+    // knew to drop it when the map size changes; teardown did not.
+    this.sun.shadow.map?.dispose();
+    this.sun.shadow.map = null;
   }
 }
 

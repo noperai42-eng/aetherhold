@@ -82,14 +82,19 @@ const WEAR_COST_PER_TUFT = 0.22;
  * Root and tip of a blade. The root sits a shade *above* the turf it grows from
  * (`TERRAIN_COLOR.grass`) rather than below it: from the manager camera a blade
  * darker than its lawn is a black chevron on a bright field, and nine thousand
- * of those are the loudest thing on the map. The tip is a paler green that
+ * of those are the loudest thing on the map. A shade was not enough of one: at
+ * colony zoom the field still read as a scatter of dark marks on turf rather
+ * than as cover over it, so the root now stands clearly over the ground's own
+ * green and the whole tuft is tinted a touch up (`rebuild`).
+ *
+ * The tip is a paler green that
  * reads as light caught on the leaf — green, not yellow: a straw-coloured tip
  * on nine thousand tufts washed the wide frames the colour of hay, and a lawn
  * has to read as a lawn from twenty cells up. The gradient between them is
  * baked into the geometry as vertex colours (see `tuftGeometry`); the instance
  * colour only tints the whole tuft a little either way.
  */
-const GRASS_ROOT = new THREE.Color(0x437f34);
+const GRASS_ROOT = new THREE.Color(0x4c8a3a);
 const GRASS_TIP = new THREE.Color(0x7fb050);
 
 /**
@@ -224,8 +229,12 @@ export class DecorView {
             // Turned to its own bearing and tipped its own way off the vertical,
             // far enough that three clumps on a cell are three clumps and not one
             // stamp printed three times — but not so far that a tuft lies down,
-            // which reads as trodden rather than as grass.
-            e.set((d - 0.5) * 0.5, g * Math.PI * 2, (k - 0.5) * 0.5);
+            // which reads as trodden rather than as grass. A third of a radian
+            // either way rather than a quarter: at colony zoom the narrower
+            // spread left every tuft presenting the same chevron to the camera,
+            // and what breaks a field of identical marks up is the leans no two
+            // of them share.
+            e.set((d - 0.5) * 0.66, g * Math.PI * 2, (k - 0.5) * 0.66);
             q.setFromEuler(e);
             // Where the ground around the cell has gone bare, the clump goes with
             // it: shorter, thinner, and the later tufts nearly gone.
@@ -244,7 +253,11 @@ export class DecorView {
             // one way and cool the other, dark to light across the whole, and a
             // shade drier where the ground is worn.
             const warm = (k - 0.5) * 0.12;
-            const level = (0.82 + g * 0.34) * (1 - wear * 0.12);
+            // Centred a little over one rather than a little under it, so the
+            // average blade is lit slightly brighter than the gradient baked
+            // into it — the cheapest half of "grass reads as cover and not as
+            // dark marks", the other half being the root colour above.
+            const level = (0.86 + g * 0.34) * (1 - wear * 0.12);
             c.setRGB(level * (1 + warm), level, level * (1 - warm));
             this.tufts.setColorAt(tuft, c);
             tuft++;

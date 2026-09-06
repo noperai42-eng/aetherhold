@@ -23,6 +23,7 @@ import {
   cropGeometry,
   cropStage,
   markHeight,
+  strippedBushGeometry,
   tilledSoilGeometry,
 } from '../src/client/render/fx';
 import { TerrainView, groundLiftAt, rockTopAt } from '../src/client/render/terrain';
@@ -161,6 +162,51 @@ describe('what a plant and a bush are made of', () => {
     }
     expect(lowest).toBeLessThan(0.6);
     expect(highest).toBeCloseTo(1, 6);
+    geo.dispose();
+  });
+
+  it('keeps the canes of a stripped bush under its leaves, never caged over them', () => {
+    // A picked-over bush is a plant that has lost its fruit, and a stem lives
+    // under its own canopy. Drawn crossing over the leaves the dark wood reads
+    // from the manager camera as a cage built round the foliage rather than as
+    // the plant that carries it — which is exactly what the frames showed. So
+    // every cane vertex sits below every leaf, and the wood is then seen only
+    // where the canopy is gappy, which is where a branch is seen on a real bush.
+    // The two parts are told apart by what they are painted: the canes are the
+    // one part of the plant with the green taken out of them.
+    const geo = strippedBushGeometry();
+    expect(triangles(geo)).toBeLessThanOrEqual(300);
+    const p = geo.getAttribute('position');
+    const col = geo.getAttribute('color');
+    let wood = -1;
+    let leaf = 1;
+    for (let i = 0; i < p.count; i++) {
+      if (col.getZ(i) < 0.8) wood = Math.max(wood, p.getY(i));
+      else leaf = Math.min(leaf, p.getY(i));
+    }
+    expect(wood).toBeGreaterThan(0);
+    expect(wood).toBeLessThan(leaf);
+    geo.dispose();
+  });
+
+  it('grows a stripped bush lopsided rather than as a compass rose', () => {
+    // Leaves evenly spaced round a centre are the loudest tell that a plant was
+    // generated rather than grown — from overhead it is a rosette stamped on the
+    // ground, and no bush is radially symmetric. Read as how far the plant
+    // reaches in each eighth of the circle: a compass rose reaches the same
+    // distance in all eight, and a bush that grew towards the light on one side
+    // does not. It still has to stay inside its cell, where the next bush along
+    // may be a cell away.
+    const geo = strippedBushGeometry();
+    const p = geo.getAttribute('position');
+    const reach = new Array<number>(8).fill(0);
+    for (let i = 0; i < p.count; i++) {
+      const a = (Math.atan2(p.getX(i), p.getZ(i)) + Math.PI * 2) % (Math.PI * 2);
+      const oct = Math.min(7, Math.floor(a / (Math.PI / 4)));
+      reach[oct] = Math.max(reach[oct]!, Math.hypot(p.getX(i), p.getZ(i)));
+    }
+    expect(Math.max(...reach)).toBeGreaterThan(Math.min(...reach) * 1.4);
+    expect(Math.max(...reach)).toBeLessThan(0.5);
     geo.dispose();
   });
 

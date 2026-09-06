@@ -4,6 +4,85 @@ One round, one measured gap, one fix. Newest first.
 
 ---
 
+## 2026-09-06 — Round eight, and a light that was applying its own falloff twice
+
+**Track: the rendered game.** Four lanes. The sixth frame added at the end of round 7 paid for
+itself in the first hour: the defect it exposed was not a lighting preference, it was arithmetic.
+
+### Better
+
+**The sun was multiplied by its own angle twice.** With the sun eight degrees up, nothing in the
+colony cast a shadow — not the wall, not the trees, not the pawns. The shadow map was innocent
+(forcing the floor to 1.0 photographs crisp shadows), and so was `shadowStrength`, which floors at
+0.38 and never switches off. What the eye reads is the shadow's strength times *the sun's share of
+the light landing on the cell*, and that share was 0.207: `sun.intensity` was scaling itself by
+sin(elevation) when the shading maths already applies N·L, so the key light spent the evening worth
+a fifth of the frame, while a readability floor built for a moonless night had already climbed to
+1.49 with the sun still up. An omnidirectional term was outshouting the sun two to one. A shadow can
+only take away what the sun was putting there, and it was putting 8%.
+
+The numbers, before and after, at noon and at 17:24 — sun / shadow / hemisphere / fill / ambient:
+
+    before  noon  2.577 / 1.000 / 0.731 / 0.680 / 0.300     dusk  0.719 / 0.380 / 0.401 / 0.292 / 1.490
+    after   noon  2.577 / 1.000 / 0.731 / 0.680 / 0.300     dusk  1.912 / 0.590 / 0.273 / 0.199 / 0.522
+
+Noon is unchanged by construction and unchanged in the frames. At eight degrees the sun's share goes
+0.207 to 0.542 and a shadow now takes a third of the light where it took a twelfth. The evening also
+has a colour for the first time: the sun held its daylight mix until six degrees, and the fill light,
+which stands on the anti-solar side, was taking the sunset tint and acting as a second sun behind the
+camera — cancelling the warm-against-cool split that evening is made of. Light on flat ground, red
+over blue: noon 1.238, dusk 0.709 → 1.700. The old dusk ground was literally bluer than midday.
+
+**The grave, the trap and the statue**, the last three kinds that read as flat objects. The grave is
+a heaped mound with clods turned into it and a timber cross at its head; the trap is a sprung frame
+with jaws, teeth and a visible trigger standing a hand's width above the rails; the statue is a
+figure with shoulders, a head and one raised arm. All three are legible from the manager camera now.
+
+**The trees, at branch scale.** Round 7's lobes were limb-sized and from overhead read as broccoli.
+Amplitude down (0.24 → 0.15), frequency up (3–8 lobes on 24-segment skirts, a flatter spectral
+falloff so the high lobes survive), and two crown variants hashed per tree, so each rim crosses its
+own mean girth six to twelve times and no two trees repeat a silhouette. This is the best the wood
+has looked.
+
+**The tail, and the class of bug behind it.** The mossback's tail was a nine-sided capsule in the
+hoof tone whose flat end cap pointed at the standard camera — a black hexagon in the rump. It is a
+swept tapering tube ending in a dome, in the coat's own deeper tone, and the lane went looking for
+the same shape elsewhere: darkest tone, presented end-on, too few segments. Boots were raised; the
+hooves, the nose and the antler tines were found, priced and left, with the reasons written down.
+The mossback is at 2,482 of its 2,500 triangles, paid for by taking the collar's tube section from
+six sides to four.
+
+**The stripped bush, fourth round and finally a plant.** Not a rebuild — colour, ordering and
+symmetry. Grey-beige to the ripe bush's own green a little duller (a picked bush has lost its
+berries, not its chlorophyll); the canes dropped below the leaves instead of caging them; seven
+leaves at uneven bearings with one wide gap, two of them plainly larger, the knot carried off-axis,
+and a seeded yaw per cell so a hedge is not one stamp printed. Beside the ripe bush it now reads as
+the same plant in two states.
+
+### Still wrong
+
+**Nothing in this game should be black at noon.** The new lamp shade is a well-argued piece of
+geometry — a shell turned down the outside and back up the inside so it is not a hole seen from
+below — and from the manager camera at midday it renders as a flat black bowl, the darkest thing in
+the frame. The watermill wheel reads nearly as dark. Whatever the cause (an inverted shell, or a tone
+that was picked against a brighter ambient than the one this round shipped), it is the same defect
+the tail had: a part the camera meets face-on with no light on it.
+
+**Grass is a bird track.** At the settler camera a tuft is a three-pointed star with a hard notch,
+and a field of them reads as a scatter of arrowheads rather than as grass. Rounds 6 and 8 both
+improved the colour, the lean and the density of a shape that is itself wrong at close range.
+
+**My briefing error, worth recording.** I put the conduit — which reads as a blue barbell lying on
+the floor — in the decor lane's brief. It is built in `buildings.ts` and coloured in `palette.ts`,
+neither of which that lane owns, so it came back correctly reported as untouched while the lane that
+could have fixed it was never asked. A brief has to name the lane that owns the file, not the lane
+that owns the subject.
+
+Gate re-run by hand before the commit: `tsc` clean, eleven render test files, 241 tests, 393 test
+lines added and none removed.
+
+---
+
 ## 2026-09-06 — Round seven, and the instrument that could carry it
 
 **Track: the rendered game.** Four lanes, briefed off round 6's leftovers, and one of the four
@@ -56,7 +135,11 @@ reads as a doormat and the trap as a plate.
 
 **Not a bug, checked and dismissed.** The flat gold squares scattered through the showcase frame,
 which have looked like a missing model since round 3, are pen-zone paint — `fx.ts:491`, straw-gold
-for every zone that is not a stockpile. They are the overlay doing its job.
+for every zone that is not a stockpile. They are the overlay doing its job. *(Half right, corrected
+in round 8: the solid squares lying on the ground are that zone paint, but the ones hovering over
+the turret, the cooler and the lamp are a different overlay — the unpowered mark at `fx.ts:295`, a
+four-sided ring over any built machine that wants watts and is not getting any. Two overlays in the
+same colour family, and I named one of them for both.)*
 
 ### The harness gained a frame
 
