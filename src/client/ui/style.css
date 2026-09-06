@@ -2980,6 +2980,15 @@ body {
 }
 
 #hud.phone .card dt {
+  /* No plate here. The plate exists because four of the desk's colony bindings
+     are a single thin glyph and a bare apostrophe reads as dust; the phone card
+     has no keys in it at all — its terms are "Build", "Two fingers", "Inside a
+     body", words that are perfectly legible in amber and would only look like
+     buttons if they were boxed. Fixing a desk problem on a phone that does not
+     have it is how a fix becomes a regression. */
+  padding: 0;
+  border: 0;
+  background: none;
   margin-top: 8px;
 }
 

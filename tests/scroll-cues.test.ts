@@ -192,6 +192,17 @@ describe('a key you can see is a key you can press', () => {
     expect(dt!.body).toMatch(/justify-self:\s*start/);
   });
 
+  it('does not put a plate round the phone card, which has no keys in it', () => {
+    // The phone help card describes gestures and tabs, so its terms are "Build",
+    // "Two fingers", "Inside a body" — words, legible in amber, that would only
+    // look like buttons if they were boxed. Fixing a desk problem on a phone
+    // that does not have it is how a fix becomes a regression.
+    const phone = RULES.find((r) => r.selectors.includes('#hud.phone .card dt'));
+    expect(phone).toBeDefined();
+    expect(phone!.body).toMatch(/border:\s*0/);
+    expect(phone!.body).toMatch(/background:\s*none/);
+  });
+
   it('still has the four single-glyph keys the plate was cut for', () => {
     expect(HUD).toContain("<dt>'</dt>");
     expect(HUD).toContain('<dt>;</dt>');
