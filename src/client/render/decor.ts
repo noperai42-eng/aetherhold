@@ -38,11 +38,19 @@ const TUFTS_PER_CELL = 3;
  * every side. The leans and bows are picked so no vertex reaches a whole unit
  * from the root: the tuft is scaled to a fifth of a cell across, and a blade
  * that overshot would be grass growing out of the cell next door.
+ *
+ * `fold` is how deep the crease down the middle of each blade is, as a fraction
+ * of its half-width there (see `foldedBladeGeometry`). Deepest on the two that
+ * lie over, since those are the ones the manager camera looks down on and the
+ * ones a crease has to separate into a lit half and a shaded one; the upright
+ * blade shows that camera its edge whatever its cross-section, and its crease is
+ * there for the first-person eye. No two alike, for the same reason no two
+ * blades in the clump are the same length.
  */
 const TUFT_BLADES = [
-  { width: 0.5, len: 1, lean: 0, bend: 0.34, turn: 0.9 },
-  { width: 0.44, len: 0.82, lean: 0.5, bend: 0.5, turn: 3.2 },
-  { width: 0.38, len: 0.6, lean: 0.78, bend: 0.5, turn: 5.3 },
+  { width: 0.5, len: 1, lean: 0, bend: 0.34, turn: 0.9, fold: 0.75 },
+  { width: 0.44, len: 0.82, lean: 0.5, bend: 0.5, turn: 3.2, fold: 0.9 },
+  { width: 0.38, len: 0.6, lean: 0.78, bend: 0.5, turn: 5.3, fold: 0.85 },
 ] as const;
 /** Fraction of bare cells that get a stone. Sparse on purpose — scatter, not gravel. */
 const STONE_CHANCE = 0.16;
@@ -118,12 +126,13 @@ export class DecorView {
   constructor(world: World) {
     const cells = world.width * world.height;
 
-    // A tuft rather than a spike: a few slim tapered strips leaning out from one
-    // root and curving forward as they rise, so from overhead it is a clump of
-    // leaves and from eye level a bent stem instead of a green pyramid. Roots at
+    // A tuft rather than a spike: a few slim tapered leaves leaning out from one
+    // root, curving forward as they rise and creased down the middle, so from
+    // overhead it is a clump of foliage catching the light on both sides of each
+    // keel and from eye level a bent stem instead of a green pyramid. Roots at
     // the origin so per-instance scale is a height, and so the shader can use
     // object-space y directly as "how far from the roots am I".
-    const tuft = tuftGeometry(3, GRASS_ROOT, GRASS_TIP);
+    const tuft = tuftGeometry(GRASS_ROOT, GRASS_TIP);
     this.tufts = new THREE.InstancedMesh(
       tuft,
       grassMaterial(this.time, this.wind),
@@ -418,8 +427,65 @@ export function bladeGeometry(width: number, segments: number, bend: number): TH
 }
 
 /**
- * A clump of leaves sharing one root, in "one tuft tall" units — one blade per
- * entry in `TUFT_BLADES`, each with `segments` rows.
+ * Where a folded blade's one cross-section sits, as a fraction of its length.
+ * Low enough that the crease is under the broad part of the leaf the manager
+ * camera looks down on, high enough that the band below it is not a sliver.
+ */
+const BLADE_WAIST = 0.45;
+
+/**
+ * The same leaf with a keel down the middle: a strip `width` across at the
+ * roots, bowing `bend` forward by the tip at y = 1, whose midline is pushed out
+ * of the plane of its edges by `fold` of the half-width where it is widest.
+ *
+ * A flat strip is the right shape from eye level and the wrong one from
+ * directly above. Both of its halves are one plane, so both take exactly the
+ * same light, and a tuft of them reads as folded paper — the blade has no
+ * cross-section for the sun to find. Real grass is creased along its length,
+ * and that crease is what makes one half of a leaf brighter than the other from
+ * whatever direction the light comes.
+ *
+ * Everything about the topology here is the sixteen-triangle budget a whole
+ * tuft has to fit inside, which leaves five triangles for a blade. So the root
+ * is a plain edge with no midline vertex on it (a crease that started at the
+ * ground would put the root vertices off y = 0, where the lean would swing them
+ * under the turf), there is exactly one row of three across the waist, and the
+ * tip is the same single vertex at (0, 1, `bend`) the flat strip ends in, so a
+ * caller can still hang something off the end of one. Wound so that every face
+ * points to the side the keel opens towards, which is the side a leaning blade
+ * shows the sky.
+ */
+export function foldedBladeGeometry(width: number, bend: number, fold: number): THREE.BufferGeometry {
+  const t = BLADE_WAIST;
+  const half = width / 2;
+  // The same quadratic taper the flat strip has, sampled at the one row there
+  // is room for: broad most of the way up, then narrowing fast to the point.
+  const waist = half * (1 - t * t);
+  const z = bend * t * t;
+  const keel = waist * fold;
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute(
+    'position',
+    new THREE.Float32BufferAttribute(
+      [
+        -half, 0, 0, // 0 root, left
+        half, 0, 0, // 1 root, right
+        -waist, t, z, // 2 waist, left
+        0, t, z + keel, // 3 waist, on the keel
+        waist, t, z, // 4 waist, right
+        0, 1, bend, // 5 tip
+      ],
+      3,
+    ),
+  );
+  geo.setIndex([0, 3, 1, 0, 2, 3, 1, 3, 4, 2, 5, 3, 3, 5, 4]);
+  geo.computeVertexNormals();
+  return geo;
+}
+
+/**
+ * A clump of leaves sharing one root, in "one tuft tall" units — one folded
+ * blade per entry in `TUFT_BLADES`.
  *
  * The first blade stands straight so the clump's tallest point is exactly y = 1
  * and the instance matrix's y scale goes on meaning "height". The rest are
@@ -441,17 +507,15 @@ export function bladeGeometry(width: number, segments: number, bend: number): TH
  * is horizontal, so under a high sun a field of them takes almost no direct
  * light and reads as dark chevrons on bright turf. Blending each towards up
  * lights a blade like the ground it grows from, with what is left of the true
- * normal keeping the sides of a tuft from shading identically.
+ * normal keeping the sides of a tuft from shading identically — and, since the
+ * blades are creased, keeping the two halves of one leaf from shading
+ * identically either, which is the whole reason the crease is there.
  */
-function tuftGeometry(
-  segments: number,
-  root: THREE.Color,
-  tip: THREE.Color,
-): THREE.BufferGeometry {
+function tuftGeometry(root: THREE.Color, tip: THREE.Color): THREE.BufferGeometry {
   const parts: THREE.BufferGeometry[] = [];
   const c = new THREE.Color();
   for (const shape of TUFT_BLADES) {
-    const blade = bladeGeometry(shape.width, segments, shape.bend);
+    const blade = foldedBladeGeometry(shape.width, shape.bend, shape.fold);
     // Painted while the blade is still upright and one unit long, which is the
     // only moment its own y *is* how far along it a vertex sits.
     const bp = blade.getAttribute('position') as THREE.BufferAttribute;

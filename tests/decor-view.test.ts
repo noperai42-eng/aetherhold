@@ -9,7 +9,12 @@
 import * as THREE from 'three';
 import { describe, expect, it } from 'vitest';
 
-import { DecorView, bladeGeometry, scatterChecksum } from '../src/client/render/decor';
+import {
+  DecorView,
+  bladeGeometry,
+  foldedBladeGeometry,
+  scatterChecksum,
+} from '../src/client/render/decor';
 import { TERRAIN_COLOR } from '../src/client/render/palette';
 import { createWorld } from '../src/sim/worldgen';
 import { TERRAIN_LIST, packCell, terrainAt } from '../src/sim/types';
@@ -364,6 +369,49 @@ describe('what a blade and a stone are made of', () => {
       expect(h).toBeLessThan(0.36);
     }
     expect(tips).toBeGreaterThan(0);
+    view.dispose();
+  });
+
+  it('creases a blade down its middle, so its two halves cannot take one light', () => {
+    // A flat strip has one plane and so one normal, and from the manager camera
+    // looking straight down that is what made a tuft read as folded paper: the
+    // light could not tell one half of a leaf from the other. The crease is what
+    // gives a blade a cross-section — the midline has to stand off the chord
+    // between its own edges, and the two halves have to lean opposite ways, or
+    // the geometry is a strip with extra vertices in it.
+    const geo = foldedBladeGeometry(0.5, 0.34, 0.8);
+    const p = geo.getAttribute('position');
+    const n = geo.getAttribute('normal');
+    let left = -1;
+    let right = -1;
+    let mid = -1;
+    for (let i = 0; i < p.count; i++) {
+      if (p.getY(i) <= 0 || p.getY(i) >= 1) continue;
+      if (Math.abs(p.getX(i)) < 1e-6) mid = i;
+      else if (p.getX(i) < 0) left = i;
+      else right = i;
+    }
+    expect(Math.min(left, right, mid)).toBeGreaterThanOrEqual(0);
+    // Both edges of the crease sit at one height, so "off the chord" is the one
+    // number: how far the midline is pushed out of their plane.
+    expect(p.getY(left)).toBeCloseTo(p.getY(right), 6);
+    expect(p.getZ(mid) - p.getZ(left)).toBeGreaterThan(Math.abs(p.getX(left)) * 0.25);
+    expect(n.getX(left)).toBeGreaterThan(0.2);
+    expect(n.getX(right)).toBeLessThan(-0.2);
+    geo.dispose();
+  });
+
+  it('keeps a creased blade to five triangles, since three of them share one tuft', () => {
+    // The crease costs a row of vertices, and the grass is instanced tens of
+    // thousands of times, so where that row goes is decided by arithmetic: three
+    // blades inside sixteen triangles leaves five each and nothing spare. A
+    // blade that grew another row would still merge and still draw; what it
+    // would stop doing is fitting, and this is where that shows.
+    const blade = foldedBladeGeometry(0.5, 0.34, 0.8);
+    expect(triangles(blade)).toBe(5);
+    const view = new DecorView(meadow());
+    expect(triangles(meshes(view).tufts.geometry)).toBe(triangles(blade) * 3);
+    blade.dispose();
     view.dispose();
   });
 

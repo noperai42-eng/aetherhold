@@ -495,6 +495,7 @@ describe('what a body is made of', () => {
   const triangles = (m: THREE.Mesh): number =>
     (m.geometry.index ? m.geometry.index.count : m.geometry.attributes.position!.count) / 3;
 
+
   it('leaves no part flat-shaded — one faceted piece on a smooth body is the whole regression', () => {
     const { view } = bodies();
     for (const m of drawn(view.group)) {
@@ -905,6 +906,124 @@ describe('what a body is made of', () => {
       expect(over.length, 'a darker tone stands above the coat on the hare').toBeGreaterThan(0);
     }
     expect(hares).toBeGreaterThan(0);
+    view.dispose();
+  });
+
+  it("keeps a back marking in the coat's own value and on the coat's own surface — a patch that takes none of the light the hide takes reads as a hole", () => {
+    // Round 4 gave the mossback a stripe and the hare a cap so the manager
+    // camera could tell them apart from overhead, and both were built as their
+    // own solid laid across the back: a tube along the spine, an egg sunk into
+    // the barrel. At a settler's eye height that failed twice. The tube met the
+    // back at a tangent, so its normals faced sideways and down and it stayed
+    // dark whatever the sun did — a near-black shape that shaded independently
+    // of the animal reads as a hole burnt through the shoulder. And both were
+    // painted in the tone a hoof is, three or four times deeper than the hide,
+    // which is a value no marking in a coat has.
+    //
+    // So a marking now has to be hide: cut from the body's own surface, offset
+    // outward, which gives it the body's normals and the body's light; and one
+    // step down from the coat rather than off the bottom of it. Both are
+    // measurable here — the shade against the coat and against the hoof, and
+    // that no vertex of it looks at the ground the way the tube's underside did.
+    const { view, world } = bodies();
+    const marked = new Set<string>();
+    const n = new THREE.Vector3();
+    for (const rig of view.group.children) {
+      const pawn = world.pawns.find((p) => p.x === rig.position.x && p.y === rig.position.z)!;
+      if (!pawn.animal || marked.has(pawn.animal)) continue;
+      const saddles: THREE.Mesh[] = [];
+      rig.traverse((o) => {
+        if (o instanceof THREE.Mesh && o.name === 'saddle') saddles.push(o);
+      });
+      if (saddles.length === 0) continue;
+      marked.add(pawn.animal);
+      const saddle = saddles[0]!;
+      const hide = lightness((part(rig, 'body').material as THREE.MeshStandardMaterial).color);
+      const shade = lightness((saddle.material as THREE.MeshStandardMaterial).color);
+      const horn = lightness((part(rig, 'hoof').material as THREE.MeshStandardMaterial).color);
+      expect(shade, `${pawn.animal}'s saddle is darker than its coat`).toBeLessThan(hide - 2);
+      expect(shade, `${pawn.animal}'s saddle is the coat gone deeper, not a hole`).toBeGreaterThan(hide - 20);
+      expect(shade, `${pawn.animal}'s saddle is hide and not the tone a hoof is`).toBeGreaterThan(horn + 5);
+      const normals = saddle.geometry.attributes.normal!;
+      let lowest = Infinity;
+      for (let i = 0; i < normals.count; i++) {
+        lowest = Math.min(lowest, n.fromBufferAttribute(normals, i).y);
+      }
+      expect(lowest, `${pawn.animal}'s saddle lies along the back and never turns under it`).toBeGreaterThan(0);
+    }
+    expect(marked.size, 'the two species that carry a back marking still carry one').toBe(2);
+    view.dispose();
+  });
+
+  it("gives a settler's hand a thumb and turns it toward the midline — two pale ovals on the ends of the arms are not hands", () => {
+    // The overhead camera is close enough to count fingers and the hand was a
+    // sphere, so it read as a blob rather than as the end of an arm. A thumb is
+    // the cheapest thing that fixes it, but only if it is on the inside: a
+    // hand is cut with its thumb toward -X and the left arm wears the same
+    // buffer mirrored, so both thumbs face the body. Get the mirror wrong and
+    // one settler in every pair has a thumb growing off the wrong edge — which
+    // no frame makes obvious and this does. The outline is measured off the
+    // geometry (the thumb is what makes the box lopsided across X) and its
+    // direction in the rig's own frame, where the midline is x = 0.
+    const { view, world } = bodies();
+    const tip = new THREE.Vector3();
+    let settlers = 0;
+    for (const rig of view.group.children) {
+      const pawn = world.pawns.find((p) => p.x === rig.position.x && p.y === rig.position.z)!;
+      if (pawn.animal) continue;
+      settlers++;
+      const hands: THREE.Mesh[] = [];
+      rig.traverse((o) => {
+        if (o instanceof THREE.Mesh && o.name === 'hand') hands.push(o);
+      });
+      expect(hands.length, 'a settler has two hands').toBe(2);
+      const mirrored = new Set<number>();
+      for (const hand of hands) {
+        hand.geometry.computeBoundingBox();
+        const box = hand.geometry.boundingBox!;
+        expect(-box.min.x, 'the thumb stands well out past the palm').toBeGreaterThan(box.max.x * 1.3);
+        mirrored.add(Math.sign(hand.scale.x));
+        tip.set(box.min.x, 0, 0);
+        hand.localToWorld(tip);
+        rig.worldToLocal(tip);
+        const arm = hand.parent as THREE.Object3D;
+        expect(Math.abs(tip.x), 'the thumb points in toward the body, not out').toBeLessThan(Math.abs(arm.position.x));
+      }
+      expect(mirrored.size, 'the two hands are mirrored, so both thumbs face in').toBe(2);
+    }
+    expect(settlers).toBeGreaterThan(0);
+    view.dispose();
+  });
+
+  it('shapes a boot with a heel behind the ankle and a toe in front of it — a capsule the same at both ends is a peg', () => {
+    // A foot is not symmetric and the eye knows it: the toe runs further ahead
+    // of the ankle than the heel runs behind, and the widest part of the sole
+    // is the ball, not the heel. The boot is one capsule tapered along its
+    // length to get both, which costs no triangles, and both properties are
+    // read straight off the vertices — the box for the reach, the widest
+    // vertex on either side of the ankle for the spread.
+    const { view, world } = bodies();
+    const v = new THREE.Vector3();
+    let boots = 0;
+    for (const rig of view.group.children) {
+      const pawn = world.pawns.find((p) => p.x === rig.position.x && p.y === rig.position.z)!;
+      if (pawn.animal) continue;
+      const boot = part(rig, 'boot');
+      boots++;
+      boot.geometry.computeBoundingBox();
+      const box = boot.geometry.boundingBox!;
+      expect(box.max.z, 'the toe reaches further forward than the heel reaches back').toBeGreaterThan(-box.min.z * 1.05);
+      const pos = boot.geometry.attributes.position!;
+      let heel = 0;
+      let ball = 0;
+      for (let i = 0; i < pos.count; i++) {
+        v.fromBufferAttribute(pos, i);
+        if (v.z < 0) heel = Math.max(heel, Math.abs(v.x));
+        else if (v.z > 0) ball = Math.max(ball, Math.abs(v.x));
+      }
+      expect(ball, 'the sole is widest across the ball, not across the heel').toBeGreaterThan(heel);
+    }
+    expect(boots).toBeGreaterThan(0);
     view.dispose();
   });
 

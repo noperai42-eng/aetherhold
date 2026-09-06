@@ -360,6 +360,64 @@ const GROUND_DRY_SHARE = 0.5;
 const GROUND_DRY_MAX = 0.46;
 const GROUND_EARTH_HUE = -0.02;
 const GROUND_EARTH_SAT = 0.14;
+/**
+ * The grain: the one part of the ground's variation that does not ride the
+ * corner lattice, because it is the one part the lattice cannot carry.
+ *
+ * Everything above is a number per corner, and a number per corner is not grain
+ * whatever its amplitude: it is ramped bilinearly across a whole cell — two
+ * hundred pixels wide from a body's height — and averaged with its neighbours
+ * before that. Six rounds of raising those constants said so with a
+ * measurement: fit a plane to every 32-pixel tile of a frame and the residual
+ * on flat ground stayed at a fifth of one grey level while the speckle share,
+ * the speckle depth and the mottle lift all went up. The instrument was wrong,
+ * not the numbers. So the grain moves off the lattice and into the fragment
+ * shader, where the smallest thing that can vary is a pixel and not a metre.
+ *
+ * Four octaves, each [cycles per metre, share of the amplitude]: a lump most of
+ * a metre across that the manager camera still resolves, down to a speck a
+ * thumb wide that only a first-person view ever finds. They are hashed on world
+ * position, so the grain belongs to the ground and not to the screen and
+ * nothing swims when the camera pans; each fades out by its own screen
+ * footprint before a pixel is wide enough to alias it, so pulling back retires
+ * the fine ones quietly instead of boiling them; and the whole thing multiplies
+ * the corner colour by one plus a symmetric noise, so it costs the field's mean
+ * exactly nothing and the lift measured for the mottle above still pays for
+ * what the mottle above spends.
+ *
+ * A fifth, and a peak rather than a typical one: four octaves this size only
+ * rarely agree. Set by the measurement that failed for six rounds, taken on a
+ * lit terrain-only frame at both cameras — the plane-fit residual on flat
+ * ground goes from a fifteenth of a grey level to seven tenths at a body's
+ * height, and from a third to one and a third from above, while the mean
+ * luminance of the same ground moves by a tenth of a percent. Grain that costs
+ * the mean nothing is the whole reason it is allowed to be this loud.
+ */
+const GROUND_GRAIN_AMP = 0.2;
+const GROUND_GRAIN_OCTAVES: readonly [number, number][] = [
+  [1.3, 0.34],
+  [3.2, 0.26],
+  [8.5, 0.22],
+  [22, 0.18],
+];
+/**
+ * How much of the grain survives on covered ground, on exactly the argument
+ * `GROUND_MOTTLE_COVERED` makes about the mottle: grain is a story about soil, a
+ * drift stippled with it is a dirty drift and a pond with it is a stained one.
+ * It rides a per-vertex weight off the same corner lattice as the colour, so a
+ * shore fades out of its grain over the cell the water fades into it.
+ */
+const GROUND_GRAIN_COVERED = 0.2;
+/**
+ * How the grain is shared out between the channels.
+ *
+ * Red moves least and blue moves most, which tilts the dark half of the noise
+ * warm and the bright half cool: a dark speck is damp soil showing through and
+ * a bright one is grit catching the sky, and that is the difference between
+ * ground with something in it and ground with static on it. Symmetric per
+ * channel, so no channel's mean moves either.
+ */
+const GROUND_GRAIN_TINT: readonly [number, number, number] = [0.85, 1, 1.15];
 const UP = new THREE.Vector3(0, 1, 0);
 
 /**
@@ -481,10 +539,14 @@ export class TerrainView {
   readonly group = new THREE.Group();
   private readonly colors: Float32Array;
   private readonly positions: Float32Array;
+  /** How much grain each ground vertex takes — see `GROUND_GRAIN_COVERED`. */
+  private readonly grain: Float32Array;
   /** Corner colours on a (w+1)×(h+1) lattice — each one shared by up to four cells. */
   private readonly corners: Float32Array;
   /** Snow height on the same lattice, so neighbouring cells cannot open a crack. */
   private readonly cornerLift: Float32Array;
+  /** Grain weight on the same lattice again, so it fades where the colour does. */
+  private readonly cornerGrain: Float32Array;
   private readonly cornerStride: number;
   private readonly ground: THREE.Mesh;
   private readonly rocks: THREE.InstancedMesh;
@@ -502,9 +564,11 @@ export class TerrainView {
     const positions = new Float32Array(cells * 18);
     this.positions = positions;
     this.colors = new Float32Array(cells * 18);
+    this.grain = new Float32Array(cells * 6);
     this.cornerStride = width + 1;
     this.corners = new Float32Array(this.cornerStride * (height + 1) * 3);
     this.cornerLift = new Float32Array(this.cornerStride * (height + 1));
+    this.cornerGrain = new Float32Array(this.cornerStride * (height + 1));
 
     let p = 0;
     for (let y = 0; y < height; y++) {
@@ -523,14 +587,10 @@ export class TerrainView {
     const geo = new THREE.BufferGeometry();
     geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
     geo.setAttribute('color', new THREE.BufferAttribute(this.colors, 3));
+    geo.setAttribute('grain', new THREE.BufferAttribute(this.grain, 1));
     geo.computeVertexNormals();
 
-    const mat = new THREE.MeshStandardMaterial({
-      vertexColors: true,
-      roughness: 0.95,
-      metalness: 0,
-    });
-    this.ground = new THREE.Mesh(geo, mat);
+    this.ground = new THREE.Mesh(geo, groundMaterial());
     this.ground.receiveShadow = true;
     this.group.add(this.ground);
 
@@ -666,6 +726,19 @@ export class TerrainView {
         this.writeLift(base + 12, x + 1, y + 1);
         this.writeLift(base + 15, x + 1, y);
 
+        // And the grain weight off the same corners, floors included: the one
+        // colour a person laid is still ground, and a flagstone with no grain on
+        // it is the same lino the rest of this file is about. What it must not
+        // be on is snow and water, and those it reads corner by corner like
+        // everything else here — see `GROUND_GRAIN_COVERED`.
+        const vert = packCell(world, x, y) * 6;
+        this.writeGrain(vert, x, y);
+        this.writeGrain(vert + 1, x, y + 1);
+        this.writeGrain(vert + 2, x + 1, y + 1);
+        this.writeGrain(vert + 3, x, y);
+        this.writeGrain(vert + 4, x + 1, y + 1);
+        this.writeGrain(vert + 5, x + 1, y);
+
         if (here === 'bridge' && deckCount < this.deckCapacity) {
           // The deck sits at a fixed height whatever the lattice under it is
           // doing. That is the point of drawing it separately: the corner beneath
@@ -749,6 +822,7 @@ export class TerrainView {
     if (this.rails.instanceColor) this.rails.instanceColor.needsUpdate = true;
     (this.ground.geometry.getAttribute('color') as THREE.BufferAttribute).needsUpdate = true;
     (this.ground.geometry.getAttribute('position') as THREE.BufferAttribute).needsUpdate = true;
+    (this.ground.geometry.getAttribute('grain') as THREE.BufferAttribute).needsUpdate = true;
     // The whole reason the lift is worth having: normals off the new surface, so
     // the sun finds the slope where the pack runs down into a path and the drift
     // has a lit face and a shaded one. Flat per-triangle, because the geometry is
@@ -905,6 +979,15 @@ export class TerrainView {
         this.corners[i + 2] = c.b;
         this.cornerLift[cy * this.cornerStride + cx] =
           open === 0 ? 0 : depth * SNOW_LIFT * (lying / open) - WATER_SINK * deep;
+        // `bare` again, which is already the answer to "how much of this corner
+        // is ground the weather can get at" — the grain is the same question
+        // asked at a finer scale, so it is the same number and not a second one
+        // that could drift out of step with it.
+        this.cornerGrain[cy * this.cornerStride + cx] = THREE.MathUtils.lerp(
+          GROUND_GRAIN_COVERED,
+          1,
+          bare,
+        );
       }
     }
   }
@@ -920,6 +1003,10 @@ export class TerrainView {
     this.positions[dst + 1] = this.cornerLift[cy * this.cornerStride + cx]!;
   }
 
+  private writeGrain(dst: number, cx: number, cy: number): void {
+    this.grain[dst] = this.cornerGrain[cy * this.cornerStride + cx]!;
+  }
+
   dispose(): void {
     this.ground.geometry.dispose();
     (this.ground.material as THREE.Material).dispose();
@@ -930,6 +1017,110 @@ export class TerrainView {
     this.rails.geometry.dispose();
     (this.rails.material as THREE.Material).dispose();
   }
+}
+
+/**
+ * The ground's material, and the grain that is drawn in it rather than in the
+ * mesh.
+ *
+ * Standard, vertex-coloured and matte as it always was; everything added here
+ * happens after `color_fragment`, which is the line where the corner colour
+ * becomes the fragment's colour. The grain multiplies that, so it is a change of
+ * how bright this square millimetre of a cell is and never a change of what
+ * colour the cell is — the seams, the season, the wear and the mean the tests
+ * measure all belong to the lattice and none of them can be moved from here.
+ *
+ * The noise is sampled on the ground's own world position, passed down as a
+ * varying: a hash of where the mesh *is*, not of where it landed on the screen,
+ * so panning and turning move the camera across a grain that stays where it is.
+ * Each octave is faded out by `fwidth` of that position — how much world one
+ * pixel covers — before the pixel is wide enough to undersample it, which is
+ * what stops the fine octaves crawling as the manager camera pulls back and
+ * what leaves the coarse one, most of a metre across, still doing its job there.
+ * The per-vertex `grain` weight scales the lot, and it is what keeps all of this
+ * off the snow and out of the lake.
+ *
+ * The hash and the smoothstep-blended value noise are the same pair the rest of
+ * this file mottles with, transcribed into GLSL, so a corner and the pixels
+ * inside it are grained by one family of numbers rather than two.
+ */
+function groundMaterial(): THREE.MeshStandardMaterial {
+  const mat = new THREE.MeshStandardMaterial({
+    vertexColors: true,
+    roughness: 0.95,
+    metalness: 0,
+  });
+  const octaves = GROUND_GRAIN_OCTAVES.map(
+    ([freq, share]) =>
+      `groundGrain += ${share.toFixed(3)} * groundOctave(vGroundXZ, ${freq.toFixed(3)}, groundFootprint);`,
+  ).join('\n      ');
+  const [tr, tg, tb] = GROUND_GRAIN_TINT;
+  mat.onBeforeCompile = (shader) => {
+    shader.vertexShader = shader.vertexShader
+      .replace(
+        'void main() {',
+        /* glsl */ `
+        attribute float grain;
+        varying float vGrain;
+        varying vec2 vGroundXZ;
+        void main() {
+        `,
+      )
+      .replace(
+        '#include <begin_vertex>',
+        /* glsl */ `
+        #include <begin_vertex>
+        vGrain = grain;
+        vGroundXZ = (modelMatrix * vec4(transformed, 1.0)).xz;
+        `,
+      );
+    shader.fragmentShader = shader.fragmentShader
+      .replace(
+        'void main() {',
+        /* glsl */ `
+        varying float vGrain;
+        varying vec2 vGroundXZ;
+
+        float groundHash(vec2 p) {
+          return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
+        }
+
+        float groundNoise(vec2 p) {
+          vec2 i = floor(p);
+          vec2 f = p - i;
+          f = f * f * (3.0 - 2.0 * f);
+          float a = groundHash(i);
+          float b = groundHash(i + vec2(1.0, 0.0));
+          float c = groundHash(i + vec2(0.0, 1.0));
+          float d = groundHash(i + vec2(1.0, 1.0));
+          return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
+        }
+
+        // One octave, in [-1, 1], faded by how much of it lands inside one
+        // pixel: full while a pixel spans under a quarter of a cycle, gone by
+        // half of one, which is where undersampling turns grain into a shimmer.
+        float groundOctave(vec2 p, float freq, float footprint) {
+          float fade = 1.0 - smoothstep(0.25, 0.5, footprint * freq);
+          if (fade <= 0.0) return 0.0;
+          return (groundNoise(p * freq) - 0.5) * 2.0 * fade;
+        }
+
+        void main() {
+        `,
+      )
+      .replace(
+        '#include <color_fragment>',
+        /* glsl */ `
+      #include <color_fragment>
+      float groundFootprint = max(fwidth(vGroundXZ.x), fwidth(vGroundXZ.y));
+      float groundGrain = 0.0;
+      ${octaves}
+      diffuseColor.rgb *= 1.0 + groundGrain * vGrain * ${GROUND_GRAIN_AMP.toFixed(3)} *
+        vec3(${tr.toFixed(3)}, ${tg.toFixed(3)}, ${tb.toFixed(3)});
+      `,
+      );
+  };
+  return mat;
 }
 
 /**

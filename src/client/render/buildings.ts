@@ -65,6 +65,15 @@ const TREE_GIRTH_MAX = 1.12;
  */
 const TREE_TWIST_MIN = 0.4;
 const TREE_TWIST_MAX = 1.7;
+/**
+ * How deep a skirt's lobes cut, as a fraction of its radius. A quarter is what
+ * it takes for the outline to read as boughs rather than as a rimmed disc from
+ * directly overhead — at the seventh of it that round 6 shipped, a crown seen
+ * from the manager camera was a circle with a wobble in it, and four of those
+ * stacked were concentric rings. The leader takes a little less: a young shoot
+ * has not put out boughs long enough to be ragged yet.
+ */
+const TREE_LOBE = 0.24;
 /** The axis a tree leans about, in its own frame; the hashed yaw turns it. */
 const LEAN_AXIS = new THREE.Vector3(1, 0, 0);
 /** The skirts of a crown, bottom to top. Pushed in this order; the twist stacks. */
@@ -289,24 +298,79 @@ function faceted(g: THREE.BufferGeometry): THREE.BufferGeometry {
 }
 
 /**
+ * A number in [0, 1) from an integer, and the same number every time. Anything
+ * that has to be irregular but not random goes through here: a shape hashed out
+ * of a seed is the same shape on reload, in both cameras and in a test.
+ */
+function hash01(n: number): number {
+  let h = Math.imul(n ^ 0x9e3779b9, 0x85ebca6b);
+  h = Math.imul(h ^ (h >>> 13), 0xc2b2ae35);
+  return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
+}
+
+/**
+ * How many lobes a skirt's outline is built out of. Two is the fattest — one
+ * side of the tree heavier than the other — and six is the finest a sixteen
+ * segment ring can carry without the wave landing between vertices and coming
+ * back as noise.
+ */
+const LOBE_MIN = 2;
+const LOBE_MAX = 6;
+/**
+ * The furthest one meridian may run from the mean, in multiples of the waves'
+ * RMS. Without it a rare meridian where four lobes happen to line up would
+ * pull the rim in past half its radius, which stops being a bough and starts
+ * being a bite out of the crown.
+ */
+const LOBE_CLAMP = 1.4;
+
+/**
  * Roughs up a lathe so it stops reading as turned on a machine. The nudge is a
- * sum of two-, three- and five-lobed waves round the ring, each twisting as it
- * climbs the profile, so a tier of foliage bulges out here and hangs low there
- * the way a real bough does, and the rim of one tier drops into the next rather
- * than sitting on it as a clean horizontal circle — which was the give-away
- * from the first-person camera, where a forest read as a row of stacked cones.
- * Low frequency matters: a per-vertex hash gives a rim that is jagged but still
- * round on average, and the eye reads the average. `phase` turns the lobes so
- * two tiers on the same tree do not bulge on the same side.
+ * sum of two- to six-lobed waves round the ring, each twisting as it climbs the
+ * profile, so a skirt of foliage bulges out here and hangs low there the way a
+ * real bough does, and the rim of one skirt drops into the next rather than
+ * sitting on it as a clean horizontal circle. Low frequency matters: a
+ * per-vertex hash gives a rim that is jagged but still round on average, and the
+ * eye reads the average.
+ *
+ * The waves used to be one fixed mix — a half of two lobes, a third of three, a
+ * fifth of five — with a phase per skirt. That is one outline turned four ways,
+ * and turning an outline does not change it: from the manager camera, which
+ * looks a tree square in the top, four copies of the same gentle oval stacked
+ * are four concentric rings, which is exactly what round 6's frames showed. So
+ * the amplitude *and* the phase of every lobe count are now drawn from the
+ * skirt's own `seed`: one skirt is heavy on one side with a notch out of the
+ * other, the skirt above it is three-cornered, and no two of them share a
+ * silhouette to be concentric with. It costs nothing at runtime — the hash runs
+ * once per skirt at construction — and the geometry is the size it was.
  *
  * The seam is matched by construction — the lathe keeps two copies of its
  * first meridian and every wave has a whole number of lobes, so both copies get
- * the same nudge. The bottom rim and the tip are left alone, so a tier still
+ * the same nudge. The bottom rim and the tip are left alone, so a skirt still
  * sits where the profile says and still comes to its point.
  */
-function rumple(g: THREE.LatheGeometry, amp: number, phase = 0): THREE.BufferGeometry {
+function rumple(g: THREE.LatheGeometry, amp: number, seed: number): THREE.BufferGeometry {
   const { points, segments } = g.parameters;
   const P = points.length;
+  // One gain, one phase and one twist per lobe count. The gain falls off with
+  // the count because a tree's outline is carried by a few big boughs and only
+  // notched by the small ones; the hash decides how much of each this skirt got.
+  const gain: number[] = [];
+  const phase: number[] = [];
+  const twist: number[] = [];
+  for (let n = LOBE_MIN; n <= LOBE_MAX; n++) {
+    gain.push((0.3 + 0.7 * hash01(seed * 131 + n)) / (n - LOBE_MIN + 1.5));
+    phase.push(hash01(seed * 977 + n * 29) * TAU);
+    twist.push(1.2 + 3 * hash01(seed * 31 + n * 7));
+  }
+  // Scaled on the waves' root-mean-square rather than on the sum of their
+  // gains. Five sines with hashed phases essentially never peak together, so
+  // dividing by what they could in theory reach leaves every meridian a few
+  // percent off the mean — which is a wobble, not a bough, and is the shape
+  // round 6's crowns already had. Against the RMS a typical meridian is a whole
+  // lobe out or in, and the clamp is what stops the deepest draw from cutting
+  // the rim clean off the skirt.
+  const rms = Math.hypot(...gain) / Math.SQRT2;
   const pos = g.attributes.position as THREE.BufferAttribute;
   for (let k = 0; k < pos.count; k++) {
     const i = Math.floor(k / P) % segments;
@@ -314,12 +378,17 @@ function rumple(g: THREE.LatheGeometry, amp: number, phase = 0): THREE.BufferGeo
     if (j === 0 || j === P - 1) continue;
     const a = (i / segments) * TAU;
     const t = j / (P - 1);
-    const f =
-      0.55 * Math.sin(2 * a + phase + t * 2.2) +
-      0.35 * Math.sin(3 * a - phase * 1.7 + t * 4.1) +
-      0.2 * Math.sin(5 * a + phase * 0.6 + t * 1.3);
+    let f = 0;
+    for (let n = LOBE_MIN; n <= LOBE_MAX; n++) {
+      const c = n - LOBE_MIN;
+      f += gain[c] * Math.sin(n * a + phase[c] + t * twist[c]);
+    }
+    f = Math.max(-LOBE_CLAMP, Math.min(LOBE_CLAMP, f / rms));
     const s = 1 + f * amp;
-    pos.setXYZ(k, pos.getX(k) * s, pos.getY(k) + f * amp * 0.8, pos.getZ(k) * s);
+    // Down where the skirt runs out, up where it is tucked in: a long bough is
+    // a heavy bough and it hangs. The old sign lifted the long ones instead,
+    // which flattened the rim into the plane the lathe had already put it in.
+    pos.setXYZ(k, pos.getX(k) * s, pos.getY(k) - f * amp * 0.45, pos.getZ(k) * s);
   }
   g.computeVertexNormals();
   // The two copies of the seam meridian have different neighbours and so came
@@ -953,20 +1022,52 @@ export class BuildingsView {
     // it, so it reads as thinking-work rather than another workbench from across
     // the map. The flask is the part that carries it — nothing else in the colony
     // is made of glass.
+    //
+    // The gables stop ten centimetres short of the ground and stand on feet.
+    // A cabinet whose sides run into the turf is a block; the daylight under it
+    // is what makes it furniture, and it costs four short turnings. The top
+    // stays exactly where it was — `def.height` is the lamp over it, and the
+    // desk is not allowed to grow into that.
     this.pool(
       'lab.desk',
-      merge(
-        rbox(0.98, 0.08, 0.7, 0.7, 0, 0, 0.035),
-        rbox(0.08, 0.66, 0.62, 0.33, -0.43, 0, 0.035, 1),
-        rbox(0.08, 0.66, 0.62, 0.33, 0.43, 0, 0.035, 1),
-        rbox(0.7, 0.36, 0.04, 0.36, 0, -0.29, 0.015, 1),
-      ),
+      (() => {
+        const parts: THREE.BufferGeometry[] = [
+          rbox(0.98, 0.08, 0.7, 0.7, 0, 0, 0.035),
+          rbox(0.08, 0.56, 0.62, 0.38, -0.43, 0, 0.035, 1),
+          rbox(0.08, 0.56, 0.62, 0.38, 0.43, 0, 0.035, 1),
+          rbox(0.7, 0.36, 0.04, 0.36, 0, -0.29, 0.015, 1),
+        ];
+        for (const x of [-0.43, 0.43]) {
+          for (const z of [-0.26, 0.26]) parts.push(cylinder(0.04, 0.055, 0.1, 0.05, 10).translate(x, 0, z));
+        }
+        return merge(...parts);
+      })(),
       solidMat(0.8),
+      8,
+    );
+    // The riser at the back of the desk is where the reading is done, so it is a
+    // console rather than a painted board: a bezel round the screen, a rail of
+    // three dials under it, and the screen itself in the same pale glass the
+    // flask is made of, which is the one material in the colony that reads as
+    // lit from any angle.
+    this.pool(
+      'lab.console',
+      (() => {
+        const parts: THREE.BufferGeometry[] = [rbox(0.36, 0.24, 0.025, 0.46, -0.1, -0.258, 0.01, 1)];
+        for (const x of [0.13, 0.22, 0.31]) parts.push(cylinder(0.03, 0.03, 0.04, 0, 8).rotateX(Math.PI / 2).translate(x, 0.42, -0.25));
+        parts.push(box(0.28, 0.04, 0.02, 0.29, 0.22, -0.258));
+        return merge(...parts);
+      })(),
+      tone(0x3a3f46, 0.45, 0.35),
       8,
     );
     this.pool(
       'lab.glass',
-      merge(sphere(0.11, 0.85, 0.2, 0.1, 16, 12), cylinder(0.035, 0.04, 0.16, 0.99, 12).translate(0.2, 0, 0.1)),
+      merge(
+        sphere(0.11, 0.85, 0.2, 0.1, 16, 12),
+        cylinder(0.035, 0.04, 0.16, 0.99, 12).translate(0.2, 0, 0.1),
+        box(0.3, 0.18, 0.02, 0.46, -0.1, -0.248),
+      ),
       tone(0xe6f2f0, 0.12, 0.1),
       8,
     );
@@ -1134,22 +1235,86 @@ export class BuildingsView {
     // a three-centimetre bevel is a line too thin to see and a rough shell is
     // a shell with no highlight, which together is a box. The scene has an
     // environment map; a cast shell at 0.4 catches it along every eased edge.
-    this.pool('stove.body', rbox(0.88, 0.9, 0.86, 0.45, 0, 0, 0.06), solidMat(0.4), 16);
+    //
+    // And it stands on feet. A machine whose shell goes straight into the turf
+    // is a box someone dropped: the ground meets it in a hard line with no
+    // shadow under it, which at manager zoom is the single thing that made the
+    // stove, the cooler, the battery and the generator read as blocks with
+    // decals rather than as objects standing in a colony. Fourteen centimetres
+    // of cast foot under all four corners gives the shell a shadow to sit in
+    // and a gap the grass shows through, and everything above is lifted by
+    // exactly that.
+    this.pool(
+      'stove.feet',
+      (() => {
+        const parts: THREE.BufferGeometry[] = [];
+        for (const x of [-0.3, 0.3]) {
+          for (const z of [-0.3, 0.3]) parts.push(cylinder(0.06, 0.085, 0.14, 0.07, 12).translate(x, 0, z));
+        }
+        parts.push(box(0.78, 0.06, 0.1, 0.11, 0, -0.3));
+        parts.push(box(0.78, 0.06, 0.1, 0.11, 0, 0.3));
+        return merge(...parts);
+      })(),
+      tone(0x36363b, 0.55, 0.35),
+      16,
+    );
+    this.pool('stove.body', rbox(0.88, 0.9, 0.86, 0.59, 0, 0, 0.06), solidMat(0.4), 16);
+    // A firebox door, hung: a fixed surround proud of the shell, a leaf proud of
+    // that, two hinge knuckles down one stile and a lever handle on the other.
+    // It was a dark rectangle lying on the face with a bar across it, which is a
+    // decal — the depth is what says "this opens", and it is two centimetres of
+    // it either side of the joint.
     this.pool(
       'stove.door',
-      merge(rbox(0.5, 0.42, 0.05, 0.4, 0, 0.43, 0.015, 1), box(0.3, 0.03, 0.03, 0.4, 0, 0.47)),
+      merge(
+        rbox(0.64, 0.5, 0.04, 0.58, 0, 0.44, 0.015, 1),
+        rbox(0.5, 0.38, 0.05, 0.58, 0, 0.475, 0.015, 1),
+        cylinder(0.032, 0.032, 0.09, 0.45, 12).translate(-0.27, 0, 0.46),
+        cylinder(0.032, 0.032, 0.09, 0.71, 12).translate(-0.27, 0, 0.46),
+        cylinder(0.018, 0.018, 0.055, 0, 10).rotateX(Math.PI / 2).translate(0.19, 0.58, 0.5275),
+        box(0.1, 0.03, 0.03, 0.58, 0.19, 0.535),
+      ),
       tone(0x2e2e33, 0.4, 0.3),
       16,
     );
+    // The air intake under the firebox, as louvres rather than as a dark patch:
+    // three blades tipped down out of a recessed plate, so the light gets under
+    // each one and the shadow it throws is the vent. A flat rectangle in a
+    // darker colour is the thing this replaces, and it never read as an opening
+    // from any angle.
+    this.pool(
+      'stove.vents',
+      (() => {
+        const parts: THREE.BufferGeometry[] = [box(0.52, 0.16, 0.02, 0.24, 0, 0.425)];
+        for (let i = 0; i < 3; i++) {
+          const blade = box(0.44, 0.03, 0.07, 0, 0, 0);
+          blade.rotateX(-0.6);
+          blade.translate(0, 0.18 + i * 0.055, 0.44);
+          parts.push(blade);
+        }
+        return merge(...parts);
+      })(),
+      tone(0x27272b, 0.6, 0.25),
+      16,
+    );
+    // A stovepipe, not a stub. It used to stop thirty centimetres over the shell,
+    // which from a body's eye height is a cap on a box; a flue leaves the roof of
+    // the firebox, climbs half a metre with a collar where it passes the shell,
+    // and finishes in a rain cap.
     this.pool(
       'stove.flue',
-      merge(cylinder(0.07, 0.07, 0.3, 0.95, 16).translate(-0.26, 0, -0.26), cylinder(0.09, 0.09, 0.05, 1.075, 16).translate(-0.26, 0, -0.26)),
+      merge(
+        cylinder(0.07, 0.075, 0.5, 1.29, 16).translate(-0.26, 0, -0.26),
+        cylinder(0.095, 0.095, 0.05, 1.1, 16).translate(-0.26, 0, -0.26),
+        cylinder(0.095, 0.095, 0.04, 1.47, 16).translate(-0.26, 0, -0.26),
+        cylinder(0.1, 0.085, 0.06, 1.56, 16).translate(-0.26, 0, -0.26),
+      ),
       tone(0x3a3a3f, 0.6, 0.3),
       16,
     );
     this.pool(
       'stove.plate',
-      merge(cylinder(0.14, 0.14, 0.025, 0.91, 20).translate(-0.2, 0, 0.1), cylinder(0.14, 0.14, 0.025, 0.91, 20).translate(0.2, 0, 0.1)),
+      merge(cylinder(0.14, 0.14, 0.025, 1.05, 20).translate(-0.2, 0, 0.1), cylinder(0.14, 0.14, 0.025, 1.05, 20).translate(0.2, 0, 0.1)),
       new THREE.MeshStandardMaterial({
         color: 0x3a3a40,
         emissive: new THREE.Color(0x2a0d05),
@@ -1334,30 +1499,58 @@ export class BuildingsView {
     // on top where the cold gets through. The compressor on the back face is
     // for the first-person view, where a chest with nothing driving it is a
     // trunk.
-    this.pool('cooler.body', rbox(0.92, 1.1, 0.86, 0.55, 0, 0, 0.06), solidMat(0.4), 16);
-    this.pool('cooler.lid', rbox(0.98, 0.2, 0.92, 1.22, 0, 0, 0.07), solidMat(0.38), 16);
+    // Same feet as the stove, and for the same reason: a chest sunk into the
+    // turf has nothing under it for a shadow to live in.
+    this.pool(
+      'cooler.feet',
+      (() => {
+        const parts: THREE.BufferGeometry[] = [];
+        for (const x of [-0.32, 0.32]) {
+          for (const z of [-0.3, 0.3]) parts.push(cylinder(0.055, 0.075, 0.1, 0.05, 12).translate(x, 0, z));
+        }
+        parts.push(box(0.82, 0.05, 0.1, 0.075, 0, -0.3));
+        parts.push(box(0.82, 0.05, 0.1, 0.075, 0, 0.3));
+        return merge(...parts);
+      })(),
+      tone(0x3f4a50, 0.55, 0.35),
+      16,
+    );
+    this.pool('cooler.body', rbox(0.92, 1.1, 0.86, 0.65, 0, 0, 0.06), solidMat(0.4), 16);
+    this.pool('cooler.lid', rbox(0.98, 0.2, 0.92, 1.32, 0, 0, 0.07), solidMat(0.38), 16);
     // Rime is ice: glass-smooth, so the band and the pane throw the sky back.
     this.pool(
       'cooler.frost',
-      merge(rbox(0.95, 0.24, 0.89, 0.74, 0, 0, 0.02, 1), rbox(0.68, 0.025, 0.6, 1.325, 0, -0.03, 0.01, 1)),
+      merge(rbox(0.95, 0.24, 0.89, 0.84, 0, 0, 0.02, 1), rbox(0.68, 0.025, 0.6, 1.425, 0, -0.03, 0.01, 1)),
       tone(0xdaeef5, 0.2),
       16,
     );
+    // The condenser grille is louvres now — four blades tipped down out of a
+    // recessed plate — and the machine has a cable: down the back off the
+    // compressor and out across the ground, which is what says the chest is
+    // plugged into the same grid as everything else rather than a crate.
     this.pool(
       'cooler.vent',
       merge(
-        rbox(0.5, 0.16, 0.04, 0.32, 0, 0.44, 0.01, 1),
-        box(0.16, 0.05, 0.04, 1.2, 0, 0.47),
-        rbox(0.9, 0.05, 0.84, 1.11, 0, 0, 0.01, 1),
-        rbox(0.44, 0.05, 0.07, 1.375, 0, 0.16, 0.02, 1),
-        cylinder(0.025, 0.025, 0.06, 1.34, 12).translate(-0.18, 0, 0.16),
-        cylinder(0.025, 0.025, 0.06, 1.34, 12).translate(0.18, 0, 0.16),
-        cylinder(0.035, 0.035, 0.18, 0, 16).rotateZ(Math.PI / 2).translate(-0.26, 1.31, -0.44),
-        cylinder(0.035, 0.035, 0.18, 0, 16).rotateZ(Math.PI / 2).translate(0.26, 1.31, -0.44),
-        rbox(0.5, 0.32, 0.1, 0.28, 0, -0.45, 0.03, 1),
-        box(0.42, 0.02, 0.04, 0.2, 0, -0.5),
-        box(0.42, 0.02, 0.04, 0.28, 0, -0.5),
-        box(0.42, 0.02, 0.04, 0.36, 0, -0.5),
+        box(0.54, 0.3, 0.02, 0.4, 0, 0.425),
+        ...[0, 1, 2, 3].map((i) => {
+          const blade = box(0.46, 0.03, 0.07, 0, 0, 0);
+          blade.rotateX(-0.6);
+          blade.translate(0, 0.29 + i * 0.075, 0.44);
+          return blade;
+        }),
+        box(0.16, 0.05, 0.04, 1.3, 0, 0.47),
+        rbox(0.9, 0.05, 0.84, 1.21, 0, 0, 0.01, 1),
+        rbox(0.44, 0.05, 0.07, 1.475, 0, 0.16, 0.02, 1),
+        cylinder(0.025, 0.025, 0.06, 1.44, 12).translate(-0.18, 0, 0.16),
+        cylinder(0.025, 0.025, 0.06, 1.44, 12).translate(0.18, 0, 0.16),
+        cylinder(0.035, 0.035, 0.18, 0, 16).rotateZ(Math.PI / 2).translate(-0.26, 1.41, -0.44),
+        cylinder(0.035, 0.035, 0.18, 0, 16).rotateZ(Math.PI / 2).translate(0.26, 1.41, -0.44),
+        rbox(0.5, 0.32, 0.1, 0.38, 0, -0.45, 0.03, 1),
+        box(0.42, 0.02, 0.04, 0.3, 0, -0.5),
+        box(0.42, 0.02, 0.04, 0.38, 0, -0.5),
+        box(0.42, 0.02, 0.04, 0.46, 0, -0.5),
+        new THREE.CapsuleGeometry(0.028, 0.22, 2, 8).translate(0.26, 0.17, -0.47),
+        new THREE.CapsuleGeometry(0.026, 0.14, 2, 8).rotateX(Math.PI / 2).translate(0.26, 0.03, -0.43),
       ),
       tone(0x4d5a60, 0.5, 0.3),
       16,
@@ -1463,13 +1656,30 @@ export class BuildingsView {
     // Heater: a rounded upright casing with fins down its face and an element
     // behind them that glows when it has watts behind it. Read against the
     // cooler on purpose — same footprint, warm colour, fins instead of frost.
-    this.pool('heat.body', rbox(0.78, 1.14, 0.64, 0.57, 0, 0, 0.06), solidMat(0.42), 24);
+    // It stands on feet like the rest of the machines, but it does not grow to
+    // do it: `def.height` is 1.25 and the cap is already there, so the ten
+    // centimetres come off the shell rather than going under the whole thing.
+    this.pool(
+      'heat.feet',
+      (() => {
+        const parts: THREE.BufferGeometry[] = [];
+        for (const x of [-0.28, 0.28]) {
+          for (const z of [-0.22, 0.22]) parts.push(cylinder(0.05, 0.07, 0.1, 0.05, 10).translate(x, 0, z));
+        }
+        parts.push(box(0.66, 0.05, 0.09, 0.075, 0, -0.22));
+        parts.push(box(0.66, 0.05, 0.09, 0.075, 0, 0.22));
+        return merge(...parts);
+      })(),
+      tone(0x3d3936, 0.6, 0.3),
+      24,
+    );
+    this.pool('heat.body', rbox(0.78, 1.04, 0.64, 0.62, 0, 0, 0.06), solidMat(0.42), 24);
     this.pool('heat.cap', rbox(0.86, 0.12, 0.72, 1.19, 0, 0, 0.05), solidMat(0.38), 24);
     this.pool(
       'heat.grille',
       (() => {
-        const parts: THREE.BufferGeometry[] = [box(0.6, 0.03, 0.06, 0.29, 0, 0.37), box(0.6, 0.03, 0.06, 0.81, 0, 0.37)];
-        for (let i = 0; i < 6; i++) parts.push(box(0.035, 0.52, 0.06, 0.55, -0.25 + i * 0.1, 0.37));
+        const parts: THREE.BufferGeometry[] = [box(0.6, 0.03, 0.06, 0.34, 0, 0.37), box(0.6, 0.03, 0.06, 0.86, 0, 0.37)];
+        for (let i = 0; i < 6; i++) parts.push(box(0.035, 0.52, 0.06, 0.6, -0.25 + i * 0.1, 0.37));
         return merge(...parts);
       })(),
       tone(0x40332c, 0.7),
@@ -1477,7 +1687,7 @@ export class BuildingsView {
     );
     this.pool(
       'heat.glow',
-      rbox(0.56, 0.46, 0.04, 0.55, 0, 0.33, 0.01, 1),
+      rbox(0.56, 0.46, 0.04, 0.6, 0, 0.33, 0.01, 1),
       new THREE.MeshStandardMaterial({ color: 0xff9b4d, emissive: new THREE.Color(0xd8500a), roughness: 0.4 }),
       24,
     );
@@ -1657,31 +1867,61 @@ export class BuildingsView {
     // the front, terminals on the hood and a stack over the firebox. The wheel
     // is what sells it from the isometric camera — a plain box reads as another
     // cabinet, a box with a wheel on it reads as an engine.
-    this.pool('gen.body', rbox(0.9, 0.9, 0.82, 0.45, 0, 0, 0.06), solidMat(0.4), 16);
-    this.pool('gen.hood', rbox(0.96, 0.16, 0.88, 0.98, 0, 0, 0.06), solidMat(0.38), 16);
+    //
+    // An engine is bolted to a skid, and the skid is what it stands on: two
+    // runners with a cross member at each end, twelve centimetres of it, so the
+    // housing clears the grass and the whole machine has a base a shadow can go
+    // under. Everything above is lifted by that.
+    this.pool(
+      'gen.skid',
+      merge(
+        rbox(0.94, 0.12, 0.14, 0.06, 0, -0.28, 0.03, 1),
+        rbox(0.94, 0.12, 0.14, 0.06, 0, 0.28, 0.03, 1),
+        box(0.14, 0.1, 0.58, 0.05, -0.36, 0),
+        box(0.14, 0.1, 0.58, 0.05, 0.36, 0),
+      ),
+      tone(0x3a3d43, 0.6, 0.35),
+      16,
+    );
+    this.pool('gen.body', rbox(0.9, 0.9, 0.82, 0.57, 0, 0, 0.06), solidMat(0.4), 16);
+    this.pool('gen.hood', rbox(0.96, 0.16, 0.88, 1.1, 0, 0, 0.06), solidMat(0.38), 16);
     this.pool(
       'gen.wheel',
       merge(
-        cylinder(0.28, 0.28, 0.1, 0, 24).rotateZ(Math.PI / 2).translate(0.48, 0.52, 0),
-        cylinder(0.08, 0.08, 0.14, 0, 12).rotateZ(Math.PI / 2).translate(0.48, 0.52, 0),
+        cylinder(0.28, 0.28, 0.1, 0, 24).rotateZ(Math.PI / 2).translate(0.48, 0.64, 0),
+        cylinder(0.08, 0.08, 0.14, 0, 12).rotateZ(Math.PI / 2).translate(0.48, 0.64, 0),
       ),
       tone(0x50545c, 0.45, 0.4),
       16,
     );
     this.pool(
       'gen.stack',
-      merge(cylinder(0.1, 0.13, 0.4, 1.25, 16).translate(-0.26, 0, -0.2), cylinder(0.13, 0.13, 0.05, 1.425, 16).translate(-0.26, 0, -0.2)),
+      merge(cylinder(0.1, 0.13, 0.4, 1.37, 16).translate(-0.26, 0, -0.2), cylinder(0.13, 0.13, 0.05, 1.545, 16).translate(-0.26, 0, -0.2)),
       tone(0x3c3a38, 0.8),
       16,
     );
+    // The cooling louvres over the firebox, the terminals on the hood, and the
+    // cable that leaves the back of the housing and runs off across the ground.
+    // The louvres were five flat bars lying on the face: the tell of a vent is
+    // the shadow under each blade, so each is tipped down out of a recessed
+    // plate and stands a centimetre and a half proud of it.
     this.pool(
       'gen.trim',
       (() => {
         const parts: THREE.BufferGeometry[] = [
-          cylinder(0.04, 0.04, 0.1, 1.1, 10).translate(0.2, 0, 0.25),
-          cylinder(0.04, 0.04, 0.1, 1.1, 10).translate(0.32, 0, 0.25),
+          cylinder(0.04, 0.04, 0.1, 1.22, 10).translate(0.2, 0, 0.25),
+          cylinder(0.04, 0.04, 0.1, 1.22, 10).translate(0.32, 0, 0.25),
+          box(0.5, 0.34, 0.02, 0.83, 0, 0.405),
+          box(0.14, 0.12, 0.06, 0.42, 0.28, -0.42),
+          new THREE.CapsuleGeometry(0.03, 0.28, 2, 8).translate(0.28, 0.22, -0.44),
+          new THREE.CapsuleGeometry(0.028, 0.16, 2, 8).rotateX(Math.PI / 2).translate(0.28, 0.04, -0.4),
         ];
-        for (let i = 0; i < 5; i++) parts.push(box(0.4, 0.02, 0.04, 0.6 + i * 0.06, 0, 0.42));
+        for (let i = 0; i < 4; i++) {
+          const blade = box(0.42, 0.028, 0.07, 0, 0, 0);
+          blade.rotateX(-0.6);
+          blade.translate(0, 0.72 + i * 0.075, 0.42);
+          parts.push(blade);
+        }
         return merge(...parts);
       })(),
       tone(0x45484f, 0.45, 0.4),
@@ -1691,7 +1931,7 @@ export class BuildingsView {
     // thing you read off the machine rather than off a panel.
     this.pool(
       'gen.fire',
-      rbox(0.4, 0.24, 0.08, 0.32, 0, 0.42, 0.02, 1),
+      rbox(0.4, 0.24, 0.08, 0.44, 0, 0.42, 0.02, 1),
       new THREE.MeshStandardMaterial({ color: 0xffb056, emissive: new THREE.Color(0xd45a10), roughness: 0.4 }),
       16,
     );
@@ -1718,21 +1958,53 @@ export class BuildingsView {
     // things a battery has on top: a row of cell caps, two rubber straps holding
     // the lid down, and the terminals with their bar, all standing proud enough
     // to throw a line of shadow from twenty cells up.
-    this.pool('batt.body', rbox(0.86, 0.6, 0.78, 0.3, 0, 0, 0.06), solidMat(0.45), 16);
-    this.pool('batt.lid', rbox(0.92, 0.12, 0.84, 0.66, 0, 0, 0.05), solidMat(0.4), 16);
+    //
+    // Cells are never stood on the ground — damp is what kills a bank — so the
+    // crate sits on a rack of two runners, and the ten centimetres of daylight
+    // under it is also what stops it reading as a slab laid on the grass.
+    this.pool(
+      'batt.rack',
+      merge(
+        box(0.9, 0.1, 0.12, 0.05, 0, -0.28),
+        box(0.9, 0.1, 0.12, 0.05, 0, 0.28),
+        box(0.12, 0.08, 0.56, 0.04, -0.33, 0),
+        box(0.12, 0.08, 0.56, 0.04, 0.33, 0),
+      ),
+      tone(0x3f4247, 0.6, 0.35),
+      16,
+    );
+    this.pool('batt.body', rbox(0.86, 0.6, 0.78, 0.4, 0, 0, 0.06), solidMat(0.45), 16);
+    this.pool('batt.lid', rbox(0.92, 0.12, 0.84, 0.76, 0, 0, 0.05), solidMat(0.4), 16);
+    // Terminals and their bar on the lid, two straps over it, a louvred flank
+    // either side and the cable that leaves the back of the bank for the
+    // ground. The flanks were a flat plate on each side and read as a painted
+    // panel; cells vent, and a vent is blades with light under them.
     this.pool(
       'batt.trim',
-      merge(
-        cylinder(0.05, 0.05, 0.14, 0.79, 16).translate(-0.25, 0, -0.22),
-        cylinder(0.05, 0.05, 0.14, 0.79, 16).translate(0.25, 0, -0.22),
-        cylinder(0.08, 0.08, 0.03, 0.732, 20).translate(-0.25, 0, -0.22),
-        cylinder(0.08, 0.08, 0.03, 0.732, 20).translate(0.25, 0, -0.22),
-        box(0.6, 0.03, 0.04, 0.87, 0, -0.22),
-        rbox(0.07, 0.025, 0.9, 0.73, -0.32, 0, 0.01, 1),
-        rbox(0.07, 0.025, 0.9, 0.73, 0.32, 0, 0.01, 1),
-        box(0.03, 0.3, 0.5, 0.3, 0.44, 0),
-        box(0.03, 0.3, 0.5, 0.3, -0.44, 0),
-      ),
+      (() => {
+        const parts: THREE.BufferGeometry[] = [
+          cylinder(0.05, 0.05, 0.14, 0.89, 16).translate(-0.25, 0, -0.22),
+          cylinder(0.05, 0.05, 0.14, 0.89, 16).translate(0.25, 0, -0.22),
+          cylinder(0.08, 0.08, 0.03, 0.832, 20).translate(-0.25, 0, -0.22),
+          cylinder(0.08, 0.08, 0.03, 0.832, 20).translate(0.25, 0, -0.22),
+          box(0.6, 0.03, 0.04, 0.97, 0, -0.22),
+          rbox(0.07, 0.025, 0.9, 0.83, -0.32, 0, 0.01, 1),
+          rbox(0.07, 0.025, 0.9, 0.83, 0.32, 0, 0.01, 1),
+          box(0.14, 0.1, 0.06, 0.62, 0.2, -0.42),
+          new THREE.CapsuleGeometry(0.03, 0.48, 2, 8).translate(0.2, 0.33, -0.44),
+          new THREE.CapsuleGeometry(0.028, 0.16, 2, 8).rotateX(Math.PI / 2).translate(0.2, 0.04, -0.4),
+        ];
+        for (const side of [-1, 1]) {
+          parts.push(box(0.02, 0.36, 0.56, 0.4, side * 0.42, 0));
+          for (let i = 0; i < 3; i++) {
+            const blade = box(0.06, 0.028, 0.52, 0, 0, 0);
+            blade.rotateZ(side * 0.6);
+            blade.translate(side * 0.44, 0.3 + i * 0.09, 0);
+            parts.push(blade);
+          }
+        }
+        return merge(...parts);
+      })(),
       tone(0x45484f, 0.45, 0.4),
       16,
     );
@@ -1741,7 +2013,7 @@ export class BuildingsView {
       (() => {
         const parts: THREE.BufferGeometry[] = [];
         for (const x of [-0.16, 0, 0.16]) {
-          for (const z of [0.08, 0.26]) parts.push(cylinder(0.055, 0.06, 0.035, 0.735, 12).translate(x, 0, z));
+          for (const z of [0.08, 0.26]) parts.push(cylinder(0.055, 0.06, 0.035, 0.835, 10).translate(x, 0, z));
         }
         return merge(...parts);
       })(),
@@ -1750,7 +2022,7 @@ export class BuildingsView {
     );
     this.pool(
       'batt.band',
-      rbox(0.5, 0.14, 0.06, 0.42, 0, 0.4, 0.01, 1),
+      rbox(0.5, 0.14, 0.06, 0.52, 0, 0.4, 0.01, 1),
       new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: new THREE.Color(0x224422), roughness: 0.4 }),
       16,
     );
@@ -1762,11 +2034,61 @@ export class BuildingsView {
     // The pillar runs up into the frame rather than stopping short of it: it
     // used to end at 0.6 under a panel whose underside is at 0.79, which from a
     // body's eye height was a panel hanging in the air over a post.
-    this.pool('solar.pillar', merge(cylinder(0.07, 0.1, 0.82, 0.41, 16), cylinder(0.2, 0.22, 0.05, 0.025, 16)), solidMat(0.7), 16);
+    //
+    // And it is mounted, not floating. The panel used to be a single slab on a
+    // post: a blue tile in the air with a stick under it, which is what it read
+    // as from every angle. A panel is a rail frame with a backsheet in it, sat
+    // in a yoke, braced back to the mast by a strut, with a junction box under
+    // the low corner and a cable off it to the ground — and the foot is a bolted
+    // plinth, because the one thing a mast cannot do is stand in soil on its own.
+    this.pool(
+      'solar.pillar',
+      (() => {
+        const parts: THREE.BufferGeometry[] = [cylinder(0.07, 0.1, 0.82, 0.41, 16), cylinder(0.24, 0.28, 0.07, 0.035, 20)];
+        for (const [x, z] of CORNERS) parts.push(cylinder(0.022, 0.022, 0.04, 0.08, 8).translate(x * 0.17, 0, z * 0.17));
+        return merge(...parts);
+      })(),
+      solidMat(0.7),
+      16,
+    );
+    this.pool(
+      'solar.mount',
+      (() => {
+        // A yoke across the mast head, a strut running up and forward to the
+        // panel's underside, and the wiring. The strut's angle is the one the
+        // geometry works out for itself: it spans the half metre from the mast
+        // at 0.45 to the frame at 0.79, and the box below is what the cable
+        // comes out of.
+        const yoke = rbox(0.2, 0.06, 0.44, 0, 0, 0, 0.02, 1);
+        yoke.rotateX(-0.36);
+        yoke.translate(0, 0.76, 0);
+        const strut = rbox(0.05, 0.53, 0.05, 0, 0, 0, 0.015, 1);
+        strut.rotateX(0.624);
+        strut.translate(0, 0.6625, 0.093);
+        return merge(
+          yoke,
+          strut,
+          rbox(0.18, 0.12, 0.12, 0.6, 0.13, -0.14, 0.03, 1),
+          new THREE.CapsuleGeometry(0.028, 0.44, 2, 8).translate(0.13, 0.3, -0.16),
+          new THREE.CapsuleGeometry(0.026, 0.18, 2, 8).rotateX(Math.PI / 2).translate(0.13, 0.03, -0.28),
+        );
+      })(),
+      tone(0x4a4d55, 0.5, 0.35),
+      16,
+    );
     this.pool(
       'solar.frame',
       (() => {
-        const g = rbox(1.04, 0.06, 0.92, 0, 0, 0, 0.02, 1);
+        const parts: THREE.BufferGeometry[] = [
+          rbox(1.04, 0.07, 0.08, 0, 0, -0.42, 0.02, 1),
+          rbox(1.04, 0.07, 0.08, 0, 0, 0.42, 0.02, 1),
+          rbox(0.08, 0.07, 0.92, 0, -0.48, 0, 0.02, 1),
+          rbox(0.08, 0.07, 0.92, 0, 0.48, 0, 0.02, 1),
+          box(0.96, 0.02, 0.8, -0.02, 0, 0),
+          box(0.92, 0.05, 0.06, -0.05, 0, -0.2),
+          box(0.92, 0.05, 0.06, -0.05, 0, 0.2),
+        ];
+        const g = merge(...parts);
         g.rotateX(-0.36);
         g.translate(0, 0.82, 0);
         return g;
@@ -1779,7 +2101,7 @@ export class BuildingsView {
       (() => {
         const parts: THREE.BufferGeometry[] = [];
         for (let i = 0; i < 4; i++) {
-          for (let j = 0; j < 3; j++) parts.push(box(0.22, 0.02, 0.26, 0.035, -0.375 + i * 0.25, -0.28 + j * 0.28));
+          for (let j = 0; j < 3; j++) parts.push(box(0.2, 0.02, 0.22, 0.035, -0.33 + i * 0.22, -0.26 + j * 0.26));
         }
         const g = merge(...parts);
         g.rotateX(-0.36);
@@ -1851,8 +2173,8 @@ export class BuildingsView {
           [0.3, 2.6],
           [0, 2.82],
         ]),
-        0.14,
-        0.3,
+        TREE_LOBE,
+        1,
       ),
       solidMat(0.85),
       256,
@@ -1870,8 +2192,8 @@ export class BuildingsView {
           [0.26, 3.3],
           [0, 3.48],
         ]),
-        0.14,
-        1.4,
+        TREE_LOBE,
+        2,
       ),
       solidMat(0.85),
       256,
@@ -1889,8 +2211,8 @@ export class BuildingsView {
           [0.18, 3.82],
           [0, 3.98],
         ]),
-        0.14,
-        2.6,
+        TREE_LOBE,
+        3,
       ),
       solidMat(0.85),
       256,
@@ -1911,8 +2233,8 @@ export class BuildingsView {
           [0.1, 4.38],
           [0, 4.5],
         ]),
-        0.12,
-        4.4,
+        TREE_LOBE * 0.9,
+        4,
       ).translate(0.1, 0, -0.06),
       solidMat(0.85),
       256,
@@ -2142,6 +2464,7 @@ export class BuildingsView {
         break;
       case 'lab':
         this.flat('lab.desk', b);
+        this.flat('lab.console', b);
         this.flat('lab.glass', b);
         this.flat('lab.stand', b);
         this.flat('lab.lamp', b);
@@ -2191,12 +2514,15 @@ export class BuildingsView {
         this.flat('game.stools', b);
         break;
       case 'stove':
+        this.flat('stove.feet', b);
         this.flat('stove.body', b);
         this.flat('stove.door', b);
+        this.flat('stove.vents', b);
         this.flat('stove.flue', b);
         this.flat('stove.plate', b);
         break;
       case 'cooler':
+        this.flat('cooler.feet', b);
         this.flat('cooler.body', b);
         this.flat('cooler.lid', b);
         this.flat('cooler.frost', b);
@@ -2221,6 +2547,7 @@ export class BuildingsView {
         break;
       }
       case 'heater':
+        this.flat('heat.feet', b);
         this.flat('heat.body', b);
         this.flat('heat.cap', b);
         this.flat('heat.grille', b);
@@ -2302,6 +2629,7 @@ export class BuildingsView {
         this.flat(b.powered === true ? 'lamp.globe' : 'lamp.dark', b);
         break;
       case 'generator':
+        this.flat('gen.skid', b);
         this.flat('gen.body', b);
         this.flat('gen.hood', b);
         this.flat('gen.wheel', b);
@@ -2322,6 +2650,7 @@ export class BuildingsView {
         }
         break;
       case 'battery': {
+        this.flat('batt.rack', b);
         this.flat('batt.body', b);
         this.flat('batt.lid', b);
         this.flat('batt.trim', b);
@@ -2339,6 +2668,7 @@ export class BuildingsView {
       }
       case 'solar':
         this.flat('solar.pillar', b);
+        this.flat('solar.mount', b);
         this.flat('solar.frame', b);
         this.flat('solar.cells', b);
         break;

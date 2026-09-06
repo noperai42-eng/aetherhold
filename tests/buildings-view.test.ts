@@ -323,7 +323,75 @@ describe('a table', () => {
   });
 });
 
+describe('a machine', () => {
+  it('stands on feet, because a shell run into the turf is a box somebody dropped', () => {
+    // The one thing every machine in the colony had in common from the manager
+    // camera was the line where it met the ground: no gap, no shadow, no
+    // shortening as the light moves — which is what a decal on a box looks
+    // like and not what an object standing on grass looks like. So each of
+    // them has a foot, a skid or a rack under it that touches the ground, and
+    // a shell that starts a hand's width above it. The two halves are checked
+    // together on purpose: feet with the shell still down in the grass are
+    // ornament, and a lifted shell with nothing under it floats.
+    const view = new BuildingsView();
+    const stands: ReadonlyArray<readonly [string, string]> = [
+      ['stove.feet', 'stove.body'],
+      ['cooler.feet', 'cooler.body'],
+      ['gen.skid', 'gen.body'],
+      ['batt.rack', 'batt.body'],
+      ['heat.feet', 'heat.body'],
+    ];
+    for (const [feet, shell] of stands) {
+      const f = partGeometry(view, feet);
+      const s = partGeometry(view, shell);
+      f.computeBoundingBox();
+      s.computeBoundingBox();
+      expect(f.boundingBox!.min.y, `${feet} never reaches the ground`).toBeLessThan(0.01);
+      expect(s.boundingBox!.min.y, `${shell} sits flush on the grass`).toBeGreaterThanOrEqual(0.09);
+    }
+    view.dispose();
+  });
+});
+
 describe('a wood', () => {
+  it('gives every skirt an outline of its own, so a crown from overhead is not a set of rings', () => {
+    // The round-6 crown was lobed, and from directly overhead it still read as
+    // concentric circles — because the lobes were one fixed mix of waves with a
+    // phase per skirt, and turning an outline does not change it. Four copies
+    // of one gentle oval, stacked and rotated, are rings. So the depth of the
+    // waves as well as their phase is hashed per skirt: how far a skirt runs
+    // out has to differ meridian to meridian by a good third, and the side each
+    // skirt runs furthest out on has to differ from its neighbours' — which is
+    // what stops the four rims from nesting.
+    const view = new BuildingsView();
+    const widest: number[] = [];
+    for (const key of ['tree.lower', 'tree.mid', 'tree.upper', 'tree.top']) {
+      const g = partGeometry(view, key) as THREE.LatheGeometry;
+      const { points, segments } = g.parameters;
+      const P = points.length;
+      const pos = g.attributes.position;
+      // Measured from the skirt's own axis: the leader is hung off centre.
+      g.computeBoundingBox();
+      const cx = (g.boundingBox!.max.x + g.boundingBox!.min.x) / 2;
+      const cz = (g.boundingBox!.max.z + g.boundingBox!.min.z) / 2;
+      const rim: number[] = [];
+      for (let m = 0; m <= segments; m++) {
+        let r = 0;
+        for (let j = 0; j < P; j++) {
+          const k = m * P + j;
+          r = Math.max(r, Math.hypot(pos.getX(k) - cx, pos.getZ(k) - cz));
+        }
+        rim.push(r);
+      }
+      const hi = Math.max(...rim);
+      const lo = Math.min(...rim);
+      expect(hi / lo, `${key} reaches ${hi} on its longest bough and ${lo} on its shortest`).toBeGreaterThan(1.35);
+      widest.push(rim.indexOf(hi) % segments);
+    }
+    expect(new Set(widest).size, 'every skirt of the crown is widest on the same side').toBeGreaterThanOrEqual(3);
+    view.dispose();
+  });
+
   it('has crowns with a lobed rim, not a circle turned on a lathe', () => {
     // The tell of a stacked-cone tree is the rim of each tier: a clean
     // horizontal circle where the profile is widest, with every vertex on it

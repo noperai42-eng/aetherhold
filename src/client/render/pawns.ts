@@ -185,10 +185,17 @@ class PawnRig implements Rig {
       this.head.add(eye);
     }
 
-    // Hands and boots ride their limbs, so they swing from the same pivot.
-    for (const arm of [this.armL, this.armR]) {
+    // Hands and boots ride their limbs, so they swing from the same pivot. The
+    // hand is cut with its thumb toward -X, which is the midline for the right
+    // arm; the left wears the same buffer mirrored, so both thumbs face in.
+    for (const [side, arm] of [
+      [-1, this.armL],
+      [1, this.armR],
+    ] as const) {
       const hand = new THREE.Mesh(shared.hand, skinMat);
+      hand.name = 'hand';
       hand.position.y = -0.57;
+      hand.scale.x = side;
       hand.castShadow = true;
       arm.add(hand);
     }
@@ -365,8 +372,15 @@ export function hideTint(base: number, seed: number): THREE.Color {
   return c;
 }
 
-/** The four colours an animal is painted in, named so a model can ask for one. */
-type Tone = 'hide' | 'dark' | 'pale' | 'horn';
+/**
+ * The five colours an animal is painted in, named so a model can ask for one.
+ *
+ * `dark` and `shade` are both the coat gone deeper and they are not the same
+ * thing: `dark` is for the parts of an animal that are another substance — a
+ * hoof, the back of an ear, the tip of a tail — and `shade` is for a marking in
+ * the hide itself, which is the coat and has to look like the coat.
+ */
+type Tone = 'hide' | 'dark' | 'shade' | 'pale' | 'horn';
 type Vec3 = readonly [number, number, number];
 
 /** Something rooted on the skull — an antler or an ear — one side, mirrored for the other. */
@@ -402,8 +416,13 @@ interface Crown {
  */
 interface SpeciesModel {
   body: THREE.BufferGeometry;
-  /** A dorsal stripe, a pale belly, a white scut: still, and not the coat's colour. */
-  markings: { geometry: THREE.BufferGeometry; tone: Tone }[];
+  /**
+   * A saddle over the back, a pale belly, a white scut: still, and not the
+   * coat's colour. Each is named for what it is rather than for the tone it is
+   * painted in — a mossback's tail and its withers are both deeper than the
+   * hide and nothing else about them is alike.
+   */
+  markings: { geometry: THREE.BufferGeometry; tone: Tone; name: string }[];
   neck: THREE.BufferGeometry;
   neckAt: Vec3;
   neckPitch: number;
@@ -509,11 +528,21 @@ class AnimalRig implements Rig {
 
     const hide = hideTint(ANIMAL_COLOR[kind], pawn.colorSeed);
     const hideMat = new THREE.MeshStandardMaterial({ color: hide, roughness: 0.9 });
-    // Hooves, ears, a stripe down the spine: the coat's own colour gone darker,
-    // which is how those parts differ on the animal and not a second dye.
+    // Hooves, the backs of ears, the flag of a tail: the coat's own colour gone
+    // darker, which is how those parts differ on the animal and not a second dye.
     const darkMat = new THREE.MeshStandardMaterial({
       color: new THREE.Color(hide).offsetHSL(0, -0.05, -0.14),
       roughness: 0.85,
+    });
+    // The markings on the back, which are hide and nothing else: one step deeper
+    // than the coat and a touch richer, never greyer. Painted in `darkMat` — the
+    // tone a hoof is — the mossback's back marking read at a settler's eye
+    // height as a hole burnt through the shoulder rather than as markings, and
+    // half of that was the value: a patch four times darker than the hide around
+    // it is a thing missing from the animal, not a thing on it.
+    const shadeMat = new THREE.MeshStandardMaterial({
+      color: new THREE.Color(hide).offsetHSL(0, 0.02, -0.075),
+      roughness: 0.9,
     });
     // The belly, the chest, the scut: lighter and greyer, the way an underside
     // is. Kept a step short of white so the hare stays a hare and not a lamp.
@@ -525,9 +554,15 @@ class AnimalRig implements Rig {
     // Low roughness on the eye and the nose, so both take a highlight from the
     // sun: the glint is what makes a bead read as an eye rather than a dot.
     const eyeMat = new THREE.MeshStandardMaterial({ color: 0x14100e, roughness: 0.35 });
-    this.mats.push(hideMat, darkMat, paleMat, hornMat, eyeMat);
-    const tone = (t: Tone): THREE.Material =>
-      t === 'hide' ? hideMat : t === 'dark' ? darkMat : t === 'pale' ? paleMat : hornMat;
+    this.mats.push(hideMat, darkMat, shadeMat, paleMat, hornMat, eyeMat);
+    const coat: Record<Tone, THREE.Material> = {
+      hide: hideMat,
+      dark: darkMat,
+      shade: shadeMat,
+      pale: paleMat,
+      horn: hornMat,
+    };
+    const tone = (t: Tone): THREE.Material => coat[t];
 
     const barrel = new THREE.Mesh(model.body, hideMat);
     barrel.name = 'body';
@@ -576,6 +611,7 @@ class AnimalRig implements Rig {
     }
     for (const marking of model.markings) {
       const patch = new THREE.Mesh(marking.geometry, tone(marking.tone));
+      patch.name = marking.name;
       patch.castShadow = true;
       this.body.add(patch);
     }
@@ -920,6 +956,60 @@ function makeNeck(): THREE.BufferGeometry {
 }
 
 /**
+ * A hand: a mitten. A palm narrow across the body and deep front to back, with
+ * a thumb standing out of its inner edge and raked forward.
+ *
+ * It was a sphere, and from the close overhead camera — the one the player
+ * frames a settler in — a pale ball on the end of a sleeve is a blob. Nothing
+ * at this size can have fingers; what a hand needs is the outline a hand has,
+ * and that outline is the thumb. It is cut for the right hand, thumb toward
+ * -X, and the rig mirrors it for the left, the way an antler is mirrored: on a
+ * body whose arms hang at its sides, both thumbs point at the midline.
+ */
+function makeHand(): THREE.BufferGeometry {
+  const palm = new THREE.SphereGeometry(0.062, 8, 6).scale(0.72, 1.2, 1.15);
+  // Rooted a fifth of the way into the palm, so no rim of it shows where the
+  // two meet, and rolled far enough over that most of its length is width: a
+  // thumb held against the hand is a knuckle, and the outline is the point.
+  const thumb = new THREE.CapsuleGeometry(0.019, 0.055, 1, 6)
+    .rotateZ(1.05)
+    .rotateX(0.3)
+    .translate(-0.028, -0.014, 0.018);
+  return weld([palm, thumb]);
+}
+
+/**
+ * A boot: a capsule lying along the foot, pressed flat, then narrowed at the
+ * heel and drawn out at the toe — because a foot is not symmetric front to
+ * back and the overhead camera looks straight down at the one part of a settler
+ * that is. The widest point lands at the ball, a fifth of the way forward of
+ * the ankle, which is where a boot's is.
+ *
+ * The normals three built are kept. They are out by five degrees at the worst
+ * of the taper, which nothing can see; `computeVertexNormals` would be exact at
+ * the faces and wrong at the vertices, because a capsule stores its seam and
+ * its two poles as several copies of one point, and each copy would average
+ * only the faces on its own side — a shading crease down the length of the boot
+ * and a star on each end, in exchange for five degrees.
+ */
+function makeBoot(): THREE.BufferGeometry {
+  const g = new THREE.CapsuleGeometry(0.072, 0.1, 2, 10);
+  g.rotateX(Math.PI / 2);
+  g.scale(1.05, 0.68, 1);
+  const pos = g.attributes.position!;
+  const reach = 0.122; // the capsule's own half-length along the foot
+  for (let i = 0; i < pos.count; i++) {
+    const z = pos.getZ(i);
+    const u = z / reach;
+    pos.setX(i, pos.getX(i) * (0.86 + 0.14 * u));
+    // Quadratic ahead of the ankle and flat behind it, so the stretch starts
+    // at the same slope the heel ends on and leaves no crease at the arch.
+    pos.setZ(i, z * (1 + 0.12 * Math.max(0, u)));
+  }
+  return g;
+}
+
+/**
  * An animal's neck: tapered from the chest to the skull, centred on its own
  * length and domed at the top, so its top centre sits at `length / 2 + topR`
  * along +Y — the number the rig places the head against. The head pitches
@@ -1100,6 +1190,47 @@ function makeBrush(radius: number, length: number): THREE.BufferGeometry {
 }
 
 /**
+ * A marking on a hide: a patch of the ellipsoid the body is already made of,
+ * a finger's width outside it, cut to a hem that wanders round the animal.
+ *
+ * The point of building it this way is the shading. A marking laid *on* a back
+ * as a shape of its own — the tube that used to arch along a mossback's spine —
+ * meets the hide at a tangent, so the sliver of it that clears the coat is lit
+ * as if it faced sideways while the hide either side of it faces the sky. At
+ * eleven cells up that is a dark line and it did its job; at a settler's eye
+ * height it is a hole burnt in the shoulder. A shell of the body's own surface
+ * has the body's own normals, so it takes exactly the light the coat takes and
+ * the only thing that changes at its edge is the colour.
+ *
+ * The offset has to clear more than the gap between the two surfaces: both are
+ * polygons, and the flat of a face sits inside the curve its corners are on.
+ * Cut the patch on the same meridians as the body under it (`cols` matching the
+ * body sphere's width segments) and that error cancels round the animal; what
+ * is left is the patch's own sag between rows, which a finger's width covers.
+ *
+ * The hem is the marking's edge and it is meant to be seen, so it is where the
+ * shape comes from: `hemOf` eases between a handful of turning points, and one
+ * flank set deeper than the other is the difference between markings and a
+ * decal. Where the hem sinks below some other part of the body — a barrel
+ * behind a hump, a haunch under a rump — it simply disappears into the coat,
+ * which is the softest edge available and costs nothing.
+ */
+function makeSaddle(
+  radii: Vec3,
+  hem: (phi: number) => number,
+  cols: number,
+  rows: number,
+): THREE.BufferGeometry {
+  const g = skullPatch(hem, cols, rows).scale(...radii);
+  g.computeVertexNormals();
+  // The crown is one point stored once per meridian, and each copy would take
+  // the normal of its own lone triangle: pinned up, the way the hair's is.
+  const n = g.attributes.normal!;
+  for (let j = 0; j <= cols; j++) n.setXYZ(j, 0, 1, 0);
+  return g;
+}
+
+/**
  * A muzzle pushed out of the front of a skull along +Z: a lathe that tapers
  * from `baseR`, buried in the skull, to `tipR` at the nose, with a domed end.
  * Long and blunt on a grazer, short and pointed on a hunter — the taper is
@@ -1156,24 +1287,38 @@ function blob(radii: Vec3, at: Vec3, widthSegs = 10, heightSegs = 7): THREE.Buff
 /**
  * The mossback: think elk. A heavy barrel with a hump at the withers, a thick
  * short neck holding a long blunt muzzle up high, antlers branching three
- * tines a side, a flag of a tail, and a darker stripe down the spine — the
- * stripe rides just proud of the back, a ridge of coarser hair, from rump to
- * hump. Its legs are the longest and the thickest here, and end in hooves.
+ * tines a side, a flag of a tail, and a cape of coarser hair over the withers
+ * a shade deeper than the coat — which is what the manager camera, looking at
+ * the top of the animal, has to tell it apart by. Its legs are the longest and
+ * the thickest here, and end in hooves.
  */
 function makeMossback(): SpeciesModel {
   const barrel = makeBarrel(0.22, 0.46, 4, 14).scale(1.05, 0.95, 1).translate(0, 0.66, 0);
   const hump = blob([0.2, 0.17, 0.24], [0, 0.78, 0.18]);
-  const spine = new THREE.TubeGeometry(
-    new THREE.QuadraticBezierCurve3(
-      new THREE.Vector3(0, 0.8, -0.42),
-      new THREE.Vector3(0, 1.02, 0.1),
-      new THREE.Vector3(0, 0.92, 0.36),
-    ),
-    6,
-    0.04,
-    5,
-    false,
-  ).scale(1.5, 1, 1);
+  // The withers, in the coat one step deeper: a cape of coarser hair over the
+  // hump, which is the highest thing on the animal and the part both cameras
+  // see most of. It was an arched tube from the rump to the hump, and what that
+  // read as at eye level is written up on `makeSaddle`. Cut on the hump's own
+  // ten meridians, so the two surfaces bend together; deeper down the near
+  // shoulder than the far one and shallower at the chest, so the edge is a
+  // marking's edge; and stopped short at the back, where it drops inside the
+  // barrel and the cape ends without an edge at all.
+  const saddle = makeSaddle(
+    [0.222, 0.192, 0.262],
+    hemOf([
+      [0, 0.42],
+      [0.25, 0.48],
+      [0.5, 0.38],
+      [0.75, 0.44],
+      [1, 0.36],
+      [1.25, 0.44],
+      [1.5, 0.45],
+      [1.75, 0.44],
+      [2, 0.42],
+    ]),
+    10,
+    4,
+  ).translate(0, 0.78, 0.18);
   // Short and hanging, rooted just under the rump's skin. It was a bud barely
   // wider than the coat it sat in, which from a settler's eye height is a
   // pucker on the rump rather than a tail; half again as thick and half again
@@ -1182,8 +1327,8 @@ function makeMossback(): SpeciesModel {
   return {
     body: weld([barrel, hump]),
     markings: [
-      { geometry: spine, tone: 'dark' },
-      { geometry: flag, tone: 'dark' },
+      { geometry: saddle, tone: 'shade', name: 'saddle' },
+      { geometry: flag, tone: 'dark', name: 'flag' },
     ],
     neck: makeAnimalNeck(0.16, 0.12, 0.3),
     neckAt: [0, 0.84, 0.36],
@@ -1227,30 +1372,50 @@ function makeDunhare(): SpeciesModel {
   const egg = new THREE.SphereGeometry(1, 12, 9).scale(0.22, 0.24, 0.3).rotateX(0.3).translate(0, 0.42, 0);
   const haunchL = blob([0.1, 0.13, 0.15], [-0.16, 0.3, -0.17]);
   const haunchR = blob([0.1, 0.13, 0.15], [0.16, 0.3, -0.17]);
-  // The same egg, a shade smaller and set a shade higher, so only the crown of
-  // it clears the coat: a dark saddle from the shoulders back over the rump.
-  // The manager camera sees the top of an animal and nothing else, and a sand
-  // hare on sand grass at that angle was a pale lump with ears — the darker
-  // back is the one surface that camera can read, and it is the coat's own
-  // colour gone deeper, which is what a hare's back actually is.
-  // Only the crown of it ever cleared the coat, so only the crown is drawn: a
-  // cap swept two thirds of the way down the egg, whose open rim lies a clear
-  // tenth of a body inside the body it sits in and is never a hole anyone sees.
-  // The whole second egg cost a fifth of the animal to hide four fifths of
-  // itself, and the ears are where that went.
-  const saddle = new THREE.SphereGeometry(1, 12, 5, 0, Math.PI * 2, 0, Math.PI * 0.62)
-    .scale(0.205, 0.235, 0.285)
+  // The saddle: the egg's own surface, a finger's width outside it, from the
+  // shoulders back over the rump. The manager camera sees the top of an animal
+  // and nothing else, and a sand hare on sand grass at that angle was a pale
+  // lump with ears — the deeper back is the one surface that camera can read,
+  // and it is the coat's own colour gone deeper, which is what a hare's back
+  // actually is.
+  //
+  // It was a second egg set higher and sunk inside the first, and only the
+  // crown of it cleared the coat. That put the marking's edge wherever two
+  // ellipsoids happened to cross, which is a clean ellipse laid across the
+  // animal — the one shape no hide has ever grown. The hem is drawn now
+  // instead: deeper over the rump, shallow at the shoulders, and one flank
+  // lower than the other.
+  const saddle = makeSaddle(
+    [0.242, 0.262, 0.322],
+    hemOf([
+      [0, 0.46],
+      [0.25, 0.4],
+      [0.5, 0.34],
+      [0.75, 0.42],
+      [1, 0.5],
+      [1.25, 0.48],
+      [1.5, 0.54],
+      [1.75, 0.5],
+      [2, 0.46],
+    ]),
+    12,
+    4,
+  )
     .rotateX(0.3)
-    .translate(0, 0.465, 0);
+    .translate(0, 0.42, 0);
   return {
     body: weld([egg, haunchL, haunchR]),
     markings: [
-      { geometry: saddle, tone: 'dark' },
-      { geometry: blob([0.2, 0.16, 0.26], [0, 0.33, 0.04], 9, 6), tone: 'pale' },
+      { geometry: saddle, tone: 'shade', name: 'saddle' },
+      { geometry: blob([0.2, 0.16, 0.26], [0, 0.33, 0.04], 9, 6), tone: 'pale', name: 'belly' },
       // The scut. A hare's tail is the one pale thing on its back end and the
       // last of it a settler sees as it bolts, so it is a ball with a bit of
       // size to it rather than the bead it was.
-      { geometry: new THREE.SphereGeometry(0.078, 9, 7).translate(0, 0.552, -0.312), tone: 'pale' },
+      {
+        geometry: new THREE.SphereGeometry(0.078, 9, 7).translate(0, 0.552, -0.312),
+        tone: 'pale',
+        name: 'scut',
+      },
     ],
     neck: makeAnimalNeck(0.09, 0.075, 0.14),
     neckAt: [0, 0.5, 0.26],
@@ -1302,8 +1467,12 @@ function makeBrambletail(): SpeciesModel {
   return {
     body: weld([barrel, brush]),
     markings: [
-      { geometry: blob([0.11, 0.1, 0.14], [0, 0.38, 0.3], 9, 6), tone: 'pale' },
-      { geometry: new THREE.SphereGeometry(0.062, 9, 7).translate(0, 0.838, -0.641), tone: 'pale' },
+      { geometry: blob([0.11, 0.1, 0.14], [0, 0.38, 0.3], 9, 6), tone: 'pale', name: 'chest' },
+      {
+        geometry: new THREE.SphereGeometry(0.062, 9, 7).translate(0, 0.838, -0.641),
+        tone: 'pale',
+        name: 'brush-tip',
+      },
     ],
     neck: makeAnimalNeck(0.09, 0.07, 0.14),
     neckAt: [0, 0.56, 0.42],
@@ -1345,8 +1514,12 @@ function makeFenwolf(): SpeciesModel {
   return {
     body: weld([barrel, ruff, brush]),
     markings: [
-      { geometry: blob([0.15, 0.13, 0.3], [0, 0.5, 0.02], 9, 6), tone: 'pale' },
-      { geometry: new THREE.SphereGeometry(0.057, 9, 7).translate(0, 0.406, -0.757), tone: 'dark' },
+      { geometry: blob([0.15, 0.13, 0.3], [0, 0.5, 0.02], 9, 6), tone: 'pale', name: 'belly' },
+      {
+        geometry: new THREE.SphereGeometry(0.057, 9, 7).translate(0, 0.406, -0.757),
+        tone: 'dark',
+        name: 'brush-tip',
+      },
     ],
     neck: makeAnimalNeck(0.13, 0.1, 0.24),
     // Pitched nearly flat, so the neck comes down with the head: pitched
@@ -1382,11 +1555,6 @@ function makeShared(): SharedGeometry {
   // the same way, so it hugs the cloth instead of cutting through it.
   const belt = new THREE.CylinderGeometry(0.215, 0.22, 0.06, 20, 1, true);
   belt.scale(1, 1, 0.62);
-  // A boot is a capsule lying along the foot, pressed flat: a rounded toe and
-  // heel from the manager camera, and no seam anywhere at eye level.
-  const boot = new THREE.CapsuleGeometry(0.072, 0.1, 2, 10);
-  boot.rotateX(Math.PI / 2);
-  boot.scale(1.05, 0.68, 1);
   return {
     torso: makeTorso(),
     belt,
@@ -1401,9 +1569,9 @@ function makeShared(): SharedGeometry {
     // Three rings on the caps: the top of a leg is inside the torso and the
     // bottom inside a boot, so the fourth was paid for and never seen.
     leg: limb(0.075, SETTLER_LEG, 12, 3),
-    boot,
+    boot: makeBoot(),
     arm: limb(0.065, 0.6, 12, 3),
-    hand: new THREE.SphereGeometry(0.07, 8, 6),
+    hand: makeHand(),
     rifleStock: makeRifleStock(),
     rifleAction: makeRifleAction(),
     club: makeClub(),

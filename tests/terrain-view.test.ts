@@ -669,3 +669,109 @@ describe('what the mottling on the ground says', () => {
     expect(spread(winter)).toBeLessThan(spread(meadow()) * 0.28);
   });
 });
+
+/**
+ * The grain, which is the first thing on this ground that is not a number per
+ * corner.
+ *
+ * Six rounds of raising the corner mottle measured nothing on the screen,
+ * because a corner value is ramped across a whole cell and averaged with its
+ * neighbours before a pixel ever sees it. So the grain is drawn in the
+ * fragment shader instead, and what is testable without a GPU is the two halves
+ * of the handshake: the per-vertex weight that says how much grain a patch of
+ * ground is allowed, and the injection that still finds the line in three's
+ * shader it multiplies itself into.
+ */
+describe('the grain the ground is drawn with', () => {
+  /** The six grain weights of one cell, in the same vertex order as its colours. */
+  function cellGrain(view: TerrainView, world: World, x: number, y: number): number[] {
+    const ground = view.group.children[0] as THREE.Mesh;
+    const attr = ground.geometry.getAttribute('grain') as THREE.BufferAttribute;
+    const base = packCell(world, x, y) * 6;
+    const out: number[] = [];
+    for (let i = 0; i < 6; i++) out.push(attr.array[base + i]!);
+    return out;
+  }
+
+  /** A meadow with a pond in it, so there is a shore for the grain to fade over. */
+  function puddled(): World {
+    const world = meadow();
+    for (let y = 30; y < 36; y++) {
+      for (let x = 30; x < 36; x++) setTerrain(world, x, y, 'water');
+    }
+    return world;
+  }
+
+  /**
+   * The grain rides the same lattice as the colour, and for the same reason: two
+   * neighbouring cells are separate triangles that only stay one surface because
+   * they read the same corner. A weight that disagreed across a shared corner
+   * would draw a seam in the grain exactly where the colour has none — a grid,
+   * on the one thing added here to stop the ground reading as a grid.
+   */
+  it('hands neighbouring cells the same grain at the corner they share', () => {
+    const world = puddled();
+    const view = new TerrainView(world);
+    // (29,32) is dry, (30,32) is the first wet cell: the corner between them is
+    // half of each, so the two cells have to agree on a number that is neither.
+    const left = cellGrain(view, world, 29, 32);
+    const right = cellGrain(view, world, 30, 32);
+    expect(left[5]).toBe(right[0]);
+    expect(left[2]).toBe(right[1]);
+    expect(left[5]).not.toBe(left[0]);
+    view.dispose();
+  });
+
+  /**
+   * And it is only ever about soil. Grain on a drift is a dirty drift and grain
+   * on a pond is a stained one, which is the same argument
+   * `GROUND_MOTTLE_COVERED` makes about the corner mottle — so the weight is cut
+   * by the same `bare` the mottle is cut by, and cannot drift out of step with
+   * it.
+   */
+  it('keeps the grain off the water and the snow, which have no earth to show', () => {
+    const summer = puddled();
+    const view = new TerrainView(summer);
+    const dry = cellGrain(view, summer, 10, 10)[0]!;
+    const pond = cellGrain(view, summer, 32, 32)[0]!;
+    expect(pond).toBeLessThan(dry * 0.5);
+    view.dispose();
+
+    const winter = meadow();
+    winter.snow = 1;
+    const buried = new TerrainView(winter);
+    expect(cellGrain(buried, winter, 10, 10)[0]!).toBeLessThan(dry * 0.5);
+    buried.dispose();
+  });
+
+  /**
+   * The half of this that no unit can see running. The grain is spliced into
+   * three's own standard shader at two named anchors, and if a version of three
+   * renames either of them the splice silently does nothing: the ground would go
+   * on building perfect buffers and come out as flat as it was before anyone
+   * measured it. So the splice is run against the real shader source and asked
+   * whether it landed — after the line that turns the corner colour into the
+   * fragment's colour, because it multiplies that colour rather than replacing
+   * it, and fed a world position rather than a screen one, because grain hashed
+   * on the screen swims when the camera pans.
+   */
+  it('still finds the lines in three it splices the grain into', () => {
+    const world = meadow();
+    const view = new TerrainView(world);
+    const mat = (view.group.children[0] as THREE.Mesh).material as THREE.MeshStandardMaterial;
+    const shader = {
+      uniforms: {},
+      vertexShader: THREE.ShaderLib.standard.vertexShader,
+      fragmentShader: THREE.ShaderLib.standard.fragmentShader,
+    } as unknown as THREE.WebGLProgramParametersWithUniforms;
+    mat.onBeforeCompile(shader, undefined as unknown as THREE.WebGLRenderer);
+
+    expect(shader.vertexShader).toContain('attribute float grain;');
+    expect(shader.vertexShader).toContain('vGroundXZ = (modelMatrix * vec4(transformed, 1.0)).xz;');
+    expect(shader.fragmentShader).toContain('diffuseColor.rgb *= 1.0 + groundGrain * vGrain');
+    expect(shader.fragmentShader.indexOf('groundGrain * vGrain')).toBeGreaterThan(
+      shader.fragmentShader.indexOf('#include <color_fragment>'),
+    );
+    view.dispose();
+  });
+});
