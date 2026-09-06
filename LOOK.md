@@ -59,8 +59,20 @@ owns `:5063`, say), every command below takes `URL=http://localhost:<port>/`.
 |---|---|---|
 | `scripts/look/shot.mjs` | The five standard frames of one colony | `npm run look -- .look/shots/r5 r5` |
 | `scripts/look/zoo.mjs` | Staged scenes: every animal, crop stage and loose item, laid out on clear ground | `npm run look:zoo -- .look/shots/r5-zoo r5` |
+| `scripts/look/grain.mjs` | Whether a change reached the frame at all | `node scripts/look/grain.mjs .look/shots/r5/r5-3-colony.png .look/shots/r6/r6-3-colony.png` |
 | `scripts/look/diag-hang.mjs` | The stopwatch for when a capture stalls | `node scripts/look/diag-hang.mjs .look/hang` |
 | `.claude/workflows/look-round.js` | One whole round, steps 2–5, as a workflow | see below |
+
+`grain.mjs` is for one question, and it is a question the eye is bad at: *did anything
+arrive?* It fits a plane to every 32×32 tile of a frame and reports what is left over,
+so smooth shading falls out and fine detail does not; the low percentiles are the flat
+surfaces answering for themselves. Round 6 asked for grain in the ground, the lane
+raised its constants by half, and the frames were identical — p10 0.185 → 0.209 grey
+levels, which is a gradient with nothing on it. The cause was structural (a per-corner
+vertex colour on a shared lattice is ramped across a whole cell before it is drawn), and
+no amount of tuning that amplitude was ever going to show. **Before briefing an
+amplitude, check the instrument can carry the frequency.** Read the numbers only as a
+before-and-after on the same frame; they say something arrived, never that it is good.
 
 Frames land in `.look/shots/<label>/<label>-<frame>.png` (git-ignored). Both harnesses
 pin everything a comparison needs pinned: seed `4242` typed into the setup card (each
