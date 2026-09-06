@@ -24,8 +24,8 @@
 import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
 
-import { lumpyGeometry } from './decor';
-import { BUILDING_COLOR, RESOURCE_COLOR, TERRAIN_COLOR } from './palette';
+import { STONE_COLOR, STONE_ROUGHNESS, lumpyGeometry } from './decor';
+import { BUILDING_COLOR, RESOURCE_COLOR } from './palette';
 import type { Site, World } from '../../sim/types';
 
 /** How high the marker floats, and how far it bobs either side of that. */
@@ -184,7 +184,10 @@ function cairn(site: Site, stones: Piece[]): void {
       sx: r[i]! * 2,
       sy: r[i]! * 1.5,
       sz: r[i]! * 2,
-      color: shade(TERRAIN_COLOR.rock, (b - 0.5) * 0.12),
+      // The loose-stone colour and not the cliff's: a cairn is built from what
+      // was lying about, and in the cliff's navy it was three black pucks that
+      // read as a different kind of stone from every pebble around it.
+      color: shade(STONE_COLOR, (b - 0.5) * 0.12),
     });
     // Less than the two radii between centres, so they overlap and bite.
     y += r[i]! * 1.05;
@@ -234,7 +237,7 @@ function openCrate(site: Site, blocks: Piece[], stones: Piece[]): void {
       sx: 0.2,
       sy: 0.14,
       sz: 0.2,
-      color: shade(TERRAIN_COLOR.rock, (a - 0.5) * 0.1),
+      color: shade(STONE_COLOR, (a - 0.5) * 0.1),
     });
   }
 }
@@ -261,7 +264,12 @@ function oreFace(site: Site, shards: Piece[]): void {
       sx: r * 2,
       sy: r * 1.6,
       sz: r * 2,
-      color: shade(TERRAIN_COLOR.rock, -0.06 + (b - 0.5) * 0.08),
+      // Darker than a loose stone — it is the dark that makes the metal bright —
+      // but the same warm grey, so the split face and the scatter around it are
+      // one rock and not a navy chunk dropped among brown pebbles. A small step
+      // down: `shade` works in linear light, where this grey has little
+      // lightness to spare, and twice this went black.
+      color: shade(STONE_COLOR, -0.06 + (b - 0.5) * 0.06),
     });
   }
   // The metal itself: small, bright, and sitting in the broken faces. Three is
@@ -301,7 +309,9 @@ function coldCamp(site: Site, blocks: Piece[], stones: Piece[]): void {
       sx: 0.18,
       sy: 0.13,
       sz: 0.18,
-      color: shade(TERRAIN_COLOR.rock, -0.1 + j * 0.1),
+      // Fieldstone, sooted a little on the fire side: the loose-stone grey a
+      // shade down, never the cliff's navy.
+      color: shade(STONE_COLOR, -0.1 + j * 0.1),
     });
   }
   // Two spent sticks across the ring, charred rather than timber-coloured: the
@@ -337,7 +347,13 @@ function coldCamp(site: Site, blocks: Piece[], stones: Piece[]): void {
 }
 
 function instanced(geo: THREE.BufferGeometry, count: number): THREE.InstancedMesh {
-  const mesh = new THREE.InstancedMesh(geo, new THREE.MeshLambertMaterial({ color: 0xffffff }), count);
+  // The same material the loose stones use, for the same reason: the sky map
+  // rims a lump that the sun alone leaves as a flat disc of its own colour.
+  const mesh = new THREE.InstancedMesh(
+    geo,
+    new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: STONE_ROUGHNESS }),
+    count,
+  );
   mesh.castShadow = true;
   mesh.receiveShadow = true;
   // The set is small and scattered over the whole map, so per-mesh culling would

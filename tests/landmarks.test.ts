@@ -202,6 +202,35 @@ describe('what the map shows about what is out there', () => {
     v.dispose();
   });
 
+  it('builds its cairns and fire rings from the stone that lies loose on the ground', () => {
+    // Two families of pebble on one map — the scatter warm and grey-brown, the
+    // cairns in the cliff's navy — read as two games. A frame from the manager
+    // camera showed the cairns as near-black pucks in the mid-ground while the
+    // loose stones beside them had already gone warm. Every stone here, cairn
+    // or ring or crate spill, has to be the same warm mid grey; and the ore
+    // chunks may be darker than that but never near-black.
+    const world = createWorld(SEED);
+    // Survey a few sites so the crate spills, camps and ore faces are drawn too.
+    for (const site of world.sites.slice(0, 6)) site.found = true;
+    const v = view(world);
+    const [stones, , shards] = meshes(v);
+    expect(stones!.count).toBeGreaterThan(0);
+    const c = new THREE.Color();
+    const hsl = { h: 0, s: 0, l: 0 };
+    for (let i = 0; i < stones!.count; i++) {
+      stones!.getColorAt(i, c);
+      const { h, l } = c.getHSL(hsl, THREE.SRGBColorSpace);
+      expect(h).toBeLessThan(0.2);
+      expect(l).toBeGreaterThan(0.3);
+      expect(l).toBeLessThan(0.65);
+    }
+    for (let i = 0; i < shards!.count; i++) {
+      shards!.getColorAt(i, c);
+      expect(c.getHSL(hsl, THREE.SRGBColorSpace).l).toBeGreaterThan(0.28);
+    }
+    v.dispose();
+  });
+
   it('copes with a map that has no finds on it at all', () => {
     const world = createWorld(SEED);
     world.sites.length = 0;

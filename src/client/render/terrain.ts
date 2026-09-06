@@ -196,6 +196,50 @@ export function rockTopAt(x: number, y: number): number {
   return rockShapeAt(x, y).height - ROCK_SINK;
 }
 
+/**
+ * How far the drawn ground at the centre of a cell sits off the y = 0 plane:
+ * up under the snowpack, down in the lake bed.
+ *
+ * Anything laid *on* the ground from outside this file — zone paint, a mark, the
+ * selection ring — is built a few centimetres above y = 0 and needs to know the
+ * ground is no longer there. A full pack lifts a field by `SNOW_LIFT`, which is
+ * more than any of those ride, so without this a stockpile in January is paint
+ * under thirteen centimetres of white and the player's zones vanish for the
+ * winter. The centre of a cell is the average of its four lattice corners, and
+ * each corner follows exactly the rule `rebuildCorners` uses to place the mesh
+ * — rock left out, water and laid floor counted as bare, the bed sinking by how
+ * wet the corner is and rising again as the ice thickens — restated here as a
+ * pure function so a caller can ask without holding the view.
+ */
+export function groundLiftAt(world: World, x: number, y: number): number {
+  const depth = snowDepth(world);
+  const submerged = Math.max(0, 1 - iceDepth(world) / BEARING);
+  const { width, height } = world;
+  let lift = 0;
+  for (let cy = y; cy <= y + 1; cy++) {
+    for (let cx = x; cx <= x + 1; cx++) {
+      let lying = 0;
+      let wet = 0;
+      let open = 0;
+      for (let dy = -1; dy <= 0; dy++) {
+        for (let dx = -1; dx <= 0; dx++) {
+          const nx = cx + dx;
+          const ny = cy + dy;
+          if (nx < 0 || ny < 0 || nx >= width || ny >= height) continue;
+          const kind = terrainAt(world, nx, ny);
+          if (kind === 'rock') continue;
+          if (holdsSnow(kind)) lying++;
+          if (kind === 'water' || kind === 'bridge') wet++;
+          open++;
+        }
+      }
+      if (open === 0) continue;
+      lift += depth * SNOW_LIFT * (lying / open) - WATER_SINK * (wet / open) * submerged;
+    }
+  }
+  return lift / 4;
+}
+
 export class TerrainView {
   readonly group = new THREE.Group();
   private readonly colors: Float32Array;

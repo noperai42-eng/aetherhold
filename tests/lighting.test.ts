@@ -23,7 +23,8 @@ import * as THREE from 'three';
 import { describe, expect, it } from 'vitest';
 
 import { QUALITY } from '../src/client/render/renderer';
-import { PawnsView } from '../src/client/render/pawns';
+import { SKIN_TONES } from '../src/client/render/palette';
+import { HAIR_TONES, PawnsView } from '../src/client/render/pawns';
 import { PickiesView } from '../src/client/render/pickies';
 import { SETTLER_LEG } from '../src/client/gait';
 import { POOF_TICKS, summonPicky } from '../src/sim/pickies';
@@ -58,6 +59,16 @@ const CARDINALS: Record<string, THREE.Vector3> = {
 /** Rec. 709 luminance — how bright a colour reads, not how big its numbers are. */
 function luminance(c: THREE.Color): number {
   return 0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b;
+}
+
+/**
+ * CIE L*: luminance on the scale where equal steps look equal. Linear
+ * luminance crushes the darks — a soot black at 0.009 and a deep brown at
+ * 0.041 are a hair apart as numbers and twenty steps apart to the eye.
+ */
+function lightness(c: THREE.Color): number {
+  const y = luminance(c);
+  return y > 0.008856 ? 116 * Math.cbrt(y) - 16 : 903.3 * y;
 }
 
 /**
@@ -495,12 +506,20 @@ describe('what a body is made of', () => {
     view.dispose();
   });
 
-  it('stays inside its triangle budget: ~3,000 for a settler, ~2,500 for a wild animal', () => {
+  it('stays inside its triangle budget: ~3,000 for a settler, ~2,500 for an animal wearing everything it can', () => {
     const { view, world } = bodies();
     const byId = new Map(world.pawns.map((p) => [p.id, p]));
     let settlers = 0;
     let animals = 0;
     for (const rig of view.group.children) {
+      // Every animal the map starts with is wild, so its collar, tag and hunt
+      // mark are hidden and a count of what is drawn never meets them. It
+      // did not: a bonded mossback in the pen drew seven hundred over the
+      // budget this test said it kept. Show them all, the way a marked pen
+      // animal that somebody loves would draw, and count that.
+      rig.traverse((o) => {
+        if (o instanceof THREE.Mesh && ['collar', 'tag', 'mark'].includes(o.name)) o.visible = true;
+      });
       const total = drawn(rig).reduce((n, m) => n + triangles(m), 0);
       // The rig groups are added in pawn order, so pair them back up by position.
       const pawn = world.pawns.find((p) => byId.has(p.id) && p.x === rig.position.x && p.y === rig.position.z);
@@ -632,10 +651,12 @@ describe('what a body is made of', () => {
     view.dispose();
   });
 
-  it('keeps the collar and tag under a thousand triangles — the budget above never sees them, and a pen is full of them', () => {
-    // Both are hidden on every wild animal, which is every animal the budget
-    // check meets, so a strap that costs half a wolf gets through it. It did:
-    // sixteen segments round the tube was a thousand triangles on its own.
+  it('keeps the collar and tag under a thousand triangles — a pen is full of them, and the budget above allows one of each', () => {
+    // Both are hidden on every wild animal, and until the budget check above
+    // learned to show them a strap that cost half a wolf got through it. It
+    // did: sixteen segments round the tube was a thousand triangles on its own.
+    // The pair is held here too, because the budget has room for one collar
+    // and one tag beside the body and no more.
     const { view } = bodies();
     let animals = 0;
     for (const rig of view.group.children) {
@@ -650,6 +671,96 @@ describe('what a body is made of', () => {
       expect(triangles(collar) + triangles(tag)).toBeLessThanOrEqual(1000);
     }
     expect(animals).toBeGreaterThan(0);
+    view.dispose();
+  });
+
+  it('gives every hair tone a clear step in lightness from every skin tone — a blond on a tan face was a bald head from overhead', () => {
+    // The hair and the skin are drawn on a seed's bits independently, so every
+    // pairing happens in a colony of any size. A pairing that matches in
+    // lightness is one pale sphere from the manager camera — hue does not
+    // survive the sun and shadow at that distance, lightness does. Seven L*
+    // is three times a just-noticeable step and the widest margin the gaps
+    // between six skin tones leave room for.
+    expect(HAIR_TONES.length).toBeGreaterThan(0);
+    for (const h of HAIR_TONES) {
+      for (const s of SKIN_TONES) {
+        const gap = Math.abs(lightness(new THREE.Color(h)) - lightness(new THREE.Color(s)));
+        expect(gap, `hair ${h.toString(16)} on skin ${s.toString(16)}`).toBeGreaterThanOrEqual(7);
+      }
+    }
+  });
+
+  it('hangs the fringe to the brow and no lower — hair over the eyes is a helmet, hair above them is a hairline', () => {
+    // The face has to show below the hair for the head to read as a head with
+    // hair on it, and the eyes are the face. The fringe's hem sits at the
+    // brow, above the top of both eyes and below the crown, on both crops —
+    // which the map's seed does not promise to deal out, so bit twelve of the
+    // seed, the crop, is set by hand on every other settler before the bodies
+    // are built.
+    const world = createWorld(SEED);
+    world.pawns.filter((p) => !p.animal).forEach((p, i) => {
+      p.colorSeed = (p.colorSeed & ~0x1000) | (i & 1 ? 0x1000 : 0);
+    });
+    const view = new PawnsView();
+    view.onTick(world);
+    view.sync(world, 0, null);
+    const v = new THREE.Vector3();
+    const crops = new Set<THREE.BufferGeometry>();
+    for (const rig of view.group.children) {
+      const pawn = world.pawns.find((p) => p.x === rig.position.x && p.y === rig.position.z)!;
+      if (pawn.animal) continue;
+      const head = part(rig, 'head');
+      const hair = part(rig, 'hair');
+      crops.add(hair.geometry);
+      const eyes = head.children.filter((o): o is THREE.Mesh => o instanceof THREE.Mesh && o.name === 'eye');
+      expect(eyes).toHaveLength(2);
+      let brow = -Infinity;
+      for (const eye of eyes) {
+        eye.geometry.computeBoundingSphere();
+        brow = Math.max(brow, eye.position.y + eye.geometry.boundingSphere!.radius);
+      }
+      // The hem over the face: the lowest hair vertex on the front of the head
+      // within the eyes' span, in the head's own frame — the hair is its child.
+      const pos = hair.geometry.attributes.position!;
+      let hem = Infinity;
+      for (let i = 0; i < pos.count; i++) {
+        v.fromBufferAttribute(pos, i);
+        if (v.z > 0.08 && Math.abs(v.x) < 0.08) hem = Math.min(hem, v.y);
+      }
+      expect(hem, 'fringe clears the eyes').toBeGreaterThan(brow);
+      head.geometry.computeBoundingBox();
+      expect(hem, 'fringe comes down the forehead').toBeLessThan(head.geometry.boundingBox!.max.y * 0.5);
+    }
+    expect(crops.size, 'the map has both crops to check').toBe(2);
+    view.dispose();
+  });
+
+  it('breaks the settler into four bands — shirt, trousers, belt and boots are four colours, the leather darker than the cloth', () => {
+    // At the manager zoom a settler is a few dozen pixels tall, and what it is
+    // wearing is the only thing it can say about itself. One cloth from neck
+    // to sole was a column; a shirt over trousers, split by a dark belt and
+    // ending in darker boots, is a person dressed. Lightness is the measure
+    // for the same reason it is for the hair.
+    const { view, world } = bodies();
+    let settlers = 0;
+    for (const rig of view.group.children) {
+      const pawn = world.pawns.find((p) => p.x === rig.position.x && p.y === rig.position.z)!;
+      if (pawn.animal) continue;
+      settlers++;
+      const colour = (name: string): THREE.Color => (part(rig, name).material as THREE.MeshStandardMaterial).color;
+      const shirt = colour('torso');
+      const trousers = colour('leg');
+      const belt = colour('belt');
+      const boot = colour('boot');
+      expect(trousers.getHex(), 'trousers are not the shirt').not.toBe(shirt.getHex());
+      expect(belt.getHex(), 'belt is not the boots').not.toBe(boot.getHex());
+      for (const cloth of [shirt, trousers]) {
+        for (const leather of [belt, boot]) {
+          expect(lightness(leather), 'leather darker than cloth').toBeLessThan(lightness(cloth) - 5);
+        }
+      }
+    }
+    expect(settlers).toBeGreaterThan(0);
     view.dispose();
   });
 });

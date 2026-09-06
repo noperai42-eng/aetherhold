@@ -144,6 +144,25 @@ describe('where the scatter lands', () => {
     }
   });
 
+  it('keeps every blade below the knee, never up at the waist', () => {
+    // The looser cap above is what "knee height" tolerates; this is what the
+    // first-person camera needs. At 1.6 m off the ground a blade over forty
+    // centimetres fills the lower third of the frame and makes the settler
+    // beside it look a metre tall. Every tuft on the map, not a sample — the
+    // one outlier is the one the player walks past.
+    const world = meadow();
+    const { tufts } = meshes(new DecorView(world));
+    const m = new THREE.Matrix4();
+    const scale = new THREE.Vector3();
+    let tallest = 0;
+    for (let i = 0; i < tufts.count; i++) {
+      tufts.getMatrixAt(i, m);
+      m.decompose(new THREE.Vector3(), new THREE.Quaternion(), scale);
+      tallest = Math.max(tallest, scale.y);
+    }
+    expect(tallest).toBeLessThanOrEqual(0.4);
+  });
+
   it('puts the same blades in the same places every time', () => {
     const a = occupiedCells(meshes(new DecorView(meadow())).tufts);
     const b = occupiedCells(meshes(new DecorView(meadow())).tufts);
@@ -228,6 +247,44 @@ describe('what a blade and a stone are made of', () => {
       if (Math.abs(p.getY(i)) < 1e-6) expect(l).toBeGreaterThanOrEqual(turf);
       if (Math.abs(p.getY(i) - 1) < 1e-6) expect(l).toBeGreaterThan(turf + 0.1);
     }
+    view.dispose();
+  });
+
+  it('keeps the tip of a blade green, not straw', () => {
+    // A yellow-green tip caught the light, and nine thousand of them turned the
+    // wide frames the colour of hay. The tip has to stay in the green band —
+    // paler than the root, but the same leaf. Hue is read in sRGB like the
+    // lightness test above; the band is 83° to 130°, yellow-green through to
+    // blue-green, with straw (below 75°) outside it.
+    const view = new DecorView(meadow());
+    const geo = meshes(view).tufts.geometry;
+    const p = geo.getAttribute('position');
+    const col = geo.getAttribute('color');
+    const c = new THREE.Color();
+    const hsl = { h: 0, s: 0, l: 0 };
+    let tips = 0;
+    for (let i = 0; i < p.count; i++) {
+      if (Math.abs(p.getY(i) - 1) > 1e-6) continue;
+      tips++;
+      const { h } = c.fromBufferAttribute(col, i).getHSL(hsl, THREE.SRGBColorSpace);
+      expect(h).toBeGreaterThan(0.23);
+      expect(h).toBeLessThan(0.36);
+    }
+    expect(tips).toBeGreaterThan(0);
+    view.dispose();
+  });
+
+  it('lights a stone off the sky as well as the sun', () => {
+    // Lambert takes the sun and nothing else, and a pebble nearly the colour of
+    // the dirt it lies on is then a flat disc. A standard material reads the
+    // scene's environment map and puts a rim along the lump's upper edge, which
+    // is the one cue that says "this is a thing sitting on the ground". Rough
+    // enough to stay stone and not wet plastic.
+    const view = new DecorView(meadow());
+    const rock = meshes(view).stones.material as THREE.MeshStandardMaterial;
+    expect(rock.isMeshStandardMaterial).toBe(true);
+    expect(rock.roughness).toBeGreaterThanOrEqual(0.7);
+    expect(rock.roughness).toBeLessThanOrEqual(0.9);
     view.dispose();
   });
 

@@ -24,7 +24,7 @@ import { floorForDesig } from '../../sim/floors';
 import { CROP_NONE, growingCells } from '../../sim/farming';
 import { InstancedPool } from './instanced';
 import { LAYER_MANAGER } from './renderer';
-import { rockTopAt } from './terrain';
+import { groundLiftAt, rockTopAt } from './terrain';
 import { defOf } from '../../sim/buildings';
 import { DRAW } from '../../sim/power';
 import type { BuildingKind, World } from '../../sim/types';
@@ -32,12 +32,17 @@ import type { BuildingKind, World } from '../../sim/types';
 const FIRE_PARTICLES = 7;
 const MAX_FIRE_PARTICLES = 420;
 /**
- * How far above the ground plane a designation mark and a drag-preview quad ride.
+ * How far above the ground a zone's paint, a designation mark, the selection
+ * ring and a drag-preview quad ride.
  *
- * Stacked over the zone paint (which sits two centimetres up) so a harvest mark
- * on a growing zone is drawn over the green and not through it, and the preview
- * over both.
+ * Stacked, so a harvest mark on a growing zone is drawn over the green and not
+ * through it, the ring over the paint, and the preview over all of them. "Above
+ * the ground" and not "above y = 0": the terrain lifts under snow and sinks into
+ * the lake (`groundLiftAt`), by more than any of these clearances, and an overlay
+ * measured from the plane instead of the surface spends every winter buried.
  */
+const ZONE_LIFT = 0.02;
+const RING_LIFT = 0.04;
 const MARK_LIFT = 0.05;
 const PREVIEW_LIFT = 0.06;
 /**
@@ -74,10 +79,11 @@ function onRock(world: World, x: number, y: number): boolean {
  * top instead — including the drag preview, without which dragging the mine tool
  * across a cliff face looks like it did nothing at all. Blocks are not all the
  * same height, so the mark asks its own cell rather than assuming. `lift` is
- * the mark's own clearance over open ground.
+ * the mark's own clearance over open ground — over the ground as drawn, which
+ * under a snowpack is not where it was in summer.
  */
-function markHeight(world: World, x: number, y: number, lift: number): number {
-  return onRock(world, x, y) ? rockTopAt(x, y) + ROCK_MARK_LIFT : lift;
+export function markHeight(world: World, x: number, y: number, lift: number): number {
+  return onRock(world, x, y) ? rockTopAt(x, y) + ROCK_MARK_LIFT : groundLiftAt(world, x, y) + lift;
 }
 
 /** A ripe crop's colour. Squared blend so it stays green until it is nearly ready. */
@@ -147,9 +153,10 @@ export class FxView {
       { tinted: true, castShadow: false },
     );
 
+    // Flat at y = 0 like the marks below it, and lifted per instance: the paint
+    // has to follow the ground it is painted on, and the ground moves.
     const quad = new THREE.PlaneGeometry(0.96, 0.96);
     quad.rotateX(-Math.PI / 2);
-    quad.translate(0, 0.02, 0);
     this.zonePaint = new InstancedPool(
       this.group,
       quad,
@@ -262,6 +269,14 @@ export class FxView {
     this.syncBushes(world);
     this.syncFire(world, t);
     this.syncOverlays(world);
+    // The ring is placed by `setSelection`, which is not handed the world; the
+    // ground under it is re-read here so a selection made in autumn is still on
+    // the surface once the snow has come. Rounded to the cell, because a settler
+    // stands between cells and the lattice is asked per cell.
+    if (this.ring.visible) {
+      this.ring.position.y =
+        groundLiftAt(world, Math.round(this.ring.position.x), Math.round(this.ring.position.z)) + RING_LIFT;
+    }
   }
 
   private syncCrops(world: World): void {
@@ -337,7 +352,9 @@ export class FxView {
       // this colour has to do.
       this.c.setHex(z.kind === 'stockpile' ? 0x63b6e0 : z.kind === 'pen' ? 0xd8b45a : 0x8fd06a);
       for (const cell of z.cells) {
-        this.v.set(unpackX(world, cell), 0, unpackY(world, cell));
+        const x = unpackX(world, cell);
+        const y = unpackY(world, cell);
+        this.v.set(x, markHeight(world, x, y, ZONE_LIFT), y);
         this.q.identity();
         this.s.set(1, 1, 1);
         this.m.compose(this.v, this.q, this.s);
@@ -351,7 +368,9 @@ export class FxView {
       const kind = floorForDesig(world.cellDesig[i]!);
       if (!kind) continue;
       this.c.setHex(TERRAIN_COLOR[kind]);
-      this.v.set(unpackX(world, i), 0, unpackY(world, i));
+      const x = unpackX(world, i);
+      const y = unpackY(world, i);
+      this.v.set(x, markHeight(world, x, y, ZONE_LIFT), y);
       this.q.identity();
       this.s.set(1, 1, 1);
       this.m.compose(this.v, this.q, this.s);
@@ -419,7 +438,8 @@ export class FxView {
       return;
     }
     this.ring.visible = true;
-    this.ring.position.set(pos.x, 0.04, pos.y);
+    // Placed at the summer height; `sync` lifts it onto the ground as drawn.
+    this.ring.position.set(pos.x, RING_LIFT, pos.y);
     const r = pos.radius ?? 1;
     this.ring.scale.set(r, 1, r);
   }

@@ -64,12 +64,32 @@ const SHOULDER_Y = 1.28;
 const HEAD_Y = 1.51;
 
 /**
- * Hair, black through grey. Read off `colorSeed` like the skin and the cloth
+ * Hair, black through silver. Read off `colorSeed` like the skin and the cloth
  * are, from bits neither of those looks at, so a colony is not six people in
  * the same dark brown and the hair does not follow the coat. Nothing here is a
  * sim field; the seed is the only cosmetic the record carries.
+ *
+ * Every tone sits in a gap between the skin tones in lightness — CIE L*, the
+ * scale on which two greys look a step apart. The blond that used to be here
+ * was within two steps of the middle tan, and a settler wearing both was one
+ * pale sphere from the manager camera, hair and face indistinguishable: bald.
+ * The skins fall at L* 24, 33, 45, 61, 73 and 83, so the hair goes below 24
+ * (two blacks), into the 45–61 gap (chestnut, auburn and a dark blond that
+ * differ from each other by hue) and above 83 (silver). Nothing is a dark or
+ * mid brown, which is where every gap is too narrow to keep a clear margin.
+ * `lighting.test.ts` holds the margin at seven.
  */
-const HAIR_TONES = [0x1d1714, 0x2b2119, 0x4a3221, 0x6e4a2a, 0x8a5230, 0xb08a4e, 0x7d7a74];
+export const HAIR_TONES = [0x1d1714, 0x2b2119, 0xa67546, 0xc26545, 0x9e7a2c, 0xe9e6e2];
+
+/**
+ * Trousers, in tones that are nobody's colours. The shirt and sleeves carry
+ * the faction tint and are most of what the manager camera sees; the legs
+ * carry the person, in a dun, a charcoal, an olive or a tan-brown that is
+ * distinct in hue from the blue, the red and the gold above them — so the
+ * figure breaks at the belt into two garments instead of being one column
+ * of cloth with a head on it.
+ */
+const TROUSER_TONES = [0x5b4d3f, 0x46474b, 0x585b3c, 0x6b5747];
 
 /** One settler's body. Parts are plain meshes so limbs can swing independently. */
 class PawnRig implements Rig {
@@ -81,7 +101,8 @@ class PawnRig implements Rig {
   private readonly legR: THREE.Mesh;
   private readonly armL: THREE.Mesh;
   private readonly armR: THREE.Mesh;
-  private weapon: THREE.Mesh | null = null;
+  /** Stock and action, or a club, riding the right hand. Null when unarmed. */
+  private weapon: THREE.Group | null = null;
   /** The caravan's freight, on the ground. Null for everybody who is not a trader. */
   private freight: THREE.Group | null = null;
   private readonly mats: THREE.Material[] = [];
@@ -93,28 +114,36 @@ class PawnRig implements Rig {
     const hairCol = new THREE.Color(HAIR_TONES[(pawn.colorSeed >> 8) % HAIR_TONES.length]!);
 
     const clothMat = new THREE.MeshStandardMaterial({ color: cloth, roughness: 0.78 });
+    const trouserMat = new THREE.MeshStandardMaterial({
+      color: TROUSER_TONES[(pawn.colorSeed >> 14) % TROUSER_TONES.length]!,
+      roughness: 0.82,
+    });
     const skinMat = new THREE.MeshStandardMaterial({ color: skin, roughness: 0.62 });
     const hairMat = new THREE.MeshStandardMaterial({ color: hairCol, roughness: 0.9 });
     const gearMat = new THREE.MeshStandardMaterial({ color: 0x3b3f45, roughness: 0.5, metalness: 0.3 });
-    // The belt and the boots: the same cloth, darker, so the figure breaks into
-    // bands at a distance without introducing a colour that says "faction".
-    const leatherMat = new THREE.MeshStandardMaterial({
-      color: new THREE.Color(cloth).offsetHSL(0, -0.08, -0.18),
-      roughness: 0.7,
-    });
+    // The belt is a dark strap and the boots are darker still, each in its own
+    // leather rather than a shade of the cloth: a band that is the shirt again,
+    // only dimmer, is a fold, and a band in another material is a belt.
+    const leatherMat = new THREE.MeshStandardMaterial({ color: 0x4a3323, roughness: 0.62 });
+    const bootMat = new THREE.MeshStandardMaterial({ color: 0x2c221c, roughness: 0.55 });
     const eyeMat = new THREE.MeshStandardMaterial({ color: 0x14100e, roughness: 0.35 });
-    this.mats.push(clothMat, skinMat, hairMat, gearMat, leatherMat, eyeMat);
+    this.mats.push(clothMat, trouserMat, skinMat, hairMat, gearMat, leatherMat, bootMat, eyeMat);
 
     this.torso = new THREE.Mesh(shared.torso, clothMat);
     this.head = new THREE.Mesh(shared.head, skinMat);
     // Cropped or to the jaw, on one more bit of the same seed.
     const hair = new THREE.Mesh((pawn.colorSeed >> 12) & 1 ? shared.hairLong : shared.hair, hairMat);
     const neck = new THREE.Mesh(shared.neck, skinMat);
+    this.torso.name = 'torso';
     this.head.name = 'head';
+    hair.name = 'hair';
     neck.name = 'neck';
     const belt = new THREE.Mesh(shared.belt, leatherMat);
-    this.legL = new THREE.Mesh(shared.leg, clothMat);
-    this.legR = new THREE.Mesh(shared.leg, clothMat);
+    belt.name = 'belt';
+    this.legL = new THREE.Mesh(shared.leg, trouserMat);
+    this.legR = new THREE.Mesh(shared.leg, trouserMat);
+    this.legL.name = 'leg';
+    this.legR.name = 'leg';
     this.armL = new THREE.Mesh(shared.arm, clothMat);
     this.armR = new THREE.Mesh(shared.arm, clothMat);
 
@@ -135,9 +164,13 @@ class PawnRig implements Rig {
     // because both were centred on the same point.
     hair.castShadow = true;
     this.head.add(hair);
+    // Set low on the face, a third of the way up from the chin. The fringe
+    // comes down to the brow and the eyes have to clear it, and a forehead
+    // with hair over it is what makes the hairline show from overhead.
     for (const side of [-1, 1] as const) {
       const eye = new THREE.Mesh(shared.eye, eyeMat);
-      eye.position.set(side * 0.05, -0.01, 0.12);
+      eye.name = 'eye';
+      eye.position.set(side * 0.05, -0.05, 0.115);
       this.head.add(eye);
     }
 
@@ -149,7 +182,8 @@ class PawnRig implements Rig {
       arm.add(hand);
     }
     for (const leg of [this.legL, this.legR]) {
-      const boot = new THREE.Mesh(shared.boot, leatherMat);
+      const boot = new THREE.Mesh(shared.boot, bootMat);
+      boot.name = 'boot';
       boot.position.set(0, -SETTLER_LEG + 0.049, 0.025); // toe forward, sole on the floor
       boot.castShadow = true;
       leg.add(boot);
@@ -161,9 +195,21 @@ class PawnRig implements Rig {
     }
 
     if (pawn.weapon !== 'none') {
-      const geo = pawn.weapon === 'rifle' ? shared.rifle : shared.club;
-      this.weapon = new THREE.Mesh(geo, gearMat);
-      this.weapon.castShadow = true;
+      // Wood for the stock and the club, steel for the action: a rifle in one
+      // grey was a rod from the manager camera, and the two-tone split is what
+      // reads as a weapon at that zoom.
+      const woodMat = new THREE.MeshStandardMaterial({ color: 0x6b4626, roughness: 0.72 });
+      this.mats.push(woodMat);
+      this.weapon = new THREE.Group();
+      const parts =
+        pawn.weapon === 'rifle'
+          ? [new THREE.Mesh(shared.rifleStock, woodMat), new THREE.Mesh(shared.rifleAction, gearMat)]
+          : [new THREE.Mesh(shared.club, woodMat)];
+      for (const part of parts) {
+        part.castShadow = true;
+        this.weapon.add(part);
+      }
+      this.weapon.children[0]!.name = pawn.weapon === 'rifle' ? 'stock' : 'club';
       this.armR.add(this.weapon); // rides the hand, so it swings with the arm
     }
 
@@ -365,7 +411,7 @@ class AnimalRig implements Rig {
     }
 
     for (const side of [-1, 1] as const) {
-      const eye = new THREE.Mesh(shared.eye, eyeMat);
+      const eye = new THREE.Mesh(shared.animalEye, eyeMat);
       eye.position.set(side * 0.08, 0.04, 0.085);
       this.head.add(eye);
     }
@@ -427,6 +473,7 @@ class AnimalRig implements Rig {
     const markMat = new THREE.MeshBasicMaterial({ color: 0xd8563f });
     this.mats.push(markMat);
     this.mark = new THREE.Mesh(shared.huntMark, markMat);
+    this.mark.name = 'mark';
     this.mark.position.y = 0.55 + def.size * 0.9;
     this.mark.visible = false;
     this.group.add(this.mark);
@@ -539,11 +586,13 @@ interface SharedGeometry {
   boot: THREE.BufferGeometry;
   arm: THREE.BufferGeometry;
   hand: THREE.BufferGeometry;
-  rifle: THREE.BufferGeometry;
+  rifleStock: THREE.BufferGeometry;
+  rifleAction: THREE.BufferGeometry;
   club: THREE.BufferGeometry;
   animalBody: THREE.BufferGeometry;
   animalNeck: THREE.BufferGeometry;
   animalHead: THREE.BufferGeometry;
+  animalEye: THREE.BufferGeometry;
   animalTail: THREE.BufferGeometry;
   animalLeg: THREE.BufferGeometry;
   animalAntler: THREE.BufferGeometry;
@@ -603,30 +652,115 @@ function makeTorso(): THREE.BufferGeometry {
     [0.1, 0.29],
     [0, 0.29],
   ].map(([r, y]) => new THREE.Vector2(r, y));
-  const g = new THREE.LatheGeometry(profile, 24);
+  const g = new THREE.LatheGeometry(profile, 20);
   g.scale(1, 1, 0.62);
   return g;
 }
 
 /**
- * A cap of hair that wraps the skull: a dome over the top of the head, plus a
- * band down the back and sides that stops short of the face. The dome's rim is
- * the fringe. It sits a little proud of the head all round, so nothing here is
- * coplanar with the skin underneath it.
+ * A patch of the unit sphere whose lower edge wanders: `hem(phi)` is the polar
+ * angle the patch ends at on each meridian, so one indexed grid is a skull cap
+ * that dips into a fringe over one temple and a nape down the back, with no
+ * seam between them. Same parametrisation and winding as `SphereGeometry`, so
+ * phi runs from -X through +Z (the face) to +X to -Z and the outside faces
+ * out. The caller scales it to the head it wraps and the normals are then
+ * recomputed, all but the crown's, which are pinned straight up: the pole row
+ * is one point stored once per meridian, and each copy would otherwise take
+ * the normal of its own single triangle and put a faint star on the crown.
+ */
+function skullPatch(hem: (phi: number) => number, cols: number, rows: number): THREE.BufferGeometry {
+  const pos: number[] = [];
+  const idx: number[] = [];
+  for (let i = 0; i <= rows; i++) {
+    for (let j = 0; j <= cols; j++) {
+      const phi = (j / cols) * Math.PI * 2;
+      const theta = (i / rows) * hem(phi);
+      pos.push(-Math.cos(phi) * Math.sin(theta), Math.cos(theta), Math.sin(phi) * Math.sin(theta));
+    }
+  }
+  const at = (i: number, j: number): number => i * (cols + 1) + j;
+  for (let i = 0; i < rows; i++) {
+    for (let j = 0; j < cols; j++) {
+      const a = at(i, j + 1);
+      const b = at(i, j);
+      const c = at(i + 1, j);
+      const d = at(i + 1, j + 1);
+      if (i !== 0) idx.push(a, b, d); // the top row is the pole: one triangle per cell, not two
+      idx.push(b, c, d);
+    }
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setIndex(idx);
+  return g;
+}
+
+/**
+ * The hem of a cap as a few turning points round the head — (phi, theta) in
+ * turns of PI — eased between, so the edge curves rather than kinks. The first
+ * and last points are the same meridian and must agree.
+ */
+function hemOf(keys: [number, number][]): (phi: number) => number {
+  return (phi) => {
+    const t = phi / Math.PI;
+    for (let k = 0; k < keys.length - 1; k++) {
+      const [p0, t0] = keys[k]!;
+      const [p1, t1] = keys[k + 1]!;
+      if (t < p0 || t > p1) continue;
+      const u = 0.5 - 0.5 * Math.cos(((t - p0) / (p1 - p0)) * Math.PI);
+      return (t0 + (t1 - t0) * u) * Math.PI;
+    }
+    return keys[keys.length - 1]![1] * Math.PI;
+  };
+}
+
+/**
+ * The hair: a shell a little larger than the skull all round, so nothing here
+ * is coplanar with the skin, whose hem is what makes it hair. At the front it
+ * hangs to the brow in a fringe that is deeper over one temple than the other,
+ * a swept wedge with a visible edge, and stays clear of the eyes; at the back
+ * it is a nape. Round the head with a straight rim it was a skull cap, and
+ * from the manager camera a skull cap over a face is a bald head in a second
+ * colour — the colour has to change along a line that looks like a hairline.
  *
- * Cropped, the band is a short nape; long, it carries on down the sides and
- * back to the jaw. Two shapes on one seed bit is the cheapest thing that keeps
- * a crew from being the same silhouette six times over.
+ * Cropped, the nape stops at the collar and the ears show; long, it carries on
+ * down the sides and back to the jaw. Two shapes on one seed bit is the
+ * cheapest thing that keeps a crew from being the same silhouette six times.
  */
 function makeHair(long: boolean): THREE.BufferGeometry {
-  const r = 0.155;
-  const dome = new THREE.SphereGeometry(r, 16, 8, 0, Math.PI * 2, 0, Math.PI / 2);
-  // `phi` runs from -X through +Z to +X to -Z; the back half is the second PI.
-  const nape = long
-    ? new THREE.SphereGeometry(r, 10, 4, Math.PI * 0.8, Math.PI * 1.4, Math.PI / 2, Math.PI * 0.34)
-    : new THREE.SphereGeometry(r, 8, 3, Math.PI, Math.PI, Math.PI / 2, Math.PI * 0.15);
-  const g = weld([dome, nape]);
-  g.translate(0, 0.035, -0.012);
+  const hem = long
+    ? hemOf([
+        [0, 0.66],
+        [0.18, 0.56],
+        [0.32, 0.55],
+        [0.5, 0.52],
+        [0.64, 0.49],
+        [0.78, 0.6],
+        [1, 0.66],
+        [1.25, 0.78],
+        [1.5, 0.8],
+        [1.75, 0.78],
+        [2, 0.66],
+      ])
+    : hemOf([
+        [0, 0.48],
+        [0.2, 0.48],
+        [0.32, 0.55],
+        [0.5, 0.52],
+        [0.64, 0.49],
+        [0.76, 0.47],
+        [1, 0.48],
+        [1.2, 0.6],
+        [1.5, 0.63],
+        [1.8, 0.6],
+        [2, 0.48],
+      ]);
+  // The skull is 0.13 round and 6% taller; the shell is that plus a finger's
+  // width, so every vertex is outside the skin and the crown has some volume.
+  const g = skullPatch(hem, 24, 7).scale(0.148, 0.158, 0.148);
+  g.computeVertexNormals();
+  const n = g.attributes.normal!;
+  for (let j = 0; j <= 24; j++) n.setXYZ(j, 0, 1, 0);
   return g;
 }
 
@@ -664,21 +798,37 @@ function makeAnimalNeck(): THREE.BufferGeometry {
     const a = (i / 4) * (Math.PI / 2);
     profile.push(new THREE.Vector2(0.078 * Math.cos(a), 0.13 + 0.078 * Math.sin(a)));
   }
-  return new THREE.LatheGeometry(profile, 16);
+  return new THREE.LatheGeometry(profile, 12);
 }
 
-/** A rifle held at the hand: stock, receiver, barrel and a sight. Points +Z. */
-function makeRifle(): THREE.BufferGeometry {
-  const stock = new RoundedBoxGeometry(0.05, 0.09, 0.22, 1, 0.012);
-  stock.translate(0, -0.02, 0.01);
+/**
+ * The wood of a rifle, held at the hand and pointing +Z: a butt that drops
+ * behind the grip and a forend under the barrel. Its own geometry so it can be
+ * its own material — the stock in wood and the action in steel is the whole
+ * difference between a rifle and a grey rod at manager zoom. The two share
+ * the hand's origin with `makeRifleAction`, so the parts line up by the same
+ * numbers rather than by a second offset.
+ */
+function makeRifleStock(): THREE.BufferGeometry {
+  const butt = new RoundedBoxGeometry(0.048, 0.1, 0.2, 1, 0.014);
+  butt.translate(0, -0.03, 0);
+  const forend = new RoundedBoxGeometry(0.044, 0.04, 0.26, 1, 0.012);
+  forend.translate(0, -0.015, 0.35);
+  const g = weld([butt, forend]);
+  g.translate(0, -0.55, 0);
+  return g;
+}
+
+/** The steel of a rifle: receiver, barrel and a sight, seated on the stock. */
+function makeRifleAction(): THREE.BufferGeometry {
   const receiver = new THREE.BoxGeometry(0.05, 0.06, 0.2);
-  receiver.translate(0, 0, 0.2);
+  receiver.translate(0, 0.005, 0.2);
   const barrel = new THREE.CylinderGeometry(0.016, 0.018, 0.44, 12);
   barrel.rotateX(Math.PI / 2);
-  barrel.translate(0, 0.01, 0.5);
+  barrel.translate(0, 0.012, 0.5);
   const sight = new THREE.BoxGeometry(0.02, 0.03, 0.03);
-  sight.translate(0, 0.045, 0.28);
-  const g = weld([stock, receiver, barrel, sight]);
+  sight.translate(0, 0.05, 0.28);
+  const g = weld([receiver, barrel, sight]);
   g.translate(0, -0.55, 0);
   return g;
 }
@@ -719,8 +869,8 @@ function makeTail(): THREE.BufferGeometry {
     new THREE.Vector3(0, -0.01, -0.12),
     new THREE.Vector3(0, 0.07, -0.19),
   );
-  const tube = new THREE.TubeGeometry(path, 8, 0.035, 8, false);
-  const tip = new THREE.SphereGeometry(0.035, 8, 6);
+  const tube = new THREE.TubeGeometry(path, 6, 0.035, 8, false);
+  const tip = new THREE.SphereGeometry(0.035, 8, 4);
   tip.translate(0, 0.07, -0.19);
   return weld([tube, tip]);
 }
@@ -733,7 +883,7 @@ function makeTail(): THREE.BufferGeometry {
  */
 function makeAnimalHead(): THREE.BufferGeometry {
   const skull = new THREE.SphereGeometry(1, 16, 10).scale(0.11, 0.1, 0.13);
-  const muzzle = new THREE.CapsuleGeometry(0.06, 0.08, 3, 10);
+  const muzzle = new THREE.CapsuleGeometry(0.06, 0.08, 2, 8);
   muzzle.rotateX(Math.PI / 2);
   muzzle.scale(1.05, 0.85, 1);
   muzzle.translate(0, -0.035, 0.14);
@@ -743,11 +893,11 @@ function makeAnimalHead(): THREE.BufferGeometry {
 function makeShared(): SharedGeometry {
   // The belt is an open band a hair wider than the waist of the lathe, squashed
   // the same way, so it hugs the cloth instead of cutting through it.
-  const belt = new THREE.CylinderGeometry(0.215, 0.22, 0.06, 24, 1, true);
+  const belt = new THREE.CylinderGeometry(0.215, 0.22, 0.06, 20, 1, true);
   belt.scale(1, 1, 0.62);
   // A boot is a capsule lying along the foot, pressed flat: a rounded toe and
   // heel from the manager camera, and no seam anywhere at eye level.
-  const boot = new THREE.CapsuleGeometry(0.072, 0.1, 3, 10);
+  const boot = new THREE.CapsuleGeometry(0.072, 0.1, 2, 10);
   boot.rotateX(Math.PI / 2);
   boot.scale(1.05, 0.68, 1);
   const animalBody = new THREE.CapsuleGeometry(0.19, 0.5, 5, 16);
@@ -769,29 +919,38 @@ function makeShared(): SharedGeometry {
     hair: makeHair(false),
     hairLong: makeHair(true),
     eye: new THREE.SphereGeometry(0.022, 8, 6),
-    leg: limb(0.075, SETTLER_LEG, 12),
+    // Three rings on the caps: the top of a leg is inside the torso and the
+    // bottom inside a boot, so the fourth was paid for and never seen.
+    leg: limb(0.075, SETTLER_LEG, 12, 3),
     boot,
     arm: limb(0.065, 0.6, 12, 3),
     hand: new THREE.SphereGeometry(0.07, 8, 6),
-    rifle: makeRifle(),
+    rifleStock: makeRifleStock(),
+    rifleAction: makeRifleAction(),
     club: makeClub(),
     animalBody,
     animalNeck: makeAnimalNeck(),
     animalHead: makeAnimalHead(),
+    // A bead a fifth the size of a settler's eye on a body that is drawn at
+    // most a cell across; the settler's eight-by-six would be forty per cent
+    // more triangles for a dot.
+    animalEye: new THREE.SphereGeometry(0.022, 6, 4),
     animalTail: makeTail(),
-    animalLeg: limb(0.05, ANIMAL_LEG_LENGTH, 12, 3),
+    animalLeg: limb(0.05, ANIMAL_LEG_LENGTH, 10, 2),
     animalAntler: makeAntler(),
     animalEar: ear,
     // A band round the neck. The only thing on the map that separates a tamed
     // mossback from the wild one grazing beside it, so it is a ring of solid
     // colour rather than a tint the isometric camera would lose in shadow.
-    // Twelve round the tube: sixteen was a thousand triangles on a strap.
-    animalCollar: new THREE.TorusGeometry(0.15, 0.035, 12, 32).rotateX(Math.PI / 2),
+    // Ten round the tube and twenty-four round the ring: sixteen by thirty-two
+    // was a thousand triangles on a strap, and with the tag hung off it a
+    // bonded mossback stood seven hundred over the animal budget.
+    animalCollar: new THREE.TorusGeometry(0.15, 0.035, 10, 24).rotateX(Math.PI / 2),
     // A little lozenge hung off the collar: the tell that this one is somebody's
     // rather than the colony's. A shape rather than a second collar colour,
     // because the collar already says something — pale gold when there is
     // something to collect — and two meanings on one surface is one meaning lost.
-    petTag: new THREE.SphereGeometry(0.07, 12, 8).scale(0.8, 1.2, 0.45),
+    petTag: new THREE.SphereGeometry(0.07, 10, 6).scale(0.8, 1.2, 0.45),
     // A downward cone, the universal "this one" marker in a colony sim.
     huntMark: new THREE.ConeGeometry(0.16, 0.28, 24).rotateX(Math.PI),
     // The caravan's load: one bundle high on the back and a few crates set down

@@ -27,19 +27,28 @@ const TUFTS_PER_CELL = 3;
 const BLADES_PER_TUFT = 3;
 /** Fraction of bare cells that get a stone. Sparse on purpose — scatter, not gravel. */
 const STONE_CHANCE = 0.16;
-const TUFT_HEIGHT = 0.46;
+/**
+ * The tallest tuft on the map, and the base it grows up from. Both under forty
+ * centimetres: from a first-person eye 1.6 m up, a blade at waist height reads
+ * as a scale error on everything around it, not as tall grass. The knee is the
+ * ceiling, and the spread below it is what keeps a lawn from being one height.
+ */
+const TUFT_HEIGHT = 0.3;
+const TUFT_HEIGHT_SPREAD = 0.1;
 
 /**
  * Root and tip of a blade. The root sits a shade *above* the turf it grows from
  * (`TERRAIN_COLOR.grass`) rather than below it: from the manager camera a blade
  * darker than its lawn is a black chevron on a bright field, and nine thousand
- * of those are the loudest thing on the map. The tip is a yellow-green that
- * reads as light caught on the leaf. The gradient between them is baked into
- * the geometry as vertex colours (see `tuftGeometry`); the instance colour only
- * tints the whole tuft a little either way.
+ * of those are the loudest thing on the map. The tip is a paler green that
+ * reads as light caught on the leaf — green, not yellow: a straw-coloured tip
+ * on nine thousand tufts washed the wide frames the colour of hay, and a lawn
+ * has to read as a lawn from twenty cells up. The gradient between them is
+ * baked into the geometry as vertex colours (see `tuftGeometry`); the instance
+ * colour only tints the whole tuft a little either way.
  */
-const GRASS_ROOT = new THREE.Color(0x4f7048);
-const GRASS_TIP = new THREE.Color(0x93ae5a);
+const GRASS_ROOT = new THREE.Color(0x437f34);
+const GRASS_TIP = new THREE.Color(0x7fb050);
 
 /**
  * A loose stone's colour. Not `TERRAIN_COLOR.rock`, deliberately: that navy grey
@@ -47,8 +56,18 @@ const GRASS_TIP = new THREE.Color(0x93ae5a);
  * blob. A river stone is paler and browner than the face it broke off, so this
  * sits mid-grey with the warmth of the dirt it lies on, and each instance
  * wanders in hue and lightness so a field of them is not one stamp repeated.
+ * Exported because it is *the* loose-stone colour: the cairns and fire rings in
+ * `landmarks.ts` are stones somebody picked up off this ground, and two families
+ * of pebble on one map — one warm, one near-black — read as two different games.
  */
-const STONE_COLOR = 0x8b8073;
+export const STONE_COLOR = 0x8b8073;
+/**
+ * A stone is lit by the environment as well as the sun. Rough enough to stay
+ * matte, but standard rather than Lambert so the sky map puts a rim on the
+ * upper edge of every lump — which is what separates a pebble from the dirt it
+ * lies on when the two are nearly one colour.
+ */
+export const STONE_ROUGHNESS = 0.8;
 
 export class DecorView {
   readonly group = new THREE.Group();
@@ -87,7 +106,7 @@ export class DecorView {
     // gone and what is left is a lump with a highlight sliding over it.
     this.stones = new THREE.InstancedMesh(
       lumpyGeometry(new THREE.IcosahedronGeometry(0.5, 1), 0.09, 3.7),
-      new THREE.MeshLambertMaterial({ color: 0xffffff }),
+      new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: STONE_ROUGHNESS }),
       cells,
     );
     this.stones.castShadow = true;
@@ -155,7 +174,7 @@ export class DecorView {
             // blades inside the tuft already lean apart, so the whole clump only
             // needs enough tilt that three of them on a cell are not one stamp.
             q.setFromEuler(new THREE.Euler((d - 0.5) * 0.3, a * Math.PI * 2, (b - 0.5) * 0.3));
-            const h = TUFT_HEIGHT * (0.7 + d * 0.55);
+            const h = TUFT_HEIGHT + (d - 0.5) * 2 * TUFT_HEIGHT_SPREAD;
             s.set(0.2 + a * 0.08, h, 0.2 + b * 0.08);
             m.compose(v, q, s);
             this.tufts.setMatrixAt(tuft, m);

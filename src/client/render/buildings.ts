@@ -56,6 +56,18 @@ const NEIGHBOURS: ReadonlyArray<readonly [number, number]> = [
 
 /** What a fence rail will reach out to: the other things that make a boundary. */
 const FENCE_LINKS = new Set<BuildingKind>(['fence', 'wall', 'stonewall', 'door']);
+/** What continues a wall: a corner post stands wherever a run of these stops. */
+const WALL_LINKS = new Set<BuildingKind>(['wall', 'stonewall', 'door']);
+/**
+ * The four corners of a cell, as the sign of each axis, and the yaw that
+ * turns a part built at the +x,+z corner onto each of them.
+ */
+const CORNERS: ReadonlyArray<readonly [number, number, number]> = [
+  [1, 1, 0],
+  [1, -1, Math.PI / 2],
+  [-1, -1, Math.PI],
+  [-1, 1, -Math.PI / 2],
+];
 
 /**
  * Where a dropped stack comes to rest on a cell that already has furniture on it.
@@ -190,9 +202,11 @@ function merge(...parts: THREE.BufferGeometry[]): THREE.BufferGeometry {
  * normals baked into the geometry itself.
  */
 function faceted(g: THREE.BufferGeometry): THREE.BufferGeometry {
-  const flat = g.toNonIndexed();
+  // A merge comes out non-indexed already; flattening it again is a copy
+  // and a warning for nothing.
+  const flat = g.index ? g.toNonIndexed() : g;
   flat.computeVertexNormals();
-  g.dispose();
+  if (flat !== g) g.dispose();
   return flat;
 }
 
@@ -269,28 +283,73 @@ function planks(): THREE.BufferGeometry {
 }
 
 /**
- * Coursed stone for the stone wall: three proud courses with a joint in each,
- * the joints staggered from course to course the way a mason lays them. The
- * recessed courses between are the body itself, so one thin part gives the
- * whole face a bond pattern, and it stays inside the plinth and coping
- * footprint so the wall's outline is still the box the sim collides with.
+ * One block of masonry, standing proud of a wall face with its outer face
+ * drawn in a little so every edge is a bevel. It is a square frustum — a
+ * four-sided cylinder with a smaller top than base, turned so its axis points
+ * out of the wall — because that is the cheapest bevelled block there is:
+ * sixteen triangles, where a rounded box is over a hundred, and a stone wall
+ * is instanced by the hundred. `w` and `h` are the block's size across the
+ * face, `proud` is how far its outer face stands off the plane it is set in,
+ * and the geometry comes out with its base on y = 0 and its face at y =
+ * `proud`, ready to be turned onto whichever face of the wall it belongs to.
+ * Face normals are baked in at the merge: a block is honestly faceted.
  */
-function courses(): THREE.BufferGeometry {
+function block(w: number, h: number, proud: number): THREE.BufferGeometry {
+  const g = new THREE.CylinderGeometry(Math.SQRT2 * 0.8, Math.SQRT2, 1, 4, 1);
+  g.rotateY(Math.PI / 4);
+  g.translate(0, 0.5, 0);
+  g.scale(w / 2, proud, h / 2);
+  return g;
+}
+
+/** How far a wall face is from the cell's centre: the stone body's half-width, less a little so a block's base is buried. */
+const STONE_FACE = 0.46;
+
+/**
+ * Coursed stone for the stone wall: five courses of bevelled blocks round all
+ * four faces, each course's joint staggered against the one below the way a
+ * mason breaks bond, and every block standing a slightly different distance
+ * off the wall and sitting a hair above or below its neighbour. The recessed
+ * joints between are the body itself. The offsets are the whole point — a
+ * face of blocks at exactly one depth is a face with lines drawn on it, and a
+ * face where each block catches its own edge of light is masonry — and they
+ * come from a hash of the block's place on the wall, so every cell of wall is
+ * the same wall, and a run reads as one bond rather than as cells.
+ *
+ * Built in two halves, `parity` picking the odd or the even courses, because
+ * forty bevelled blocks are more triangles than a part instanced by the
+ * hundred is allowed to spend, and twenty-four are not. Both halves stay
+ * inside the plinth and coping footprint, so the wall's outline is still the
+ * box the sim collides with.
+ */
+function masonry(parity: 0 | 1): THREE.BufferGeometry {
   const parts: THREE.BufferGeometry[] = [];
-  const edge = 0.47;
-  for (let c = 0; c < 3; c++) {
-    const y = 0.69 + c * 0.7;
-    const joint = c % 2 === 0 ? -0.15 : 0.15;
-    const w1 = joint - 0.02 + edge;
-    const w2 = edge - (joint + 0.02);
-    for (const side of [1, -1]) {
-      parts.push(box(w1, 0.36, 0.05, y, -edge + w1 / 2, side * 0.475));
-      parts.push(box(w2, 0.36, 0.05, y, edge - w2 / 2, side * 0.475));
-      parts.push(box(0.05, 0.36, w1, y, side * 0.475, -edge + w1 / 2));
-      parts.push(box(0.05, 0.36, w2, y, side * 0.475, edge - w2 / 2));
+  const joints = [-0.12, 0.15, -0.04, 0.18, -0.16];
+  for (let c = parity; c < 5; c += 2) {
+    const y = 0.56 + c * 0.42;
+    const joint = joints[c]!;
+    const w1 = joint - 0.02 + STONE_FACE;
+    const w2 = STONE_FACE - (joint + 0.02);
+    for (let face = 0; face < 4; face++) {
+      for (const [w, u] of [
+        [w1, -STONE_FACE + w1 / 2],
+        [w2, STONE_FACE - w2 / 2],
+      ] as const) {
+        const hash = (c * 31 + face * 7 + Math.round(u * 100)) % 5;
+        const proud = 0.035 + hash * 0.006;
+        const g = block(w, 0.34 + (hash % 3) * 0.02, proud);
+        // Stand the block up — width across, height up, proud towards +z —
+        // then turn it a quarter at a time round the wall: +z, +x, −z, −x.
+        g.rotateX(Math.PI / 2);
+        g.rotateY(face * (Math.PI / 2));
+        const out = face % 2 === 0 ? 0 : 1;
+        const sign = face < 2 ? 1 : -1;
+        g.translate(out === 0 ? u : sign * STONE_FACE, y + (hash - 2) * 0.006, out === 0 ? sign * STONE_FACE : u);
+        parts.push(g);
+      }
     }
   }
-  return merge(...parts);
+  return faceted(merge(...parts));
 }
 
 /** The lamp's globe. Built twice — once lit, once not — so `globe()` rather than a const. */
@@ -310,6 +369,21 @@ function solidMat(rough: number): THREE.MeshStandardMaterial {
  */
 function tone(color: number, rough: number, metal = 0.04): THREE.MeshStandardMaterial {
   return new THREE.MeshStandardMaterial({ color, roughness: rough, metalness: metal });
+}
+
+/**
+ * A part that has to come out *lighter* than its palette entry. The material
+ * colour multiplies the instance tint, and nothing says the multiplier has to
+ * stay under one: a watermill's palette entry is a dark timber, and a paddle
+ * toned darker still under it multiplies down to three percent reflectance —
+ * which is the near-black wheel that looked broken in every frame since the
+ * mill was built. The three factors are per channel in linear light, so a
+ * warm (r > b) lift also warms the part.
+ */
+function lifted(r: number, g: number, b: number, rough: number, metal = 0.04): THREE.MeshStandardMaterial {
+  const m = new THREE.MeshStandardMaterial({ roughness: rough, metalness: metal });
+  m.color.setRGB(r, g, b);
+  return m;
 }
 
 /** The crate mesh's own height — the step from one stack in a pile to the next. */
@@ -379,15 +453,26 @@ export class BuildingsView {
     // the coping are thin parts laid over it.
     this.pool('wall.body', box(1, 2.44, 1, 1.22), solidMat(0.92), 256);
     this.pool('wall.planks', planks(), tone(0xb9ad98, 0.9), 256);
-    this.pool('wall.cap', rbox(1.06, 0.16, 1.06, 2.52, 0, 0, 0.04), solidMat(0.8), 256);
+    this.pool('wall.cap', rbox(1.06, 0.18, 1.06, 2.51, 0, 0, 0.06), solidMat(0.8), 256);
+    // A square post standing proud at a corner of the wall — pushed once per
+    // outside corner, which the draw works out from the neighbours, so a
+    // cabin gets a post at each of its four corners and a run of wall gets
+    // one pair at each end and none along its length. A corner is where the
+    // eye checks whether a building is a building or a row of cubes, and a
+    // post there is what a framed wall actually has. Built at the +x,+z
+    // corner and turned onto the others at draw time; it sits a hair inside
+    // the cell so the wall's reach stays what the collision says.
+    this.pool('wall.post', rbox(0.16, 2.5, 0.16, 1.25, 0.47, 0.47, 0.03, 1), solidMat(0.85), 64);
 
     // Stone wall: the same silhouette as timber so a mixed perimeter still reads as
     // one wall, but with a proud plinth at the base, coursed stone up the face and
     // a heavier coping. It is the colour that carries the difference — see
-    // BUILDING_COLOR.stonewall.
+    // BUILDING_COLOR.stonewall. The courses are two pools of one bond: see
+    // `masonry` for why.
     this.pool('stone.plinth', rbox(1.04, 0.34, 1.04, 0.17), solidMat(0.95), 256);
     this.pool('stone.body', box(0.94, 2.2, 0.94, 1.44), solidMat(0.95), 256);
-    this.pool('stone.courses', courses(), tone(0xb4b4b0, 0.95), 256);
+    this.pool('stone.courses', masonry(0), tone(0xb4b4b0, 0.9), 256);
+    this.pool('stone.bond', masonry(1), tone(0xa8a8a4, 0.9), 256);
     this.pool('stone.cap', rbox(1.1, 0.2, 1.1, 2.62, 0, 0, 0.05), solidMat(0.85), 256);
 
     // Research bench: a desk with glassware on it and a small brass lamp over
@@ -397,10 +482,10 @@ export class BuildingsView {
     this.pool(
       'lab.desk',
       merge(
-        rbox(0.98, 0.08, 0.7, 0.7),
-        rbox(0.08, 0.66, 0.62, 0.33, -0.43, 0, 0.02, 1),
-        rbox(0.08, 0.66, 0.62, 0.33, 0.43, 0, 0.02, 1),
-        rbox(0.7, 0.36, 0.04, 0.36, 0, -0.29, 0.01, 1),
+        rbox(0.98, 0.08, 0.7, 0.7, 0, 0, 0.035),
+        rbox(0.08, 0.66, 0.62, 0.33, -0.43, 0, 0.035, 1),
+        rbox(0.08, 0.66, 0.62, 0.33, 0.43, 0, 0.035, 1),
+        rbox(0.7, 0.36, 0.04, 0.36, 0, -0.29, 0.015, 1),
       ),
       solidMat(0.8),
       8,
@@ -408,7 +493,7 @@ export class BuildingsView {
     this.pool(
       'lab.glass',
       merge(sphere(0.11, 0.85, 0.2, 0.1, 16, 12), cylinder(0.035, 0.04, 0.16, 0.99, 12).translate(0.2, 0, 0.1)),
-      tone(0xe6f2f0, 0.15, 0.1),
+      tone(0xe6f2f0, 0.12, 0.1),
       8,
     );
     this.pool(
@@ -451,24 +536,36 @@ export class BuildingsView {
       solidMat(0.7),
       32,
     );
+    // The handle is a lever on a backplate, either side of the panel, in dark
+    // iron. It used to be a pair of knobs the size of a walnut, which from the
+    // distance a settler sees a cabin at were two dark pixels; a lever the
+    // length of a hand and a plate behind it are a door's furniture at that
+    // range, and they are what tells a door from a wall with a lighter panel.
     this.pool(
       'door.handle',
       merge(
-        sphere(0.045, 1.05, 0.78, 0.09, 12, 8),
-        sphere(0.045, 1.05, 0.78, -0.09, 12, 8),
-        cylinder(0.02, 0.02, 0.2, 0, 10).rotateX(Math.PI / 2).translate(0.78, 1.05, 0),
+        rbox(0.09, 0.24, 0.02, 1.05, 0.8, 0.075, 0.008, 1),
+        rbox(0.09, 0.24, 0.02, 1.05, 0.8, -0.075, 0.008, 1),
+        cylinder(0.022, 0.022, 0.26, 0, 12).rotateX(Math.PI / 2).translate(0.8, 1.05, 0),
+        cylinder(0.02, 0.024, 0.16, 0, 12).rotateZ(Math.PI / 2).translate(0.72, 1.05, 0.12),
+        cylinder(0.02, 0.024, 0.16, 0, 12).rotateZ(Math.PI / 2).translate(0.72, 1.05, -0.12),
+        sphere(0.03, 1.05, 0.64, 0.12, 12, 8),
+        sphere(0.03, 1.05, 0.64, -0.12, 12, 8),
       ),
-      tone(0x4a4034, 0.4, 0.5),
+      tone(0x3a322a, 0.4, 0.5),
       32,
     );
+    // The frame is a shade lighter than the panel under the same tint, so the
+    // opening reads as an opening — jambs and a lintel round a darker leaf —
+    // rather than as one slab of door-coloured wall.
     this.pool(
       'door.frame',
       merge(
-        rbox(0.1, 2.45, 0.24, 1.225, -0.5, 0, 0.02, 1),
-        rbox(0.1, 2.45, 0.24, 1.225, 0.5, 0, 0.02, 1),
-        rbox(1, 0.3, 0.5, 2.45, 0, 0, 0.04),
+        rbox(0.12, 2.45, 0.28, 1.225, -0.5, 0, 0.03, 1),
+        rbox(0.12, 2.45, 0.28, 1.225, 0.5, 0, 0.03, 1),
+        rbox(1, 0.3, 0.5, 2.45, 0, 0, 0.05),
       ),
-      solidMat(0.85),
+      tone(0xd6cbb8, 0.85),
       32,
     );
 
@@ -545,11 +642,18 @@ export class BuildingsView {
     // Stove: a rounded cast body with a firebox door on the front, two hobs on
     // the top and a flue up the back corner. The hobs glow; they are the part
     // the eye lands on from above, where the door is out of sight.
-    this.pool('stove.body', rbox(0.88, 0.9, 0.86, 0.45, 0, 0, 0.04), solidMat(0.5), 16);
+    //
+    // The shells of the machines — this one, the cooler, the heater, the
+    // generator, the battery — carry a six-centimetre bevel and a roughness
+    // under a half. Both were smaller once, and at the manager camera's range
+    // a three-centimetre bevel is a line too thin to see and a rough shell is
+    // a shell with no highlight, which together is a box. The scene has an
+    // environment map; a cast shell at 0.4 catches it along every eased edge.
+    this.pool('stove.body', rbox(0.88, 0.9, 0.86, 0.45, 0, 0, 0.06), solidMat(0.4), 16);
     this.pool(
       'stove.door',
       merge(rbox(0.5, 0.42, 0.05, 0.4, 0, 0.43, 0.015, 1), box(0.3, 0.03, 0.03, 0.4, 0, 0.47)),
-      tone(0x2e2e33, 0.45, 0.3),
+      tone(0x2e2e33, 0.4, 0.3),
       16,
     );
     this.pool(
@@ -564,7 +668,7 @@ export class BuildingsView {
       new THREE.MeshStandardMaterial({
         color: 0x3a3a40,
         emissive: new THREE.Color(0x2a0d05),
-        roughness: 0.4,
+        roughness: 0.35,
       }),
       16,
     );
@@ -646,7 +750,14 @@ export class BuildingsView {
     // then swings at the lake — the same trick the fishing stage uses, and for
     // the same reason: a wheel that always faced east would be turning in the
     // grass three times out of four.
-    this.pool('mill.house', rbox(0.62, 1.05, 0.78, 0.525, -0.3, 0, 0.03, 1), solidMat(0.85), 8);
+    //
+    // Every part of the mill is lifted over its palette entry, which is the
+    // darkest timber in the palette: under it a white house came out as a
+    // brown one and a brown paddle as a black one, and the wheel — the whole
+    // point of the machine — was a black disc with no spokes in it from either
+    // camera. The lifts are warm, so the mill reads as oak and rust rather
+    // than as a grey building that happens to be on a lake.
+    this.pool('mill.house', rbox(0.62, 1.05, 0.78, 0.525, -0.3, 0, 0.04, 1), lifted(1.8, 1.65, 1.5, 0.8), 8);
     // The pitched cap. Not decoration — it is what stops the house reading as
     // another grey cabinet in the isometric distance, where the wheel behind it
     // is only a few pixels of moving edge. It is the one honestly faceted thing
@@ -659,7 +770,7 @@ export class BuildingsView {
         g.translate(-0.3, 0, 0);
         return faceted(g);
       })(),
-      tone(0x54402c, 0.8),
+      lifted(1.25, 1.1, 1.0, 0.8),
       8,
     );
     // The shaft out of the house to the hub, with the hub on the end of it. It
@@ -674,7 +785,7 @@ export class BuildingsView {
           .translate((HUB_OUT - 0.15) / 2 + 0.05, HUB_Y, 0),
         cylinder(0.14, 0.14, 0.1, 0, 20).rotateZ(Math.PI / 2).translate(HUB_OUT, HUB_Y, 0),
       ),
-      tone(0x4f4a42, 0.6),
+      lifted(2.2, 2.2, 2.4, 0.45, 0.4),
       8,
     );
     // One paddle, drawn eight times per wheel at eight angles, each carrying its
@@ -692,7 +803,7 @@ export class BuildingsView {
         box(0.04, 0.05, 0.42, WHEEL_R - 0.055, 0.2, 0),
         box(0.04, 0.05, 0.42, WHEEL_R - 0.055, -0.2, 0),
       ),
-      tone(0x7d6242, 0.75),
+      lifted(2.6, 2.3, 1.9, 0.65),
       64,
     );
 
@@ -707,12 +818,13 @@ export class BuildingsView {
     // on top where the cold gets through. The compressor on the back face is
     // for the first-person view, where a chest with nothing driving it is a
     // trunk.
-    this.pool('cooler.body', rbox(0.92, 1.1, 0.86, 0.55, 0, 0, 0.05), solidMat(0.55), 16);
-    this.pool('cooler.lid', rbox(0.98, 0.2, 0.92, 1.22, 0, 0, 0.07), solidMat(0.45), 16);
+    this.pool('cooler.body', rbox(0.92, 1.1, 0.86, 0.55, 0, 0, 0.06), solidMat(0.4), 16);
+    this.pool('cooler.lid', rbox(0.98, 0.2, 0.92, 1.22, 0, 0, 0.07), solidMat(0.38), 16);
+    // Rime is ice: glass-smooth, so the band and the pane throw the sky back.
     this.pool(
       'cooler.frost',
       merge(rbox(0.95, 0.24, 0.89, 0.74, 0, 0, 0.02, 1), rbox(0.68, 0.025, 0.6, 1.325, 0, -0.03, 0.01, 1)),
-      tone(0xdaeef5, 0.35),
+      tone(0xdaeef5, 0.2),
       16,
     );
     this.pool(
@@ -735,42 +847,36 @@ export class BuildingsView {
       16,
     );
 
-    // Campfire: a ring of fieldstone round a bed of ash, logs laid across it,
-    // and a flame that is only pushed while there is something in the firebox —
-    // the same trick the generator uses, and for the same reason. A cold fire
-    // pit and a lit one have to be different at a glance from the isometric
-    // camera, because the whole point of a fire is knowing whether it is out.
-    this.pool(
-      'fire.ring',
-      (() => {
-        const parts: THREE.BufferGeometry[] = [cylinder(0.36, 0.38, 0.06, 0.03, 20)];
-        for (let i = 0; i < 9; i++) {
-          const a = (i / 9) * TAU;
-          const r = 0.11 + ((i * 7) % 3) * 0.015;
-          const stone = sphere(r, 0, 0, 0, 8, 6);
-          stone.scale(1.15, 0.72, 1);
-          stone.rotateY(a * 1.7);
-          stone.translate(Math.cos(a) * 0.4, r * 0.6, Math.sin(a) * 0.4);
-          parts.push(stone);
-        }
-        return merge(...parts);
-      })(),
-      solidMat(0.95),
-      32,
-    );
+    // Campfire: a bed of ash, six logs laid in to the middle like the spokes
+    // of a wheel with their inner ends charred and resting on the heap, a
+    // core of embers in the middle of them, and a flame over that. The
+    // embers and the flame are only pushed while there is something in the
+    // firebox — the same trick the generator uses, and for the same reason. A
+    // cold fire pit and a lit one have to be different at a glance from the
+    // isometric camera, because the whole point of a fire is knowing whether
+    // it is out; so a fire that is out gets the same heap in dead grey.
+    //
+    // It was a ring of nine stones round three crossed logs, and from above
+    // the stones read as the petals of a flower with a stick in it. Logs laid
+    // radially are the shape everyone knows a fire by.
+    this.pool('fire.bed', cylinder(0.4, 0.42, 0.05, 0.025, 24), tone(0x6f6a64, 0.95), 32);
     this.pool(
       'fire.logs',
       (() => {
         const parts: THREE.BufferGeometry[] = [];
-        for (const [yaw, y] of [
-          [0, 0.15],
-          [Math.PI / 2.6, 0.22],
-          [-Math.PI / 3.2, 0.29],
-        ]) {
-          const log = cylinder(0.075, 0.085, 0.6, 0, 12);
+        for (let i = 0; i < 6; i++) {
+          // Built lying along +x with its inner end at the origin, tipped up
+          // onto the heap, then swept round the fire; the small twist on each
+          // keeps six of them from reading as one part stamped six times.
+          const a = (i / 6) * TAU + (i % 2) * 0.12;
+          const len = 0.42 + (i % 3) * 0.03;
+          const log = cylinder(0.055, 0.065, len, 0, 12);
           log.rotateZ(Math.PI / 2);
-          log.rotateY(yaw);
-          log.translate(0, y, 0);
+          log.translate(len / 2 + 0.04, 0, 0);
+          // Inner end up on the coals, outer end down on the ground.
+          log.rotateZ(-0.2);
+          log.translate(0, 0.17, 0);
+          log.rotateY(-a);
           parts.push(log);
         }
         return merge(...parts);
@@ -778,6 +884,52 @@ export class BuildingsView {
       tone(0x5d4126, 0.9),
       32,
     );
+    this.pool(
+      'fire.char',
+      (() => {
+        const parts: THREE.BufferGeometry[] = [];
+        for (let i = 0; i < 6; i++) {
+          const a = (i / 6) * TAU + (i % 2) * 0.12;
+          // A hair fatter than the log it sleeves, and a centimetre past its
+          // end, so it is never a face on a face.
+          const tip = cylinder(0.062, 0.064, 0.14, 0, 12);
+          tip.rotateZ(Math.PI / 2);
+          tip.translate(0.1, 0, 0);
+          tip.rotateZ(-0.2);
+          tip.translate(0, 0.17, 0);
+          tip.rotateY(-a);
+          parts.push(tip);
+        }
+        return merge(...parts);
+      })(),
+      tone(0x1c1816, 0.95),
+      32,
+    );
+    // The core is one heap of coals, lit or dead: a low dome with a few lumps
+    // on it. Two pools of the same heap because emissive does not dim with
+    // instance colour — the lamp does the same with its globe.
+    const embers = (): THREE.BufferGeometry => {
+      const dome = new THREE.SphereGeometry(0.2, 16, 8, 0, TAU, 0, Math.PI / 2);
+      dome.scale(1, 0.55, 1);
+      return merge(
+        dome,
+        sphere(0.06, 0.1, 0.09, 0.05, 10, 8),
+        sphere(0.05, 0.11, -0.07, 0.08, 10, 8),
+        sphere(0.055, 0.09, -0.02, -0.1, 10, 8),
+      );
+    };
+    this.pool(
+      'fire.embers',
+      embers(),
+      new THREE.MeshStandardMaterial({
+        color: 0x3a1408,
+        emissive: new THREE.Color(0xff4a10),
+        emissiveIntensity: 1.3,
+        roughness: 0.5,
+      }),
+      32,
+    );
+    this.pool('fire.ash', embers(), tone(0x2e2a27, 1.0), 32);
     this.pool(
       'fire.flame',
       lathe([
@@ -795,8 +947,8 @@ export class BuildingsView {
     // Heater: a rounded upright casing with fins down its face and an element
     // behind them that glows when it has watts behind it. Read against the
     // cooler on purpose — same footprint, warm colour, fins instead of frost.
-    this.pool('heat.body', rbox(0.78, 1.14, 0.64, 0.57, 0, 0, 0.05), solidMat(0.6), 24);
-    this.pool('heat.cap', rbox(0.86, 0.12, 0.72, 1.19, 0, 0, 0.04), solidMat(0.5), 24);
+    this.pool('heat.body', rbox(0.78, 1.14, 0.64, 0.57, 0, 0, 0.06), solidMat(0.42), 24);
+    this.pool('heat.cap', rbox(0.86, 0.12, 0.72, 1.19, 0, 0, 0.05), solidMat(0.38), 24);
     this.pool(
       'heat.grille',
       (() => {
@@ -820,7 +972,7 @@ export class BuildingsView {
     this.pool(
       'turret.head',
       merge(rbox(0.48, 0.34, 0.44, 1.0, 0, 0, 0.08), cylinder(0.02, 0.02, 0.2, 1.27, 8), sphere(0.04, 1.36, 0, 0, 10, 8)),
-      solidMat(0.5),
+      solidMat(0.42),
       24,
     );
     this.pool(
@@ -931,6 +1083,21 @@ export class BuildingsView {
     this.pool('fence.post', rbox(0.18, 1.15, 0.18, 0.575, 0, 0, 0.03, 1), solidMat(0.88), 256);
     this.pool('fence.rail.hi', rbox(0.56, 0.1, 0.08, 0.92, 0.28, 0, 0.025, 1), solidMat(0.88), 256);
     this.pool('fence.rail.lo', rbox(0.56, 0.1, 0.08, 0.52, 0.28, 0, 0.025, 1), solidMat(0.88), 256);
+    // A fence with nothing to reach out to is still a fence, not a post: a
+    // stub of each rail either side, short of the cell's edge, so the first
+    // cell of a line the player is laying reads as the thing they are laying.
+    // One merged part, pushed only on a lone fence, so a run still meets as
+    // one rail and a cell with a neighbour never gets a stub pointing the
+    // other way.
+    this.pool(
+      'fence.stub',
+      merge(
+        rbox(0.5, 0.1, 0.08, 0.92, 0, 0, 0.025, 1),
+        rbox(0.5, 0.1, 0.08, 0.52, 0, 0, 0.025, 1),
+      ),
+      solidMat(0.88),
+      32,
+    );
 
     // Lamp: a tapered post on a foot, an iron bracket with four ribs caging the
     // globe, and the globe itself.
@@ -948,24 +1115,34 @@ export class BuildingsView {
       tone(0x3c3835, 0.5, 0.4),
       24,
     );
+    // The lit globe glows warm and glows hard: the sky owns the point light
+    // that spills onto the ground round a lamp, and the globe itself is what
+    // has to look like the source of it, so its emissive is the same amber as
+    // that light and pushed past white. Glass-smooth, so the unlit side still
+    // catches the sky.
     this.pool(
       'lamp.globe',
       globe(),
-      new THREE.MeshStandardMaterial({ color: 0xfff0c4, emissive: new THREE.Color(0xffca7a), roughness: 0.3 }),
+      new THREE.MeshStandardMaterial({
+        color: 0xfff0c4,
+        emissive: new THREE.Color(0xffb765),
+        emissiveIntensity: 1.6,
+        roughness: 0.2,
+      }),
       24,
     );
     // The same globe with the light taken out of it. A separate pool rather than a
     // tint, because emissive does not dim with instance colour — a lamp with no
     // watts behind it would otherwise glow just as brightly as one that is lit,
     // which is the exact thing the player is meant to be able to see at a glance.
-    this.pool('lamp.dark', globe(), new THREE.MeshStandardMaterial({ color: 0x6b6552, roughness: 0.7 }), 24);
+    this.pool('lamp.dark', globe(), new THREE.MeshStandardMaterial({ color: 0x6b6552, roughness: 0.25 }), 24);
 
     // Generator: a rounded cast housing with a flywheel on its flank, vents on
     // the front, terminals on the hood and a stack over the firebox. The wheel
     // is what sells it from the isometric camera — a plain box reads as another
     // cabinet, a box with a wheel on it reads as an engine.
-    this.pool('gen.body', rbox(0.9, 0.9, 0.82, 0.45, 0, 0, 0.05), solidMat(0.6), 16);
-    this.pool('gen.hood', rbox(0.96, 0.16, 0.88, 0.98, 0, 0, 0.04), solidMat(0.5), 16);
+    this.pool('gen.body', rbox(0.9, 0.9, 0.82, 0.45, 0, 0, 0.06), solidMat(0.4), 16);
+    this.pool('gen.hood', rbox(0.96, 0.16, 0.88, 0.98, 0, 0, 0.06), solidMat(0.38), 16);
     this.pool(
       'gen.wheel',
       merge(
@@ -1025,8 +1202,8 @@ export class BuildingsView {
     // things a battery has on top: a row of cell caps, two rubber straps holding
     // the lid down, and the terminals with their bar, all standing proud enough
     // to throw a line of shadow from twenty cells up.
-    this.pool('batt.body', rbox(0.86, 0.6, 0.78, 0.3, 0, 0, 0.05), solidMat(0.7), 16);
-    this.pool('batt.lid', rbox(0.92, 0.12, 0.84, 0.66, 0, 0, 0.05), solidMat(0.6), 16);
+    this.pool('batt.body', rbox(0.86, 0.6, 0.78, 0.3, 0, 0, 0.06), solidMat(0.45), 16);
+    this.pool('batt.lid', rbox(0.92, 0.12, 0.84, 0.66, 0, 0, 0.05), solidMat(0.4), 16);
     this.pool(
       'batt.trim',
       merge(
@@ -1186,14 +1363,28 @@ export class BuildingsView {
       256,
     );
 
-    // Blueprints: one translucent box scaled to the real height of what is coming,
-    // so you can see the shape of your plan from either view before it exists.
+    // Blueprints: a low translucent slab on each planned cell, with a lip
+    // round its edge, so a plan reads as marked ground from either view. It
+    // used to be a full-height box at a third opaque — the shape of what was
+    // coming — and four of those in a row stacked into one cyan slab that hid
+    // a third of the first-person frame. The lip is the same faint material
+    // laid over the slab a second time: two layers of a one-in-seven ghost
+    // are twice as dense, so each cell keeps its own outline and a row reads
+    // as a row of cells rather than as a block, without a second pool or a
+    // line material. `depthWrite` stays off so ghosts never cut into each
+    // other or into the settlers walking over them.
     this.blueprints = new InstancedPool(
       this.group,
-      box(0.92, 1, 0.92, 0.5),
+      merge(
+        box(0.86, 0.22, 0.86, 0.11),
+        box(0.92, 0.28, 0.05, 0.14, 0, 0.435),
+        box(0.92, 0.28, 0.05, 0.14, 0, -0.435),
+        box(0.05, 0.28, 0.92, 0.14, 0.435, 0),
+        box(0.05, 0.28, 0.92, 0.14, -0.435, 0),
+      ),
       new THREE.MeshStandardMaterial({
         transparent: true,
-        opacity: 0.34,
+        opacity: 0.14,
         depthWrite: false,
         roughness: 0.4,
         emissive: new THREE.Color(0x2a4a66),
@@ -1333,12 +1524,17 @@ export class BuildingsView {
         this.flat('wall.body', b);
         this.flat('wall.planks', b);
         this.flat('wall.cap', b);
+        this.pushCorners(world, b);
         break;
       case 'stonewall':
         this.flat('stone.plinth', b);
         this.flat('stone.body', b);
         this.flat('stone.courses', b);
+        this.flat('stone.bond', b);
         this.flat('stone.cap', b);
+        // The same post under the stone tint is a quoin: the dressed pillar a
+        // mason builds a corner out of.
+        this.pushCorners(world, b);
         break;
       case 'lab':
         this.flat('lab.desk', b);
@@ -1394,11 +1590,14 @@ export class BuildingsView {
         this.flat('cooler.vent', b);
         break;
       case 'campfire': {
-        this.flat('fire.ring', b);
+        this.flat('fire.bed', b);
         this.flat('fire.logs', b);
+        this.flat('fire.char', b);
+        const lit = (b.fuel ?? 0) > 0;
+        this.flat(lit ? 'fire.embers' : 'fire.ash', b);
         // The flame flickers on the clock rather than on a random, so both views
         // and every reload agree on what the fire is doing this instant.
-        if ((b.fuel ?? 0) > 0) {
+        if (lit) {
           const flick = 0.86 + Math.sin(world.tick * 0.31 + b.id) * 0.09 + Math.sin(world.tick * 0.13) * 0.05;
           this.v.set(b.x, 0, b.y);
           this.q.setFromAxisAngle(UP, world.tick * 0.04 + b.id);
@@ -1465,11 +1664,13 @@ export class BuildingsView {
         this.flat('trap.jaws', b);
         this.flat('trap.trigger', b);
         break;
-      case 'fence':
+      case 'fence': {
         this.flat('fence.post', b);
+        let linked = false;
         for (const [dx, dz] of NEIGHBOURS) {
           const n = buildingAt(world, b.x + dx, b.y + dz);
           if (!n || !n.built || !FENCE_LINKS.has(n.kind)) continue;
+          linked = true;
           // The rail geometry points along +x, so the yaw that swings it onto this
           // neighbour is the one that takes (1,0,0) to (dx,0,dz).
           this.v.set(b.x, 0, b.y);
@@ -1479,7 +1680,9 @@ export class BuildingsView {
           this.get('fence.rail.hi').push(this.m, this.tint(b));
           this.get('fence.rail.lo').push(this.m, this.tint(b));
         }
+        if (!linked) this.flat('fence.stub', b);
         break;
+      }
       case 'lamp':
         this.flat('lamp.post', b);
         this.flat('lamp.bracket', b);
@@ -1605,6 +1808,24 @@ export class BuildingsView {
     }
   }
 
+  /**
+   * A post at each outside corner of a wall cell: a corner of the cell is an
+   * outside corner when the run does not continue past it on either axis.
+   * The middle of a straight run has none, the end of one has a pair, an L
+   * has one at its elbow and a lone cell has four — which is how a cabin
+   * comes out with a post at each of its corners and nothing along its sides.
+   */
+  private pushCorners(world: World, b: Building): void {
+    const linked = (dx: number, dz: number): boolean => {
+      const n = buildingAt(world, b.x + dx, b.y + dz);
+      return n !== null && n.built && WALL_LINKS.has(n.kind);
+    };
+    for (const [sx, sz, yaw] of CORNERS) {
+      if (linked(sx, 0) || linked(0, sz)) continue;
+      this.flat('wall.post', b, yaw);
+    }
+  }
+
   /** Cosmetic barrel tracking, cached so an idle turret keeps its last bearing. */
   private aimYaw(world: World, b: Building): number {
     let best: number | null = null;
@@ -1624,12 +1845,14 @@ export class BuildingsView {
   }
 
   private pushBlueprint(b: Building): void {
-    const def = defOf(b.kind);
+    // The ghost is the same low slab whatever is planned — the colour, cyan
+    // going to amber as materials arrive and work gets done, is the progress
+    // read, and the height of the building to come is not.
     const progress = blueprintProgress(b);
     this.c.setHex(0x4fa3d1).lerp(new THREE.Color(0xe0b25a), progress);
     this.v.set(b.x, 0, b.y);
     this.q.identity();
-    this.s.set(1, Math.max(0.35, def.height), 1);
+    this.s.set(1, 1, 1);
     this.m.compose(this.v, this.q, this.s);
     this.blueprints.push(this.m, this.c);
   }

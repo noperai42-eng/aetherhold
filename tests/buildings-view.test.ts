@@ -306,6 +306,99 @@ describe('a wood', () => {
   });
 });
 
+describe('a blueprint', () => {
+  it('marks the cell rather than standing a glass block on it', () => {
+    // Four planned walls in a row used to be four full-height boxes at a third
+    // opaque, and from inside a body they stacked into one cyan slab across a
+    // third of the frame. A ghost is a mark on the ground: knee-high at most,
+    // faint, and never written into the depth buffer — so a row of them stays
+    // a row of cells, and a settler walking over one is drawn over it rather
+    // than cut off at the shin.
+    const world = createWorld(SEED);
+    const view = new BuildingsView();
+    const { x, y } = clearCell(world);
+    addBuilding(world, 'wall', x, y, false);
+    view.sync(world);
+    expect(heightAt(view, x, y), 'the ghost of a wall stands as tall as the wall').toBeLessThanOrEqual(0.3);
+    let ghosts = 0;
+    view.group.traverse((o) => {
+      const mesh = o as THREE.InstancedMesh;
+      if (!mesh.isInstancedMesh) return;
+      const mat = mesh.material as THREE.MeshStandardMaterial;
+      if (!mat.transparent) return;
+      ghosts++;
+      expect(mat.opacity, 'a ghost dense enough to hide what is behind it').toBeLessThanOrEqual(0.15);
+      expect(mat.depthWrite, 'a ghost that cuts into the settlers walking over it').toBe(false);
+    });
+    expect(ghosts, 'no translucent pool to draw a blueprint with').toBe(1);
+    view.dispose();
+  });
+});
+
+/** How many instances of one part stand on a cell. */
+function partsAt(view: BuildingsView, key: string, x: number, y: number): number {
+  const pos = new THREE.Vector3();
+  let n = 0;
+  for (const m of matricesOf(view, key)) {
+    pos.setFromMatrixPosition(m);
+    if (Math.round(pos.x) === x && Math.round(pos.z) === y) n++;
+  }
+  return n;
+}
+
+describe('a wall', () => {
+  it('posts its outside corners and not its length', () => {
+    // A corner is where the eye decides whether a building is a building or a
+    // row of cubes, and a framed wall has a post there. The middle of a run
+    // has no outside corner, so a post there would chop the run back into
+    // cells; the end of a run has two; a lone cell, four. The count is what
+    // the draw works out from the neighbours, so it is the count that is
+    // checked.
+    const world = createWorld(SEED);
+    const view = new BuildingsView();
+    const { x, y } = clearCell(world);
+    place(world, 'wall', x, y);
+    view.sync(world);
+    expect(partsAt(view, 'wall.post', x, y), 'a lone wall has a post at each corner').toBe(4);
+
+    place(world, 'wall', x + 1, y);
+    place(world, 'wall', x + 2, y);
+    view.sync(world);
+    expect(partsAt(view, 'wall.post', x + 1, y), 'a post in the middle of a run').toBe(0);
+    expect(partsAt(view, 'wall.post', x, y), 'the end of a run has a pair of posts').toBe(2);
+    expect(partsAt(view, 'wall.post', x + 2, y), 'the end of a run has a pair of posts').toBe(2);
+    view.dispose();
+  });
+});
+
+describe('a stone wall', () => {
+  it('lays its masonry between the plinth and the coping, and not at one depth', () => {
+    // The blocks stand proud of the body but inside the coping's footprint,
+    // and between the top of the plinth and the underside of the cap, so the
+    // wall's outline is still the box the sim collides with. And they stand
+    // proud by different amounts: a face of blocks all at one depth is a face
+    // with lines drawn on it, and the per-block offset is what makes it stone.
+    const view = new BuildingsView();
+    const plinth = partGeometry(view, 'stone.plinth');
+    const cap = partGeometry(view, 'stone.cap');
+    plinth.computeBoundingBox();
+    cap.computeBoundingBox();
+    for (const key of ['stone.courses', 'stone.bond']) {
+      const g = partGeometry(view, key);
+      g.computeBoundingBox();
+      const b = g.boundingBox!;
+      expect(b.min.y, `${key} sinks into the plinth`).toBeGreaterThanOrEqual(plinth.boundingBox!.max.y);
+      expect(b.max.y, `${key} rises into the coping`).toBeLessThanOrEqual(cap.boundingBox!.min.y);
+      expect(Math.max(b.max.x, -b.min.x, b.max.z, -b.min.z), `${key} stands out past the coping`).toBeLessThanOrEqual(cap.boundingBox!.max.x);
+      const depths = new Set<number>();
+      const pos = g.attributes.position;
+      for (let k = 0; k < pos.count; k++) if (pos.getZ(k) > 0.47) depths.add(Math.round(pos.getZ(k) * 1000));
+      expect(depths.size, `${key} has every block on its +z face at the same depth`).toBeGreaterThanOrEqual(3);
+    }
+    view.dispose();
+  });
+});
+
 describe('a fence line', () => {
   it('rails towards its neighbours and not into open ground', () => {
     const world = createWorld(SEED);
