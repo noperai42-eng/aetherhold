@@ -16,7 +16,15 @@
 import * as THREE from 'three';
 import { describe, expect, it } from 'vitest';
 
-import { markHeight } from '../src/client/render/fx';
+import {
+  CROP_STAGES,
+  berryClusterGeometry,
+  bushGeometry,
+  cropGeometry,
+  cropStage,
+  markHeight,
+  tilledSoilGeometry,
+} from '../src/client/render/fx';
 import { TerrainView, groundLiftAt, rockTopAt } from '../src/client/render/terrain';
 import { createWorld } from '../src/sim/worldgen';
 import { terrainAt } from '../src/sim/types';
@@ -96,5 +104,95 @@ describe('what the overlays stand on', () => {
       }
     }
     throw new Error('no rock on this map');
+  });
+});
+
+function triangles(geo: THREE.BufferGeometry): number {
+  return (geo.index ? geo.index.count : geo.getAttribute('position').count) / 3;
+}
+
+describe('what a plant and a bush are made of', () => {
+  it('grows a sown cell through three different shapes, each rooted in its cell', () => {
+    // Growth used to scale one rosette, and from twenty cells up a seedling
+    // scaled up is a seedling: the stages have to differ in shape, which here
+    // means in vertex count, not just in the matrix. Each is built in
+    // "one plant tall" units with its roots at the origin, so `syncCrops`'s
+    // scale is a height, and reaches under half a cell so a full field never
+    // pokes across the path beside it. Under three hundred triangles, since a
+    // field is instanced per cell.
+    const counts = new Set<number>();
+    for (const stage of CROP_STAGES) {
+      const geo = cropGeometry(stage);
+      expect(triangles(geo)).toBeLessThanOrEqual(300);
+      geo.computeBoundingBox();
+      const box = geo.boundingBox!;
+      expect(box.min.y).toBeGreaterThan(-1e-6);
+      expect(box.max.y).toBeLessThanOrEqual(1.05);
+      expect(Math.max(Math.abs(box.min.x), box.max.x, Math.abs(box.min.z), box.max.z)).toBeLessThan(0.5);
+      counts.add(geo.getAttribute('position').count);
+      geo.dispose();
+    }
+    expect(counts.size).toBe(CROP_STAGES.length);
+    expect(cropStage(0.15)).toBe(0);
+    expect(cropStage(0.6)).toBe(1);
+    expect(cropStage(1)).toBe(2);
+  });
+
+  it('shades a bush darker at the root than the crown, and keeps it in its cell', () => {
+    // A bush that is one colour top to bottom is a ball; the inside of a
+    // thicket is in shade. The gradient is a vertex-colour multiplier on the
+    // instance tint, so it has to be there, under one at the ground and one at
+    // the crown. The bush sits on the ground (nothing below y = 0, so the
+    // squashed lobes never sink into the turf) and inside its cell at full
+    // size, where a neighbour's berries may be a cell away.
+    const geo = bushGeometry();
+    expect(triangles(geo)).toBeLessThanOrEqual(300);
+    geo.computeBoundingBox();
+    const box = geo.boundingBox!;
+    expect(box.min.y).toBeGreaterThan(-1e-6);
+    expect(Math.max(Math.abs(box.min.x), box.max.x, Math.abs(box.min.z), box.max.z)).toBeLessThan(0.5);
+    const p = geo.getAttribute('position');
+    const col = geo.getAttribute('color');
+    let lowest = 1;
+    let highest = 0;
+    for (let i = 0; i < p.count; i++) {
+      lowest = Math.min(lowest, col.getX(i));
+      highest = Math.max(highest, col.getX(i));
+    }
+    expect(lowest).toBeLessThan(0.6);
+    expect(highest).toBeCloseTo(1, 6);
+    geo.dispose();
+  });
+
+  it('hangs every berry on the upper skin of the bush', () => {
+    // The fruit is the ripeness signal, so a berry the bush hides is a signal
+    // lost: none below the bush's waist, none outside the bush's footprint,
+    // and all of it cheap enough to instance once per ripe bush.
+    const berries = berryClusterGeometry();
+    expect(triangles(berries)).toBeLessThanOrEqual(300);
+    berries.computeBoundingBox();
+    const box = berries.boundingBox!;
+    expect(box.min.y).toBeGreaterThan(0.15);
+    expect(Math.max(Math.abs(box.min.x), box.max.x, Math.abs(box.min.z), box.max.z)).toBeLessThan(0.5);
+    berries.dispose();
+  });
+
+  it('draws tilled earth flat in the cell, with furrows that are not all one shade', () => {
+    // The overlay is lifted by `markHeight` like the other paint, so the
+    // geometry itself has to be flat at y = 0 or it would ride at the wrong
+    // height under the harvest mark. The furrows are two shades of vertex
+    // colour on one geometry; if they were all one, the plot would be the pale
+    // square nobody could find.
+    const soil = tilledSoilGeometry();
+    soil.computeBoundingBox();
+    const box = soil.boundingBox!;
+    expect(box.min.y).toBeCloseTo(0, 6);
+    expect(box.max.y).toBeCloseTo(0, 6);
+    expect(Math.max(Math.abs(box.min.x), box.max.x, Math.abs(box.min.z), box.max.z)).toBeLessThan(0.5);
+    const col = soil.getAttribute('color');
+    const shades = new Set<number>();
+    for (let i = 0; i < col.count; i++) shades.add(col.getX(i));
+    expect(shades.size).toBe(2);
+    soil.dispose();
   });
 });

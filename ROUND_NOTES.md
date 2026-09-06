@@ -4,6 +4,86 @@ One round, one measured gap, one fix. Newest first.
 
 ---
 
+## 2026-09-05 — Four rounds of looking, and the camera that made them repeatable
+
+**Track: the rendered game.** Every other entry here is a grid answering a number. This one is a
+camera answering a question no grid can be asked — does a thing look like what it is — and the
+four rounds it took to get the models off their boxes and cones. The method, the instruments and
+the gotchas are now written down in [LOOK.md](LOOK.md); this is the log of the rounds.
+
+### The loop
+
+One brief per lane, built in parallel by agents that never touch each other's files, gated by
+`tsc` and the render tests, then the *same frames* photographed again and read by eye. Same seed
+(4242, typed into the setup card — `world.seed` is a constant and lies), same tick (the first past
+1800), same hour (noon; dusk hides everything), HUD hidden, the ground round the camera revealed by
+hand. Five standard frames — settlers close, the twenty-six-building showcase wide, the showcase
+close, the colony from high up, and a settler's own eyes — plus, from round 4, a staged zoo of every
+animal, every crop stage and every loose item on clear ground.
+
+The one rule that carried the quality: the driver opens every PNG. Builders return `green: true`
+and a summary, and a summary is not a photograph. Two of the four rounds had a verdict overturned
+by looking.
+
+| round | lanes | what shipped |
+|---|---|---|
+| 1 | all six | rounded primitives in place of boxes, an environment map on the scene |
+| 2 | pawns, buildings | settlers got a figure; buildings got their parts |
+| 3 | pawns, buildings, decor, terrain | hairlines, belts, boots, rifle stocks, masonry, corner posts, door frames, one stone palette, knee-high grass, and `groundLiftAt` so marks and rings sit *on* the ground |
+| 4 | pawns, buildings, decor, terrain | the animals, the crops, the bushes and everything dropped on the floor |
+
+### Round 4, read frame by frame
+
+The brief came from the first zoo frames, where four species were one silhouette at four scales and
+five of six item kinds were the same bevelled cube in different colours.
+
+**Better.** Each animal now reads as itself at manager zoom: the mossback is a humped grazer with
+three-tined antlers, a dorsal ridge and hooves; the dunhare a crouched rump-high shape with ears
+taller than its skull; the brambletail a russet fox with an actual brush; the fenwolf a grey-brown
+hunter with a ruff — and no longer lavender, which was `pawnTint` (built for cloth, +68° of hue on
+the seed) applied to a cold blue-grey base. Hides go through `hideTint` now, which varies lightness
+and holds hue. Items are six objects: crossed logs with pale cut ends, a pyramid of ingots, a heaped
+mound with tubers, a strapped crate, a white case with a red cross, a rolled pelt. `components` and
+`assemblies` had *no pool at all* and had been invisible on the ground since they were added. Walls
+break bond, so the first-person wall stopped reading as a filing cabinet. Crops are three shapes
+rather than one scaled three ways, the growing zone is tilled brown with furrows instead of a pale
+green square, and ripeness on a bramble is berries rather than the whole bush turning yellow. Rock
+is angular with a flatter plateau and a darker underside; the pillowy boulders are gone.
+
+**Still wrong.** The seedling stage is nearly invisible at manager zoom. The mid and ripe crops still
+share a flat yellow rosette under the new golden heads, so a ripe plant reads yellow rather than
+green-with-a-crop. A stripped bramble is dark enough to read as a stone. The hunt mark is an enormous
+orange cone in first person. The wall's mortar lines are heavy and its blocks read oversized at 1.6 m.
+
+**A verdict I got wrong.** I had logged "the hide stack drew as a flat amber diamond flush with the
+ground — it is sunk", and briefed the bug. It is a *pen* zone cell: `fx.ts` paints stockpiles blue
+and everything else straw-gold, and the same flat gold quads sit beside the game table in the round-3
+closeup with no item near them. The builder said so from the code, held its ground, and was right. A
+real sinking bug did exist next to it — `itemRest` ignored `groundLiftAt`, so under a full snowpack a
+stack was a lid flush with the snow — and that is fixed.
+
+Budgets held: mossback 2452 triangles of 2500 with collar, tag and mark shown, dunhare 2300,
+brambletail 2084, fenwolf 2336; bush 280, headed crop 283; item stacks 144–648. The gate stood
+twenty-six showcase buildings with no console errors at 17 ms a frame, and `tsc` plus the eleven
+render test files (206 tests) are green.
+
+### What the harness cost to get right
+
+Two artefacts wasted more time than any bug in the game. Headless Chrome without
+`--ignore-gpu-blocklist --use-angle=metal` falls to SwiftShader, where a frame takes seconds, the sim
+advances a few ticks a minute, `world.seen` never fills — and every frame comes out hazed grey-blue
+by the shroud, which looks exactly like a lighting regression. A whole round was judged "fog
+everywhere" and the lighting lane was nearly briefed for it. And the first-person camera reads a rig
+that only learns its position from a sim tick, so a pawn teleported into a staged scene while paused
+renders where it used to stand and the camera shoots the old spot. Tick twice before the shot.
+
+Both are now in `scripts/look/chrome.mjs` and LOOK.md rather than in anybody's memory.
+
+Round 4 cost 32 minutes of wall clock and about 650k tokens across six agents. The leftovers above
+are the round-5 brief.
+
+---
+
 ## 2026-08-14 — The fence that was worth eight cells
 
 **Track A: a measured fix.** The last round shipped two sim changes under one sixty-day grid and the

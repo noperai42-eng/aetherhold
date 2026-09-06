@@ -291,18 +291,23 @@ export const FACTION_COLOR = {
 
 /** Hide colours for the grazing herds. Warmer and duller than anything wearing cloth. */
 export const ANIMAL_COLOR = {
-  mossback: 0x6f6244,
-  dunhare: 0x9c8a68,
+  mossback: 0x6e5c42,
+  // Sandy dun. The belly and the scut are drawn paler off this by the rig, so
+  // the coat itself stays a colour and not the near-white it tinted to.
+  dunhare: 0x9a8560,
   // Rust, against the two dun browns and the grey. A brambletail is the smallest
   // thing on the map — three tenths of a mossback — so it cannot rely on shape to
   // be picked out of grass at manager zoom, and a player who is meant to notice
   // that the moor has more of them this month than last has to be able to count
   // them at a glance. The colour is doing the work the silhouette cannot.
   brambletail: 0xa4552c,
-  // Cold where the other two are warm. A fenwolf has to read as *not one of the
-  // herd* from across the map at manager zoom, before its shape resolves at all,
-  // because the whole decision it asks for is "is that thing in my pen mine".
-  fenwolf: 0x494551,
+  // Grey where the other three are brown. A fenwolf has to read as *not one of
+  // the herd* from across the map at manager zoom, before its shape resolves at
+  // all, because the whole decision it asks for is "is that thing in my pen
+  // mine". It was a cold blue-grey, and the per-animal tint, built for cloth,
+  // turned that through to lavender: the grey is warm now, a grey-brown, so a
+  // step either way on the wheel is still a wolf's coat.
+  fenwolf: 0x5f574d,
 } as const;
 
 /** A stable per-pawn clothing tint from their colorSeed, so bodies read apart. */

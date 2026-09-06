@@ -2,8 +2,8 @@
  * Ground and rock. One non-indexed quad per cell, coloured at its corners rather
  * than its middle so neighbouring ground bleeds together instead of tiling, plus
  * instanced blocks for rock — which is solid terrain, so it has to look like
- * something you cannot walk through, because you cannot. The block is a domed,
- * lumpy boulder rather than a crate, but it is still sized and placed as a
+ * something you cannot walk through, because you cannot. The block is a faceted,
+ * flat-topped boulder rather than a crate, but it is still sized and placed as a
  * crate: everything that has to clear a rock or stand on one reads the crate,
  * and the boulder is built to stay inside it and to reach its lid.
  */
@@ -69,25 +69,37 @@ const ROCK_SINK = 0.15;
  */
 const ROCK_TILT = 0.07;
 /**
- * How much of the block's height is dome, as a fraction of that height.
+ * How much of the block's height is cap, as a fraction of that height.
  *
  * A fraction rather than a length because the block is a unit mesh stretched to
- * its height per instance, so this is what the dome can be. It comes out between
- * forty and seventy centimetres on a real block — a hump, not a chamfer. That
- * size is the point: a cliff with a straight top edge is a wall of crates however
- * well its corners are sanded, and only a top that has no straight edge at all
- * reads as rock from the manager view. Everything above the shoulder is above
- * every neighbour of the same height, so the dome costs nothing in coverage.
+ * its height per instance, so this is what the cap can be. It comes out between
+ * forty and sixty-five centimetres on a real block — a bevelled shoulder and a
+ * plateau, not a chamfer. That size is the point: a cliff with a straight top
+ * edge is a wall of crates however well its corners are sanded, and only a top
+ * that has no straight edge at all reads as rock from the manager view.
+ * Everything above the shoulder is above every neighbour of the same height, so
+ * the cap costs nothing in coverage.
  */
-const ROCK_DOME = 0.28;
+const ROCK_DOME = 0.26;
 /**
- * How square the dome's profile is. Two is an ellipse; a little more keeps the
- * top of the hump broad and drops its flanks faster, which is a boulder's
- * shoulder rather than an egg's.
+ * The cap's profile, ring by ring, from the shoulder up: [how far up the cap,
+ * how much of the base outline the ring keeps, how far it has gone from rounded
+ * square to circle]. Hand-set rather than a curve, because the shape wanted is
+ * not a curve: a steep bevel off the shoulder, then a broad plateau that only
+ * rises a few centimetres more to the peak. A dome sanded from a superellipse
+ * was a cushion — the same slope everywhere, so nothing on it read as a face —
+ * and stone is faces. The first step is big enough to crease against the
+ * vertical side (`ROCK_CREASE`); the ones above it are shallow enough not to,
+ * so the plateau is lit as one plate with a hard rim.
  */
-const ROCK_DOME_K = 2.3;
+const ROCK_CAP: readonly [number, number, number][] = [
+  [0.25, 0.88, 0.2],
+  [0.54, 0.72, 0.5],
+  [0.87, 0.5, 0.85],
+];
 /**
- * Where the dome peaks, as a fraction of the block's width from the cell centre.
+ * Where the plateau peaks, as a fraction of the block's width from the cell
+ * centre.
  *
  * Off-centre so the lump is lopsided, and lopsided so that the quarter turn a
  * cell gets is a different silhouette and not the same one again: one mesh is
@@ -102,7 +114,7 @@ const ROCK_PEAK_Z = -0.06;
  *
  * Small on purpose. Every centimetre here is a centimetre the block has to be
  * wider to keep covering its cell (`ROCK_COVER`), and that width is what a mined
- * corridor loses on each side. The rounding the eye wants comes from the dome,
+ * corridor loses on each side. The rounding the eye wants comes from the cap,
  * which is free, not from the base, which is not.
  */
 export const ROCK_EDGE = 0.08;
@@ -111,17 +123,74 @@ export const ROCK_EDGE = 0.08;
  *
  * The sides are the part of the boulder that neighbours and corridors see, and
  * every dent in them is paid for in `ROCK_COVER`, so they are only ever dented
- * inward and only this far. The dome is dented far more (`ROCK_LUMP`): it stands
+ * inward and only this far. The cap is dented far more (`ROCK_LUMP`): it stands
  * clear of everything, so its noise is free.
  */
-export const ROCK_JITTER = 0.03;
+export const ROCK_JITTER = 0.04;
 /**
- * How far the dome's skin wanders, in or out, as a fraction of the block's width.
+ * How far the cap's skin wanders, in or out, as a fraction of the block's width.
  * Low-frequency, so the result is a lump with a few bulges rather than a rough
  * one — roughness is the material's job, and at this triangle count it would
  * only read as grain.
  */
-const ROCK_LUMP = 0.09;
+const ROCK_LUMP = 0.11;
+/**
+ * How far the plateau's skin wanders, at the top ring and the peak. A fraction
+ * of the flanks', so the top of a block is a plate that tips a few degrees and
+ * not a second lump on the first.
+ */
+const ROCK_PLATEAU_LUMP = 0.025;
+/**
+ * How much of the skin's displacement is per-vertex rather than per-bulge.
+ *
+ * The smooth noise moves neighbouring vertices together, which bends a face;
+ * this much of it is a hash of the vertex alone, which moves each corner of a
+ * face its own way and so tips the whole face. Tipped faces are what make the
+ * block angular: a few of them land past the crease angle and are lit flat,
+ * and the rest are a skin that undulates instead of one that ripples.
+ */
+const ROCK_FACET = 0.4;
+/**
+ * The angle between two faces past which they stop sharing a normal, so the edge
+ * between them lights as an edge.
+ *
+ * Below it the skin is one smooth surface, which is what the bulges want; above
+ * it the shading breaks, which is what the shoulder and the tipped facets want.
+ * Thirty-four degrees is set to fall between the two: the first step of the cap
+ * leans further than that off the vertical side and creases, the steps above it
+ * lean less than that off each other and do not, and only the facets the noise
+ * has tipped hardest join the shoulder as hard edges.
+ */
+export const ROCK_CREASE = THREE.MathUtils.degToRad(34);
+/**
+ * How dark the block is at its buried base, as a multiplier of its colour that
+ * rises to one by the shoulder.
+ *
+ * The block's own contact shadow, painted into the mesh: the ground corners
+ * already darken toward a cliff (`AO_PER_ROCK`), and this is the other half of
+ * that meeting, so the foot of a cliff is dark on both sides of the seam rather
+ * than a bright wall standing on a dark floor.
+ */
+const ROCK_UNDER = 0.62;
+/** How much one facet's tint may differ from the next, so a plate is not one flat grey. */
+const ROCK_FACET_TINT = 0.08;
+/**
+ * Stone that is not the palette's rock: what a warm block leans toward, what a
+ * cool one leans toward, and the lichen that grows on the ones that get it.
+ *
+ * The palette owns the one true rock colour, and everything that has to agree
+ * with a rock — the mined stone, the walls built from it — reads that. These
+ * are deviations from it, not colours of their own, which is why they live here
+ * with the block and are only ever reached by a lerp of `ROCK_TINT` or less.
+ */
+const ROCK_WARM = new THREE.Color(0x6e6559);
+const ROCK_COOL = new THREE.Color(0x505a6b);
+const ROCK_LICHEN = new THREE.Color(0x66754d);
+/** How far a block goes toward its warm or cool stone, at the most it ever does. */
+const ROCK_TINT = 0.35;
+/** The share of blocks that carry lichen, and how green the greenest of them gets. */
+const ROCK_LICHEN_SHARE = 0.3;
+const ROCK_LICHEN_MAX = 0.45;
 /** Vertices around one ring of the boulder. Rings times this is the triangle budget. */
 const ROCK_AROUND = 18;
 /**
@@ -136,6 +205,28 @@ const ROCK_AROUND = 18;
 const ROCK_COVER = 1 / (1 - 2 * ROCK_EDGE * (1 - Math.SQRT1_2) - 2 * ROCK_JITTER);
 /** How much a corner darkens per touching rock cell — the shadow a cliff casts on its own foot. */
 const AO_PER_ROCK = 0.12;
+/**
+ * Micro-relief in the ground's colour, and only its colour: the lattice heights
+ * are what the snowpack, the ice and the lake are measured against, and none of
+ * this touches them.
+ *
+ * The corner mottling (`jitter`) is a few percent of luminance on every corner,
+ * which stops a field reading as lino but still reads as one tint from the
+ * manager view. Two more things ride on the same lattice, so a corner shared by
+ * two cells is still the same colour in both. A speckle: a share of corners are
+ * a little darker again, which at manager range is the grain a field has and at
+ * eye height is a pebble or a bare patch. And a drift: a slow noise across the
+ * map pushes the hue a touch warm or cool and the saturation with it, so two
+ * stretches of the same grass are not the same green. The drift is scaled out
+ * on water and under snow — neither has a hue worth drifting, and a saturated
+ * corner of ice would be a stain.
+ */
+const GROUND_SPECKLE_SHARE = 0.1;
+const GROUND_SPECKLE = 0.04;
+/** Wavelength of the hue drift, in cells per noise cell: patches, not pixels. */
+const GROUND_DRIFT_SCALE = 0.11;
+const GROUND_DRIFT_HUE = 0.018;
+const GROUND_DRIFT_SAT = 0.06;
 const UP = new THREE.Vector3(0, 1, 0);
 
 /**
@@ -162,6 +253,10 @@ export interface RockShape {
   scale: number;
   /** Lightness offset, so a cliff face is not one flat grey. */
   shade: number;
+  /** In [−1, 1]: how far the block leans toward cool stone or warm. */
+  warmth: number;
+  /** In [0, 1]: how much lichen the block carries; zero on most of them. */
+  lichen: number;
 }
 
 /**
@@ -174,6 +269,7 @@ export function rockShapeAt(x: number, y: number): RockShape {
   const a = hash(x, y, 3.71);
   const b = hash(x, y, 9.13);
   const c = hash(x, y, 17.29);
+  const l = hash(x, y, 53.9);
   // A quarter turn per cell, because every block is the same lopsided lump and
   // four ways round is four different boulders; the tilt on top is what keeps
   // the four from lining up into rows.
@@ -188,6 +284,14 @@ export function rockShapeAt(x: number, y: number): RockShape {
     // the dents pay for themselves before the extra.
     scale: (Math.abs(Math.cos(rot)) + Math.abs(Math.sin(rot))) * ROCK_COVER + c * 0.05,
     shade: (c - 0.5) * 0.11,
+    // Warmth and lichen are hashed apart from the shade, so a light block can be
+    // cool or warm and a dark one can be green: three axes of variety on a cliff
+    // rather than one, which is what stops the eye finding the repeat.
+    warmth: (hash(x, y, 41.3) - 0.5) * 2,
+    // Graded, not switched: the greenest block is the one furthest past the
+    // threshold, and the ones just past it carry a trace, so lichen reads as
+    // something that spreads rather than a second kind of rock.
+    lichen: l > 1 - ROCK_LICHEN_SHARE ? (l - (1 - ROCK_LICHEN_SHARE)) / ROCK_LICHEN_SHARE : 0,
   };
 }
 
@@ -301,10 +405,12 @@ export class TerrainView {
     this.rocks = new THREE.InstancedMesh(
       rockGeometry(),
       // White, because the real colour rides per instance — a cliff of one hex
-      // reads as a wall of crates however well it is lit. Smooth-shaded, or the
-      // dome would come back as a stack of lit facets and the boulder as a crate
-      // with its corners knocked off.
-      new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.9 }),
+      // reads as a wall of crates however well it is lit — and per vertex under
+      // that, for the dark of the base and the tint of each facet, which the
+      // instance colour multiplies rather than replaces. Smooth-shaded: the
+      // creases the block wants are already in its normals, and flat shading
+      // would put one on every triangle and hand the cushion back as a crate.
+      new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.9, vertexColors: true }),
       this.rockCapacity,
     );
     this.rocks.castShadow = true;
@@ -477,7 +583,15 @@ export class TerrainView {
           s.set(sh.scale, sh.height, sh.scale);
           m.compose(v, q, s);
           this.rocks.setMatrixAt(rockCount, m);
-          col.setHex(TERRAIN_COLOR.rock).offsetHSL(0, 0, sh.shade);
+          // Toward warm or cool stone first, then the lichen over that, then the
+          // lightness on top of all of it. Lerps rather than a hue offset because
+          // the palette's rock is nearly grey, and turning the hue of a grey turns
+          // nothing: the block has to be pulled toward a colour that has one.
+          col.setHex(TERRAIN_COLOR.rock);
+          if (sh.warmth > 0) col.lerp(ROCK_WARM, sh.warmth * ROCK_TINT);
+          else col.lerp(ROCK_COOL, -sh.warmth * ROCK_TINT);
+          if (sh.lichen > 0) col.lerp(ROCK_LICHEN, sh.lichen * ROCK_LICHEN_MAX);
+          col.offsetHSL(0, 0, sh.shade);
           this.rocks.setColorAt(rockCount, col);
           rockCount++;
         }
@@ -590,10 +704,24 @@ export class TerrainView {
         // one that lifts the gloom out of it, so a frozen lake cannot come out
         // flat and still shadowed like a hole.
         const deep = (open === 0 ? 0 : wet / open) * submerged;
-        const k = Math.max(0.15, 1 - rock * AO_PER_ROCK - deep * WATER_SHADE + jitter(cx, cy));
-        this.corners[i] = (r / n) * k;
-        this.corners[i + 1] = (g / n) * k;
-        this.corners[i + 2] = (b / n) * k;
+        const speckle = hash(cx, cy, 71.7) > 1 - GROUND_SPECKLE_SHARE ? GROUND_SPECKLE : 0;
+        const k = Math.max(
+          0.15,
+          1 - rock * AO_PER_ROCK - deep * WATER_SHADE + jitter(cx, cy) - speckle,
+        );
+        c.setRGB((r / n) * k, (g / n) * k, (b / n) * k);
+        // The hue drift, on bare living ground only: the wet share of the corner
+        // and the pack on it both scale it out, so the lake, the ice and a
+        // snowfield keep the one colour the palette gave them.
+        const bare = (1 - (open === 0 ? 0 : wet / open)) * (1 - depth);
+        if (bare > 0) {
+          const noise = valueNoise(cx * GROUND_DRIFT_SCALE + 5.5, cy * GROUND_DRIFT_SCALE + 2.5, 0.5);
+          const drift = (noise - 0.5) * 2 * bare;
+          c.offsetHSL(drift * GROUND_DRIFT_HUE, drift * GROUND_DRIFT_SAT, 0);
+        }
+        this.corners[i] = c.r;
+        this.corners[i + 1] = c.g;
+        this.corners[i + 2] = c.b;
         this.cornerLift[cy * this.cornerStride + cx] =
           open === 0 ? 0 : depth * SNOW_LIFT * (lying / open) - WATER_SINK * deep;
       }
@@ -718,31 +846,29 @@ function baseReach(c: number, s: number): number {
  * beside it and the ground under it without a seam — the base is buried fifteen
  * centimetres under ground that never sinks near a rock, so it needs no floor.
  *
- * The form is a straight-sided stump with a dome on it. The stump is the base
- * outline carried up to the shoulder; above the shoulder each ring shrinks toward
- * a peak that is deliberately off-centre, and its outline blends from the rounded
- * square to a circle on the way up so no corner of the base runs up the dome as a
- * ridge. Then the skin is displaced along its normals by low-frequency noise:
- * inward only on the stump, and only as deep as `ROCK_COVER` has paid for; in or
- * out on the dome, out only as far as the crate wall allows, so no dent can be
- * clamped into a flat spot. The whole thing is finally rescaled so the highest
- * vertex is at the lid, wherever the noise put it. It is one welded, indexed mesh,
- * so `computeVertexNormals` gives one continuous lit skin and no crease survives
- * from the construction.
+ * The form is a straight-sided stump with a bevelled cap on it. The stump is the
+ * base outline carried up to the shoulder; above the shoulder `ROCK_CAP` steps
+ * the rings in toward a peak that is deliberately off-centre, and each ring's
+ * outline blends from the rounded square to a circle on the way up so no corner
+ * of the base runs up the cap as a ridge. Then the skin is displaced along its
+ * normals by noise that is part bulge and part per-vertex facet: inward only on
+ * the stump, and only as deep as `ROCK_COVER` has paid for; in or out on the cap,
+ * out only as far as the crate wall allows, so no dent can be clamped into a
+ * flat spot. The whole thing is rescaled so the highest vertex is at the lid,
+ * wherever the noise put it. It is one indexed mesh, welded everywhere except
+ * where two faces meet past `ROCK_CREASE`: there, and only there, the vertex is
+ * split so the edge lights as an edge — the shoulder rim, and the facets the
+ * noise tipped hardest. Everywhere else the normals bend and the skin is one
+ * continuous surface.
  */
 function rockGeometry(): THREE.BufferGeometry {
   const shoulder = 0.5 - ROCK_DOME;
   // Each ring is [height, how much of the base outline it keeps, how far it has
-  // gone from rounded square to circle]. The stump first, then the dome by the
-  // angle up its superelliptical profile, then the peak.
+  // gone from rounded square to circle]. The stump first — a ring in the middle
+  // of it, so the side noise has a vertex to dent — then the cap, then the peak.
   const rings: [number, number, number][] = [];
-  for (const y of [-0.5, -0.14, shoulder]) rings.push([y, 1, 0]);
-  const e = 2 / ROCK_DOME_K;
-  for (const deg of [15, 30, 45, 60, 75]) {
-    const phi = THREE.MathUtils.degToRad(deg);
-    const u = Math.sin(phi) ** e;
-    rings.push([shoulder + u * ROCK_DOME, Math.cos(phi) ** e, u]);
-  }
+  for (const y of [-0.5, -0.2, 0.04, shoulder]) rings.push([y, 1, 0]);
+  for (const [u, w, round] of ROCK_CAP) rings.push([shoulder + u * ROCK_DOME, w, round]);
 
   const n = ROCK_AROUND;
   const pos: number[] = [];
@@ -785,16 +911,24 @@ function rockGeometry(): THREE.BufferGeometry {
     const ny = nrm.getY(i);
     const nz = nrm.getZ(i);
     // Nothing at the buried base, the full side dent by the shoulder, the full
-    // lump at the peak. The stump can only go inward, so its noise is folded to
-    // one sign rather than half of it thrown away at the wall — a face that is
-    // dented in places is a face; one that is dented or flat is a crate with
-    // damage. The fold eases off up the dome, where there is room to bulge.
+    // lump on the flanks of the cap, and only a trace of it again on the plateau
+    // — windowed, because the plateau is the one part that has to stay a plate:
+    // give its ring the flanks' noise and the fan to the peak comes back as a
+    // cone, creased on every face. The stump can only go inward, so its noise is
+    // folded to one sign rather than half of it thrown away at the wall — a face
+    // that is dented in places is a face; one that is dented or flat is a crate
+    // with damage. The fold eases off up the cap, where there is room to bulge.
+    const t = (y - shoulder) / ROCK_DOME;
     const amp =
       y <= shoulder
         ? (ROCK_JITTER * (y + 0.5)) / (shoulder + 0.5)
-        : THREE.MathUtils.lerp(ROCK_JITTER, ROCK_LUMP, (y - shoulder) / ROCK_DOME);
-    const fold = y <= shoulder ? 1 : 1 - (y - shoulder) / ROCK_DOME;
-    let d = ((lumpNoise(x, y, z) - fold) / (1 + fold)) * amp;
+        : THREE.MathUtils.lerp(ROCK_PLATEAU_LUMP, ROCK_LUMP, Math.sin(Math.PI * t) ** 1.5);
+    const fold = y <= shoulder ? 1 : 1 - t;
+    const noise = lumpNoise(x, y, z) * (1 - ROCK_FACET) + facetNoise(x, y, z) * ROCK_FACET;
+    // The peak is nudged straight up by its whole amplitude rather than rolled
+    // for: it is the one vertex whose height is a promise, and it can only keep
+    // it by being the lid the rest is measured against.
+    let d = i === peak ? amp : ((noise - fold) / (1 + fold)) * amp;
     if (d > 0) {
       // Outward, only as far as the crate wall it is heading for.
       let room = Infinity;
@@ -815,9 +949,148 @@ function rockGeometry(): THREE.BufferGeometry {
   // is put exactly on it: the base stays at −½ and the rest is stretched or
   // squashed to fit, which is a change of a centimetre or two nobody sees.
   for (let i = 0; i < p.count; i++) p.setY(i, -0.5 + (p.getY(i) + 0.5) / (lid + 0.5));
-  p.needsUpdate = true;
-  geo.computeVertexNormals();
+  geo.dispose();
+  return creased(idx, p, shoulder);
+}
+
+/**
+ * The finished block, with its normals broken at the creases and its colour
+ * painted on.
+ *
+ * `computeVertexNormals` averages every face that meets at a vertex, which is
+ * right for a bulge and wrong for an edge: the shoulder rim would be a soft
+ * roll and the tipped facets would be smeared back into the skin. So the normal
+ * is built per face corner instead, from only the neighbouring faces that lie
+ * within `ROCK_CREASE` of this one, and a vertex whose corners disagree is split
+ * — once per distinct normal, so a vertex on a smooth stretch stays one vertex
+ * and a vertex on a hard rim becomes two. The index survives, the triangle count
+ * does not change, and a split only ever appears where there is a crease to
+ * show for it.
+ *
+ * The colour goes on here because it is per split vertex: the dark of the base
+ * that rises to the shoulder, and a tint per facet that is hashed from the
+ * normal as well as the position, so the two sides of a crease are two tones.
+ */
+function creased(idx: number[], p: THREE.BufferAttribute, shoulder: number): THREE.BufferGeometry {
+  const faces = idx.length / 3;
+  const faceN = new Float32Array(faces * 3);
+  const touching: number[][] = Array.from({ length: p.count }, () => []);
+  for (let f = 0; f < faces; f++) {
+    const [a, b, c] = [idx[f * 3]!, idx[f * 3 + 1]!, idx[f * 3 + 2]!];
+    const ax = p.getX(a);
+    const ay = p.getY(a);
+    const az = p.getZ(a);
+    const ux = p.getX(b) - ax;
+    const uy = p.getY(b) - ay;
+    const uz = p.getZ(b) - az;
+    const vx = p.getX(c) - ax;
+    const vy = p.getY(c) - ay;
+    const vz = p.getZ(c) - az;
+    // Left as the cross product, so a bigger face weighs more in the average.
+    faceN[f * 3] = uy * vz - uz * vy;
+    faceN[f * 3 + 1] = uz * vx - ux * vz;
+    faceN[f * 3 + 2] = ux * vy - uy * vx;
+    touching[a]!.push(f);
+    touching[b]!.push(f);
+    touching[c]!.push(f);
+  }
+  const unit = (f: number): [number, number, number] => {
+    const x = faceN[f * 3]!;
+    const y = faceN[f * 3 + 1]!;
+    const z = faceN[f * 3 + 2]!;
+    const len = Math.hypot(x, y, z) || 1;
+    return [x / len, y / len, z / len];
+  };
+  const cosCrease = Math.cos(ROCK_CREASE);
+
+  const outPos: number[] = [];
+  const outNrm: number[] = [];
+  const outCol: number[] = [];
+  const outIdx = new Array<number>(idx.length);
+  for (let v = 0; v < p.count; v++) {
+    const fs = touching[v]!;
+    // Smoothing groups round this vertex: two faces that share an edge here and
+    // lie within the crease angle of each other smooth together, and the groups
+    // are the connected runs of those. Grouping by adjacency rather than by
+    // each face's own view of its neighbours matters on the plateau, where the
+    // fan's faces span more than the crease angle end to end but no two beside
+    // each other do — judged one face at a time that is a peak split eighteen
+    // ways with nearly the same normal on all of them; judged as a run it is
+    // one vertex, which is what the eye sees and what the budget can afford.
+    const group = fs.map((_, i) => i);
+    const find = (i: number): number => {
+      while (group[i] !== i) i = group[i]!;
+      return i;
+    };
+    for (let i = 0; i < fs.length; i++) {
+      const [ax, ay, az] = unit(fs[i]!);
+      for (let j = i + 1; j < fs.length; j++) {
+        if (!shareEdge(idx, fs[i]!, fs[j]!, v)) continue;
+        const [bx, by, bz] = unit(fs[j]!);
+        if (ax * bx + ay * by + az * bz < cosCrease) continue;
+        group[find(i)] = find(j);
+      }
+    }
+    const out = new Map<number, number>();
+    for (let i = 0; i < fs.length; i++) {
+      const root = find(i);
+      let o = out.get(root);
+      if (o === undefined) {
+        let nx = 0;
+        let ny = 0;
+        let nz = 0;
+        for (let j = 0; j < fs.length; j++) {
+          if (find(j) !== root) continue;
+          nx += faceN[fs[j]! * 3]!;
+          ny += faceN[fs[j]! * 3 + 1]!;
+          nz += faceN[fs[j]! * 3 + 2]!;
+        }
+        const len = Math.hypot(nx, ny, nz) || 1;
+        nx /= len;
+        ny /= len;
+        nz /= len;
+        o = outPos.length / 3;
+        out.set(root, o);
+        const x = p.getX(v);
+        const y = p.getY(v);
+        const z = p.getZ(v);
+        outPos.push(x, y, z);
+        outNrm.push(nx, ny, nz);
+        const under = THREE.MathUtils.smoothstep(y, -0.5, shoulder);
+        const tint = 1 + (hash3(x + nx * 3, y + ny * 3, z + nz * 3) - 0.5) * ROCK_FACET_TINT;
+        const shade = THREE.MathUtils.lerp(ROCK_UNDER, 1, under) * tint;
+        outCol.push(shade, shade, shade);
+      }
+      const f = fs[i]!;
+      for (let k = 0; k < 3; k++) if (idx[f * 3 + k] === v) outIdx[f * 3 + k] = o;
+    }
+  }
+
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(outPos, 3));
+  geo.setAttribute('normal', new THREE.Float32BufferAttribute(outNrm, 3));
+  geo.setAttribute('color', new THREE.Float32BufferAttribute(outCol, 3));
+  geo.setIndex(outIdx);
   return geo;
+}
+
+/**
+ * The per-vertex half of the skin's displacement, in [−1, 1]: a hash of the
+ * vertex's own position, so it shares nothing with the vertices beside it and
+ * a face whose three corners drew different numbers is tipped rather than bent.
+ */
+function facetNoise(x: number, y: number, z: number): number {
+  return hash3(x * 17.3 + 1.1, y * 23.9 + 4.7, z * 19.1 + 8.3) * 2 - 1;
+}
+
+/** Do faces `f` and `g`, which both touch vertex `v`, meet along an edge out of it? */
+function shareEdge(idx: number[], f: number, g: number, v: number): boolean {
+  for (let a = 0; a < 3; a++) {
+    const va = idx[f * 3 + a]!;
+    if (va === v) continue;
+    for (let b = 0; b < 3; b++) if (idx[g * 3 + b] === va) return true;
+  }
+  return false;
 }
 
 function countRock(world: World): number {

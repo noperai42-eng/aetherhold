@@ -23,8 +23,8 @@ import * as THREE from 'three';
 import { describe, expect, it } from 'vitest';
 
 import { QUALITY } from '../src/client/render/renderer';
-import { SKIN_TONES } from '../src/client/render/palette';
-import { HAIR_TONES, PawnsView } from '../src/client/render/pawns';
+import { ANIMAL_COLOR, SKIN_TONES } from '../src/client/render/palette';
+import { HAIR_TONES, PawnsView, hideTint } from '../src/client/render/pawns';
 import { PickiesView } from '../src/client/render/pickies';
 import { SETTLER_LEG } from '../src/client/gait';
 import { POOF_TICKS, summonPicky } from '../src/sim/pickies';
@@ -672,6 +672,77 @@ describe('what a body is made of', () => {
     }
     expect(animals).toBeGreaterThan(0);
     view.dispose();
+  });
+
+  it("stands the dunhare's ears taller than its head — two sticks on a round head was a small dog", () => {
+    // Four species used to be one body at four sizes, and the hare was the one
+    // that suffered most: nothing about it said hare but the size. The ears are
+    // the tell, and they only tell if they are longer than the skull they stand
+    // on — measured along the ear's own axis against the head's full height.
+    const { view, world } = bodies();
+    let hares = 0;
+    for (const rig of view.group.children) {
+      const pawn = world.pawns.find((p) => p.x === rig.position.x && p.y === rig.position.z)!;
+      if (pawn.animal !== 'dunhare') continue;
+      hares++;
+      const head = part(rig, 'head');
+      head.geometry.computeBoundingBox();
+      const skull = head.geometry.boundingBox!.max.y - head.geometry.boundingBox!.min.y;
+      const ears = head.children.filter((c) => c instanceof THREE.Mesh && c.position.y > 0.05 && Math.abs(c.position.x) > 0.03);
+      expect(ears.length, 'a pair of ears on the skull').toBe(2);
+      for (const ear of ears as THREE.Mesh[]) {
+        ear.geometry.computeBoundingBox();
+        expect(ear.geometry.boundingBox!.max.y, 'ear longer than the head is tall').toBeGreaterThan(skull * 1.5);
+      }
+    }
+    expect(hares).toBeGreaterThan(0);
+    view.dispose();
+  });
+
+  it('puts a hoof on every animal leg with its sole at the sole of the leg — a cap that floats is a ring round the ankle', () => {
+    // The hoof is a separate mesh in a darker tone, parented to the leg so it
+    // swings from the hip with it. It stands on its own origin and is set at
+    // the foot, so the two soles coincide by construction; this is what keeps
+    // that true when someone changes a leg's length in one place and not the
+    // other. The leg's own pivot is checked the way the settlers' are — at
+    // its top, reaching its full length below.
+    const { view } = bodies();
+    const box = new THREE.Box3();
+    let hooves = 0;
+    view.group.traverse((o) => {
+      if (!(o instanceof THREE.Mesh) || o.name !== 'hoof') return;
+      const leg = o.parent as THREE.Mesh;
+      expect(leg.name).toBe('leg');
+      leg.geometry.computeBoundingBox();
+      box.copy(leg.geometry.boundingBox!);
+      expect(box.max.y, 'leg pivots at its top').toBeCloseTo(0, 6);
+      expect(box.min.y, 'leg reaches its full length').toBeCloseTo(-leg.position.y, 6);
+      o.geometry.computeBoundingBox();
+      expect(o.position.y + o.geometry.boundingBox!.min.y, 'hoof sole at the leg sole').toBeCloseTo(box.min.y, 6);
+      expect(o.geometry.boundingBox!.max.x, 'hoof wider than the leg').toBeGreaterThan(box.max.x);
+      hooves++;
+    });
+    expect(hooves).toBeGreaterThan(0);
+    view.dispose();
+  });
+
+  it("keeps every species' hide in its own hue on every seed — the tint built for cloth turned the fenwolf lavender", () => {
+    // `pawnTint` swings a hue up to a fifth of the way round the wheel, which
+    // is what makes a crew's shirts differ and what turned a cold grey wolf
+    // purple and an olive mossback green. Hides go through `hideTint`, and it
+    // has to hold each species to its own hue — within a few degrees — and
+    // hold the wolf to a grey, whatever the seed.
+    const base = { h: 0, s: 0, l: 0 };
+    const got = { h: 0, s: 0, l: 0 };
+    for (const kind of Object.keys(ANIMAL_COLOR) as (keyof typeof ANIMAL_COLOR)[]) {
+      new THREE.Color(ANIMAL_COLOR[kind]).getHSL(base);
+      for (let seed = 0; seed < 4096; seed++) {
+        hideTint(ANIMAL_COLOR[kind], seed).getHSL(got);
+        const drift = Math.abs(got.h - base.h);
+        expect(Math.min(drift, 1 - drift), `${kind} hue on seed ${seed}`).toBeLessThan(0.02);
+        if (kind === 'fenwolf') expect(got.s, `fenwolf stays grey on seed ${seed}`).toBeLessThan(0.3);
+      }
+    }
   });
 
   it('gives every hair tone a clear step in lightness from every skin tone — a blond on a tan face was a bald head from overhead', () => {

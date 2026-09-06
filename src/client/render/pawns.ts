@@ -26,10 +26,13 @@ import { isRipe } from '../../sim/husbandry';
 import { maturity } from '../../sim/livestock';
 import { LAYER_ALL, LAYER_MANAGER } from './renderer';
 import { standHeight } from '../../sim/grid';
-import type { Pawn, World } from '../../sim/types';
+import type { AnimalKind, Pawn, World } from '../../sim/types';
 
-/** The same two numbers for a four-legged body, whose legs are shorter. */
-const ANIMAL_LEG_LENGTH = 0.56;
+/**
+ * How far a four-legged body swings a leg. The leg's length is the species'
+ * own — a hare crouches on legs a third as long as a mossback's — and lives in
+ * its `SpeciesModel`, so the stride is worked out from the leg that is drawn.
+ */
 const ANIMAL_SWING = 0.55;
 
 /**
@@ -334,14 +337,108 @@ class PawnRig implements Rig {
 }
 
 /**
- * A grazing animal: body, neck, head, four legs, and a crown that says which
- * species it is at a glance — antlers on a mossback, long ears on a dunhare.
+ * A hide's variation within a herd: a shade lighter or darker, a touch richer
+ * or greyer, and the hue held. `pawnTint` is for cloth and turns a colour up to
+ * a fifth of the way round the wheel on the seed, which is fine for dye and
+ * wrong for fur: run through it the fenwolf's cold grey came out lavender, the
+ * mossback's olive came out green and a pen of one species was a paintbox.
+ * Each animal keeps its species' hue to within a couple of degrees, and what
+ * varies is what varies in a real herd.
+ */
+export function hideTint(base: number, seed: number): THREE.Color {
+  const c = new THREE.Color(base);
+  const hsl = { h: 0, s: 0, l: 0 };
+  c.getHSL(hsl);
+  c.setHSL(
+    hsl.h + ((seed % 7) - 3) * 0.004,
+    hsl.s + (((seed >> 3) % 5) - 2) * 0.02,
+    Math.max(0.15, Math.min(0.8, hsl.l + (((seed >> 6) % 7) - 3) * 0.025)),
+  );
+  return c;
+}
+
+/** The four colours an animal is painted in, named so a model can ask for one. */
+type Tone = 'hide' | 'dark' | 'pale' | 'horn';
+type Vec3 = readonly [number, number, number];
+
+/** Something rooted on the skull — an antler or an ear — one side, mirrored for the other. */
+interface Crown {
+  geometry: THREE.BufferGeometry;
+  at: Vec3;
+  /** Lean outward from the skull's midline, in radians; the far side leans the other way. */
+  roll: number;
+  /** Rake back over the skull. */
+  pitch: number;
+  tone: Tone;
+  /** Antlers branch to one side and are mirrored across; ears are symmetric already. */
+  mirrored: boolean;
+}
+
+/**
+ * One species' body: its geometry, shared across every animal of the kind, and
+ * the places the rig hangs the parts that move. Everything is laid out in body
+ * space, where a mossback is a unit tall at the withers, and the rig scales
+ * the whole thing by the species' `size` — so a hare is a hare-sized version
+ * of these numbers, not a different set.
  *
- * The whole rig is scaled by the species' `size`, so one set of geometry covers
- * something the size of a deer and something the size of a hare. Legs swing off
- * the same `animPhase` the settlers use, which the *simulation* advances — so a
- * running animal is mid-stride in both views, and freezes on pause with everyone
- * else.
+ * Only the neck, the head and the legs are their own meshes, because only they
+ * move. Everything else in the coat's colour — a hump, a ruff, the haunches,
+ * a tail — is welded into `body`, and the patches in another tone sit still
+ * in `markings`.
+ */
+interface SpeciesModel {
+  body: THREE.BufferGeometry;
+  /** A dorsal stripe, a pale belly, a white scut: still, and not the coat's colour. */
+  markings: { geometry: THREE.BufferGeometry; tone: Tone }[];
+  neck: THREE.BufferGeometry;
+  neckAt: Vec3;
+  neckPitch: number;
+  /** Where along the neck the collar rings it, in the neck's own frame. */
+  collarAt: number;
+  head: THREE.BufferGeometry;
+  headAt: Vec3;
+  /** On the skull's surface, one side; mirrored for the other. */
+  eyeAt: Vec3;
+  noseAt: Vec3;
+  crowns: Crown[];
+  leg: THREE.BufferGeometry;
+  hoof: THREE.BufferGeometry;
+  legLength: number;
+  /** Fore left, fore right, hind left, hind right — `update()` pairs them diagonally by index. */
+  legsAt: readonly (readonly [number, number])[];
+}
+
+/** Every buffer a species owns, for the teardown. */
+function speciesGeometries(m: SpeciesModel): THREE.BufferGeometry[] {
+  return [
+    m.body,
+    ...m.markings.map((k) => k.geometry),
+    m.neck,
+    m.head,
+    ...m.crowns.map((c) => c.geometry),
+    m.leg,
+    m.hoof,
+  ];
+}
+
+/**
+ * An animal: a body in its species' shape, a neck, a head, four legs, and a
+ * collar, a tag and a hunt mark that show when the sim says so.
+ *
+ * Four species used to share one silhouette at four scales — a capsule, four
+ * tubes, a round head and two prongs — and from the manager camera every one of
+ * them was a blob with legs that only size told apart. Each now has its own
+ * `SpeciesModel`: a mossback is a hump, a long muzzle and branching antlers; a
+ * dunhare is a crouched egg under ears taller than its head; a brambletail is
+ * low and long behind a brush of a tail; a fenwolf carries its head low over a
+ * ruff. The rig is the same code for all of them, reading the model for what
+ * to hang where.
+ *
+ * The whole body is scaled by the species' `size`, so one set of numbers covers
+ * something the size of a deer and something the size of a hare. Legs swing
+ * off the same `animPhase` the settlers use, which the *simulation* advances —
+ * so a running animal is mid-stride in both views, and freezes on pause with
+ * everyone else.
  */
 class AnimalRig implements Rig {
   readonly group = new THREE.Group();
@@ -358,6 +455,7 @@ class AnimalRig implements Rig {
   private readonly mats: THREE.Material[] = [];
   private layer = LAYER_ALL;
   private readonly size: number;
+  private readonly legLength: number;
   /** Last growth factor pushed to the body scale, so it is set on change only. */
   private grown = -1;
   /**
@@ -370,99 +468,89 @@ class AnimalRig implements Rig {
   constructor(pawn: Pawn, shared: SharedGeometry) {
     const kind = pawn.animal ?? 'dunhare';
     const def = ANIMALS[kind];
+    const model = shared.animals[kind];
     this.size = def.size;
+    this.legLength = model.legLength;
 
-    const hide = pawnTint(ANIMAL_COLOR[kind], pawn.colorSeed);
+    const hide = hideTint(ANIMAL_COLOR[kind], pawn.colorSeed);
     const hideMat = new THREE.MeshStandardMaterial({ color: hide, roughness: 0.9 });
-    const trimMat = new THREE.MeshStandardMaterial({
-      color: new THREE.Color(hide).offsetHSL(0, -0.05, -0.12),
+    // Hooves, ears, a stripe down the spine: the coat's own colour gone darker,
+    // which is how those parts differ on the animal and not a second dye.
+    const darkMat = new THREE.MeshStandardMaterial({
+      color: new THREE.Color(hide).offsetHSL(0, -0.05, -0.14),
       roughness: 0.85,
     });
+    // The belly, the chest, the scut: lighter and greyer, the way an underside
+    // is. Kept a step short of white so the hare stays a hare and not a lamp.
+    const paleMat = new THREE.MeshStandardMaterial({
+      color: new THREE.Color(hide).offsetHSL(0, -0.15, 0.26),
+      roughness: 0.92,
+    });
+    const hornMat = new THREE.MeshStandardMaterial({ color: 0x8f7e62, roughness: 0.7 });
+    // Low roughness on the eye and the nose, so both take a highlight from the
+    // sun: the glint is what makes a bead read as an eye rather than a dot.
     const eyeMat = new THREE.MeshStandardMaterial({ color: 0x14100e, roughness: 0.35 });
-    this.mats.push(hideMat, trimMat, eyeMat);
+    this.mats.push(hideMat, darkMat, paleMat, hornMat, eyeMat);
+    const tone = (t: Tone): THREE.Material =>
+      t === 'hide' ? hideMat : t === 'dark' ? darkMat : t === 'pale' ? paleMat : hornMat;
 
-    const barrel = new THREE.Mesh(shared.animalBody, hideMat);
-    barrel.position.y = 0.62;
-    const neck = new THREE.Mesh(shared.animalNeck, hideMat);
-    neck.position.set(0, 0.81, 0.34);
-    // Leans forward into the skull. It leaned the other way for a long time —
-    // a negative pitch carries the top of a limb toward -Z, so the neck rose
-    // from the chest and reached back over the shoulders, its top hanging in
-    // the air a hand's width behind the head it was meant to hold up. At
-    // eleven cells up that read as withers; at eye level it read as a mistake.
-    neck.rotation.x = 0.55;
-    this.head = new THREE.Mesh(shared.animalHead, hideMat);
-    this.head.position.set(0, 1.02, 0.5);
-    this.head.name = 'head';
+    const barrel = new THREE.Mesh(model.body, hideMat);
+    barrel.name = 'body';
+    const neck = new THREE.Mesh(model.neck, hideMat);
     neck.name = 'neck';
-    const tail = new THREE.Mesh(shared.animalTail, trimMat);
-    tail.position.set(0, 0.72, -0.4);
-
-    // The brambletail is named after the one part of it anybody can see. At three
-    // tenths the size of a mossback it is a smudge on the grass from the manager
-    // camera, and the tail up behind it is what turns the smudge into an animal —
-    // a vertical stroke where every other silhouette on the map is horizontal.
-    // The tail grows backwards along its own -Z, so it is lengthened along that
-    // axis and then raked up, rather than stretched in Y like the old block.
-    if (def.browses) {
-      tail.scale.set(1.7, 1.7, 2.2);
-      tail.rotation.x = 1.1;
-      tail.position.set(0, 0.86, -0.36);
-    }
+    neck.position.set(...model.neckAt);
+    // A positive pitch carries the top of the neck toward +Z, into the skull.
+    // It leaned the other way for a long time and its top hung in the air a
+    // hand's width behind the head it was meant to hold up.
+    neck.rotation.x = model.neckPitch;
+    this.head = new THREE.Mesh(model.head, hideMat);
+    this.head.name = 'head';
+    this.head.position.set(...model.headAt);
 
     for (const side of [-1, 1] as const) {
       const eye = new THREE.Mesh(shared.animalEye, eyeMat);
-      eye.position.set(side * 0.08, 0.04, 0.085);
+      eye.position.set(side * model.eyeAt[0], model.eyeAt[1], model.eyeAt[2]);
       this.head.add(eye);
     }
+    const nose = new THREE.Mesh(shared.animalNose, eyeMat);
+    nose.position.set(...model.noseAt);
+    this.head.add(nose);
 
-    for (const m of [barrel, neck, this.head, tail]) {
+    // Antlers and ears ride the head, so they dip when it grazes.
+    for (const crown of model.crowns) {
+      for (const side of [-1, 1] as const) {
+        const prong = new THREE.Mesh(crown.geometry, tone(crown.tone));
+        prong.position.set(side * crown.at[0], crown.at[1], crown.at[2]);
+        prong.rotation.set(crown.pitch, 0, side * -crown.roll);
+        if (crown.mirrored) prong.scale.x = side;
+        prong.castShadow = true;
+        this.head.add(prong);
+      }
+    }
+
+    for (const m of [barrel, neck, this.head]) {
       m.castShadow = true;
       this.body.add(m);
     }
-
-    // A hunter carries its head low and forward, which is most of why a wolf
-    // reads as a wolf at any distance — the silhouette is a horizontal line
-    // where a grazer's is a vertical one. Cheaper and clearer than a new mesh.
-    // The neck comes down with it: pitched flatter from where it stood, its top
-    // cleared the back of the lowered skull and hung in the air behind the ears,
-    // the withers mistake again in the other species.
-    if (def.hunts) {
-      this.head.position.set(0, 0.86, 0.62);
-      neck.position.set(0, 0.745, 0.395);
-      neck.rotation.x = 1.05;
+    for (const marking of model.markings) {
+      const patch = new THREE.Mesh(marking.geometry, tone(marking.tone));
+      patch.castShadow = true;
+      this.body.add(patch);
     }
 
-    // Antlers on a mossback, long ears on a dunhare, small pricked ears on a
-    // fenwolf and a brambletail — two prongs every time, with different splay,
-    // stretch and rake. Antlers are a forked beam; ears are one prong squashed
-    // flat front-to-back, which is what makes them ears and not horns. They
-    // ride the head, so they dip when it grazes.
-    const crown = kind === 'mossback' ? 'antler' : kind === 'dunhare' ? 'ear' : 'prick';
-    for (const side of [-1, 1] as const) {
-      const prong = new THREE.Mesh(crown === 'antler' ? shared.animalAntler : shared.animalEar, trimMat);
-      const back = crown === 'antler' ? -0.02 : crown === 'ear' ? -0.06 : -0.04;
-      // Rooted just under the skull's surface, so no prong stands on air.
-      prong.position.set(side * (crown === 'prick' ? 0.08 : 0.07), 0.06, back);
-      prong.rotation.z = side * (crown === 'antler' ? -0.55 : crown === 'ear' ? -0.28 : -0.12);
-      prong.rotation.x = crown === 'antler' ? -0.25 : crown === 'ear' ? -0.15 : 0.05;
-      // The antler's tine branches outward; mirror it so the pair is symmetric.
-      if (crown === 'antler') prong.scale.x = side;
-      if (crown === 'ear') prong.scale.set(1, 1.5, 1);
-      if (crown === 'prick') prong.scale.set(0.8, 0.75, 0.8);
-      prong.castShadow = true;
-      this.head.add(prong);
-    }
-
-    for (const [lx, lz] of [
-      [-0.16, 0.26],
-      [0.16, 0.26],
-      [-0.16, -0.26],
-      [0.16, -0.26],
-    ] as const) {
-      const leg = new THREE.Mesh(shared.animalLeg, trimMat);
-      leg.position.set(lx, ANIMAL_LEG_LENGTH, lz);
+    for (const [lx, lz] of model.legsAt) {
+      const leg = new THREE.Mesh(model.leg, hideMat);
+      leg.name = 'leg';
+      leg.position.set(lx, model.legLength, lz);
       leg.castShadow = true;
+      // The hoof rides the leg, so it swings from the hip with it. Its
+      // geometry stands on its own origin, so it is set at the leg's foot and
+      // its sole is the leg's sole.
+      const hoof = new THREE.Mesh(model.hoof, darkMat);
+      hoof.name = 'hoof';
+      hoof.position.y = -model.legLength;
+      hoof.castShadow = true;
+      leg.add(hoof);
       this.legs.push(leg);
       this.body.add(leg);
     }
@@ -484,7 +572,7 @@ class AnimalRig implements Rig {
     this.collar.name = 'collar';
     // On the neck, square to it, so it rings the neck the way a collar does
     // rather than lying level across a sloping one.
-    this.collar.position.set(0, 0.16, 0);
+    this.collar.position.set(0, model.collarAt, 0);
     this.collar.visible = false;
     neck.add(this.collar);
 
@@ -519,7 +607,7 @@ class AnimalRig implements Rig {
       this.grown = grow;
       this.body.scale.setScalar(this.size * grow);
       this.mark.position.y = 0.55 + this.size * grow * 0.9;
-      this.walkPhase = phaseScale(ANIMAL_LEG_LENGTH * this.size * grow, ANIMAL_SWING);
+      this.walkPhase = phaseScale(this.legLength * this.size * grow, ANIMAL_SWING);
     }
     this.mark.visible = !!pawn.hunted && !pawn.dead;
     this.collar.visible = pawn.tame === true;
@@ -589,14 +677,10 @@ interface SharedGeometry {
   rifleStock: THREE.BufferGeometry;
   rifleAction: THREE.BufferGeometry;
   club: THREE.BufferGeometry;
-  animalBody: THREE.BufferGeometry;
-  animalNeck: THREE.BufferGeometry;
-  animalHead: THREE.BufferGeometry;
+  /** Each species' body and where its moving parts hang, built once. */
+  animals: Record<AnimalKind, SpeciesModel>;
   animalEye: THREE.BufferGeometry;
-  animalTail: THREE.BufferGeometry;
-  animalLeg: THREE.BufferGeometry;
-  animalAntler: THREE.BufferGeometry;
-  animalEar: THREE.BufferGeometry;
+  animalNose: THREE.BufferGeometry;
   animalCollar: THREE.BufferGeometry;
   petTag: THREE.BufferGeometry;
   huntMark: THREE.BufferGeometry;
@@ -786,17 +870,19 @@ function makeNeck(): THREE.BufferGeometry {
 }
 
 /**
- * The animal's neck: tapered from the chest to the skull and domed at the top.
- * The head pitches through more than a radian when it grazes, and no straight
- * tube can keep its top rim inside a skull that swings that far; what pokes out
- * of the nape at the bottom of a graze is now a rounded end of neck, which reads
- * as the nape, rather than a flat disc, which read as a cut.
+ * An animal's neck: tapered from the chest to the skull, centred on its own
+ * length and domed at the top, so its top centre sits at `length / 2 + topR`
+ * along +Y — the number the rig places the head against. The head pitches
+ * through more than a radian when it grazes, and no straight tube can keep its
+ * top rim inside a skull that swings that far; what pokes out of the nape at
+ * the bottom of a graze is a rounded end of neck, which reads as the nape,
+ * rather than a flat disc, which read as a cut.
  */
-function makeAnimalNeck(): THREE.BufferGeometry {
-  const profile: THREE.Vector2[] = [new THREE.Vector2(0.11, -0.22), new THREE.Vector2(0.078, 0.13)];
+function makeAnimalNeck(baseR: number, topR: number, length: number): THREE.BufferGeometry {
+  const profile: THREE.Vector2[] = [new THREE.Vector2(baseR, -length / 2), new THREE.Vector2(topR, length / 2)];
   for (let i = 1; i <= 4; i++) {
     const a = (i / 4) * (Math.PI / 2);
-    profile.push(new THREE.Vector2(0.078 * Math.cos(a), 0.13 + 0.078 * Math.sin(a)));
+    profile.push(new THREE.Vector2(topR * Math.cos(a), length / 2 + topR * Math.sin(a)));
   }
   return new THREE.LatheGeometry(profile, 12);
 }
@@ -844,50 +930,296 @@ function makeClub(): THREE.BufferGeometry {
 }
 
 /**
- * The mossback's antler: a beam with one tine branching off it, both growing
- * up from the root so the whole thing rakes about the skull. The tine leans to
- * +X; the rig mirrors it for the other side.
+ * The mossback's antler: a beam with three tines branching off it, all growing
+ * up from the root so the whole thing rakes about the skull. One tine was a
+ * fork, and a fork on a head that size read as a second pair of ears; three,
+ * each leaning out a little less than the one below it and spread fore and
+ * aft, is the branching that says antler at eleven cells up. The tines lean
+ * to +X; the rig mirrors the whole thing for the other side.
  */
 function makeAntler(): THREE.BufferGeometry {
-  const beam = new THREE.CapsuleGeometry(0.022, 0.26, 2, 8);
-  beam.translate(0, 0.15, 0);
-  const tine = new THREE.CapsuleGeometry(0.017, 0.13, 2, 8);
-  tine.translate(0, 0.085, 0);
-  tine.rotateZ(-0.7);
-  tine.translate(0, 0.15, 0);
-  return weld([beam, tine]);
+  const beam = new THREE.CapsuleGeometry(0.02, 0.24, 1, 7);
+  beam.translate(0, 0.14, 0);
+  const tines: THREE.BufferGeometry[] = [];
+  for (const [height, lean, spread] of [
+    [0.09, -1.0, 0.3],
+    [0.16, -0.8, -0.25],
+    [0.23, -0.6, 0.1],
+  ] as const) {
+    const tine = new THREE.CapsuleGeometry(0.013, 0.08, 1, 6);
+    tine.translate(0, 0.053, 0);
+    tine.rotateZ(lean);
+    tine.rotateX(spread);
+    tine.translate(0, height, 0);
+    tines.push(tine);
+  }
+  return weld([beam, ...tines]);
 }
 
 /**
- * A tail that curves: back from the rump and up in a shallow flag, with a
- * rounded tip so the tube does not end in a hole. The root sits at the origin,
- * so the brambletail's rake lifts it about the rump.
+ * An ear that stands up: a capsule flattened front-to-back, rooted at its
+ * origin so it rotates about where it meets the skull. The hare's, at more
+ * than three times the length of its skull, is what makes it a hare.
  */
-function makeTail(): THREE.BufferGeometry {
-  const path = new THREE.QuadraticBezierCurve3(
-    new THREE.Vector3(0, 0, 0.02),
-    new THREE.Vector3(0, -0.01, -0.12),
-    new THREE.Vector3(0, 0.07, -0.19),
-  );
-  const tube = new THREE.TubeGeometry(path, 6, 0.035, 8, false);
-  const tip = new THREE.SphereGeometry(0.035, 8, 4);
-  tip.translate(0, 0.07, -0.19);
-  return weld([tube, tip]);
+function makeEar(radius: number, length: number): THREE.BufferGeometry {
+  const g = new THREE.CapsuleGeometry(radius, length - 2 * radius, 1, 7);
+  g.translate(0, length / 2, 0);
+  g.scale(1, 1, 0.45);
+  return g;
 }
 
 /**
- * The animal's head: an egg of a skull, longer than it is wide, with a shorter
- * and narrower muzzle pushed out of the front of it. Eyes and prongs are seated
- * on the skull's surface by the rig, so its radii are the numbers to move
- * together if the shape ever changes.
+ * A pricked ear: a cone flattened front-to-back, rooted at its origin. The
+ * point is the whole difference between a fox's ear and a hare's.
  */
-function makeAnimalHead(): THREE.BufferGeometry {
-  const skull = new THREE.SphereGeometry(1, 16, 10).scale(0.11, 0.1, 0.13);
-  const muzzle = new THREE.CapsuleGeometry(0.06, 0.08, 2, 8);
-  muzzle.rotateX(Math.PI / 2);
-  muzzle.scale(1.05, 0.85, 1);
-  muzzle.translate(0, -0.035, 0.14);
-  return weld([skull, muzzle]);
+function makePrickEar(radius: number, height: number): THREE.BufferGeometry {
+  const g = new THREE.ConeGeometry(radius, height, 7);
+  g.translate(0, height / 2, 0);
+  g.scale(1, 1, 0.45);
+  return g;
+}
+
+/**
+ * A bushy tail: an ellipsoid with its root at the origin, growing back along
+ * -Z, so the rig can rake it up over a brambletail's rump or hang it low off a
+ * wolf's. The thin tube it replaces was a stick, and a stick behind a body the
+ * size of a brambletail's was nothing at all from the manager camera.
+ */
+function makeBrush(radius: number, length: number): THREE.BufferGeometry {
+  const half = length / 2;
+  return new THREE.SphereGeometry(1, 10, 7).scale(radius, radius, half).translate(0, 0, -half * 0.8);
+}
+
+/**
+ * A muzzle pushed out of the front of a skull along +Z: a lathe that tapers
+ * from `baseR`, buried in the skull, to `tipR` at the nose, with a domed end.
+ * Long and blunt on a grazer, short and pointed on a hunter — the taper is
+ * most of what says which from the side.
+ */
+function makeMuzzle(baseR: number, tipR: number, length: number): THREE.BufferGeometry {
+  const profile: THREE.Vector2[] = [
+    new THREE.Vector2(baseR, 0),
+    new THREE.Vector2((baseR + tipR) * 0.52, length * 0.5),
+    new THREE.Vector2(tipR, length),
+  ];
+  for (let i = 1; i <= 4; i++) {
+    const a = (i / 4) * (Math.PI / 2);
+    profile.push(new THREE.Vector2(tipR * Math.cos(a), length + tipR * Math.sin(a)));
+  }
+  return new THREE.LatheGeometry(profile, 10).rotateX(Math.PI / 2);
+}
+
+/**
+ * An animal's head: an egg of a skull with the given half-extents and a muzzle
+ * out of the front of it, set `drop` below the skull's centre line. Eyes and
+ * crowns are seated on the skull's surface by the species model, so its radii
+ * are the numbers to move together if the shape ever changes.
+ */
+function makeAnimalHead(
+  skull: Vec3,
+  muzzle: { baseR: number; tipR: number; length: number; drop: number },
+): THREE.BufferGeometry {
+  const egg = new THREE.SphereGeometry(1, 14, 9).scale(...skull);
+  const snout = makeMuzzle(muzzle.baseR, muzzle.tipR, muzzle.length);
+  snout.translate(0, -muzzle.drop, skull[2] * 0.55);
+  return weld([egg, snout]);
+}
+
+/**
+ * A hoof or a paw: a flattened sphere that stands on its own origin, so it is
+ * set at the foot of a leg and its sole is the leg's sole. Wider than the leg
+ * it caps, which is what makes it a foot rather than the leg's end.
+ */
+function makeHoof(radius: number): THREE.BufferGeometry {
+  return new THREE.SphereGeometry(radius, 7, 4).scale(1.15, 0.55, 1.25).translate(0, radius * 0.55, 0);
+}
+
+/** A barrel lying along Z: the trunk of every four-legged body here. */
+function makeBarrel(radius: number, length: number, caps: number, radial: number): THREE.BufferGeometry {
+  return new THREE.CapsuleGeometry(radius, length, caps, radial).rotateX(Math.PI / 2);
+}
+
+/** An ellipsoid with the given half-extents, set down at a point. */
+function blob(radii: Vec3, at: Vec3, widthSegs = 10, heightSegs = 7): THREE.BufferGeometry {
+  return new THREE.SphereGeometry(1, widthSegs, heightSegs).scale(...radii).translate(...at);
+}
+
+/**
+ * The mossback: think elk. A heavy barrel with a hump at the withers, a thick
+ * short neck holding a long blunt muzzle up high, antlers branching three
+ * tines a side, a flag of a tail, and a darker stripe down the spine — the
+ * stripe rides just proud of the back, a ridge of coarser hair, from rump to
+ * hump. Its legs are the longest and the thickest here, and end in hooves.
+ */
+function makeMossback(): SpeciesModel {
+  const barrel = makeBarrel(0.22, 0.46, 4, 14).scale(1.05, 0.95, 1).translate(0, 0.66, 0);
+  const hump = blob([0.2, 0.17, 0.24], [0, 0.78, 0.18]);
+  const spine = new THREE.TubeGeometry(
+    new THREE.QuadraticBezierCurve3(
+      new THREE.Vector3(0, 0.8, -0.42),
+      new THREE.Vector3(0, 1.02, 0.1),
+      new THREE.Vector3(0, 0.92, 0.36),
+    ),
+    7,
+    0.04,
+    5,
+    false,
+  ).scale(1.5, 1, 1);
+  // Short and hanging, rooted just under the rump's skin.
+  const flag = new THREE.CapsuleGeometry(0.035, 0.03, 1, 7).translate(0, -0.05, 0).rotateX(0.6).translate(0, 0.77, -0.4);
+  return {
+    body: weld([barrel, hump]),
+    markings: [
+      { geometry: spine, tone: 'dark' },
+      { geometry: flag, tone: 'dark' },
+    ],
+    neck: makeAnimalNeck(0.16, 0.12, 0.3),
+    neckAt: [0, 0.84, 0.36],
+    neckPitch: 0.7,
+    collarAt: 0.08,
+    head: makeAnimalHead([0.12, 0.11, 0.14], { baseR: 0.085, tipR: 0.05, length: 0.22, drop: 0.03 }),
+    headAt: [0, 1.06, 0.56],
+    eyeAt: [0.085, 0.035, 0.09],
+    noseAt: [0, -0.015, 0.325],
+    crowns: [
+      { geometry: makeAntler(), at: [0.06, 0.09, -0.02], roll: 0.5, pitch: -0.35, tone: 'horn', mirrored: true },
+      // Out sideways under the antlers, the way an elk's are.
+      { geometry: makeEar(0.028, 0.11), at: [0.09, 0.06, -0.03], roll: 0.95, pitch: -0.1, tone: 'dark', mirrored: false },
+    ],
+    leg: limb(0.062, 0.6, 9, 1),
+    hoof: makeHoof(0.07),
+    legLength: 0.6,
+    legsAt: [
+      [-0.15, 0.3],
+      [0.15, 0.3],
+      [-0.15, -0.3],
+      [0.15, -0.3],
+    ],
+  };
+}
+
+/**
+ * The dunhare: a crouched egg, tipped so the rump stands higher than the
+ * shoulders, on legs a third the length of a mossback's, with the hind pair
+ * folded into a haunch on each side; ears taller than the head; a white scut;
+ * a pale belly. It read as a small white dog when it was the shared body at
+ * half size — the body was level, the ears were sticks and the coat had been
+ * tinted to nothing — and the crouch is the first thing that fixes that.
+ */
+function makeDunhare(): SpeciesModel {
+  // Rotated about X before it is set down: a positive pitch lifts the -Z end.
+  const egg = new THREE.SphereGeometry(1, 12, 9).scale(0.22, 0.24, 0.3).rotateX(0.3).translate(0, 0.42, 0);
+  const haunchL = blob([0.1, 0.13, 0.15], [-0.16, 0.3, -0.17]);
+  const haunchR = blob([0.1, 0.13, 0.15], [0.16, 0.3, -0.17]);
+  return {
+    body: weld([egg, haunchL, haunchR]),
+    markings: [
+      { geometry: blob([0.2, 0.16, 0.26], [0, 0.33, 0.04]), tone: 'pale' },
+      { geometry: new THREE.SphereGeometry(0.065, 8, 6).translate(0, 0.55, -0.31), tone: 'pale' },
+    ],
+    neck: makeAnimalNeck(0.09, 0.075, 0.14),
+    neckAt: [0, 0.5, 0.26],
+    neckPitch: 0.6,
+    collarAt: 0,
+    head: makeAnimalHead([0.1, 0.1, 0.12], { baseR: 0.07, tipR: 0.045, length: 0.1, drop: 0.02 }),
+    headAt: [0, 0.62, 0.36],
+    eyeAt: [0.075, 0.03, 0.075],
+    noseAt: [0, -0.01, 0.19],
+    crowns: [
+      { geometry: makeEar(0.03, 0.34), at: [0.05, 0.07, -0.03], roll: 0.22, pitch: -0.3, tone: 'hide', mirrored: false },
+    ],
+    leg: limb(0.04, 0.34, 9, 1),
+    hoof: makeHoof(0.045),
+    legLength: 0.34,
+    legsAt: [
+      [-0.12, 0.2],
+      [0.12, 0.2],
+      [-0.15, -0.16],
+      [0.15, -0.16],
+    ],
+  };
+}
+
+/**
+ * The brambletail: think fox. A low, long barrel; a pointed muzzle under
+ * pricked ears; a pale chest; and the brush it is named for, raked up over
+ * the rump with a pale tip — a vertical stroke where every other silhouette
+ * on the map is horizontal, which at three tenths of a mossback is the whole
+ * reason anyone can pick it out of the grass.
+ */
+function makeBrambletail(): SpeciesModel {
+  const barrel = makeBarrel(0.14, 0.62, 3, 12).translate(0, 0.45, 0);
+  const brush = makeBrush(0.09, 0.48).rotateX(1.0).translate(0, 0.5, -0.42);
+  return {
+    body: weld([barrel, brush]),
+    markings: [
+      { geometry: blob([0.11, 0.1, 0.14], [0, 0.38, 0.3]), tone: 'pale' },
+      { geometry: new THREE.SphereGeometry(0.055, 8, 5).translate(0, 0.836, -0.636), tone: 'pale' },
+    ],
+    neck: makeAnimalNeck(0.09, 0.07, 0.14),
+    neckAt: [0, 0.56, 0.42],
+    neckPitch: 0.7,
+    collarAt: 0.02,
+    head: makeAnimalHead([0.095, 0.09, 0.11], { baseR: 0.065, tipR: 0.028, length: 0.15, drop: 0.02 }),
+    headAt: [0, 0.68, 0.53],
+    eyeAt: [0.07, 0.03, 0.07],
+    noseAt: [0, -0.01, 0.227],
+    crowns: [
+      { geometry: makePrickEar(0.042, 0.11), at: [0.06, 0.07, -0.02], roll: 0.35, pitch: -0.1, tone: 'dark', mirrored: false },
+    ],
+    leg: limb(0.04, 0.45, 9, 1),
+    hoof: makeHoof(0.045),
+    legLength: 0.45,
+    legsAt: [
+      [-0.1, 0.27],
+      [0.1, 0.27],
+      [-0.1, -0.27],
+      [0.1, -0.27],
+    ],
+  };
+}
+
+/**
+ * The fenwolf: the hunter. It carries its head low and forward, which is most
+ * of why a wolf reads as a wolf at any distance — the silhouette is a
+ * horizontal line where a grazer's is a vertical one — out of a thick ruff at
+ * the base of the neck; a pointed muzzle under pricked ears; a bushy tail held
+ * low; a paler belly under a grey-brown coat.
+ */
+function makeFenwolf(): SpeciesModel {
+  const barrel = makeBarrel(0.18, 0.5, 4, 14).scale(1, 0.95, 1).translate(0, 0.6, 0);
+  const ruff = blob([0.22, 0.2, 0.18], [0, 0.66, 0.3], 12, 8);
+  const brush = makeBrush(0.075, 0.48).rotateX(-0.5).translate(0, 0.6, -0.4);
+  return {
+    body: weld([barrel, ruff, brush]),
+    markings: [
+      { geometry: blob([0.15, 0.13, 0.3], [0, 0.5, 0.02]), tone: 'pale' },
+      { geometry: new THREE.SphereGeometry(0.05, 8, 5).translate(0, 0.408, -0.752), tone: 'dark' },
+    ],
+    neck: makeAnimalNeck(0.13, 0.1, 0.24),
+    // Pitched nearly flat, so the neck comes down with the head: pitched
+    // steeper from the same root, its top cleared the back of the lowered
+    // skull and hung in the air behind the ears.
+    neckAt: [0, 0.61, 0.464],
+    neckPitch: 1.1,
+    collarAt: 0.06,
+    head: makeAnimalHead([0.11, 0.1, 0.13], { baseR: 0.075, tipR: 0.035, length: 0.17, drop: 0.025 }),
+    headAt: [0, 0.72, 0.68],
+    eyeAt: [0.08, 0.03, 0.085],
+    noseAt: [0, -0.012, 0.26],
+    crowns: [
+      { geometry: makePrickEar(0.045, 0.12), at: [0.07, 0.07, -0.03], roll: 0.3, pitch: -0.15, tone: 'dark', mirrored: false },
+    ],
+    leg: limb(0.05, 0.58, 9, 1),
+    hoof: makeHoof(0.055),
+    legLength: 0.58,
+    legsAt: [
+      [-0.13, 0.28],
+      [0.13, 0.28],
+      [-0.13, -0.28],
+      [0.13, -0.28],
+    ],
+  };
 }
 
 function makeShared(): SharedGeometry {
@@ -900,14 +1232,6 @@ function makeShared(): SharedGeometry {
   const boot = new THREE.CapsuleGeometry(0.072, 0.1, 2, 10);
   boot.rotateX(Math.PI / 2);
   boot.scale(1.05, 0.68, 1);
-  const animalBody = new THREE.CapsuleGeometry(0.19, 0.5, 5, 16);
-  animalBody.rotateX(Math.PI / 2);
-  animalBody.scale(1.08, 0.95, 1);
-  // The ear is one prong flattened front-to-back; it grows upward from its
-  // origin, so an ear rotates about its root.
-  const ear = new THREE.CapsuleGeometry(0.03, 0.2, 2, 8);
-  ear.translate(0, 0.14, 0);
-  ear.scale(1, 1, 0.45);
   return {
     torso: makeTorso(),
     belt,
@@ -928,17 +1252,20 @@ function makeShared(): SharedGeometry {
     rifleStock: makeRifleStock(),
     rifleAction: makeRifleAction(),
     club: makeClub(),
-    animalBody,
-    animalNeck: makeAnimalNeck(),
-    animalHead: makeAnimalHead(),
+    animals: {
+      mossback: makeMossback(),
+      dunhare: makeDunhare(),
+      brambletail: makeBrambletail(),
+      fenwolf: makeFenwolf(),
+    },
     // A bead a fifth the size of a settler's eye on a body that is drawn at
     // most a cell across; the settler's eight-by-six would be forty per cent
     // more triangles for a dot.
     animalEye: new THREE.SphereGeometry(0.022, 6, 4),
-    animalTail: makeTail(),
-    animalLeg: limb(0.05, ANIMAL_LEG_LENGTH, 10, 2),
-    animalAntler: makeAntler(),
-    animalEar: ear,
+    // A dark bead on the end of the muzzle, in the eye's material so it takes
+    // the same glint. It is the one thing that marks which end of a lowered
+    // head is the front from the manager camera.
+    animalNose: new THREE.SphereGeometry(0.03, 6, 4),
     // A band round the neck. The only thing on the map that separates a tamed
     // mossback from the wild one grazing beside it, so it is a ring of solid
     // colour rather than a tint the isometric camera would lose in shadow.
@@ -1037,7 +1364,9 @@ export class PawnsView {
 
   dispose(): void {
     for (const rig of this.rigs.values()) rig.dispose();
-    for (const g of Object.values(this.shared)) g.dispose();
+    const { animals, ...single } = this.shared;
+    for (const g of Object.values(single)) g.dispose();
+    for (const model of Object.values(animals)) for (const g of speciesGeometries(model)) g.dispose();
   }
 }
 

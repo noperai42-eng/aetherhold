@@ -11,6 +11,7 @@ import * as THREE from 'three';
 import { describe, expect, it } from 'vitest';
 
 import {
+  ROCK_CREASE,
   ROCK_EDGE,
   ROCK_HEIGHT,
   ROCK_JITTER,
@@ -269,6 +270,78 @@ describe('the boulder every block draws', () => {
     }
     view.dispose();
   });
+
+  /**
+   * Smooth is not the same as soft. A skin whose normals bend everywhere is a
+   * cushion, and a cliff of cushions is the rolled mattress the boulder was
+   * meant to replace. Stone has a rim where its sides meet its top, and the rim
+   * is nothing but a split vertex: one position, two normals, the angle between
+   * them past the crease. So the shoulder ring must be split all the way round
+   * — and only where there is an edge to show for it, since every split is a
+   * vertex on every one of thousands of instances.
+   */
+  it('keeps a hard rim where the sides meet the cap, so a cliff reads as stone', () => {
+    const { geo, view } = boulder();
+    const p = geo.getAttribute('position') as THREE.BufferAttribute;
+    const n = geo.getAttribute('normal') as THREE.BufferAttribute;
+    const at = new Map<string, number[]>();
+    for (let i = 0; i < p.count; i++) {
+      const key = `${p.getX(i).toFixed(5)},${p.getY(i).toFixed(5)},${p.getZ(i).toFixed(5)}`;
+      if (!at.has(key)) at.set(key, []);
+      at.get(key)!.push(i);
+    }
+    let rim = 0;
+    for (const ids of at.values()) {
+      if (ids.length < 2) continue;
+      // A side normal and a cap normal on the same point is the shoulder.
+      const side = ids.some((i) => Math.abs(n.getY(i)) < 0.25);
+      const cap = ids.some((i) => n.getY(i) > 0.45);
+      if (side && cap) rim++;
+      // And any two normals on one point must be further apart than the crease,
+      // or the split bought nothing and cost a vertex.
+      for (const a of ids) {
+        for (const b of ids) {
+          if (a >= b) continue;
+          const dot = n.getX(a) * n.getX(b) + n.getY(a) * n.getY(b) + n.getZ(a) * n.getZ(b);
+          expect(Math.acos(Math.min(1, dot))).toBeGreaterThan(ROCK_CREASE / 2);
+        }
+      }
+    }
+    expect(rim).toBeGreaterThanOrEqual(12);
+    expect(p.count).toBeLessThan(at.size * 1.6);
+    view.dispose();
+  });
+
+  /**
+   * The ground darkens toward a cliff, and the cliff has to darken toward the
+   * ground, or the seam between them is a bright wall standing on a dark
+   * floor. That is a colour attribute on the mesh, and a material that reads
+   * it: either one missing and the base is as bright as the plateau.
+   */
+  it('is darker at its foot than on its plateau', () => {
+    const { geo, mat, view } = boulder();
+    expect(mat.vertexColors).toBe(true);
+    const p = geo.getAttribute('position') as THREE.BufferAttribute;
+    const c = geo.getAttribute('color') as THREE.BufferAttribute;
+    let foot = 0;
+    let feet = 0;
+    let top = 0;
+    let tops = 0;
+    for (let i = 0; i < p.count; i++) {
+      const l = luma([c.getX(i), c.getY(i), c.getZ(i)]);
+      if (p.getY(i) < -0.45) {
+        foot += l;
+        feet++;
+      } else if (p.getY(i) > 0.4) {
+        top += l;
+        tops++;
+      }
+    }
+    expect(feet).toBeGreaterThan(0);
+    expect(tops).toBeGreaterThan(0);
+    expect(foot / feet).toBeLessThan((top / tops) * 0.8);
+    view.dispose();
+  });
 });
 
 describe('the ground as it is built', () => {
@@ -327,6 +400,33 @@ describe('the ground as it is built', () => {
       seen.add(c.getHexString());
     }
     expect(seen.size).toBeGreaterThan(10);
+    view.dispose();
+  });
+
+  /**
+   * Light and dark is one axis, and the eye finds the repeat in one axis from
+   * across the map. A cliff wants blocks that lean warm, blocks that lean cool
+   * and blocks with lichen on them, all in the same face, so there is no
+   * single grey for the pattern to be a pattern of. Each is a lerp toward a
+   * colour that has a hue, so each shows up as a sign in the channels.
+   */
+  it('leans its blocks warm, cool and green, not only light and dark', () => {
+    const world = createWorld(SEED);
+    const view = new TerrainView(world);
+    const rocks = view.group.children[1] as THREE.InstancedMesh;
+    const c = new THREE.Color();
+    let warm = 0;
+    let cool = 0;
+    let lichen = 0;
+    for (let i = 0; i < Math.min(80, rockCells(world).length); i++) {
+      rocks.getColorAt(i, c);
+      if (c.r > c.b) warm++;
+      if (c.b > c.r + 0.02) cool++;
+      if (c.g > c.r && c.g > c.b) lichen++;
+    }
+    expect(warm).toBeGreaterThan(0);
+    expect(cool).toBeGreaterThan(0);
+    expect(lichen).toBeGreaterThan(0);
     view.dispose();
   });
 

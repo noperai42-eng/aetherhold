@@ -10,7 +10,7 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 
-import { bladeGeometry } from './decor';
+import { bladeGeometry, lumpyGeometry } from './decor';
 import { BUILDING_COLOR, TERRAIN_COLOR } from './palette';
 import {
   DESIG_DECONSTRUCT,
@@ -86,14 +86,39 @@ export function markHeight(world: World, x: number, y: number, lift: number): nu
   return onRock(world, x, y) ? rockTopAt(x, y) + ROCK_MARK_LIFT : groundLiftAt(world, x, y) + lift;
 }
 
-/** A ripe crop's colour. Squared blend so it stays green until it is nearly ready. */
-const RIPE_COLOR = new THREE.Color(0xe3c451);
+/**
+ * A ripe crop's colour. Squared blend so it stays green until it is nearly ready.
+ * Straw gold, not lemon: the brighter yellow this used to be lit a ripe plot up
+ * like a warning light, and a field of wheat is warm rather than neon.
+ */
+const RIPE_COLOR = new THREE.Color(0xc9a445);
+/**
+ * Growth at which a sown cell stops being sprouts and becomes a leafy plant,
+ * and at which the plant puts up heads. Three shapes, not three sizes: a
+ * seedling scaled up is still a seedling, and "is it ready" has to be readable
+ * from twenty cells up, where size is the one thing the eye cannot judge.
+ */
+const CROP_LEAFY_AT = 0.3;
+const CROP_HEADED_AT = 0.7;
+/**
+ * Ripeness at which a bush's berries start to show. Below it the fruit is too
+ * green and too small to be anything but the bush's own colour; from here it
+ * reddens, so a player scanning the moor for food is scanning for red.
+ */
+const BERRIES_AT = 0.35;
+const BERRY_GREEN = new THREE.Color(0x5f7a3a);
+const BERRY_RIPE = new THREE.Color(0x8c1e3c);
+/** A bush in full leaf. Deeper than the lawn, so the thicket stands off the turf. */
+const BUSH_GREEN = new THREE.Color(0x3f6a2e);
 
 export class FxView {
   readonly group = new THREE.Group();
   private readonly bullets: InstancedPool;
-  private readonly crops: InstancedPool;
+  /** One pool per growth stage, `CROP_STAGES` long. */
+  private readonly crops: InstancedPool[];
   private readonly bushes: InstancedPool;
+  private readonly berries: InstancedPool;
+  private readonly soil: InstancedPool;
   private readonly zonePaint: InstancedPool;
   private readonly designations: InstancedPool;
   private readonly previewPool: InstancedPool;
@@ -124,33 +149,63 @@ export class FxView {
 
     // Plants are part of the world, not an explanation of it, so they stay on the
     // default layer: the possessed colonist walks past the same shoots the manager
-    // watches ripen. Height and colour both track growth, which makes "is it ready"
-    // readable from either camera without a label.
-    // Two-sided because the leaves are sheets with no back face of their own.
-    this.crops = new InstancedPool(
+    // watches ripen. Shape, height and colour all track growth, which makes "is
+    // it ready" readable from either camera without a label: sprouts, then a
+    // leafy plant, then stalks with heads on them. One pool per stage — a field
+    // is three draw calls rather than one, and each cell is in exactly one.
+    // Two-sided because the leaves are sheets with no back face of their own,
+    // and vertex-coloured so a head can be a warmer gold than the straw under it
+    // while the whole plant still takes the one tint growth gives it.
+    const cropMat = new THREE.MeshLambertMaterial({ color: 0xffffff, side: THREE.DoubleSide, vertexColors: true });
+    this.crops = CROP_STAGES.map(
+      (stage) =>
+        new InstancedPool(this.group, cropGeometry(stage), cropMat, 256, {
+          tinted: true,
+          castShadow: false,
+          receiveShadow: false,
+        }),
+    );
+
+    // Wild brambles. A clump of overlapping lobes, darker in at the base where
+    // the light does not reach, so a bush is a thicket and never a boulder from
+    // the manager camera — the stones are single lumps and this is several
+    // grown together. On the default layer with the crops, because the possessed
+    // colonist has to be able to walk up to one and see the fruit on it. The
+    // fruit is the ripeness signal: berries in a second pool that show once the
+    // bush is well along and redden as it ripens, rather than the whole bush
+    // changing colour — a yellow bush is a dying bush, not a laden one.
+    this.bushes = new InstancedPool(
       this.group,
-      cropPlantGeometry(),
-      new THREE.MeshLambertMaterial({ color: 0xffffff, side: THREE.DoubleSide }),
+      bushGeometry(),
+      new THREE.MeshLambertMaterial({ color: 0xffffff, vertexColors: true }),
+      512,
+      { tinted: true, castShadow: false },
+    );
+    this.berries = new InstancedPool(
+      this.group,
+      berryClusterGeometry(),
+      new THREE.MeshLambertMaterial({ color: 0xffffff }),
       512,
       { tinted: true, castShadow: false, receiveShadow: false },
     );
 
-    // Wild brambles. A smooth dome, squashed rather than round, so a bush never
-    // gets mistaken for a boulder from the manager camera — the stones are lumps
-    // and this is a cushion — and on the default layer with the crops, because
-    // the possessed colonist has to be able to walk up to one and see the fruit
-    // on it. Colour carries ripeness exactly as it does on a sown cell, which is
-    // the point of doing it the same way: the player learns "green means wait"
-    // once and it holds everywhere.
-    const bushGeo = new THREE.IcosahedronGeometry(0.36, 2);
-    bushGeo.scale(1, 0.72, 1);
-    bushGeo.translate(0, 0.28, 0);
-    this.bushes = new InstancedPool(
+    // A growing zone is painted as the tilled earth it stands for — furrows,
+    // brown — rather than a tint of green over green, which from twenty cells up
+    // is a plot the player cannot find. Still an overlay on the manager layer:
+    // the ground itself is whatever the settlers broke, and this says "sown
+    // here" over it. Lifted like the other paint, and under the marks.
+    this.soil = new InstancedPool(
       this.group,
-      bushGeo,
-      new THREE.MeshLambertMaterial({ color: 0xffffff }),
-      512,
-      { tinted: true, castShadow: false },
+      tilledSoilGeometry(),
+      new THREE.MeshBasicMaterial({
+        color: 0x7a5a3c,
+        vertexColors: true,
+        transparent: true,
+        opacity: 0.82,
+        depthWrite: false,
+      }),
+      256,
+      { tinted: false, castShadow: false, layer: LAYER_MANAGER },
     );
 
     // Flat at y = 0 like the marks below it, and lifted per instance: the paint
@@ -280,19 +335,21 @@ export class FxView {
   }
 
   private syncCrops(world: World): void {
-    this.crops.begin();
+    for (const pool of this.crops) pool.begin();
     for (const cell of growingCells(world)) {
       const g = world.crops[cell] ?? CROP_NONE;
       if (g < 0) continue;
-      const h = 0.22 + g * 0.62;
+      // Height and girth run on through a stage change, so the plant that just
+      // put up leaves is the size the sprouts had reached, not a fresh start.
+      const h = 0.16 + g * 0.74;
       this.v.set(unpackX(world, cell), 0, unpackY(world, cell));
       this.q.identity();
-      this.s.set(0.55 + g * 0.45, h, 0.55 + g * 0.45);
+      this.s.set(0.5 + g * 0.5, h, 0.5 + g * 0.5);
       this.m.compose(this.v, this.q, this.s);
       this.c.setHex(0x6f9c3e).lerp(RIPE_COLOR, g * g);
-      this.crops.push(this.m, this.c);
+      this.crops[cropStage(g)]!.push(this.m, this.c);
     }
-    this.crops.end();
+    for (const pool of this.crops) pool.end();
   }
 
   /**
@@ -303,6 +360,7 @@ export class FxView {
    */
   private syncBushes(world: World): void {
     this.bushes.begin();
+    this.berries.begin();
     for (const b of world.bushes ?? []) {
       // A stripped bush is still a bush — smaller and grey-green, never gone.
       // Removing it would tell the player the plant died when what happened is
@@ -314,14 +372,23 @@ export class FxView {
       this.q.identity();
       this.s.set(size, size, size);
       this.m.compose(this.v, this.q, this.s);
-      // Dull green through to the same ripe colour the crops reach, but only in
-      // the last stretch — `g` cubed, so a bush looks unpicked until it nearly is,
-      // and a player scanning the moor for red is scanning for food that is
-      // actually there rather than food that will be on Thursday.
-      this.c.setHex(0x4d6b34).lerp(RIPE_COLOR, g * g * g);
+      // Grey-green when it has just been picked over, filling back to a full
+      // green as it recovers. Never yellow: the fruit says when it is ready.
+      this.c.setHex(0x5c6a48).lerp(BUSH_GREEN, g);
       this.bushes.push(this.m, this.c);
+      if (g < BERRIES_AT) continue;
+      // The cluster is built on the bush's own lobes in the bush's own units, so
+      // it takes the bush's matrix as it is and sits on the surface at every
+      // size; what ripening changes is the fruit's colour — green, then dark
+      // red. Squared, so a bush looks unpicked until it nearly is, and a player
+      // scanning the moor for red is scanning for food that is actually there
+      // rather than food that will be on Thursday.
+      const ripe = (g - BERRIES_AT) / (1 - BERRIES_AT);
+      this.c.copy(BERRY_GREEN).lerp(BERRY_RIPE, ripe * ripe);
+      this.berries.push(this.m, this.c);
     }
     this.bushes.end();
+    this.berries.end();
   }
 
   private syncFire(world: World, t: number): void {
@@ -346,11 +413,14 @@ export class FxView {
 
   private syncOverlays(world: World): void {
     this.zonePaint.begin();
+    this.soil.begin();
     for (const z of world.zones) {
-      // Blue hauling, green growing, straw-gold pen — three zones that are never
-      // confusable at a glance from the isometric camera, which is the whole job
-      // this colour has to do.
-      this.c.setHex(z.kind === 'stockpile' ? 0x63b6e0 : z.kind === 'pen' ? 0xd8b45a : 0x8fd06a);
+      // Blue hauling, brown furrows growing, straw-gold pen — three zones that
+      // are never confusable at a glance from the isometric camera, which is
+      // the whole job this colour has to do. The furrows are their own pool with
+      // their own material, since tilled earth is opaque where paint is a tint.
+      const pool = z.kind === 'growing' ? this.soil : this.zonePaint;
+      this.c.setHex(z.kind === 'stockpile' ? 0x63b6e0 : 0xd8b45a);
       for (const cell of z.cells) {
         const x = unpackX(world, cell);
         const y = unpackY(world, cell);
@@ -358,9 +428,10 @@ export class FxView {
         this.q.identity();
         this.s.set(1, 1, 1);
         this.m.compose(this.v, this.q, this.s);
-        this.zonePaint.push(this.m, this.c);
+        pool.push(this.m, this.c);
       }
     }
+    this.soil.end();
     // A floor order is drawn as the floor it will be, dimmed — a ring mark would
     // say "something happens here", and what the player needs to see is the shape
     // of the corridor before anybody has carried a board to it.
@@ -459,8 +530,10 @@ export class FxView {
 
   dispose(): void {
     this.bullets.dispose();
-    this.crops.dispose();
+    for (const pool of this.crops) pool.dispose();
     this.bushes.dispose();
+    this.berries.dispose();
+    this.soil.dispose();
     this.zonePaint.dispose();
     this.designations.dispose();
     this.previewPool.dispose();
@@ -477,29 +550,221 @@ export class FxView {
 
 const UP = new THREE.Vector3(0, 1, 0);
 
+/** The three shapes a sown cell passes through, in the order it passes through them. */
+export const CROP_STAGES = ['seedling', 'leafy', 'headed'] as const;
+export type CropStage = (typeof CROP_STAGES)[number];
+
+/** Which of the three shapes a cell at growth `g` is drawn as, as an index into `CROP_STAGES`. */
+export function cropStage(g: number): number {
+  return g >= CROP_HEADED_AT ? 2 : g >= CROP_LEAFY_AT ? 1 : 0;
+}
+
 /**
- * A sown plant: one upright shoot with a ring of leaves fanning out and bowing
- * away from it, welded into a single geometry so a field is still one draw call.
- *
- * Everything is in "one plant tall" units with the roots at the origin, the same
- * contract the cone kept, so `syncCrops` goes on scaling y to growth and x/z to
- * girth. The lean and bow are picked so a fully grown plant reaches about 0.45
- * of a cell from its stem: neighbours in a field just touch, and nothing pokes
- * across a path.
+ * Give a part a flat vertex colour, so it can be merged with parts of another
+ * colour into one geometry and still be told apart under the one instance tint.
+ * The colour is a multiplier on that tint, not a colour of its own: `1, 1, 1`
+ * is "the plant's colour", and a head at `1.1, 0.9, 0.55` is that colour pushed
+ * warm. Any uv is dropped on the way — nothing here is textured, and every part
+ * has to carry the same attributes for the merge to accept it.
  */
-function cropPlantGeometry(): THREE.BufferGeometry {
-  const leaves = 5;
-  const parts: THREE.BufferGeometry[] = [bladeGeometry(0.3, 4, 0.15)];
-  for (let i = 0; i < leaves; i++) {
-    const leaf = bladeGeometry(0.42, 4, 0.25);
-    leaf.scale(1, 0.7, 1);
-    leaf.rotateX(0.3);
-    leaf.rotateY((i / leaves) * Math.PI * 2);
-    parts.push(leaf);
+function paint(geo: THREE.BufferGeometry, r: number, g: number, b: number): THREE.BufferGeometry {
+  geo.deleteAttribute('uv');
+  const n = geo.getAttribute('position').count;
+  const colors = new Float32Array(n * 3);
+  for (let i = 0; i < n; i++) {
+    colors[i * 3] = r;
+    colors[i * 3 + 1] = g;
+    colors[i * 3 + 2] = b;
   }
+  geo.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+  return geo;
+}
+
+/** Merge and free the parts, so every builder below is one expression at the end. */
+function weld(parts: THREE.BufferGeometry[]): THREE.BufferGeometry {
   const geo = mergeGeometries(parts);
   for (const p of parts) p.dispose();
   return geo;
+}
+
+/**
+ * A sown plant at one stage of its growth, welded into a single geometry so a
+ * field is three draw calls however many cells it covers.
+ *
+ * Everything is in "one plant tall" units with the roots at the origin, the same
+ * contract the cone kept, so `syncCrops` goes on scaling y to growth and x/z to
+ * girth. The leans and bows are picked so a fully grown plant reaches under
+ * 0.45 of a cell from its stem: neighbours in a field just touch, and nothing
+ * pokes across a path.
+ *
+ * Three shapes rather than one scaled: a seedling is two or three thin sprouts
+ * with nothing between them; the leafy plant is a stalk with two tiers of broad
+ * leaves bowing off it; the headed plant is three stalks each carrying a fat
+ * grain head, with the leaves left low. The head is the one part with its own
+ * vertex colour — warmer and darker than the straw — so from overhead a ripe
+ * plot is a field of gold beads rather than a field of yellow stars.
+ */
+export function cropGeometry(stage: CropStage): THREE.BufferGeometry {
+  const parts: THREE.BufferGeometry[] = [];
+  if (stage === 'seedling') {
+    for (let i = 0; i < 3; i++) {
+      const sprout = bladeGeometry(0.1, 3, 0.15);
+      sprout.scale(1, 1 - i * 0.18, 1);
+      sprout.rotateX(0.2 + i * 0.08);
+      sprout.translate(0, 0, 0.03);
+      sprout.rotateY(i * 2.1 + 0.4);
+      parts.push(paint(sprout, 0.95, 1.05, 0.9));
+    }
+    return weld(parts);
+  }
+
+  if (stage === 'leafy') {
+    const stalk = new THREE.CylinderGeometry(0.02, 0.04, 1, 5, 1, true);
+    stalk.translate(0, 0.5, 0);
+    parts.push(paint(stalk, 0.9, 0.95, 0.8));
+    // Two tiers, the lower one broader and bowing further, so the plant fills
+    // its cell from the ground up rather than being a rosette on a stick.
+    const tiers = [
+      { n: 5, y: 0.06, len: 0.5, width: 0.3, bow: 0.5, turn: 0 },
+      { n: 4, y: 0.42, len: 0.45, width: 0.26, bow: 0.4, turn: 0.7 },
+    ];
+    for (const tier of tiers) {
+      for (let i = 0; i < tier.n; i++) {
+        const leaf = bladeGeometry(tier.width, 4, 0.2);
+        leaf.scale(1, tier.len, 1);
+        leaf.rotateX(tier.bow);
+        leaf.translate(0, tier.y, 0.02);
+        leaf.rotateY((i / tier.n) * Math.PI * 2 + tier.turn);
+        parts.push(paint(leaf, 1, 1, 1));
+      }
+    }
+    return weld(parts);
+  }
+
+  // Headed. The stalks lean a little apart so the heads do not merge into one
+  // blob from overhead, and the head sits on the tip of its stalk: the stalk is
+  // a blade bowing `bend` forward at y = 1, scaled to 0.84, so its tip is at
+  // (0, 0.84, 0.84 * bend) before the lean.
+  const bend = 0.1;
+  for (let i = 0; i < 3; i++) {
+    const stalk = bladeGeometry(0.05, 3, bend);
+    stalk.scale(1, 0.84, 1);
+    // Knocked out of true and lit as one smooth grain, then stretched into an
+    // ear: taller than it is wide, and nodding a little forward with the stalk.
+    const head = lumpyGeometry(new THREE.IcosahedronGeometry(0.07, 1), 0.06, 11 + i);
+    head.scale(1, 1.9, 1);
+    head.translate(0, 0.86, 0.84 * bend);
+    const ear = weld([paint(stalk, 0.9, 0.95, 0.75), paint(head, 1.1, 0.9, 0.55)]);
+    ear.rotateX(0.12 + i * 0.03);
+    ear.translate(0, 0, 0.05);
+    ear.rotateY((i / 3) * Math.PI * 2 + 0.5);
+    parts.push(ear);
+  }
+  for (let i = 0; i < 4; i++) {
+    const leaf = bladeGeometry(0.22, 4, 0.2);
+    leaf.scale(1, 0.4, 1);
+    leaf.rotateX(0.55);
+    leaf.translate(0, 0.05, 0.02);
+    leaf.rotateY((i / 4) * Math.PI * 2 + 0.3);
+    parts.push(paint(leaf, 1, 1, 1));
+  }
+  return weld(parts);
+}
+
+/**
+ * A wild bush: five lobes grown into one another, the three big ones welded
+ * smooth and the two small ones filling the gaps at the sides, in world units
+ * with the roots at the origin and everything inside a cell. Vertex colour runs
+ * dark at the base to full at the crown — the inside of a thicket is in its own
+ * shade — and is a multiplier on the instance tint like the crops'.
+ */
+export function bushGeometry(): THREE.BufferGeometry {
+  const parts: THREE.BufferGeometry[] = [];
+  for (const [i, lobe] of BUSH_LOBES.entries()) {
+    const geo = lumpyGeometry(new THREE.IcosahedronGeometry(lobe.r, lobe.detail), 0.08, 5.3 + i);
+    geo.scale(1, 0.86, 1);
+    geo.translate(lobe.x, lobe.y, lobe.z);
+    parts.push(geo);
+  }
+  const geo = weld(parts);
+  const p = geo.getAttribute('position') as THREE.BufferAttribute;
+  const colors = new Float32Array(p.count * 3);
+  for (let i = 0; i < p.count; i++) {
+    const shade = 0.5 + 0.5 * THREE.MathUtils.clamp(p.getY(i) / BUSH_CROWN, 0, 1);
+    colors[i * 3] = shade;
+    colors[i * 3 + 1] = shade;
+    colors[i * 3 + 2] = shade;
+  }
+  geo.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+  return geo;
+}
+
+/**
+ * Where a bush's lobes sit. The big three are smoothed spheres (detail 1, so
+ * the welded lump has enough vertices to be round); the two side lobes are the
+ * cheaper solid so the whole thicket stays inside the budget a tree gets. Each
+ * lobe is squashed to 0.86 of its radius in height, so its bottom is a little
+ * under `y - 0.86 r`: with these numbers nothing dips below the ground.
+ */
+const BUSH_LOBES = [
+  { x: 0, y: 0.3, z: 0, r: 0.3, detail: 1 },
+  { x: 0.2, y: 0.24, z: 0.1, r: 0.24, detail: 1 },
+  { x: -0.18, y: 0.22, z: -0.12, r: 0.22, detail: 1 },
+  { x: 0.05, y: 0.16, z: -0.24, r: 0.16, detail: 0 },
+  { x: -0.1, y: 0.16, z: 0.22, r: 0.16, detail: 0 },
+] as const;
+/** The height the base shading has finished lightening by: the top of the main lobe. */
+const BUSH_CROWN = 0.3 + 0.3 * 0.86;
+
+/**
+ * The fruit on a bush: a dozen berries sitting on the upper skin of the lobes,
+ * in the bush's own units so the bush's matrix places them. Each one is the
+ * cheapest solid welded smooth — a berry is a centimetre or two across, and
+ * what it needs is a highlight, not a silhouette. Positions come from the same
+ * hash the stones use, so the fruit is in the same place on every bush of a
+ * given ripeness in every session.
+ */
+export function berryClusterGeometry(): THREE.BufferGeometry {
+  const parts: THREE.BufferGeometry[] = [];
+  const dir = new THREE.Vector3();
+  for (let i = 0; i < 12; i++) {
+    const lobe = BUSH_LOBES[i % 3]!;
+    // A bearing round the lobe and a height on its upper half, from a hash so
+    // the spread is irregular without being different from one session to the next.
+    const a = fract(Math.sin(i * 12.9898 + 4.1414) * 43758.5453) * Math.PI * 2;
+    const up = 0.15 + 0.7 * fract(Math.sin(i * 78.233 + 1.7) * 43758.5453);
+    const flat = Math.sqrt(1 - up * up);
+    dir.set(Math.cos(a) * flat, up * 0.86, Math.sin(a) * flat).multiplyScalar(lobe.r * 0.98);
+    const berry = lumpyGeometry(new THREE.IcosahedronGeometry(0.03, 0), 0, 0);
+    berry.translate(lobe.x + dir.x, lobe.y + dir.y, lobe.z + dir.z);
+    parts.push(berry);
+  }
+  return weld(parts);
+}
+
+function fract(n: number): number {
+  return n - Math.floor(n);
+}
+
+/**
+ * A tilled cell for the growing-zone overlay: eight strips across the cell,
+ * ridge and furrow by turns, flat at y = 0 and lifted per instance like the
+ * other paint. The stripes are vertex colour on one geometry rather than a
+ * second pool, and they never overlap, so there is nothing to z-fight.
+ */
+export function tilledSoilGeometry(): THREE.BufferGeometry {
+  const rows = 8;
+  const size = 0.96;
+  const pitch = size / rows;
+  const parts: THREE.BufferGeometry[] = [];
+  for (let i = 0; i < rows; i++) {
+    const strip = new THREE.PlaneGeometry(size, pitch);
+    strip.rotateX(-Math.PI / 2);
+    strip.translate(0, 0, -size / 2 + pitch * (i + 0.5));
+    const shade = i % 2 === 0 ? 1 : 0.66;
+    parts.push(paint(strip, shade, shade, shade));
+  }
+  return weld(parts);
 }
 
 /** A soft round sprite, drawn in code so the build ships no image files. */

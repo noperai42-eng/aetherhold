@@ -12,10 +12,12 @@ import * as THREE from 'three';
 import { describe, expect, it } from 'vitest';
 
 import { BuildingsView } from '../src/client/render/buildings';
+import { RESOURCE_COLOR } from '../src/client/render/palette';
+import { groundLiftAt } from '../src/client/render/terrain';
 import { BUILD_MENU, defOf } from '../src/sim/buildings';
-import { addBuilding } from '../src/sim/world';
+import { addBuilding, addItem } from '../src/sim/world';
 import { createWorld } from '../src/sim/worldgen';
-import type { BuildingKind, World } from '../src/sim/types';
+import type { BuildingKind, ResourceKind, World } from '../src/sim/types';
 
 const SEED = 20260729;
 
@@ -304,6 +306,32 @@ describe('a wood', () => {
     expect(leaning, 'every tree in the wood stands dead vertical').toBeGreaterThan(0);
     view.dispose();
   });
+
+  it('carries its crown on a length of bare trunk', () => {
+    // A crown that starts a metre off the ground is a bush with a stump under
+    // it, and from inside a body that is what a wood of them read as. A pine
+    // is a third bare bole: the lowest tier must clear that, the trunk must
+    // taper from root to tip rather than stand as a post, and it must run on
+    // up inside the crown so no tier can show daylight underneath it.
+    const view = new BuildingsView();
+    const lower = partGeometry(view, 'tree.lower');
+    const trunk = partGeometry(view, 'tree.trunk');
+    lower.computeBoundingBox();
+    trunk.computeBoundingBox();
+    const height = defOf('tree').height;
+    expect(lower.boundingBox!.min.y, 'the crown starts too low for a trunk to show').toBeGreaterThanOrEqual(height / 3);
+    expect(trunk.boundingBox!.max.y, 'the trunk stops short of the crown').toBeGreaterThan(lower.boundingBox!.min.y + 0.5);
+    const pos = trunk.attributes.position;
+    let root = 0;
+    let tip = 0;
+    for (let k = 0; k < pos.count; k++) {
+      const r = Math.hypot(pos.getX(k), pos.getZ(k));
+      if (pos.getY(k) < 0.01) root = Math.max(root, r);
+      if (pos.getY(k) > trunk.boundingBox!.max.y - 0.01) tip = Math.max(tip, r);
+    }
+    expect(tip, 'the trunk is a post, not a taper').toBeLessThan(root * 0.4);
+    view.dispose();
+  });
 });
 
 describe('a blueprint', () => {
@@ -367,6 +395,125 @@ describe('a wall', () => {
     expect(partsAt(view, 'wall.post', x + 1, y), 'a post in the middle of a run').toBe(0);
     expect(partsAt(view, 'wall.post', x, y), 'the end of a run has a pair of posts').toBe(2);
     expect(partsAt(view, 'wall.post', x + 2, y), 'the end of a run has a pair of posts').toBe(2);
+    view.dispose();
+  });
+
+  it('breaks the joints of one course of planking against the next', () => {
+    // Five courses of boards with their vertical joints all at the cell's
+    // edges is a filing cabinet — a face of identical drawers — and that is
+    // what a wall was from inside a body. A carpenter breaks bond: where the
+    // boards of one course end is not where the boards of the next do. So
+    // the set of vertical board ends on the +z face must change from each
+    // course to the one above it, while the boards stay inside the coping's
+    // footprint so the wall is still the box the sim collides with.
+    const view = new BuildingsView();
+    const pos = partGeometry(view, 'wall.planks').attributes.position;
+    const cap = partGeometry(view, 'wall.cap');
+    cap.computeBoundingBox();
+    const ends = new Map<number, Set<number>>();
+    let reach = 0;
+    for (let k = 0; k < pos.count; k++) {
+      reach = Math.max(reach, Math.abs(pos.getX(k)), Math.abs(pos.getZ(k)));
+      if (pos.getZ(k) < 0.52) continue;
+      const course = Math.round((pos.getY(k) - 0.27) / 0.48);
+      if (!ends.has(course)) ends.set(course, new Set());
+      ends.get(course)!.add(Math.round(pos.getX(k) * 100));
+    }
+    expect(ends.size, 'fewer than five courses of planking').toBe(5);
+    for (let c = 0; c + 1 < 5; c++) {
+      const below = [...ends.get(c)!].sort().join(',');
+      const above = [...ends.get(c + 1)!].sort().join(',');
+      expect(above, `course ${c + 1} has its joints where course ${c} has them`).not.toBe(below);
+    }
+    expect(reach, 'the planking stands out past the coping').toBeLessThanOrEqual(cap.boundingBox!.max.x);
+    view.dispose();
+  });
+});
+
+describe('a stockpile', () => {
+  it('draws each kind of stack as its own thing, and none of them under the ground', () => {
+    // Five of the six kinds were the same bevelled cube in different colours,
+    // and a yard of cubes is a yard the player has to click to read. Each
+    // kind has its own shape now — logs, ingots, a heap, a crate, a case, a
+    // roll — and each shape is two colours at least, carried in the vertices
+    // since a pool has one material. And every one of them rests on the
+    // plane: a part that reaches under it is a part in the turf.
+    const view = new BuildingsView();
+    const shapes = new Set<string>();
+    let pools = 0;
+    view.group.traverse((o) => {
+      const mesh = o as THREE.InstancedMesh;
+      if (!mesh.isInstancedMesh || !mesh.geometry.name.startsWith('stack.')) return;
+      pools++;
+      const g = mesh.geometry;
+      const mat = mesh.material as THREE.MeshStandardMaterial;
+      expect(mat.vertexColors, `${g.name} has one colour`).toBe(true);
+      expect(g.attributes.color, `${g.name} carries no vertex colours`).toBeDefined();
+      g.computeBoundingBox();
+      const b = g.boundingBox!;
+      expect(b.min.y, `${g.name} reaches ${b.min.y} under the ground`).toBeGreaterThanOrEqual(-0.001);
+      expect(b.max.y, `${g.name} stands ${b.max.y} tall on a cell nothing else can share`).toBeLessThanOrEqual(0.4);
+      shapes.add(`${triangles(g)}:${b.max.y.toFixed(2)}:${(b.max.x - b.min.x).toFixed(2)}:${(b.max.z - b.min.z).toFixed(2)}`);
+    });
+    const kinds = Object.keys(RESOURCE_COLOR) as ResourceKind[];
+    expect(pools, 'a kind of resource with no stack to draw').toBe(kinds.length);
+    expect(shapes.size, 'two kinds of stack share a shape').toBe(kinds.length);
+    view.dispose();
+  });
+
+  it('draws a handful smaller than a load', () => {
+    // The pile only started to rise at twenty-five, so one log and ten of
+    // them were the same object on the ground. A stack is scaled for what is
+    // in it: a handful at seven tenths, full size by ten.
+    const world = createWorld(SEED);
+    const view = new BuildingsView();
+    const { x, y } = clearCell(world);
+    addItem(world, 'wood', 3, x, y);
+    addItem(world, 'wood', 10, x + 1, y);
+    view.sync(world);
+    const scaleAt = (cx: number): number => {
+      const pos = new THREE.Vector3();
+      for (const m of matricesOf(view, 'stack.wood')) {
+        pos.setFromMatrixPosition(m);
+        if (Math.round(pos.x) === cx && Math.round(pos.z) === y) return new THREE.Vector3().setFromMatrixScale(m).x;
+      }
+      throw new Error(`no wood drawn at ${cx},${y}`);
+    };
+    expect(scaleAt(x + 1), 'a load of ten is not drawn at full size').toBeCloseTo(1, 5);
+    expect(scaleAt(x), 'a handful is drawn as big as a load').toBeLessThan(0.8);
+    expect(scaleAt(x), 'a handful shrinks to nothing').toBeGreaterThan(0.5);
+    view.dispose();
+  });
+
+  it('rests a stack on the snowpack rather than in it', () => {
+    // The drawn ground is not the y = 0 plane: a full pack lifts a field by
+    // more than a third of a stack's height, and a stack drawn at zero under
+    // it was a lid flush with the snow. The sim knows nothing of the lift —
+    // it is the renderer's — so it is the renderer's job to sit on it.
+    const world = createWorld(SEED);
+    world.snow = 1;
+    let cell: { x: number; y: number } | null = null;
+    for (let y = 2; y < world.height - 2 && !cell; y++) {
+      for (let x = 2; x < world.width - 2; x++) {
+        if (world.cellBuilding[y * world.width + x] === -1 && groundLiftAt(world, x, y) > 0.05) {
+          cell = { x, y };
+          break;
+        }
+      }
+    }
+    expect(cell, 'no clear cell under snow to drop a stack on').not.toBeNull();
+    const { x, y } = cell!;
+    addItem(world, 'steel', 10, x, y);
+    const view = new BuildingsView();
+    view.sync(world);
+    const pos = new THREE.Vector3();
+    const m = matricesOf(view, 'stack.steel').find((one) => {
+      pos.setFromMatrixPosition(one);
+      return Math.round(pos.x) === x && Math.round(pos.z) === y;
+    });
+    expect(m, `no steel drawn at ${x},${y}`).toBeDefined();
+    pos.setFromMatrixPosition(m!);
+    expect(pos.y, `the stack sits at ${pos.y} under ${groundLiftAt(world, x, y)} of snow`).toBeGreaterThanOrEqual(groundLiftAt(world, x, y) - 1e-6);
     view.dispose();
   });
 });

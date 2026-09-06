@@ -18,6 +18,7 @@ import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js
 
 import { BUILDING_COLOR, RESOURCE_COLOR, seasonTint } from './palette';
 import { InstancedPool } from './instanced';
+import { groundLiftAt } from './terrain';
 import { defOf } from '../../sim/buildings';
 import { treeGrowth } from '../../sim/forest';
 import { buildingAt, dist } from '../../sim/grid';
@@ -133,8 +134,8 @@ function waterYaw(world: World, b: Building): number {
 
 /** Paddles on a watermill wheel. Eight is where the rim stops reading as a polygon. */
 const PADDLES = 8;
-/** Distance from the hub out to a paddle. */
-const WHEEL_R = 0.55;
+/** Distance from the hub out to the middle of a paddle; the blade straddles it. */
+const WHEEL_R = 0.6;
 /** How far out over the water the hub sits, and how high. */
 const HUB_OUT = 0.42;
 const HUB_Y = 0.78;
@@ -262,23 +263,45 @@ function rumple(g: THREE.LatheGeometry, amp: number, phase = 0): THREE.BufferGeo
 }
 
 /**
- * Timber planking for a wall: a proud board every half metre on all four
- * faces, with a post up each corner. The boards sit a centimetre into the body
- * so the joint is never a coplanar face, and they are at the same heights on
- * every cell so a run of wall reads as continuous planking rather than as
- * cells. On a face that meets a neighbour they are buried inside it, which
- * costs nothing to draw and nothing to see.
+ * Timber planking for a wall: five courses of proud boards on all four faces,
+ * the vertical joints of one course broken against the next the way a
+ * carpenter lays boards. The odd courses are one board a hair short of the
+ * cell, so their joints fall at the cell's edges; the even courses are two
+ * boards run flush to the edges with their joint in the middle of the cell,
+ * and flush is the point — the board ends of one cell's even course meet the
+ * next cell's end to end, so the only vertical line on those courses is the
+ * one at the centre. A run of wall therefore reads as a half bond of metre
+ * boards rather than as cells, which is what it read as when every course had
+ * its joints at the same edge and a post up it: a row of filing cabinets.
+ *
+ * The boards sit a centimetre into the body so the joint is never a coplanar
+ * face, and they are at the same heights on every cell so the courses run on
+ * through. On a face that meets a neighbour they are buried inside it, which
+ * costs nothing to draw and nothing to see; on an outside corner the small
+ * notch where two faces' boards meet is under the corner post. There is no
+ * post per cell any more: `wall.post` stands only on the outside corners the
+ * draw finds, and a post on every cell was most of the cabinet look.
  */
 function planks(): THREE.BufferGeometry {
   const parts: THREE.BufferGeometry[] = [];
   for (let i = 0; i < 5; i++) {
     const y = 0.27 + i * 0.48;
-    parts.push(box(0.98, 0.42, 0.05, y, 0, 0.505));
-    parts.push(box(0.98, 0.42, 0.05, y, 0, -0.505));
-    parts.push(box(0.05, 0.42, 0.98, y, 0.505, 0));
-    parts.push(box(0.05, 0.42, 0.98, y, -0.505, 0));
+    const spans: ReadonlyArray<readonly [number, number]> =
+      i % 2 === 1
+        ? [[-0.48, 0.48]]
+        : [
+            [-0.5, -0.02],
+            [0.02, 0.5],
+          ];
+    for (const [a, b] of spans) {
+      const w = b - a;
+      const u = (a + b) / 2;
+      parts.push(box(w, 0.42, 0.05, y, u, 0.505));
+      parts.push(box(w, 0.42, 0.05, y, u, -0.505));
+      parts.push(box(0.05, 0.42, w, y, 0.505, u));
+      parts.push(box(0.05, 0.42, w, y, -0.505, u));
+    }
   }
-  for (const x of [-0.5, 0.5]) for (const z of [-0.5, 0.5]) parts.push(box(0.08, 2.44, 0.08, 1.22, x, z));
   return merge(...parts);
 }
 
@@ -386,16 +409,287 @@ function lifted(r: number, g: number, b: number, rough: number, metal = 0.04): T
   return m;
 }
 
-/** The crate mesh's own height — the step from one stack in a pile to the next. */
-const STACK_H = 0.3;
-/** How far a pile may climb before further stacks just share the top crate's spot. */
-const PILE_MAX = 0.75;
+/**
+ * Paints every vertex of a part one colour. A pool has one material, and a
+ * stack of anything is two colours at least — bark and the cut end of a log,
+ * a white case and the red band round it — so the second colour goes into the
+ * geometry as a vertex colour, which the material multiplies under its own.
+ * The three factors are linear, like `lifted`: one leaves the pool's colour
+ * alone, and a factor over one lightens, which is how the cut ends come out
+ * paler than the bark under the same brown.
+ */
+function dye(g: THREE.BufferGeometry, r: number, gr: number, b: number): THREE.BufferGeometry {
+  const n = g.attributes.position.count;
+  const col = new Float32Array(n * 3);
+  for (let k = 0; k < n; k++) {
+    col[k * 3] = r;
+    col[k * 3 + 1] = gr;
+    col[k * 3 + 2] = b;
+  }
+  g.setAttribute('color', new THREE.BufferAttribute(col, 3));
+  return g;
+}
 
-/** How high off the ground a loose stack sits on this cell. Zero in an empty yard. */
+/**
+ * A cylinder with its caps one colour and its side another: a log's cut ends,
+ * the turned-in face of a rolled pelt. Told apart by the normal — the caps
+ * point straight along the axis and nothing on the side does — so it has to
+ * be called before the part is turned to lie down.
+ */
+function dyeEnds(g: THREE.BufferGeometry, side: readonly [number, number, number], cap: readonly [number, number, number]): THREE.BufferGeometry {
+  const nrm = g.attributes.normal;
+  const n = nrm.count;
+  const col = new Float32Array(n * 3);
+  for (let k = 0; k < n; k++) {
+    const c = Math.abs(nrm.getY(k)) > 0.9 ? cap : side;
+    col[k * 3] = c[0];
+    col[k * 3 + 1] = c[1];
+    col[k * 3 + 2] = c[2];
+  }
+  g.setAttribute('color', new THREE.BufferAttribute(col, 3));
+  return g;
+}
+
+/** A stack of wood: five short logs, three side by side and two laid across them, with pale cut ends. */
+function logs(): THREE.BufferGeometry {
+  const parts: THREE.BufferGeometry[] = [];
+  const log = (len: number, r: number): THREE.BufferGeometry => dyeEnds(cylinder(r, r, len, 0, 12), [1, 1, 1], [1.75, 1.6, 1.35]);
+  for (const [z, len, twist] of [
+    [-0.19, 0.5, 0.05],
+    [0, 0.54, -0.03],
+    [0.19, 0.48, 0.06],
+  ] as const) {
+    const g = log(len, 0.088);
+    g.rotateZ(Math.PI / 2);
+    g.rotateY(twist);
+    g.translate(0, 0.088, z);
+    parts.push(g);
+  }
+  for (const [x, len, twist] of [
+    [-0.13, 0.5, 0.04],
+    [0.13, 0.46, -0.05],
+  ] as const) {
+    const g = log(len, 0.082);
+    g.rotateZ(Math.PI / 2);
+    g.rotateY(Math.PI / 2 + twist);
+    g.translate(x, 0.255, 0);
+    parts.push(g);
+  }
+  return merge(...parts);
+}
+
+/** A stack of steel: six ingots in a three-two-one pyramid, each row a shade brighter than the one under it. */
+function ingots(): THREE.BufferGeometry {
+  const parts: THREE.BufferGeometry[] = [];
+  const rows: ReadonlyArray<readonly [number, number, ReadonlyArray<number>]> = [
+    [0.05, 1, [-0.17, 0, 0.17]],
+    [0.15, 1.06, [-0.085, 0.085]],
+    [0.25, 1.12, [0]],
+  ];
+  for (const [y, shade, zs] of rows) {
+    for (const z of zs) parts.push(dye(rbox(0.46, 0.1, 0.14, y, 0, z, 0.03, 1), shade, shade, shade * 1.02));
+  }
+  const g = merge(...parts);
+  g.rotateY(0.18);
+  return g;
+}
+
+/**
+ * A stack of raw food: a heaped mound with tubers lying on it and a couple of
+ * leaves still on. The tubers are warmer than the heap and the leaves greener,
+ * so the pile reads as dug-up things rather than as a green lump.
+ */
+function harvest(): THREE.BufferGeometry {
+  const mound = new THREE.SphereGeometry(0.3, 16, 5, 0, TAU, 0, Math.PI / 2);
+  mound.scale(1, 0.7, 1);
+  const parts: THREE.BufferGeometry[] = [dye(mound, 1, 1, 1)];
+  for (const [x, z, y, r] of [
+    [0.1, 0.06, 0.2, 0.075],
+    [-0.12, 0.05, 0.18, 0.07],
+    [0.02, -0.13, 0.19, 0.08],
+    [-0.05, 0.14, 0.17, 0.065],
+  ] as const) {
+    const t = new THREE.SphereGeometry(r, 8, 6);
+    t.scale(1.35, 0.8, 1);
+    t.rotateY(x * 7 + z * 3);
+    t.translate(x, y, z);
+    parts.push(dye(t, 1.3, 0.98, 0.72));
+  }
+  for (const [x, z, yaw] of [
+    [0.15, -0.09, 0.6],
+    [-0.13, -0.11, -1.1],
+  ] as const) {
+    const leaf = new THREE.SphereGeometry(0.11, 8, 5);
+    leaf.scale(1.6, 0.18, 0.7);
+    leaf.rotateY(yaw);
+    leaf.translate(x, 0.2, z);
+    parts.push(dye(leaf, 0.75, 1.15, 0.6));
+  }
+  return merge(...parts);
+}
+
+/**
+ * A slatted crate: a darker box with pale slats standing off its faces, a
+ * batten up each corner and a lid. `strapped` buckles a leather strap over
+ * the lid — a crate of meals is packed and going somewhere — and `open` leaves
+ * the lid off so what is inside can stand up out of it.
+ */
+function crate(strapped: boolean, open: boolean): THREE.BufferGeometry {
+  const parts: THREE.BufferGeometry[] = [dye(rbox(0.54, 0.22, 0.54, 0.12, 0, 0, 0.02, 1), 0.78, 0.78, 0.78)];
+  for (const y of [0.06, 0.13, 0.2]) {
+    parts.push(dye(box(0.56, 0.05, 0.02, y, 0, 0.28), 1.12, 1.1, 1.04));
+    parts.push(dye(box(0.56, 0.05, 0.02, y, 0, -0.28), 1.12, 1.1, 1.04));
+    parts.push(dye(box(0.02, 0.05, 0.56, y, 0.28, 0), 1.12, 1.1, 1.04));
+    parts.push(dye(box(0.02, 0.05, 0.56, y, -0.28, 0), 1.12, 1.1, 1.04));
+  }
+  for (const x of [-0.27, 0.27]) for (const z of [-0.27, 0.27]) parts.push(dye(box(0.04, 0.24, 0.04, 0.12, x, z), 0.95, 0.93, 0.9));
+  if (!open) parts.push(dye(rbox(0.6, 0.05, 0.6, 0.265, 0, 0, 0.015, 1), 1.08, 1.06, 1));
+  if (strapped) {
+    parts.push(dye(box(0.64, 0.025, 0.07, 0.3, 0, 0), 0.32, 0.26, 0.2));
+    parts.push(dye(box(0.025, 0.3, 0.07, 0.15, 0.315, 0), 0.32, 0.26, 0.2));
+    parts.push(dye(box(0.025, 0.3, 0.07, 0.15, -0.315, 0), 0.32, 0.26, 0.2));
+    parts.push(dye(box(0.06, 0.035, 0.09, 0.305, 0.08, 0), 0.7, 0.7, 0.72));
+  }
+  return merge(...parts);
+}
+
+/**
+ * A stack of medicine: a white case with a red band round it and a red cross
+ * on the lid, a handle on top and a clasp either side. The band is the part
+ * that carries it from the manager camera, where a white box is a white box.
+ */
+function medkit(): THREE.BufferGeometry {
+  const red: readonly [number, number, number] = [1.05, 0.12, 0.1];
+  const iron: readonly [number, number, number] = [0.3, 0.3, 0.32];
+  return merge(
+    dye(rbox(0.54, 0.26, 0.4, 0.13, 0, 0, 0.04), 1, 1, 1),
+    dye(box(0.56, 0.07, 0.42, 0.13), ...red),
+    dye(box(0.16, 0.012, 0.05, 0.264), ...red),
+    dye(box(0.05, 0.012, 0.16, 0.264), ...red),
+    dye(rbox(0.2, 0.035, 0.04, 0.3, 0, 0, 0.012, 1), ...iron),
+    dye(box(0.03, 0.04, 0.04, 0.275, -0.085, 0), ...iron),
+    dye(box(0.03, 0.04, 0.04, 0.275, 0.085, 0), ...iron),
+    dye(box(0.05, 0.05, 0.02, 0.13, -0.14, 0.205), ...iron),
+    dye(box(0.05, 0.05, 0.02, 0.13, 0.14, 0.205), ...iron),
+  );
+}
+
+/**
+ * A stack of hide: one pelt rolled up, fur out, with the outer wrap's edge
+ * lying over the roll and a tie round each end. The ends of the roll and the
+ * lip of the wrap are the pale flesh side, which is what says "skin" rather
+ * than "log" from above.
+ */
+function pelt(): THREE.BufferGeometry {
+  const R = 0.14;
+  const flesh: readonly [number, number, number] = [1.22, 1.1, 0.96];
+  const roll = dyeEnds(cylinder(R, R, 0.52, 0, 16), [1, 1, 1], flesh);
+  roll.rotateZ(Math.PI / 2);
+  roll.translate(0, R, 0);
+  // An open arc a hair over the roll, from the front round over the top and
+  // down the back, ending in a lip the pelt's own thickness.
+  const wrap = new THREE.CylinderGeometry(R + 0.015, R + 0.015, 0.5, 16, 1, true, 0.3, 2.4);
+  wrap.rotateZ(Math.PI / 2);
+  wrap.translate(0, R, 0);
+  const parts: THREE.BufferGeometry[] = [roll, dye(wrap, 0.92, 0.88, 0.84), dye(box(0.5, 0.025, 0.09, R + 0.055, 0, -0.145), ...flesh)];
+  // The ties stand off the fur, so it is the ties the roll rests on: the
+  // whole thing is lifted by their reach, or their undersides are in the turf.
+  const tie = 0.02 + 0.012;
+  for (const x of [-0.17, 0.17]) {
+    const ring = new THREE.TorusGeometry(R + 0.02, 0.012, 5, 16);
+    ring.rotateY(Math.PI / 2);
+    ring.translate(x, R, 0);
+    parts.push(dye(ring, 0.4, 0.32, 0.25));
+  }
+  const g = merge(...parts);
+  g.rotateY(0.35);
+  g.translate(0, tie, 0);
+  return g;
+}
+
+/** A stack of components: an open crate with cogs standing up out of it and a rod laid across. */
+function cogs(): THREE.BufferGeometry {
+  const parts: THREE.BufferGeometry[] = [crate(false, true)];
+  for (const [x, z] of [
+    [-0.12, 0.08],
+    [0.1, -0.1],
+    [0.03, 0.15],
+  ] as const) {
+    parts.push(dye(cylinder(0.09, 0.09, 0.03, 0.255, 12).translate(x, 0, z), 1.2, 1.15, 1));
+  }
+  const rod = cylinder(0.02, 0.02, 0.44, 0, 8);
+  rod.rotateZ(Math.PI / 2);
+  rod.rotateY(0.5);
+  rod.translate(0, 0.27, -0.06);
+  parts.push(dye(rod, 0.5, 0.5, 0.52));
+  return merge(...parts);
+}
+
+/** A stack of assemblies: a machine crated shut, strapped twice and seamed where the lid goes on. */
+function bundle(): THREE.BufferGeometry {
+  return merge(
+    dye(rbox(0.56, 0.3, 0.5, 0.15, 0, 0, 0.03, 1), 1, 1, 1),
+    dye(box(0.58, 0.31, 0.06, 0.155, 0, 0.14), 0.3, 0.28, 0.25),
+    dye(box(0.58, 0.31, 0.06, 0.155, 0, -0.14), 0.3, 0.28, 0.25),
+    dye(box(0.57, 0.012, 0.51, 0.24), 0.6, 0.58, 0.54),
+  );
+}
+
+/**
+ * The shape and finish of a stack of each kind. One geometry per kind's pool,
+ * because five of the six used to be the same bevelled cube in different
+ * colours, and a yard of cubes is a yard the player has to click to read. Each
+ * is built to top out at about `STACK_H`, so a pile of mixed kinds still steps
+ * up by the same amount. Steel is the only cold thing here and the only thing
+ * with a metalness worth the name; medicine is the one smooth case.
+ */
+const STACK_SHAPE: Record<ResourceKind, { build: () => THREE.BufferGeometry; rough: number; metal: number }> = {
+  wood: { build: logs, rough: 0.9, metal: 0.02 },
+  steel: { build: ingots, rough: 0.45, metal: 0.35 },
+  rawfood: { build: harvest, rough: 0.85, metal: 0.02 },
+  meal: { build: () => crate(true, false), rough: 0.8, metal: 0.02 },
+  medicine: { build: medkit, rough: 0.35, metal: 0.04 },
+  hide: { build: pelt, rough: 0.95, metal: 0.02 },
+  components: { build: cogs, rough: 0.55, metal: 0.25 },
+  assemblies: { build: bundle, rough: 0.6, metal: 0.2 },
+};
+
+/** A stack's own height — the step from one stack in a pile to the next. */
+const STACK_H = 0.3;
+/** How far a pile may climb before further stacks just share the top stack's spot. */
+const PILE_MAX = 0.75;
+/** How big a handful is drawn, against a full load. */
+const STACK_SMALL = 0.7;
+
+/**
+ * How big a stack is drawn for how much is in it: a handful at seven tenths,
+ * growing to full size by ten and holding there. Above that the pile rises
+ * instead (see `sync`) — the lift only started at twenty-five, which left a
+ * single log and ten of them the same object on the ground.
+ */
+function stackSize(amount: number): number {
+  if (amount <= 5) return STACK_SMALL;
+  if (amount >= 10) return 1;
+  return STACK_SMALL + (1 - STACK_SMALL) * ((amount - 5) / 5);
+}
+
+/**
+ * How high off y = 0 a loose stack sits on this cell: on the furniture there,
+ * or else on the drawn ground. The ground is not the plane — a snowpack lifts
+ * it and a lake bed sinks it (`groundLiftAt`) — and a stack drawn at zero
+ * under a full pack was a lid flush with the snow. It never follows the ground
+ * down, though: the lift at a cell's centre is an average of its corners, and
+ * on a bank one corner is always higher than that, so a stack that sat at the
+ * average would have that corner of it under the turf. Resting at the plane
+ * on a bank is a stack a little proud of the slope, which is what a stack on a
+ * slope looks like.
+ */
 function itemRest(world: World, x: number, y: number): number {
-  const b = buildingAt(world, Math.round(x), Math.round(y));
-  if (!b || !b.built) return 0;
-  return ITEM_REST[b.kind] ?? defOf(b.kind).standHeight;
+  const cx = Math.round(x);
+  const cy = Math.round(y);
+  const b = buildingAt(world, cx, cy);
+  if (b && b.built) return ITEM_REST[b.kind] ?? defOf(b.kind).standHeight;
+  return Math.max(0, groundLiftAt(world, cx, cy));
 }
 
 /** Four legs on a rail, for anything that stands on a top: `pitch` is half the leg spacing. */
@@ -795,15 +1089,27 @@ export class BuildingsView {
     // what makes the thing read as turning at all. Built at the top of the wheel
     // and swept round the axle at draw time, so the geometry's own origin is the
     // hub.
+    //
+    // The blade stands radially, a board a quarter of a metre deep straddling
+    // the rim, the way an undershot wheel's do; it was a tread lying along the
+    // rim, and from twenty cells up a wheel of treads is a disc. The blade is
+    // the pale part and the spoke and rim behind it are dyed to a third of it
+    // — one pool, two tones — because a wheel is read by the dark spokes
+    // between the light blades, and a wheel all one colour at distance is the
+    // same disc again.
     this.pool(
       'mill.paddle',
       merge(
-        rbox(0.44, 0.07, 0.19, WHEEL_R, 0, 0, 0.015, 1),
-        box(0.04, WHEEL_R - 0.11, 0.04, (WHEEL_R - 0.11) / 2 + 0.08),
-        box(0.04, 0.05, 0.42, WHEEL_R - 0.055, 0.2, 0),
-        box(0.04, 0.05, 0.42, WHEEL_R - 0.055, -0.2, 0),
+        dye(rbox(0.5, 0.28, 0.05, WHEEL_R + 0.03, 0, 0, 0.012, 1), 1, 1, 1),
+        dye(box(0.05, WHEEL_R - 0.1, 0.05, (WHEEL_R - 0.1) / 2 + 0.08), 0.36, 0.33, 0.3),
+        dye(box(0.05, 0.06, 0.4, WHEEL_R - 0.06, 0.24, 0), 0.36, 0.33, 0.3),
+        dye(box(0.05, 0.06, 0.4, WHEEL_R - 0.06, -0.24, 0), 0.36, 0.33, 0.3),
       ),
-      lifted(2.6, 2.3, 1.9, 0.65),
+      (() => {
+        const m = lifted(2.6, 2.3, 1.9, 0.65);
+        m.vertexColors = true;
+        return m;
+      })(),
       64,
     );
 
@@ -1286,17 +1592,25 @@ export class BuildingsView {
     // of one do not line up with the lobes of the next; the topmost is small and
     // hung off centre, which is what breaks the symmetry a lathe cannot help
     // having.
+    //
+    // A third of the tree is bare trunk. The crown used to start a metre up,
+    // which from inside a body was a bush with a stump under it; a pine
+    // carries its crown on a length of clean bole, and that length is what
+    // reads as "tree" rather than "shrub" from both cameras. The trunk tapers
+    // the whole way to keep the root flare a flare, and runs on up inside the
+    // crown so no tier can show daylight under it.
     this.pool(
       'tree.trunk',
       lathe(
         [
-          [0.34, 0],
-          [0.27, 0.1],
-          [0.22, 0.3],
-          [0.19, 0.8],
-          [0.16, 1.5],
-          [0.13, 2.2],
-          [0.1, 2.9],
+          [0.36, 0],
+          [0.28, 0.12],
+          [0.22, 0.35],
+          [0.18, 0.9],
+          [0.15, 1.6],
+          [0.12, 2.4],
+          [0.09, 3.2],
+          [0.06, 3.9],
         ],
         20,
       ),
@@ -1307,16 +1621,16 @@ export class BuildingsView {
       'tree.lower',
       rumple(
         lathe([
-          [0.2, 1.0],
-          [0.62, 1.02],
-          [0.9, 1.1],
-          [0.95, 1.3],
-          [0.82, 1.75],
-          [0.6, 2.3],
-          [0.38, 2.75],
-          [0.18, 3.05],
-          [0.06, 3.18],
-          [0, 3.22],
+          [0.16, 1.56],
+          [0.6, 1.6],
+          [0.9, 1.69],
+          [0.95, 1.88],
+          [0.82, 2.25],
+          [0.6, 2.7],
+          [0.38, 3.05],
+          [0.18, 3.3],
+          [0.06, 3.42],
+          [0, 3.46],
         ]),
         0.12,
         0.3,
@@ -1328,15 +1642,15 @@ export class BuildingsView {
       'tree.upper',
       rumple(
         lathe([
-          [0.15, 2.45],
-          [0.45, 2.5],
-          [0.62, 2.62],
-          [0.6, 2.85],
-          [0.46, 3.2],
-          [0.3, 3.55],
-          [0.15, 3.85],
-          [0.05, 4.0],
-          [0, 4.05],
+          [0.14, 2.7],
+          [0.45, 2.75],
+          [0.62, 2.88],
+          [0.6, 3.1],
+          [0.46, 3.42],
+          [0.3, 3.72],
+          [0.15, 3.98],
+          [0.05, 4.1],
+          [0, 4.15],
         ]),
         0.12,
         2.1,
@@ -1348,13 +1662,13 @@ export class BuildingsView {
       'tree.top',
       rumple(
         lathe([
-          [0.1, 3.35],
-          [0.3, 3.4],
-          [0.4, 3.56],
-          [0.33, 3.88],
-          [0.2, 4.15],
-          [0.08, 4.36],
-          [0, 4.44],
+          [0.1, 3.5],
+          [0.3, 3.55],
+          [0.4, 3.7],
+          [0.33, 4.0],
+          [0.2, 4.24],
+          [0.08, 4.42],
+          [0, 4.5],
         ]),
         0.1,
         4.4,
@@ -1393,14 +1707,20 @@ export class BuildingsView {
       { tinted: true, castShadow: false },
     );
 
-    const kinds: ResourceKind[] = ['wood', 'steel', 'rawfood', 'meal', 'medicine', 'hide'];
-    for (const k of kinds) {
+    // One pool per kind, untinted: the kind's palette entry is the material's
+    // colour and the second colour of each shape rides in its vertices. Named
+    // like the building parts so a test can find a kind's shape without the
+    // map being public.
+    for (const k of Object.keys(STACK_SHAPE) as ResourceKind[]) {
+      const { build, rough, metal } = STACK_SHAPE[k];
+      const geo = build();
+      geo.name = `stack.${k}`;
       this.stacks.set(
         k,
         new InstancedPool(
           this.group,
-          rbox(0.62, 0.3, 0.62, 0.15, 0, 0, 0.025, 1),
-          new THREE.MeshStandardMaterial({ color: RESOURCE_COLOR[k], roughness: 0.85 }),
+          geo,
+          new THREE.MeshStandardMaterial({ color: RESOURCE_COLOR[k], roughness: rough, metalness: metal, vertexColors: true }),
           48,
           { tinted: false },
         ),
@@ -1475,19 +1795,22 @@ export class BuildingsView {
     // the same larder table is the ordinary case — and drawing them all at one
     // height hid every stack but the last behind the one in front. Pile them
     // instead, each on top of the last, capped so a busy stockpile cell does not
-    // grow a tower taller than the settler hauling to it.
+    // grow a tower taller than the settler hauling to it. A stack is scaled
+    // for how much is in it — a handful is smaller all round, a big load is
+    // taller — and the pile steps up by the height it is actually drawn at.
     this.pile.clear();
     for (const it of world.items) {
       if (it.carriedBy !== null) continue; // carried stacks ride the pawn's hand
       const pool = this.stacks.get(it.kind);
       if (!pool) continue;
+      const size = stackSize(it.amount);
       const lift = 1 + Math.min(2, Math.floor(it.amount / 25)) * 0.18;
       const cell = Math.round(it.y) * world.width + Math.round(it.x);
       const rest = itemRest(world, it.x, it.y);
       const base = this.pile.get(cell) ?? rest;
-      this.pile.set(cell, Math.min(rest + PILE_MAX, base + STACK_H * lift));
+      this.pile.set(cell, Math.min(rest + PILE_MAX, base + STACK_H * size * lift));
       this.v.set(it.x, base, it.y);
-      this.s.set(1, lift, 1);
+      this.s.set(size, size * lift, size);
       this.q.identity();
       this.m.compose(this.v, this.q, this.s);
       pool.push(this.m);
