@@ -215,6 +215,27 @@ A frame is 1280×800 at 1.5× and the Read tool shows it smaller than that. Deta
 a few pixels is invisible in `3-colony` and that is the correct verdict for the manager
 camera; judge close detail on `2b-closeup`, `4-firstperson` and the zoo.
 
+**When the whole frame cannot settle it, crop it.** A small object argued over across
+several rounds — a stripped bush, a shoulder marking, a lamp head — is a handful of
+pixels in a frame the reader sees shrunk, and a verdict at that size is a guess. Cut the
+same box out of the round-before and round-after frames, magnify it, and put the two side
+by side in one image; the judgement is then about a thing you can see. Four rounds in a
+row have turned on this and it is worth the twenty seconds:
+
+    python3 -c "
+    from PIL import Image
+    a = Image.open('.look/shots/r7-zoo/r7-B-crops.png'); b = Image.open('.look/shots/r8-zoo/r8-B-crops.png')
+    box = (520, 440, 820, 700); w, h = 560, 486
+    im = Image.new('RGB', (w*2+12, h), 'black')
+    im.paste(a.crop(box).resize((w, h), Image.LANCZOS), (0, 0))
+    im.paste(b.crop(box).resize((w, h), Image.LANCZOS), (w+12, 0))
+    im.save('/tmp/before-after.png')"
+
+The same crop at high magnification is also how an unidentified thing gets identified:
+round 9 opened its brief with a flat gold seven-sided disc lying in the grass, which was
+a blur in the full frame and unmistakable — no thickness, no shading, grass drawn over
+it, so not an object and not the overlays it was mistaken for — at four times the size.
+
 ## How to write a brief
 
 A brief a builder can act on without seeing the frames has four parts, in this order:
