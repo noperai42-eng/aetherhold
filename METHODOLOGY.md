@@ -4,12 +4,13 @@ How this game gets changed. Not what it is or how it is built — those are
 [README.md](README.md) and [ARCHITECTURE.md](ARCHITECTURE.md) — but the loop a
 round actually runs, and which instrument answers which question.
 
-*The other five documents:* [README.md](README.md) is what the game is and how each
+*The other six documents:* [README.md](README.md) is what the game is and how each
 system works, [ARCHITECTURE.md](ARCHITECTURE.md) is how the code is laid out and why,
 [PLAYTEST.md](PLAYTEST.md) is the hands-on browser script, [ACCEPTANCE.md](ACCEPTANCE.md)
 is what has been checked and by whom, [ENDGAME.md](ENDGAME.md) is the plan for after the
 founding, and [ROUND_NOTES.md](ROUND_NOTES.md) is the log of rounds this file describes
-the shape of.
+the shape of. [LOOK.md](LOOK.md) is how the rendered game is looked at, round by round,
+and the harness that photographs it.
 
 ## Contents
 
@@ -167,6 +168,12 @@ The app exposes itself on `window.aetherhold` — the live `App`. Nothing in the
 reads it; `src/main.ts` sets it for exactly this. That handle is the whole browser
 methodology, and it is far faster than clicking.
 
+The second handle is `window.aether` — `src/client/devtools.ts` — which is the one a
+script drives: `look(x, y)` moves the manager camera, `build(kind, x, y)` stands a
+building without a builder, and the scenario triggers (`fire`, `raid`, `herd`, `pack`,
+`refugee`, `ill`…) put the colony into a state a screenshot needs. The harness in
+[LOOK.md](LOOK.md) uses nothing else.
+
 Everything on it is reachable, including the parts declared `private`: TypeScript's
 `private` is a compile-time check and not a runtime one, so `world`, `viewport`, `hud`,
 `canvas`, `mode`, `speed`, `frameCount` and `fpsShown` all answer from the console. This
@@ -229,6 +236,15 @@ So the split is:
 A round that changed only sim code can ship on the headless tiers. A round that touched
 `src/client` has not been checked until somebody looked at it.
 
+**Corrected 2026-09-06.** The paragraph above was true of gstack/browse, and it stays
+true of any harness that lands on SwiftShader. It is no longer true of the box:
+`puppeteer-core` driving Chrome for Testing with `--ignore-gpu-blocklist
+--use-angle=metal` renders the game on the Apple GPU at 16 ms a frame, the sim ticks,
+and the same frames can be photographed round after round. That harness, and the loop
+built on it, is [LOOK.md](LOOK.md). The split survives in a weaker form: a headless
+frame can be *looked at*, by a person or a model, but it still cannot say what the game
+feels like in the hand, and the scars listed there are the ways it lies.
+
 ## Ports
 
 This project owns **5062** and **5063**, fixed in `vite.config.ts` with `strictPort`,
@@ -256,6 +272,10 @@ When the round lands, three files move, and which one gets what is not arbitrary
   lives as a numbered step in `PLAYTEST.md`). A promise with no row is not held.
 - **[ARCHITECTURE.md](ARCHITECTURE.md)** — only when the *shape* changed: a new seam, a
   new dependency direction, a constant that turned out to mean something.
+
+A look round — one that changed what the game looks like rather than what a grid
+measures — is written down the same way, with the frames it compared standing in for
+the numbers; the shape of that entry is in [LOOK.md](LOOK.md).
 
 Corrections stay visible rather than being edited away. The record of having measured
 two populations and written the wrong one down is worth more than a clean document,

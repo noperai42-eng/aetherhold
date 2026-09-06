@@ -27,3 +27,7 @@ chrome-profile/
 # macOS and editor noise.
 .DS_Store
 *.log
+
+# Frames the look harness photographs (`npm run look`, LOOK.md): megabytes a round,
+# and the verdict written into ROUND_NOTES.md is the part worth keeping.
+.look/

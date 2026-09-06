@@ -1,0 +1,9 @@
+{
+  "name": "aetherhold-look",
+  "version": "1.0.0",
+  "description": "Headless capture harness for LOOK.md: puppeteer-core lives here so the root package stays a game.",
+  "dependencies": {
+    "puppeteer-core": "^23.11.1"
+  },
+  "private": true
+}
