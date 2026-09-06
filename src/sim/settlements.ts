@@ -972,6 +972,16 @@ export function partiesCommitted(world: World): number {
  * about the yard and wrong for every question about the colony, and "how many
  * of us are there" is the second kind. The founding charter counts the same way
  * and for the same reason.
+ *
+ * A war party is off the map by the same mechanism and is deliberately *not*
+ * counted here, which makes this the one head count in the sim that does not use
+ * `awayCount`. The reason is the only caller: `roadsAllowed` divides this by
+ * `CAN_SPARE_ONE`, so counting the marchers would let a colony of eight field
+ * three at war, open a second road, send two more, and keep three at home —
+ * under the floor that number exists to defend. This asks "how many can we do
+ * without", not "how many of us are there", and a body at war is already being
+ * done without. The charter and the game-over check ask the other question and
+ * count both.
  */
 export function colonySize(world: World): number {
   return livingColonists(world).length + caravansOf(world).filter((c) => !c.pawn.dead).length;

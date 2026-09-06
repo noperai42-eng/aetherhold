@@ -17,13 +17,12 @@ import {
 } from './encounters';
 import { afflict } from './health';
 import { Rng } from './rng';
-import { caravansOf } from './settlements';
 import type { Pawn, SkillName, World } from './types';
 import { TICKS_PER_DAY, packCell, terrainAt } from './types';
 import { tickScoutItch } from './scout';
 import { douse, isStormbound } from './weather';
 import { makePawn } from './worldgen';
-import { msg, nextId, livingColonists, hostiles } from './world';
+import { awayCount, msg, nextId, livingColonists, hostiles } from './world';
 import { remember } from './lifelog';
 
 const RAIDER_NAMES = [
@@ -529,8 +528,10 @@ export function checkGameOver(world: World): void {
   // or feed a body that is not here). Without this, a colony whose last settlers
   // are four days out reads as wiped and the run ends while somebody is walking
   // home to it — and with two roads open that is a colony of two, which is
-  // exactly the size that gets itself killed at home.
-  const away = caravansOf(world).filter((c) => !c.pawn.dead).length;
+  // exactly the size that gets itself killed at home. A war party is off the map
+  // the same way and for the same reason, which this line did not know until
+  // `awayCount` was written to hold both — see there for what it cost.
+  const away = awayCount(world);
   const alive = world.pawns.filter((p) => p.faction === 'colony' && !p.dead);
   if (alive.length + away === 0) {
     world.gameOver = true;
