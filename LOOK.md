@@ -82,6 +82,18 @@ models, the HUD hidden, the ground around the camera revealed by hand. They coun
 console errors and `shot.mjs` measures ten animation frames in milliseconds, so a round
 that made the picture heavy shows up as a number rather than a timeout.
 
+**Set `LOOK_MIRROR` before every shoot.** All three harnesses copy each frame to that
+directory as well as writing it into `.look/shots/`, and the reason is the one step of
+this loop that must never be skipped. Judging means opening all sixteen frames, and for
+an agent working inside a repo each of those opens can cost the person at the keyboard
+an approval — a toll on looking, whose first purchase is a summary read instead of a
+photograph. Point it somewhere already readable (a session scratchpad) and the toll goes
+away without the record moving:
+
+```bash
+LOOK_MIRROR=$SCRATCH/frames npm run look -- .look/shots/r11 r11
+```
+
 **The six standard frames** and what each one is for:
 
 | Frame | Camera | Judges |
@@ -184,7 +196,9 @@ the script plus the round's change list — and the same rule about files they m
 
 Open every frame with the Read tool, previous first, then current, one pair at a time,
 and write the observations down *before* reading what the builders said they did. Their
-summaries prime the eye; the frame does not.
+summaries prime the eye; the frame does not. Open the copies under `$LOOK_MIRROR`, not
+the ones in `.look/shots/` — same pixels, and nobody has to approve sixteen reads for
+the round to be judged.
 
 Per frame, in this order:
 

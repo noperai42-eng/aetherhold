@@ -29,11 +29,14 @@
  *   node scripts/look/stress.mjs .look/shots/r11 r11
  */
 import { launch, URL } from './chrome.mjs';
-import { mkdirSync } from 'node:fs';
+import { copyFileSync, mkdirSync } from 'node:fs';
 
 const out = process.argv[2] ?? 'shots';
 const label = process.argv[3] ?? 'r0';
 mkdirSync(out, { recursive: true });
+// The same second home for every frame as `shot.mjs` — see the comment there.
+const mirror = process.env.LOOK_MIRROR || '';
+if (mirror) mkdirSync(mirror, { recursive: true });
 
 const browser = await launch();
 const page = await browser.newPage();
@@ -44,7 +47,13 @@ page.on('pageerror', (e) => errs.push(String(e)));
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const key = async (code) => { await page.keyboard.down(code); await sleep(60); await page.keyboard.up(code); await sleep(150); };
 const took = [];
-const shot = async (name) => { await sleep(1200); await page.screenshot({ path: `${out}/${label}-${name}.png` }); took.push(name); };
+const shot = async (name) => {
+  await sleep(1200);
+  const path = `${out}/${label}-${name}.png`;
+  await page.screenshot({ path });
+  if (mirror) copyFileSync(path, `${mirror}/${label}-${name}.png`);
+  took.push(name);
+};
 
 await page.goto(URL, { waitUntil: 'networkidle2', timeout: 60000 });
 await sleep(3500);

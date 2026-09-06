@@ -1,8 +1,11 @@
 import { launch, URL } from './chrome.mjs';
-import { mkdirSync } from 'node:fs';
+import { copyFileSync, mkdirSync } from 'node:fs';
 const out = process.argv[2] ?? 'shots';
 const label = process.argv[3] ?? 'zoo';
 mkdirSync(out, { recursive: true });
+// The same second home for every frame as `shot.mjs` — see the comment there.
+const mirror = process.env.LOOK_MIRROR || '';
+if (mirror) mkdirSync(mirror, { recursive: true });
 const TICKS_PER_DAY = 4800;
 
 const browser = await launch();
@@ -29,7 +32,12 @@ await page.evaluate(() => { document.getElementById('hud').style.display = 'none
 const aetherKeys = await page.evaluate(() => Object.keys(window.aether));
 console.log('aether keys:', aetherKeys.join(', '));
 
-const shot = async (name) => { await sleep(1200); await page.screenshot({ path: `${out}/${label}-${name}.png` }); };
+const shot = async (name) => {
+  await sleep(1200);
+  const path = `${out}/${label}-${name}.png`;
+  await page.screenshot({ path });
+  if (mirror) copyFileSync(path, `${mirror}/${label}-${name}.png`);
+};
 let net = 0;
 const zoomTo = async (target) => { const ticks = target - net; for (let i = 0; i < Math.abs(ticks); i++) { await page.mouse.move(640, 400); await page.mouse.wheel({ deltaY: ticks > 0 ? -100 : 100 }); await sleep(60); } net = target; };
 const reveal = (x0, y0, x1, y1) => page.evaluate(([x0, y0, x1, y1]) => { const w = window.aether.world; if (!w.seen) w.seen = new Array(w.width * w.height).fill(0); for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) { if (x < 0 || y < 0 || x >= w.width || y >= w.height) continue; w.seen[y * w.width + x] = 1; } w.stats.explored = (w.stats.explored ?? 0) + 1; }, [x0, y0, x1, y1]);

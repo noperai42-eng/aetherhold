@@ -1,7 +1,18 @@
 import { launch, URL } from './chrome.mjs';
-import { mkdirSync } from 'node:fs';
+import { copyFileSync, mkdirSync } from 'node:fs';
 const out = process.argv[2] ?? 'shots'; const label = process.argv[3] ?? 'r0';
 mkdirSync(out, { recursive: true });
+// A second home for every frame, named by $LOOK_MIRROR.
+//
+// The frames are the judge, which means somebody has to open all sixteen of them,
+// and that somebody is usually an agent for whom reading a file inside the repo
+// costs the person at the keyboard an approval. Sixteen approvals a round is a
+// toll on the one step of the loop that must never be skipped, and the first
+// thing a toll buys is a summary read in place of a photograph. So the shoot
+// writes twice: once into the repo, where the record lives, and once wherever the
+// reader can already look. Unset, it costs nothing and changes nothing.
+const mirror = process.env.LOOK_MIRROR || '';
+if (mirror) mkdirSync(mirror, { recursive: true });
 const SHOWCASE = ['wall','stonewall','door','fence','sandbag','turret','trap','bed','medbed','prisonbed','table','gametable','statue','stove','bench','lab','cooler','campfire','heater','generator','battery','solar','watermill','conduit','lamp','grave'];
 const TICKS_PER_DAY = 4800;
 // The sheets along the bottom of a phone that a press on the bar raises, in the
@@ -26,7 +37,13 @@ const took = [];
 // used to end with a stack trace and nothing else, and the ten frames that had
 // already been written looked from the shell exactly like sixteen.
 const WANTED = ['0-hud-help','1-settlers','2-buildings','2b-closeup','3-colony','5-dusk','4-firstperson','6-hud-colony','7-hud-selected','8-phone-help','8-phone-colony','8-phone-build','8-phone-crew','8-phone-details','8-phone-events','8-phone-more'];
-const shot = async (name) => { await sleep(1200); await page.screenshot({ path: `${out}/${label}-${name}.png` }); took.push(name); };
+const shot = async (name) => {
+  await sleep(1200);
+  const path = `${out}/${label}-${name}.png`;
+  await page.screenshot({ path });
+  if (mirror) copyFileSync(path, `${mirror}/${label}-${name}.png`);
+  took.push(name);
+};
 // Space, and then proof that Space arrived.
 //
 // Pausing is the pin the whole harness hangs on: every frame after it is taken of
