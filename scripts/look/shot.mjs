@@ -51,6 +51,15 @@ await sleep(1500); await zoomTo(-2); await shot('2-buildings');
 await page.evaluate((s) => window.aether.look(s.cx - 3, s.cy + 3), site); await zoomTo(8); await shot('2b-closeup');
 // 3. colony overview
 await page.evaluate((h) => window.aether.look(h.x, h.y), home); await zoomTo(3); await shot('3-colony');
+// 5. the same colony an hour before sundown. Noon is the fairest light to judge a
+// model in and the least revealing about the light itself: the sun is overhead, the
+// shadows are short, and the warm band at the horizon never appears at all. A round
+// that changes the lighting cannot be judged from five frames all taken at noon, so
+// this one moves the clock to a sun about eight degrees up — long shadows, the dusk
+// colour across the sky, the lamps not yet lit — and then puts it back.
+await page.evaluate((tpd) => { const w = window.aether.world; w.tick = w.tick - (w.tick % tpd) + Math.round(tpd * 0.725); }, TICKS_PER_DAY);
+await shot('5-dusk');
+await page.evaluate((tpd) => { const w = window.aether.world; w.tick = w.tick - (w.tick % tpd) + Math.round(tpd * 0.5); }, TICKS_PER_DAY);
 // 4. first person
 await key('KeyV'); await sleep(1500); await shot('4-firstperson');
 console.log(`${label}: ${errs.length} console errors, ${site.n} showcase buildings stood, ${frameMs.toFixed(0)} ms/frame`, errs.slice(0, 3));

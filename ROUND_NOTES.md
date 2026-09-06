@@ -4,6 +4,73 @@ One round, one measured gap, one fix. Newest first.
 
 ---
 
+## 2026-09-06 — Round seven, and the instrument that could carry it
+
+**Track: the rendered game.** Four lanes, briefed off round 6's leftovers, and one of the four
+existed only because the previous round had been measured and found to have delivered nothing.
+
+### Better
+
+**The ground has grain.** Round 6 asked twice for texture in the dirt and got none, because a colour
+set at the corners of a shared lattice is ramped across the whole cell before it is ever drawn. This
+round did not touch those constants — it changed the instrument, and put the variation where it can
+vary at the frequency of a pixel. It arrived, and it is measured rather than admired: fit a plane to
+every 32x32 tile and take what is left over on the flat ground, and the tenth percentile goes 0.155
+to 0.897 grey levels in the close-up and 0.221 to 1.111 in the colony frame — five times the detail
+on the surfaces that had none. In the frames there is no banding and no tile you can find twice.
+
+**The machines stand on something.** A stove, a generator, a battery and a cooler all sat directly
+in the dirt with a flat face where a machine has a mechanism. They have feet and skids now, a firebox
+door on hinges with a lever for a handle, a flue with collars and a rain cap, louvres recessed into
+their housing with the blades tipped, cable glands and cables. The solar panel has a bolted plinth
+and a yoke, with rails and purlins under the glass instead of a slab on a post.
+
+**The trees stopped being rings.** Round 6 rebuilt a tree as four skirts and from directly overhead
+they still read as concentric circles, because every skirt was a circle. Each skirt's rim radius now
+runs per meridian between 0.57 and 1.13 of its nominal, so no two tiers share an outline and the
+edge is lobed rather than turned. In profile a stand of them reads as a forest.
+
+**The mossback's saddle.** It was a tube laid tangent to the animal's back, painted in the hoof tone,
+which at eye level was a dark seam cut into the shoulder — the hole burnt in the hide that round 6
+logged. It is an offset shell of the animal's own body ellipsoid now, in a tone of its own, so it
+sits on the hide as markings rather than through it. Hands gained a thumb and boots a heel, ball and
+toe, which is what stops a foot reading as a wedge.
+
+### Still wrong
+
+**The tail flag, which is the same bug one part further back.** `pawns.ts:1326`: the mossback's tail
+is a nine-sided capsule in the darkest tone, and from behind — the angle the colony frame actually
+shows — you see its end cap, a flat black hexagon set into the rump. The shoulder crop across rounds
+5, 6 and 7 shows the stripe leaving and the hexagon staying. Two rounds have now fixed a dark part
+that was read as a hole and left the neighbouring dark part alone.
+
+**The stripped bush, a fourth time.** Stone, then lichened stone, then dead spider, and now a dried
+flower: the silhouette is finally right — broad leaves, low, gappy — but the leaves are grey-beige
+rather than green, the canes cross *over* the canopy instead of running under it, and the whole thing
+is radially symmetric, which no bush is. The camera was the problem for three rounds; this round it
+is the colour and the ordering.
+
+**Smaller.** From overhead the new tree lobes are coarse enough to read as broccoli. The hunt mark is
+still a large flat wedge when an animal is near the camera. In the wide showcase frame the grave
+reads as a doormat and the trap as a plate.
+
+**Not a bug, checked and dismissed.** The flat gold squares scattered through the showcase frame,
+which have looked like a missing model since round 3, are pen-zone paint — `fx.ts:491`, straw-gold
+for every zone that is not a stockpile. They are the overlay doing its job.
+
+### The harness gained a frame
+
+Every frame in this loop has been pinned to noon, which is the fairest light to judge a model in and
+the least revealing about the light itself: the sun is overhead, the shadows are short, and the warm
+band at the horizon never appears. A lighting lane cannot be judged that way, so `shot.mjs` now takes
+a sixth frame with the sun about eight degrees up and puts the clock back afterwards. A round-7
+baseline for it was captured before round 8 was briefed, so the first lighting change has a before.
+
+Gate re-run by hand before the commit: `tsc` clean, eleven render test files, 229 tests, and every
+test change in the diff an addition.
+
+---
+
 ## 2026-09-06 — Round six, and a grain the frame never got
 
 **Track: the rendered game.** Four lanes again, briefed off the round-5 frames: the grass, the

@@ -82,7 +82,7 @@ models, the HUD hidden, the ground around the camera revealed by hand. They coun
 console errors and `shot.mjs` measures ten animation frames in milliseconds, so a round
 that made the picture heavy shows up as a number rather than a timeout.
 
-**The five standard frames** and what each one is for:
+**The six standard frames** and what each one is for:
 
 | Frame | Camera | Judges |
 |---|---|---|
@@ -91,6 +91,14 @@ that made the picture heavy shows up as a number rather than a timeout.
 | `2b-closeup` | the middle showcase row, close | furniture and machine detail, materials |
 | `3-colony` | the starting cabin from high up | the whole picture — ground, rock, trees, roofs, the shroud edge |
 | `4-firstperson` | eye level, from a settler | walls, doors, grass and stones at 1.6 m; clipping |
+| `5-dusk` | the colony camera again, sun about 8 degrees up | the light itself: shadow length and contrast, sun colour, lamps |
+
+Five of the six are pinned to noon, which is the fairest light to judge a model in and
+the least revealing about the light itself: the sun is overhead, the shadows are short,
+and the warm band at the horizon never appears. `5-dusk` moves the clock to `timeOfDay`
+0.725 and puts it back afterwards, so a round that changes the lighting has a frame that
+can show it. It was added after round 7 photographed a dusk in which nothing cast a
+shadow at all — a defect five noon frames had hidden for seven rounds.
 
 The showcase rows are, in order: wall stonewall door fence sandbag turret trap bed
 medbed · prisonbed table gametable statue stove bench lab cooler campfire · heater
