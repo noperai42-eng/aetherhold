@@ -4,6 +4,110 @@ One round, one measured gap, one fix. Newest first.
 
 ---
 
+## 2026-09-06 — Round ten, and the instrument that lost two frames without saying so
+
+**Track: the rendered game.** Eight lanes — pawns, buildings, decor, landmarks, sky and weather,
+the minimap, the instanced pool, and a new one for contact shadows — briefed off round nine's
+*still wrong* list. The frames judged are `r9b` against `r10b`, and `r10b` rather than the
+round's own `r10` for a reason that turned out to be the round's headline: `r10` came back
+missing six of its sixteen frames and with the one frame that photographs the pawn models
+showing an empty patch of grass, and neither fact appeared anywhere in the harness output.
+
+### Better
+
+**Contact shadows, measured rather than lit.** New `src/client/render/occlusion.ts` bakes an
+ambient-occlusion term into each prototype's vertex colours at startup — ray-cast against the
+whole assembly plus a ground plane at `y = 0`, then multiplied into the colour attribute, which
+survives every per-instance tint the view pushes because `color_vertex.glsl` multiplies rather
+than replaces. A stove's feet come out at 0.8003 against a lid at 0.9593. In the frames it is
+the darkening where a tree meets the turf and where a wall meets the ground: everything in the
+colony now sits *on* the floor instead of hovering a centimetre over it. The bake is 396 ms and
+runs off `requestIdleCallback` after the colony is already drawing.
+
+**The wall became masonry.** Coursed brick up the face, a pale stone coping along the top and a
+post standing proud at each outside corner. At the manager zoom it is the difference between a
+perimeter and a row of cubes, and it is the first thing the eye lands on in `3-colony`.
+
+**The trees got a canopy instead of a cone.** Four lobed skirts, rumpled per seed, two variants
+so a wood is not one tree stamped forty times. With the contact darkening under them they read
+as trees at every zoom in the set.
+
+**The minimap stopped being a dead rectangle.** Unseen ground was 0x141a22 and the chrome around
+the panel is 20, 26, 34 — the same colour — so on day one the largest element in the left column
+was one flat box with a stamp of colour floating in it, which is what a widget that failed to
+load looks like. It is the panel's own solid carried toward the HUD's dim label grey now, with
+survey lines across it: a chart of country nobody has walked, which is what it actually is.
+
+**The frame is counted.** `renderer.info` read between two animation frames, so a round that
+makes the picture heavier says so in a number rather than in a screenshot timeout. The colony
+frame is **123 draw calls / 8,000,822 triangles / 191 geometries**, and alongside it the tally
+the wall clock cannot give: **15 of 151 instanced pools empty, 13 of those hidden**. That second
+number is `instanced.ts` this round — pooled meshes no longer set `frustumCulled = false`.
+The flag was covering for `InstancedMesh`'s own bounding sphere going stale (three computes it
+once, lazily, and nothing about `setMatrixAt` invalidates it), and the fix is to stop it going
+stale: `end()` recomputes the sphere after every rebuild and drops a pool with nothing in it out
+of the render list, which is where the thirteen come from.
+
+### Still wrong
+
+- **Every tree stands in a plant pot.** `tree.trunk`'s root flare (`buildings.ts`, the
+  `lathe([[0.44, 0], [0.3, 0.18], …])` profile) reads from the manager camera as a flat brown
+  disc lying on the grass, and at dusk it catches the warm light and reads as a *red* one. It is
+  the worst thing in `5-dusk` and it is not new — it predates this round — but nothing has ever
+  photographed the tree foot closely enough to see it.
+- **The scatter stones are eggs.** Dozens of pale, smooth, near-identical ovoids across the turf
+  in every world frame, next to a rock outcrop that this round gave real facets and value
+  variation to. The small stones are the un-upgraded version of the same idea and they now look
+  it.
+- **The grass reads differently at the two zooms.** In `2b-closeup` the tufts stand up out of the
+  ground; at the manager zoom of `3-colony` they flatten into scattered chevrons again. Round
+  nine's note says this class was fixed, and close up it was — the fix did not carry to the
+  distance the game is actually played at.
+- **The settlers are now the least detailed thing in the colony frame.** At the zoom `3-colony`
+  is taken at, a settler is a hair dot, a torso and two sticks, standing in front of a wall that
+  has coursing and a coping. Round nine and ten both went to the buildings; the models the player
+  spends the game watching did not keep up.
+
+### The harness, which this round broke and then fixed
+
+Two defects, both found by looking at what came out rather than by reading the code:
+
+- **`1-settlers` had no settler in it.** Every frame after the pause is taken of one colony
+  standing still, and the pause is a `Space` sent to the canvas. If it is swallowed — focus and
+  keypress landing either side of a slow frame under GPU contention — the settlers keep walking
+  through the two seconds of zooming and easing that follow, and the frame whose whole job is
+  the pawn models comes back as grass. `pause()` now presses, asks the app whether `speed === 0`,
+  presses again, and throws after three tries. The swallow itself was not reproduced; what is
+  fixed is that it can no longer be silent.
+- **The phone half took the report down with it.** `waitForFunction(tick >= 1800)` timed out
+  after the reload, the run died with a stack trace, and the shell's exit status was eaten by a
+  pipe — so ten frames on disk read from outside exactly like sixteen. The phone block runs
+  behind a `try`/`catch` now, its wait is 180 s, and the last line prints `16/16 frames (all)`
+  or names every frame that is missing.
+
+The world frames are also photographed with the HUD *down* and the interface frames with it
+*up*: for nine rounds the blank was one-way and taken once, so the half of the screen the player
+spends most of the game reading had never been in a frame at all.
+
+### Verified
+
+- `npx tsc --noEmit -p .` — clean.
+- `npx vitest run` over the seven touched render files — **228 passed**, 14.9 s. New:
+  `tests/occlusion.test.ts` (the bake, the black-material trap, the ordering rule against `dye`),
+  and `tests/minimap.test.ts`.
+- `r10b: 0 console errors, 26 showcase buildings stood, 17 ms/frame, colony frame 123 draw calls
+  / 8000822 triangles / 191 geometries, 2 textures, 15 of 151 instanced meshes empty (13 of those
+  hidden), 16/16 frames (all)`.
+- Sixteen frames opened one at a time against `r9b`, which is the only gate this track has.
+
+### Next target
+
+- The tree's root flare, the scatter stones, and the grass at manager zoom — a decor and
+  buildings round with the frames already naming their targets.
+- The settler models, at the zoom `3-colony` is taken at rather than the zoom `1-settlers` is.
+- The minimap panel is a chart of unwalked country on day one, which is honest and is still a
+  300-pixel box holding a 90-pixel picture. That is a layout question, not a colour one.
+
 ## 2026-09-06 — The interface round, and the panels that clipped in silence
 
 **Track: the HUD, not the world.** The first round on this project whose subject is the
