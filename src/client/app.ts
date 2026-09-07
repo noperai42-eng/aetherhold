@@ -55,6 +55,15 @@ import type { Quality } from './render/renderer';
 import type { Overlays } from './overlays';
 import type { Selection, Tool } from './manager/controller';
 import type { Streams } from '../sim/tick';
+import { HollowHud } from './scene/hollow-hud';
+import { HollowView } from './scene/hollow-view';
+import {
+  createHollowState,
+  hollowInteract,
+  pocketFromSearch,
+  setHollowView,
+  type HollowState,
+} from './scene/hollow-loop';
 
 /** Seconds of *unpaused* play between autosaves. A paused colony has nothing new to keep. */
 const AUTOSAVE_EVERY = 60;
@@ -95,6 +104,14 @@ export class App {
 
   private sinceAutosave = 0;
   private autosaveExists = false;
+
+  /**
+   * Additive pocket scene. Null while the colony has the renderer. Does not
+   * touch `src/sim` — the valley keeps ticking only when this is empty.
+   */
+  private hollowView: HollowView | null = null;
+  private hollowHud: HollowHud | null = null;
+  private hollowState: HollowState | null = null;
 
   constructor(canvas: HTMLCanvasElement, hudRoot: HTMLElement) {
     this.canvas = canvas;
@@ -187,6 +204,9 @@ export class App {
       msg(this.world, `The last session was autosaved — press Continue to pick it up.${fresher}`, 'info');
     }
     this.hud.toggleHelp();
+    if (typeof location !== 'undefined' && pocketFromSearch(location.search)) {
+      this.enterHollow();
+    }
   }
 
   start(): void {
@@ -205,6 +225,12 @@ export class App {
   private step(dt: number): void {
     this.trackFps(dt);
     this.globalKeys();
+
+    if (this.hollowState && this.hollowView && this.hollowHud) {
+      this.hollowFrame(dt);
+      this.input.endFrame();
+      return;
+    }
 
     const pawn = this.mode === 'fps' ? this.playerPawn() : null;
     if (this.mode === 'fps' && !pawn) this.exitFps('Nobody left to inhabit.');
@@ -476,6 +502,15 @@ export class App {
     // sharply in the backup box, where the colony code is typed and a stray `p`
     // used to open the work tab underneath.
     if (anyOverlayUp(this.overlays())) return;
+    if (this.hollowState) {
+      if (this.input.pressed('KeyV')) this.toggleHollowView();
+      // No `&& !this.input.locked`: the browser eats the first Escape to release
+      // the pointer lock, so guarding on it made leaving take two presses with
+      // nothing on screen saying so — and between them there is no cursor to
+      // click the button with. `leaveHollow` releases the lock itself.
+      if (this.input.pressed('Escape')) this.leaveHollow();
+      return;
+    }
     if (this.input.pressed('Slash') || this.input.pressed('F1')) this.hud.toggleHelp();
     if (this.input.pressed('KeyV')) this.toggleView();
     if (this.input.pressed('Space')) this.setSpeed(this.speed === 0 ? 1 : 0);
@@ -528,6 +563,87 @@ export class App {
   }
 
   // ---------------------------------------------------------------- view swap
+
+  // ---------------------------------------------------------------- hollow pocket
+
+  /** Open the Iter 1 mortal hollow. Safe to call twice; the second is a no-op. */
+  enterHollow(): void {
+    if (this.hollowState) return;
+    if (this.hud.helpOpen) this.hud.toggleHelp();
+    if (this.mode === 'fps') {
+      this.input.releaseLock();
+    }
+    this.hollowView = new HollowView(this.viewport.scene);
+    this.hollowHud = new HollowHud(this.hud.host, {
+      leave: () => this.leaveHollow(),
+      toggleView: () => this.toggleHollowView(),
+    });
+    this.hollowState = createHollowState();
+    this.view.setVisible(false);
+    this.hollowView.mount();
+    this.hollowView.resize(window.innerWidth / Math.max(1, window.innerHeight));
+    // The pocket is a different place, so the valley has to stop being audible in
+    // it. `Ambience` starts its oscillators once and only `update` moves the
+    // gains, so simply not calling it — which is what the frame short-circuit
+    // below does — freezes rain and threat at whatever they were and silences
+    // only the bird chirps, which are scheduled inside `update`. That is the
+    // drone without the life. The gate plus a driven frame ramps the whole stage
+    // to nothing instead.
+    this.ambience.enabled = false;
+    this.hud.setPocketChrome(true);
+    this.hollowHud.setActive(true);
+    this.hollowHud.sync(this.hollowState);
+    this.touch.setVisible(false);
+  }
+
+  leaveHollow(): void {
+    if (!this.hollowState) return;
+    this.input.releaseLock();
+    this.hollowView?.unmount();
+    this.hollowView?.dispose();
+    this.hollowHud?.dispose();
+    this.hollowView = null;
+    this.hollowHud = null;
+    this.hollowState = null;
+    this.ambience.enabled = true;
+    this.view.setVisible(true);
+    this.hud.setPocketChrome(false);
+    this.onResize();
+  }
+
+  private toggleHollowView(): void {
+    if (!this.hollowState) return;
+    const next = this.hollowState.view === 'inhabit' ? 'manager' : 'inhabit';
+    this.hollowState = setHollowView(this.hollowState, next);
+    if (next === 'manager') this.input.releaseLock();
+    this.hollowHud?.sync(this.hollowState);
+  }
+
+  private hollowFrame(dt: number): void {
+    const view = this.hollowView;
+    const hud = this.hollowHud;
+    let state = this.hollowState;
+    if (!view || !hud || !state) return;
+
+    if (this.input.clicked(0) || this.input.pressed('Space')) this.sfx.unlock();
+    if (state.view === 'inhabit' && !this.input.locked && this.input.clicked(0)) {
+      this.input.requestLock();
+    }
+    if (this.input.pressed('KeyE')) {
+      const before = state.cleared;
+      state = hollowInteract(state);
+      if (state.cleared && !before) this.sfx.good();
+      else if (state.line) this.sfx.interact();
+      else this.sfx.deny();
+    }
+    state = view.drive(state, this.input, dt);
+    this.hollowState = state;
+    // Driven, not skipped: the gate above is only obeyed by a frame that runs.
+    this.driveAmbience(dt, null);
+    view.sync(state, dt);
+    this.viewport.render(view.camera(state));
+    hud.sync(state);
+  }
 
   private toggleView(): void {
     if (this.mode === 'manager') {
@@ -784,6 +900,7 @@ export class App {
     const aspect = w / Math.max(1, h);
     this.cam.resize(aspect);
     this.fps.resize(aspect);
+    this.hollowView?.resize(aspect);
   };
 
   dispose(): void {
@@ -791,6 +908,7 @@ export class App {
     window.removeEventListener('resize', this.onResize);
     window.removeEventListener('beforeunload', this.onUnload);
     this.input.dispose();
+    this.leaveHollow();
     this.view.dispose();
     this.viewport.dispose();
     this.ambience.stop();

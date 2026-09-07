@@ -32,6 +32,27 @@ export class WorldView {
   readonly weather: WeatherView;
   private readonly scene: THREE.Scene;
 
+  /**
+   * One node the whole valley hangs from, and the only thing a pocket scene is
+   * allowed to switch off.
+   *
+   * The first version of `setVisible` wrote the ten subsystem groups' own
+   * `.visible` flags directly, and two of those flags already had an owner:
+   * `DecorView.setDecor` and `WeatherView.applyQuality` set them from the
+   * quality preset. Turning the valley back on therefore *overwrote* the
+   * preset — a player on Low who stepped into the hollow once came back to
+   * decor that was visible but whose `enabled` was still false, so it rendered
+   * and never rebuilt again: 1.6 M triangles of grass standing inside walls and
+   * on plowed farm plots, on the machine that had explicitly asked for less.
+   * Nothing healed it but cycling the quality button.
+   *
+   * A parent has no such owner. Hiding it hides everything underneath without
+   * touching a flag any subsystem is keeping for itself, so the two questions —
+   * "is the valley on screen" and "does this machine draw grass" — stop sharing
+   * a variable.
+   */
+  private readonly root = new THREE.Group();
+
   constructor(viewport: Viewport, world: World) {
     this.scene = viewport.scene;
     this.terrain = new TerrainView(world);
@@ -48,7 +69,7 @@ export class WorldView {
     this.decor.setDecor(viewport.config.decor);
     this.weather.applyQuality(viewport.config);
 
-    this.scene.add(
+    this.root.add(
       this.terrain.group,
       this.decor.group,
       this.buildings.group,
@@ -60,6 +81,7 @@ export class WorldView {
       this.fx.group,
       this.weather.group,
     );
+    this.scene.add(this.root);
   }
 
   /** Call immediately after every simulation step so interpolation has two frames. */
@@ -104,6 +126,11 @@ export class WorldView {
     this.shroud.setTint(fog.color);
   }
 
+  /** Hide the valley while a pocket scene has the renderer. */
+  setVisible(on: boolean): void {
+    this.root.visible = on;
+  }
+
   applyQuality(settings: QualitySettings): void {
     this.sky.applyQuality(settings);
     this.fx.setDecor(settings.decor);
@@ -112,18 +139,7 @@ export class WorldView {
   }
 
   dispose(): void {
-    this.scene.remove(
-      this.terrain.group,
-      this.decor.group,
-      this.buildings.group,
-      this.landmarks.group,
-      this.pawns.group,
-      this.pickies.group,
-      this.shroud.group,
-      this.sky.group,
-      this.fx.group,
-      this.weather.group,
-    );
+    this.scene.remove(this.root);
     this.terrain.dispose();
     this.decor.dispose();
     this.buildings.dispose();

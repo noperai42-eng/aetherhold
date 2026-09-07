@@ -488,7 +488,8 @@ const KEYS_COLONY =
   `<dt>;</dt><dd>the story — everything that has happened here, by day. The corner log only keeps the last few minutes; this keeps the rest.</dd>` +
   `<dt>\`</dt><dd>send a Picky — a little pink goblin runs to the cell you click and says whether it got there. Nobody going somewhere? Ask one.</dd>` +
   `<dt>Space</dt><dd>pause · <b>-</b> and <b>=</b> slow down / speed up — manager only</dd>` +
-  `<dt>G</dt><dd>possess the selected settler</dd>`;
+  `<dt>G</dt><dd>possess the selected settler</dd>` +
+  `<dt>?pocket=hollow</dt><dd>a mortal village pocket — mill jam, no qi. Add it to the address and reload.</dd>`;
 
 const KEYS_FPS =
   `<dt>V</dt><dd>switch view, any time, no reload</dd>` +
@@ -729,6 +730,11 @@ export class Hud {
   private roadSig = '';
   private chronicleOpen = false;
   private chronicleSig = '';
+
+  /** The HUD mount. Pocket chrome hangs off the same root. */
+  get host(): HTMLElement {
+    return this.root;
+  }
 
   constructor(root: HTMLElement, hooks: HudHooks) {
     this.root = root;
@@ -3015,6 +3021,12 @@ export class Hud {
 
   toggleHelp(): void {
     this.helpOverlay.classList.toggle('on');
+  }
+
+  /** Hide the colony chrome while a pocket scene has the screen. */
+  setPocketChrome(on: boolean): void {
+    this.root.classList.toggle('hollow-mode', on);
+    if (on && this.helpOpen) this.toggleHelp();
   }
 
   get helpOpen(): boolean {
