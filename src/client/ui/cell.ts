@@ -19,6 +19,7 @@
  * bed would be two answers to one click.
  */
 
+import { bushAt } from '../../sim/berries';
 import { CROP_NONE, canSow, cropAt, seasonScale, soilScale } from '../../sim/farming';
 import { isWalkable } from '../../sim/grid';
 import { growthMultiplier } from '../../sim/weather';
@@ -47,6 +48,18 @@ export interface CellFacts {
   zone: { kind: ZoneKind; cells: number } | null;
   /** Growth, 0 just sown to 1 ripe. Null where nothing is planted. */
   crop: number | null;
+  /**
+   * The bramblebush standing on this square, 0 just stripped to 1 in fruit, or
+   * null where there is none.
+   *
+   * Bushes are a sparse list rather than a per-cell array — there are a few
+   * hundred of them on tens of thousands of cells — which is why this fact had
+   * no way out to the player for so long: everything else the panel prints is
+   * an index away, and a bramble is a search. The panel called a square with a
+   * bush standing on it "Bare soil", which is the ground the bush is rooted in
+   * and not an answer to the question that was asked.
+   */
+  bush: { ripe: number } | null;
   /**
    * Whether a seed would take here at all.
    *
@@ -84,6 +97,7 @@ export function cellFacts(world: World, x: number, y: number): CellFacts | null 
   const terrain = terrainAt(world, x, y);
   const zone = zoneAt(world, x, y);
   const g = cropAt(world, x, y);
+  const bush = bushAt(world, x, y);
   const season = seasonScale(world, x, y);
   return {
     x,
@@ -94,6 +108,7 @@ export function cellFacts(world: World, x: number, y: number): CellFacts | null 
     desig: world.cellDesig[packCell(world, x, y)] ?? 0,
     zone: zone ? { kind: zone.kind, cells: zone.cells.length } : null,
     crop: g === CROP_NONE ? null : g,
+    bush: bush ? { ripe: bush.ripe } : null,
     sowable: canSow(world, x, y),
     rate: Math.min(1, soilScale(world, x, y) * season * growthMultiplier(world)),
     season,

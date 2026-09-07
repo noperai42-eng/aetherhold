@@ -33,6 +33,7 @@ import { weatherLabel } from '../../sim/weather';
 import { isBreaking, moodBreakdown } from '../../sim/needs';
 import { tediumOf } from '../../sim/tedium';
 import { alerts, type Alert } from '../../sim/alerts';
+import { BUSH_YIELD } from '../../sim/berries';
 import { idleReason } from '../../sim/idle';
 import { nextObjectives, objectiveScore } from '../../sim/objectives';
 import { HOLD_DAYS, charters, foundingLeft, hasWon } from '../../sim/victory';
@@ -579,6 +580,12 @@ const GROUND_LABEL: Record<Terrain, string> = {
  * larder that calls a mossback haunch fieldroot is a worse lie than a vague one.
  */
 const CROP_NAME = 'Fieldroot';
+/**
+ * The wild one. Named the way `berries.ts` names it, and named at all for the
+ * first time here: the panel had no word for a bramble, so clicking one printed
+ * the soil under it.
+ */
+const BUSH_NAME = 'Bramblebush';
 
 /** What has been ordered done to a cell, as the colony would put it. */
 const ORDER_LABEL: Record<number, string> = {
@@ -3952,8 +3959,14 @@ function isClimate(kind: Building['kind']): boolean {
 export function groundPanel(world: World, c: CellFacts): string {
   const top = c.items[0];
   const ground = GROUND_LABEL[c.terrain];
-  const head = top ? `${top.amount} ${resourceWord(top.kind)}` : c.crop !== null ? CROP_NAME : ground;
-  const onGround = top || c.crop !== null;
+  const head = top
+    ? `${top.amount} ${resourceWord(top.kind)}`
+    : c.bush
+      ? BUSH_NAME
+      : c.crop !== null
+        ? CROP_NAME
+        : ground;
+  const onGround = top || c.bush !== null || c.crop !== null;
   const sub = onGround ? `on ${ground.toLowerCase()} · (${c.x}, ${c.y})` : `(${c.x}, ${c.y})`;
   const rest = c.items
     .slice(1)
@@ -3975,12 +3988,34 @@ export function groundPanel(world: World, c: CellFacts): string {
     (c.zone
       ? `<div class="kv"><span>zone</span><b>${ZONE_LABEL[c.zone.kind]} · ${c.zone.cells} cells</b></div>`
       : '') +
+    bushRow(c) +
     groundRows(c) +
     (c.desig !== DESIG_NONE && order ? `<div class="kv"><span>ordered</span><b>${order}</b></div>` : '') +
     (c.walkable ? '' : `<div class="kv"><span>blocks movement</span><b>yes</b></div>`) +
     `<div class="kv"><span>temperature</span><b>${tempLabel(cellTemp(world, c.x, c.y))}</b></div>` +
     roomRow(world, c.x, c.y)
   );
+}
+
+/**
+ * The bramble, and whether there is anything on it worth the walk.
+ *
+ * Ripeness rather than a countdown to it. Regrowth is daylight times season
+ * times weather, so days-to-fruit is a forecast that would be wrong by the time
+ * the player walked there, and how far along it is now is simply true.
+ *
+ * A stripped bush still prints its row, and still takes the title off the soil.
+ * It is drawn as a bare frame rather than removed for exactly that reason — the
+ * plant is still there and will fruit again — and a panel that went quiet the
+ * moment it was picked would be telling the player it had gone.
+ */
+function bushRow(c: CellFacts): string {
+  if (!c.bush) return '';
+  const v =
+    c.bush.ripe >= 1
+      ? `in fruit · ${BUSH_YIELD} food`
+      : `${Math.round(c.bush.ripe * 100)}% regrown`;
+  return `<div class="kv"><span>berries</span><b>${v}</b></div>`;
 }
 
 /**

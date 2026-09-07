@@ -49,14 +49,26 @@ export class ManagerCamera {
     this.camera.updateProjectionMatrix();
   }
 
-  /** Pan in screen-relative directions: `right` and `forward` in world units. */
+  /**
+   * Pan in screen-relative directions: `right` and `forward` in world units.
+   *
+   * Both basis vectors are the camera's own, so they have to agree with the one
+   * `apply` builds. `lookAt` puts the camera on the +yaw side of the target, so
+   * the direction that is rightwards on screen is (sin yaw, -cos yaw) in the
+   * simulation's own x/y — and the `right` term used to be its negative. That
+   * one sign was the whole of two bugs that did not look related: holding D slid
+   * the camera left, and dragging the map sent the valley the opposite way to
+   * the hand, which is the more obvious of the two and the one that gets
+   * reported. Forward was always correct, so the picture was mirrored rather
+   * than reversed, and mirrored reads as "the drag is backwards".
+   */
   pan(right: number, forward: number): void {
     const s = this.state;
     const cos = Math.cos(s.yaw);
     const sin = Math.sin(s.yaw);
     // Forward is "away from the camera", which is what the arrow keys should feel like.
-    s.targetX += -cos * forward + -sin * right;
-    s.targetY += -sin * forward + cos * right;
+    s.targetX += -cos * forward + sin * right;
+    s.targetY += -sin * forward + -cos * right;
     this.clamp();
     this.apply();
   }

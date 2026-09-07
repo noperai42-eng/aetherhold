@@ -19,6 +19,7 @@
  * happened to start on.
  */
 
+import * as THREE from 'three';
 import { describe, expect, it } from 'vitest';
 
 import { ManagerCamera } from '../src/client/manager/camera';
@@ -29,6 +30,7 @@ import { groundPanel } from '../src/client/ui/hud';
 import { CROP_NONE, canSow } from '../src/sim/farming';
 import { buildingAt } from '../src/sim/grid';
 import { designate } from '../src/sim/orders';
+import { ensureBushes } from '../src/sim/berries';
 import { addBuilding, addCellToZone, addItem, addZone, livingColonists } from '../src/sim/world';
 import { DESIG_HARVEST, packCell, setTerrain, terrainAt, type World } from '../src/sim/types';
 import { createWorld } from '../src/sim/worldgen';
@@ -77,6 +79,19 @@ function aim(cam: ManagerCamera, x: number, y: number): { x: number; y: number }
   const hit = cam.pickCell(0, 0);
   if (!hit) throw new Error('the camera is not looking at the ground');
   return { x: hit.x, y: hit.y };
+}
+
+/**
+ * Where a fixed patch of ground sits across the screen: -1 at the left edge,
+ * +1 at the right.
+ *
+ * Asked of the picture rather than of `cam.state`, because "the map goes the
+ * wrong way" is a claim about the picture, and the two are separated by a yaw
+ * the player never sees a number for. The camera's target moving in +x is not
+ * rightwards on screen at any angle but one.
+ */
+function screenX(cam: ManagerCamera, x: number, y: number): number {
+  return new THREE.Vector3(x, 0, y).project(cam.camera).x;
 }
 
 /**
@@ -151,6 +166,52 @@ describe('clicking on the map', () => {
     // would repaint the panel on every pan.
     expect(ctl.selection).toBe(null);
   });
+
+  it('sends the ground the way the hand went, not the other way', () => {
+    // The complaint, in the player's words: "the click and drag seems to go in
+    // the opposite direction of the way my mouse moves." It did, horizontally
+    // and only horizontally, so the map was mirrored rather than reversed —
+    // which is why it reads as backwards rather than as broken.
+    //
+    // The test above this one is the reason it shipped: it measured how far the
+    // camera moved and never which way, and a sign error survives any assertion
+    // written with `hypot`.
+    const { world, cam, ctl } = game();
+    const at = bareGround(world, cam);
+    const before = screenX(cam, at.x, at.y);
+
+    click(world, ctl, 120);
+
+    expect(screenX(cam, at.x, at.y)).toBeGreaterThan(before);
+  });
+
+  it('walks the camera right on D, which is the same basis read the other way', () => {
+    // The half nobody reported, from the identical sign: a key moves the camera
+    // and a drag moves the ground, so the correct answers are opposites and both
+    // came out backwards together. Holding D walks the camera rightwards, so the
+    // valley slides left past it.
+    const { world, cam, ctl } = game();
+    const at = bareGround(world, cam);
+    const before = screenX(cam, at.x, at.y);
+
+    ctl.update(world, fakeInput({ held: (k: string) => k === 'KeyD' }), 0.05);
+
+    expect(screenX(cam, at.x, at.y)).toBeLessThan(before);
+  });
+
+  it('keeps the vertical it always had, which was never the bug', () => {
+    // Pinned because the fix touches the same expression: dragging down brings
+    // the ground down with it, and it did so before the sign was corrected.
+    const { world, cam, ctl } = game();
+    const at = bareGround(world, cam);
+    const y = () => new THREE.Vector3(at.x, 0, at.y).project(cam.camera).y;
+    const before = y();
+
+    ctl.update(world, fakeInput({ clicked: (b: number) => b === 0 }), 0.05);
+    ctl.update(world, fakeInput({ mouseButtons: new Set([0]), moveY: 120 }), 0.05);
+
+    expect(y()).toBeLessThan(before);
+  });
 });
 
 describe('what a square says about itself', () => {
@@ -215,6 +276,21 @@ describe('what a square says about itself', () => {
     // cannot come, forever.
     expect(c.sowable).toBe(false);
     expect(c.walkable).toBe(false);
+  });
+
+  it('finds the bramble standing on a square, which is not a thing the grid holds', () => {
+    // Bushes are a sparse list, not a per-cell array, so this is the one fact in
+    // the panel that is a search rather than an index — and the reason it was
+    // missing for so long. Every other reader of `world.bushes` is a forager
+    // looking for the nearest ripe one; nothing had ever asked "is there one
+    // here", which is the question a click is.
+    const { world, cam } = game();
+    const at = bareGround(world, cam);
+    ensureBushes(world).push({ c: packCell(world, at.x, at.y), ripe: 0.4 });
+
+    expect(cellFacts(world, at.x, at.y)!.bush).toEqual({ ripe: 0.4 });
+    // And is absent everywhere else, rather than defaulting to something.
+    expect(cellFacts(world, at.x, at.y + 1)!.bush).toBe(null);
   });
 
   it('carries the order standing on a cell, and refuses cells that are not there', () => {
@@ -304,6 +380,56 @@ describe('what the panel says out loud', () => {
     // Nothing to name, so the label stays the abstraction.
     expect(html).toContain('<span>crop</span>');
     expect(html).toContain('nothing sown yet');
+  });
+
+  it('heads a bramble with the bramble, not with the soil it is rooted in', () => {
+    // The complaint, in the player's words: "why when I click on some bushes
+    // does it show up as bare soil when it is clearly some berry bush". It is
+    // the same defect the furrow above had, found again in the one plant the
+    // colony did not sow — the rule was written for crops and stacks, and a
+    // bush is neither.
+    const { world, cam } = game();
+    const at = bareGround(world, cam);
+    setTerrain(world, at.x, at.y, 'dirt');
+    ensureBushes(world).push({ c: packCell(world, at.x, at.y), ripe: 1 });
+    const html = groundPanel(world, cellFacts(world, at.x, at.y)!);
+
+    expect(html).toContain('<h3>Bramblebush</h3>');
+    expect(html, 'the soil took the title off a standing plant').not.toContain('<h3>Bare soil</h3>');
+    // The ground has not stopped being true — it moves to the sub line, exactly
+    // as it does under a stack or a crop.
+    expect(html).toContain('on bare soil');
+    expect(html).toContain('in fruit');
+  });
+
+  it('still calls a picked bush a bush, and says how far back it has come', () => {
+    // A stripped bramble is drawn as a bare frame rather than removed, because
+    // it will fruit again. A panel that handed the title back to the soil the
+    // moment it was picked would be saying the plant had gone.
+    const { world, cam } = game();
+    const at = bareGround(world, cam);
+    ensureBushes(world).push({ c: packCell(world, at.x, at.y), ripe: 0.41 });
+    const html = groundPanel(world, cellFacts(world, at.x, at.y)!);
+
+    expect(html).toContain('<h3>Bramblebush</h3>');
+    expect(html).toContain('41% regrown');
+    expect(html).not.toContain('in fruit');
+  });
+
+  it('lets a stack lying on the bramble take the title, the way it does off a crop', () => {
+    // The precedence the panel already had, checked against the new row rather
+    // than assumed: the newest news wins the title, and a heap somebody dropped
+    // is newer than a plant that has stood there all year.
+    const { world, cam } = game();
+    const at = bareGround(world, cam);
+    ensureBushes(world).push({ c: packCell(world, at.x, at.y), ripe: 1 });
+    addItem(world, 'wood', 12, at.x, at.y);
+    const html = groundPanel(world, cellFacts(world, at.x, at.y)!);
+
+    expect(html).toContain('<h3>12 wood</h3>');
+    // And the bush is still reported, one row down. Losing the title is not the
+    // same as not being there.
+    expect(html).toContain('in fruit');
   });
 
   it('lets the harvest on the furrow take the title, and still names what grew there', () => {
