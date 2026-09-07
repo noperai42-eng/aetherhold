@@ -65,6 +65,7 @@ import {
   type BuildingKind,
   type ResourceKind,
   type World,
+  type Zone,
 } from './types';
 
 /** How often the Steward looks up from its work. Slow on purpose: this is planning. */
@@ -481,6 +482,24 @@ function gridSpot(world: World, kind: BuildingKind): { x: number; y: number } | 
   return best;
 }
 
+/** The room the colony keeps its cold store in: the one with a cooler standing in it. */
+function coldStore(world: World): Room | null {
+  const idx = roomIndex(world);
+  for (const b of world.buildings) {
+    if (!b.built || b.kind !== 'cooler') continue;
+    const id = idx.cellRoom[b.y * world.width + b.x];
+    if (id === undefined || id < 0) continue;
+    const room = idx.rooms.get(id);
+    if (room) return room;
+  }
+  return null;
+}
+
+/** A stockpile zone that takes the colony's food. */
+function isLarder(z: Zone): boolean {
+  return z.accepts.includes('rawfood') && z.accepts.includes('meal') && !z.accepts.includes('wood');
+}
+
 /**
  * A room the colony has walled and not yet furnished.
  *
@@ -501,7 +520,13 @@ function bedlessRooms(world: World): Room[] {
     if (room.size > QUARTERS_MAX_CELLS) continue;
     let taken = false;
     for (const b of world.buildings) {
-      if (!b.built || !isBed(b.kind)) continue;
+      // A prison bunk counts, and so does a cooler. `isBed` says no to both — a
+      // prisonbed is not somewhere a settler sleeps and a cooler is not a bed at
+      // all — but this list is "rooms nobody has claimed", and without the extra
+      // clauses the cell block and the cold store the Steward has just walled
+      // both read as empty, and `quarters` puts a colonist's bunk in one next to
+      // the raider and the other in the freezer.
+      if (!b.built || !(isBed(b.kind) || b.kind === 'prisonbed' || b.kind === 'cooler')) continue;
       if (idx.cellRoom[b.y * world.width + b.x] === room.id) {
         taken = true;
         break;
@@ -617,6 +642,18 @@ function growQuarters(world: World): number {
     return n;
   }
 
+  return carveRoom(world);
+}
+
+/**
+ * Wall out one more small room, wherever the next one will fit.
+ *
+ * Split off from `growQuarters` when the cell block needed the same thing: a
+ * prison is a room with a bunk in it and a door that shuts, which is a bedroom
+ * with a different occupant. Every hard-won rule below is about *how* to cut a
+ * room without breaking the hall, and none of it is about who ends up in it.
+ */
+function carveRoom(world: World): number {
   const h = heart(world);
   if (!h) return 0;
   if (!affordsBuilding(world, 'wall')) return 0;
@@ -963,39 +1000,21 @@ export const AMBITIONS: Ambition[] = [
       return n;
     },
   },
-  {
-    id: 'yard',
-    says: 'The colony stakes out a fence line around the yard.',
-    mark(world) {
-      const room = heart(world);
-      if (!room) return 0;
-      const ring = yardRing(world, room);
-      // Before adding to the line, take out anything left standing in the soil.
-      // A post on a growing cell that the line no longer runs through is holding
-      // nothing and costing a row of crops, and colonies that were already going
-      // when the ring learned to go around a plot have six of them across the
-      // kitchen garden. Bounded to posts *off* the line so a fence the player
-      // deliberately painted a zone over is left alone.
-      const online = new Set(ring.map((c) => packCell(world, c.x, c.y)));
-      for (const packed of growingCells(world)) {
-        if (online.has(packed)) continue;
-        const b = buildingAt(world, unpackX(world, packed), unpackY(world, packed));
-        if (!b || !b.built || b.kind !== 'fence') continue;
-        removeBuilding(world, b);
-        msg(world, 'A fence post is pulled out of the garden — that row can be sown again.');
-        return 1;
-      }
-      if (!affords(world, 'wood', (defOf('fence').cost.wood ?? 0) * BATCH)) return 0;
-      let n = 0;
-      for (const cell of ring) {
-        if (n >= BATCH) break;
-        if (ringDone(world, cell.x, cell.y)) continue;
-        if (canPlace(world, 'fence', cell.x, cell.y) !== 'ok') continue;
-        if (planBlueprint(world, 'fence', cell.x, cell.y)) n++;
-      }
-      return n;
-    },
-  },
+  // Above `yard`, and that placement is the whole of the fix.
+  //
+  // A gate only makes sense once the line is nearly a line, and `mark` returns 0
+  // until the ring is eighty per cent walled — so standing above `yard` costs
+  // nothing while the fence is going up. Standing *below* it cost everything:
+  // `yard` returns a number for as long as it has posts left to lay, so the gate
+  // was only ever considered after the ring was closed, which is one tick too
+  // late. Measured on seed 1312: on day 38 the last post went in and all seven
+  // settlers spent three days inside a sixty-four cell pocket with fifty-four
+  // walls and thirteen posts around it and not one door, unable to reach the
+  // twenty-seven thousand cells of map they had been working that morning.
+  //
+  // Running twice over is not a risk: `tickSteward` will not reach any ambition
+  // while a blueprint stands, so the door this plans blocks the next pass until
+  // somebody hangs it.
   {
     id: 'gate',
     says: 'The colony hangs a gate in the yard fence.',
@@ -1034,6 +1053,39 @@ export const AMBITIONS: Ambition[] = [
       // fence, not the deconstruct tool, so nothing the player marked is touched.
       removeBuilding(world, best);
       return planBlueprint(world, 'door', x, y) ? 1 : 0;
+    },
+  },
+  {
+    id: 'yard',
+    says: 'The colony stakes out a fence line around the yard.',
+    mark(world) {
+      const room = heart(world);
+      if (!room) return 0;
+      const ring = yardRing(world, room);
+      // Before adding to the line, take out anything left standing in the soil.
+      // A post on a growing cell that the line no longer runs through is holding
+      // nothing and costing a row of crops, and colonies that were already going
+      // when the ring learned to go around a plot have six of them across the
+      // kitchen garden. Bounded to posts *off* the line so a fence the player
+      // deliberately painted a zone over is left alone.
+      const online = new Set(ring.map((c) => packCell(world, c.x, c.y)));
+      for (const packed of growingCells(world)) {
+        if (online.has(packed)) continue;
+        const b = buildingAt(world, unpackX(world, packed), unpackY(world, packed));
+        if (!b || !b.built || b.kind !== 'fence') continue;
+        removeBuilding(world, b);
+        msg(world, 'A fence post is pulled out of the garden — that row can be sown again.');
+        return 1;
+      }
+      if (!affords(world, 'wood', (defOf('fence').cost.wood ?? 0) * BATCH)) return 0;
+      let n = 0;
+      for (const cell of ring) {
+        if (n >= BATCH) break;
+        if (ringDone(world, cell.x, cell.y)) continue;
+        if (canPlace(world, 'fence', cell.x, cell.y) !== 'ok') continue;
+        if (planBlueprint(world, 'fence', cell.x, cell.y)) n++;
+      }
+      return n;
     },
   },
   {
@@ -1150,6 +1202,189 @@ export const AMBITIONS: Ambition[] = [
       }
       if (!best) return 0;
       return planBlueprint(world, 'turret', best.x, best.y) ? 1 : 0;
+    },
+  },
+  {
+    id: 'cellar',
+    says: 'The colony walls off a cold store, so the winter it grows is the winter it eats.',
+    mark(world) {
+      // The one thing on this list the colony was never able to want.
+      //
+      // `spoilage.ts` says outright what it is for — "grow what you eat, or build
+      // a room cold enough to keep the rest" — and every part of that promise was
+      // already wired: `spoilFactor` is a hard zero below freezing rather than a
+      // small number, `roomTargets` lets one cooler chill a small sealed room hard
+      // because the term is `q / room.size`, and `findStockpileCell` already
+      // carries anything perishable to a below-freezing cell "however far it is".
+      // The only missing piece was somebody to order it. The Steward could plan
+      // fourteen kinds of building and a cooler was not one of them, so on a
+      // colony nobody is clicking, the cold store was a mechanic with no door into
+      // it. Measured on seed 7 over forty harsh days: 268 food spoiled, the larder
+      // sat at 11C, and not one unit was ever frozen.
+      //
+      // Below `defence`, because the raid is what actually kills this colony and
+      // twenty-eight steel is most of a turret. Above `sickbay` and everything
+      // under it, because a ward bed is for the settler who is already ill and
+      // this is the room that stops the colony's food becoming the reason.
+      if (!buildingUnlocked(world, 'cooler')) return 0;
+
+      // The grid has to be able to carry it before it is switched on. `power` sits
+      // above this and sizes generators to demand, so it would catch up on its own
+      // — but `SHED_ORDER` drops coolers before turrets, so a cooler plugged into
+      // a grid that cannot hold it is a freezer that thaws on exactly the night
+      // the guns are firing. Cheaper to wait a pass.
+      let load = 0;
+      for (const b of world.buildings) {
+        if (!b.built) continue;
+        load += DRAW[b.kind] ?? 0;
+      }
+      if (builtCount(world, 'generator') * GENERATOR_OUTPUT < load + (DRAW.cooler ?? 0)) return 0;
+
+      const cold = coldStore(world);
+      if (!cold) {
+        if (!affordsBuilding(world, 'cooler')) return 0;
+        // Every empty room gets asked, not just the first — the same loop
+        // `growQuarters` and `cells` run, for the same reason. This map generates
+        // caves, `bedlessRooms` returns them in index order, and taking `[0]`
+        // hands the cooler to a hole in the rock, fails to place it there, and
+        // then reports "no cold store today" for ever while a finished room
+        // stands empty by the door. `planBlueprint` refuses the caves on its own,
+        // because it will not propose work nobody can walk to.
+        for (const room of bedlessRooms(world)) {
+          for (const cell of freeCells(world, room).reverse()) {
+            if (planBlueprint(world, 'cooler', cell.x, cell.y)) return 1;
+          }
+        }
+        // Nowhere walled to put one yet. A cold store is a small room with a
+        // machine in it and a door that shuts, which is a bedroom with a
+        // different occupant — so it is cut the same way, by the same function.
+        return carveRoom(world);
+      }
+
+      // The room is cold and the food does not know. `findStockpileCell` only
+      // prefers a freezing cell if a stockpile is painted on one, so the zone is
+      // as load-bearing as the cooler and there is no point building one without
+      // the other.
+      //
+      // Its own zone, accepting food and nothing else: a cellar that took wood
+      // and steel would fill with building material and then have no room for the
+      // harvest, which is the one thing it was cut for.
+      let larder = world.zones.find((z) => z.kind === 'stockpile' && z.cells.length > 0 && isLarder(z));
+      let n = 0;
+      for (const cell of freeCells(world, cold)) {
+        const packed = packCell(world, cell.x, cell.y);
+        if (world.cellZone[packed]! >= 0) continue;
+        larder ??= addZone(world, 'stockpile', ['rawfood', 'meal']);
+        addCellToZone(world, larder, cell.x, cell.y);
+        n++;
+      }
+      // The cabin keeps its own food column, and that is deliberate rather than
+      // an oversight. A full cellar has to have somewhere to overflow to, and
+      // `findStockpileCell` already falls back to the warm pool when no cold cell
+      // has room — strip the cabin and a colony with a full cellar has nowhere to
+      // put the harvest at all.
+      return n;
+    },
+  },
+  {
+    id: 'sickbay',
+    says: 'The colony builds a bed for the sick to get better in.',
+    mark(world) {
+      // Everything a sickbay needs was already here. `immunityScale` gives a
+      // medbed 1.3 against a plain bunk's 1.0, and `findFreeBed` already pulls an
+      // ill settler towards one and a well settler away from it (`SICKBAY_PULL`).
+      // The only missing piece was somebody to order one: no ambition planned a
+      // `medbed`, worldgen places none, so on a colony nobody is clicking the
+      // whole ward was dead code. Measured on seed 7 over forty days: zero
+      // medbeds ever built, and of all the time settlers spent ill, none of it
+      // was spent anywhere better than a bunk.
+      //
+      // Below `defence`, and that is a steel decision rather than a medical one.
+      // A medbed is twelve steel and a turret is forty; a colony that spends the
+      // ward's steel first is a colony nursing the wounds it would not have taken.
+      //
+      // Above `quarters` because a bed the sick get better in is not a comfort
+      // and a room of one's own is.
+      const people = livingColonists(world).length;
+      // Only once everybody has somewhere to sleep at all. A ward built while
+      // settlers are on the floor is a bed the healthy will end up in, which is
+      // the one thing `SICKBAY_PULL` exists to prevent.
+      if (builtCount(world, 'bed') + builtCount(world, 'medbed') < people) return 0;
+      // One ward bed per four settlers, and never more than two. A third is
+      // twenty wood and twelve steel standing empty for the ninety per cent of
+      // the time nobody is ill, and this colony has walls to pay for.
+      const want = Math.min(2, Math.ceil(people / 4));
+      // Counting only what stands is safe here for the reason it is safe in
+      // `beds`: `boardClear` stops the whole list while any blueprint is up, so
+      // there is never an unbuilt medbed for this to double up on.
+      if (builtCount(world, 'medbed') >= want) return 0;
+      if (!affordsBuilding(world, 'medbed')) return 0;
+      const room = heart(world);
+      if (!room) return 0;
+      // Against a wall, for the reason the hall's own bunks are: see `beds`.
+      for (const cell of freeCells(world, room).reverse()) {
+        if (planBlueprint(world, 'medbed', cell.x, cell.y)) return 1;
+      }
+      return 0;
+    },
+  },
+  {
+    id: 'cells',
+    says: 'The colony walls off a cell, so the next raider it drops can be taken alive.',
+    mark(world) {
+      // One built prisonbed is the entire condition on the warden's capture path
+      // (`jobs.ts`, the `warden` work type): with none standing, a downed raider
+      // is not a prisoner, they are a body waiting to bleed out. No ambition ever
+      // planned one, so on a colony nobody is clicking the prison — capture,
+      // feeding, recruitment, the resistance clock, all of it — was code that
+      // could not run. Measured on seed 7 over forty days: eighteen raiders lay
+      // on the ground alive and every one of them was left there.
+      //
+      // Above `quarters`, with the fairness written out below rather than
+      // implied by the order — and that swap is the whole of the second fix here.
+      //
+      // It sat *below* `quarters` first, on the reasoning that settlers should
+      // get rooms of their own before the colony builds one for somebody who came
+      // to kill them, and that `quarters` returns 0 the moment nobody is
+      // unhoused. The second half of that is true and useless: `quarters` never
+      // gets there. Measured over forty harsh days, seed 7 ended with three
+      // settlers still without a room and 99001 with four — a colony gains people
+      // faster than `growQuarters` walls corners for them — so `cells` was never
+      // reached on any seed and not one prisonbed was ever built. That is the
+      // trap the note on `quarters` describes: a want the list can never get to
+      // is not a low priority, it is a feature that does not exist.
+      //
+      // So the policy is stated as a condition instead of a position: somebody
+      // must already have a room of their own. The colony has to have proved it
+      // can carve a room and given the first one away before it walls one for a
+      // prisoner.
+      if (!buildingUnlocked(world, 'prisonbed')) return 0;
+      // And only once there is a gun on the wall. A cell is an invitation to hold
+      // somebody who wants out; a colony that cannot win the fight it is already
+      // in has no business starting a second one indoors.
+      if (builtCount(world, 'turret') === 0) return 0;
+      if (livingColonists(world).length - unhoused(world).length < 1) return 0;
+      if (builtCount(world, 'prisonbed') >= 1) return 0;
+
+      // A room with a door, not a bunk in the corner of the hall. The isolation
+      // is the point — it is the same reason the sick and the well sleep apart —
+      // and `bedlessRooms` now counts a prison bunk as claiming its room, so
+      // `quarters` will not follow this in and put a settler next to the raider.
+      // Every empty room gets asked, not just the first one — the same loop
+      // `growQuarters` runs, for the same reason. This map generates caves, a
+      // cave is a small enclosed room, and `bedlessRooms` returns them in index
+      // order: taking `[0]` handed the bunk to a hole in the rock, failed to
+      // place it there, and reported "no cell block today" forever while a
+      // finished room stood empty three cells from the door.
+      if (affordsBuilding(world, 'prisonbed')) {
+        for (const room of bedlessRooms(world)) {
+          // Against a wall, like every other bunk this colony lays: see `beds`.
+          for (const cell of freeCells(world, room).reverse()) {
+            if (planBlueprint(world, 'prisonbed', cell.x, cell.y)) return 1;
+          }
+        }
+      }
+      return carveRoom(world);
     },
   },
   {

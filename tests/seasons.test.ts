@@ -21,9 +21,12 @@ import { makeStreams, stepWorld, stepWorldN } from '../src/sim/tick';
 import { CROP_NONE, cropAt, seasonScale, tickCrops } from '../src/sim/farming';
 import { outdoorTemp, seasonMeanTemp } from '../src/sim/temperature';
 import { alerts } from '../src/sim/alerts';
+import { snowShare } from '../src/sim/weather';
 import { addBuilding, addItem } from '../src/sim/world';
 import { roomAt } from '../src/sim/rooms';
+import { DecorView } from '../src/client/render/decor';
 import { TERRAIN_COLOR, seasonTint } from '../src/client/render/palette';
+import { WeatherView } from '../src/client/render/weather-view';
 import {
   DAYS_PER_SEASON,
   DAYS_PER_YEAR,
@@ -246,6 +249,46 @@ describe('the valley changes colour', () => {
     expect(winter.b).toBeGreaterThan(winter.r);
   });
 
+  it('takes the grass standing on that ground with it', () => {
+    // The ground has turned with the year since the season landed, and for every
+    // round since then the grass growing out of it did not: a midwinter frame
+    // showed frost-white ground with high-summer tufts standing in it, which
+    // reads less as a colony in winter than as two pictures overlaid. The scatter
+    // caches on a checksum and only the terrain was in that checksum, so the
+    // repaint has to happen with nothing else in the world touched — no cell
+    // mined, nothing built, nothing sown, only the clock moved on.
+    const summerDay = SEASONS.indexOf('summer') * DAYS_PER_SEASON + Math.round(DAYS_PER_SEASON / 2);
+    const winterDay = SEASONS.indexOf('winter') * DAYS_PER_SEASON + Math.round(DAYS_PER_SEASON / 2);
+    const world = onDay(summerDay);
+    const view = new DecorView(world);
+    const tufts = view.group.children[0] as THREE.InstancedMesh;
+    expect(tufts.count).toBeGreaterThan(0);
+    view.sync(world, world.tick);
+    const summer = new THREE.Color();
+    tufts.getColorAt(0, summer);
+    const settled = tufts.instanceColor!.version;
+
+    // A frame later on the same day costs nothing: the year enters the checksum
+    // as a whole step, so a scatter of eighty thousand instances is not rebuilt
+    // for a tint nobody could see move.
+    view.sync(world, world.tick + 60);
+    expect(tufts.instanceColor!.version).toBe(settled);
+
+    world.tick = (winterDay - 1) * TICKS_PER_DAY;
+    view.sync(world, world.tick);
+    expect(tufts.instanceColor!.version).toBeGreaterThan(settled);
+    const winter = new THREE.Color();
+    tufts.getColorAt(0, winter);
+    // And it went where the ground went. Frost lifts all three channels and lifts
+    // blue hardest — measured 1.96×, 1.25× and 5.11× — so the tuft ends up the
+    // pale blue-green of grass under snow light and not summer green turned up.
+    expect(winter.g).toBeGreaterThan(summer.g);
+    expect(winter.b).toBeGreaterThan(summer.b * 2);
+    expect(winter.b / summer.b).toBeGreaterThan(winter.r / summer.r);
+    expect(winter.r / summer.r).toBeGreaterThan(winter.g / summer.g);
+    view.dispose();
+  });
+
   it('moves every step of the way, never in four jumps', () => {
     // A season boundary must not be where the colour changes. Sampled around the
     // whole year, no single step may be much bigger than its neighbours — which
@@ -260,6 +303,94 @@ describe('the valley changes colour', () => {
     const biggest = Math.max(...steps);
     const typical = steps.reduce((a, b) => a + b, 0) / steps.length;
     expect(biggest).toBeLessThan(typical * 3);
+  });
+});
+
+/**
+ * And what the year drops on it.
+ *
+ * Rain and snow are one buffer of streaks with five uniforms moved between
+ * them, so the only thing that tells a July storm from a January one is the
+ * colour handed to the shader — which makes that single uniform the whole of
+ * the feature. It is also the one thing about the storm that is easy to get
+ * silently wrong now that the streaks are tone mapped like every other surface:
+ * what goes into the shader is light, and light is not linear in what it looks
+ * like. The mix therefore has to happen in the two palette colours and be
+ * converted to light once, at the end. Doing it the other way round — mixing
+ * the two converted values — compiles, type-checks, throws nothing and looks
+ * like a simplification, and it turns every sleet storm in the game into snow.
+ */
+describe('what the year drops on it', () => {
+  /** A world parked on a day and an hour with a storm forced over it. */
+  function storming(day: number, hour: number): World {
+    const world = onDay(day);
+    world.tick += Math.round((TICKS_PER_DAY * hour) / 24);
+    // Forced rather than waited for: a front is a dice roll, and a test that
+    // rolls the dice until it rains is a test that sometimes does not.
+    world.weather.kind = 'storm';
+    world.weather.blend = 1;
+    return world;
+  }
+
+  /** The colour that storm hands the streak shader. */
+  function falling(world: World): THREE.Color {
+    const view = new WeatherView();
+    view.sync(world, world.tick, { x: 0, y: 0 });
+    const streaks = view.group.children[0] as THREE.LineSegments;
+    const colour = (
+      (streaks.material as THREE.ShaderMaterial).uniforms.uColor!.value as THREE.Color
+    ).clone();
+    view.dispose();
+    return colour;
+  }
+
+  it('costs far more light to show a flake than a drop', () => {
+    const rain = falling(storming(1, 12));
+    const snow = falling(storming(13, 0));
+    expect(snowShare(storming(1, 12)), 'midsummer noon is no longer pure rain').toBe(0);
+    expect(snowShare(storming(13, 0)), 'a winter night is no longer pure snow').toBe(1);
+
+    for (const ch of ['r', 'g', 'b'] as const) {
+      expect(snow[ch], `snow is not brighter than rain in ${ch}`).toBeGreaterThan(rain[ch]);
+    }
+    // A flake is barely a quarter brighter than a drop to look at — 0xb6c9dc
+    // against 0xeef3fa — but it takes 4.5x the red light and 5.7x the blue to
+    // put it there, because the top of the tone curve is where the colours are
+    // being squeezed hardest and blue starts nearest the top. Blue rising most
+    // in light while rising least in appearance is the signature of the curve
+    // being applied at all; if these two ratios ever come out equal the streaks
+    // are being handed swatches again and the storm has gone flat.
+    expect(snow.b / rain.b, 'the streaks are no longer being converted for the tone curve').toBeGreaterThan(
+      snow.r / rain.r,
+    );
+  });
+
+  it('mixes sleet in the colours it is seen as, not in the light', () => {
+    const rain = falling(storming(1, 12));
+    const snow = falling(storming(13, 0));
+    const half = storming(12, 12);
+    const share = snowShare(half);
+    // Day twelve at noon sits within a couple of degrees of freezing, which is
+    // the only place sleet exists. If the temperature curve moves this hour off
+    // the middle, move the hour — do not widen the window, because a share near
+    // 0 or 1 makes everything below pass without measuring anything.
+    expect(share, 'day 12 at noon is no longer half-frozen; find another hour').toBeGreaterThan(0.35);
+    expect(share, 'day 12 at noon is no longer half-frozen; find another hour').toBeLessThan(0.65);
+
+    const sleet = falling(half);
+    for (const ch of ['r', 'g', 'b'] as const) {
+      expect(sleet[ch], `sleet is not between rain and snow in ${ch}`).toBeGreaterThan(rain[ch]);
+      expect(sleet[ch], `sleet is not between rain and snow in ${ch}`).toBeLessThan(snow[ch]);
+    }
+    // Half frozen, and only a sixth of the way from rain to snow in blue light:
+    // measured 0.562 where the midpoint of the two radiances is 1.059. That gap
+    // is the entire claim. Mixing after the conversion would land on 1.059 and
+    // a half-frozen sky would read as a blizzard.
+    const inLight = rain.clone().lerp(snow, share);
+    expect(
+      sleet.b,
+      'sleet is being mixed in radiance rather than in the palette colours — half-frozen now reads as snow',
+    ).toBeLessThan(inLight.b * 0.7);
   });
 });
 

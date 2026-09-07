@@ -434,6 +434,15 @@ describe('the sickbay the Steward builds', () => {
       stepWorld(world, streams);
       stewardTick(world, world.tick);
     }
+    // Two more days before the roll-call. On day eight this colony has its ward
+    // bed standing and a *second* one a few hours old, laid the moment the cold
+    // store freed the board — and a bed laid yesterday failing "is it built" is
+    // the fixture catching the Steward mid-stride, not an abandoned blueprint,
+    // which is the thing the assertion below is actually for.
+    for (let t = 0; t < TICKS_PER_DAY * 2; t++) {
+      stepWorld(world, streams);
+      stewardTick(world, world.tick);
+    }
     const medbeds = world.buildings.filter((b) => b.kind === 'medbed');
     expect(medbeds.length).toBeGreaterThan(0);
     for (const b of medbeds) {

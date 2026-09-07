@@ -364,6 +364,11 @@ export function joinWarParty(world: World, pawn: Pawn): void {
   const w = world.war;
   if (!w || w.phase !== 'mustering') return;
   w.pawns.push(pawn);
+  // Their claims come free before they march, exactly as a settler leaving with
+  // a caravan releases theirs — a job held by somebody who is off the map cannot
+  // be finished and cannot be taken off them. See `tickGraves` for what one
+  // orphaned build job costs a colony.
+  for (const j of world.jobs.slice()) if (j.pawnId === pawn.id) cancelJob(world, j.id);
   world.pawns = world.pawns.filter((p) => p.id !== pawn.id);
   if (w.pawns.length < WAR_PARTY) return;
   const h = holdingById(world, w.holdingId);

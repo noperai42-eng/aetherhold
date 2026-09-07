@@ -5,6 +5,7 @@
  */
 
 import * as THREE from 'three';
+import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 
 export type Quality = 'high' | 'medium' | 'low';
 
@@ -15,12 +16,20 @@ export interface QualitySettings {
   antialias: boolean;
   /** Extra decorative geometry (grass tufts, fire sparks) is skipped on low. */
   decor: boolean;
+  /**
+   * An environment map for the standard materials to reflect. A smooth surface
+   * only reads as smooth when something specular lands on it — a bevel lit by
+   * three directional lights alone is a bevel with three highlights and nothing
+   * between them, which is exactly the faceted look this is here to remove.
+   * Costs a handful of texture lookups per fragment, so low goes without.
+   */
+  environment: boolean;
 }
 
 export const QUALITY: Record<Quality, QualitySettings> = {
-  high: { maxPixelRatio: 2, shadows: true, shadowMapSize: 2048, antialias: true, decor: true },
-  medium: { maxPixelRatio: 1.5, shadows: true, shadowMapSize: 1024, antialias: true, decor: true },
-  low: { maxPixelRatio: 1, shadows: false, shadowMapSize: 512, antialias: false, decor: false },
+  high: { maxPixelRatio: 2, shadows: true, shadowMapSize: 2048, antialias: true, decor: true, environment: true },
+  medium: { maxPixelRatio: 1.5, shadows: true, shadowMapSize: 1024, antialias: true, decor: true, environment: true },
+  low: { maxPixelRatio: 1, shadows: false, shadowMapSize: 512, antialias: false, decor: false, environment: false },
 };
 
 /** Layer 0 is drawn by both cameras. These are view-specific overlays. */
@@ -41,6 +50,8 @@ export class Viewport {
   readonly scene: THREE.Scene;
   quality: Quality;
   private settings: QualitySettings;
+  /** The prefiltered environment, built once and kept until quality drops it. */
+  private environment: THREE.Texture | null = null;
 
   constructor(canvas: HTMLCanvasElement, quality: Quality) {
     this.quality = quality;
@@ -54,17 +65,49 @@ export class Viewport {
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.3;
+    // PCFSoft is the filter that gives a shadow a soft edge; `shadow.radius` is
+    // read only by the plain PCF and VSM filters, so it is deliberately not set.
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-    this.applySettings();
 
     this.scene = new THREE.Scene();
     this.scene.fog = new THREE.Fog(0x223040, 40, 130);
+    this.applySettings();
   }
 
   private applySettings(): void {
     const s = this.settings;
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, s.maxPixelRatio));
     this.renderer.shadowMap.enabled = s.shadows;
+    this.applyEnvironment();
+  }
+
+  /**
+   * The environment is a neutral, softly lit room — one broad light overhead
+   * and pale walls — prefiltered into the mip chain the standard materials
+   * sample for reflections. A room rather than the sky dome on purpose: the
+   * dome is one smooth gradient and reflects as one smooth nothing, while the
+   * room's light puts a highlight where a bevel turns and the walls put a
+   * gentle sheen everywhere else, which is what makes a rounded edge read as
+   * rounded at both camera distances.
+   *
+   * Built once. Its *strength* is not set here: it is the sky's to drive, hour
+   * by hour, because an environment held at a daytime level would light a
+   * midnight colony from every direction at once. See `SkyView.sync`.
+   */
+  private applyEnvironment(): void {
+    if (!this.settings.environment) {
+      this.environment?.dispose();
+      this.environment = null;
+      this.scene.environment = null;
+      return;
+    }
+    if (this.environment) return;
+    const pmrem = new THREE.PMREMGenerator(this.renderer);
+    const room = new RoomEnvironment();
+    this.environment = pmrem.fromScene(room, 0.04).texture;
+    room.dispose();
+    pmrem.dispose();
+    this.scene.environment = this.environment;
   }
 
   /**
@@ -101,6 +144,9 @@ export class Viewport {
   }
 
   dispose(): void {
+    this.environment?.dispose();
+    this.environment = null;
+    this.scene.environment = null;
     this.renderer.dispose();
   }
 }

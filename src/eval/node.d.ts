@@ -44,7 +44,12 @@ declare module 'node:os' {
 // to leave nothing behind. Nothing the game ships touches either.
 declare module 'node:fs' {
   export function readFileSync(path: string | URL, encoding: 'utf8'): string;
-  export function writeFileSync(path: string, data: string): void;
+  // Without an encoding Node hands back a Buffer, which is a Uint8Array. One
+  // caller: the export test, which reads a .glb back and has to see its bytes.
+  export function readFileSync(path: string): Uint8Array;
+  // `Uint8Array` for one caller: `src/tools/models.ts` writes .glb, and a glb is
+  // a binary file whose first four bytes have to survive being written.
+  export function writeFileSync(path: string, data: string | Uint8Array): void;
   export function mkdirSync(path: string, options?: { recursive?: boolean }): void;
   export function mkdtempSync(prefix: string): string;
   export function rmSync(path: string, options?: { recursive?: boolean; force?: boolean }): void;

@@ -24,6 +24,7 @@ import { yearPhase } from '../src/sim/seasons';
 import { BUILDING_COLOR, TERRAIN_COLOR, groundColor } from '../src/client/render/palette';
 import {
   MARK_COLOR,
+  Minimap,
   UNSEEN,
   cellAt,
   mapBuffer,
@@ -124,6 +125,87 @@ describe('the ground the map draws', () => {
     const buf = painted(world);
     // Same colour as every other unwalked cell — no shape leaking through.
     expect(pixelAt(world, buf, dark.x, dark.y)).toBe(darkerCells(world, buf, dark));
+  });
+});
+
+describe('haze that reads as ground nobody has been to', () => {
+  /**
+   * What the HUD's own chrome comes out at behind this panel, read off
+   * `.look/shots/r10ui/r10ui-7-hud-selected.png` with a dropper.
+   *
+   * For a long time the haze was this number exactly, and the round that found
+   * it is the reason these two tests exist: with the map and the frame around
+   * it at the same value there was no edge between them anywhere, and on day
+   * one — when the colony has walked a twentieth of the valley — the whole top
+   * left corner read as a dead rectangle with a stamp of colour floating in the
+   * middle. Not "you have not been there yet". A widget that failed to load.
+   */
+  const PANEL_CHROME = 0x141a22;
+  /** The floor the haze may never sink back under, in the three channels summed. */
+  const HAZE_FLOOR = 110;
+  /**
+   * And the ceiling, expressed the only way that means anything: how far under
+   * the ground beside it the haze has to stay. Sixty is twenty a channel, which
+   * is a step a player reads without looking for it. The darkest thing that can
+   * stand on seen ground is a tree, and a tree clears this by half again — so
+   * the number has room to be true and still bite if the haze is ever lifted
+   * toward the ground it is supposed to be hiding.
+   */
+  const HAZE_MARGIN = 60;
+
+  // ---------------------------------------------------------------- functional
+
+  it('keeps unwalked ground off black, and under the ground it borders', () => {
+    const world = opened(31);
+    const buf = painted(world);
+
+    const dark = darkCell(world);
+    const haze = pixelAt(world, buf, dark.x, dark.y);
+    expect(haze).toBe(UNSEEN);
+    expect(brightness(haze)).toBeGreaterThanOrEqual(HAZE_FLOOR);
+    // Above the panel it is set into, not level with it: that difference is the
+    // whole edge between the map and the interface holding it.
+    expect(brightness(haze)).toBeGreaterThan(brightness(PANEL_CHROME));
+    for (const channel of channels(haze)) expect(channel).toBeGreaterThanOrEqual(0x20);
+
+    // The other half of the same sentence. Lifting the haze off black is only
+    // safe while it stays unmistakably under the ground it runs up against —
+    // haze the player has to squint at to tell from moss would be worse than
+    // the black panel, because it would be lying about where they have been.
+    const edge = frontier(world);
+    const known = pixelAt(world, buf, edge.seen.x, edge.seen.y);
+    expect(pixelAt(world, buf, edge.unseen.x, edge.unseen.y)).toBe(UNSEEN);
+    expect(brightness(known) - brightness(haze)).toBeGreaterThanOrEqual(HAZE_MARGIN);
+  });
+
+  // ---------------------------------------------------------------- experience
+
+  it('leaves a colony on its first morning a map with two readable halves', () => {
+    // One tick in — a fresh valley with the colony's first look around it in
+    // and nothing else, because `createWorld` alone lights nothing and the
+    // haze is lifted by the explore pass. That is the picture every new player
+    // stares at for their first hour, and the one this panel was worst at.
+    const world = opened(20260906);
+    const buf = painted(world);
+    const cells = world.width * world.height;
+    const lit = countLit(world, buf);
+    expect(lit).toBeGreaterThan(0);
+    expect(lit).toBeLessThan(cells * 0.25);
+
+    // Every walked cell on the map, whatever happens to be standing on it —
+    // bare soil, a tree, the lake, a blueprint pegged out over any of them —
+    // clears the haze by a margin that survives a laptop panel at arm's length.
+    // One cell failing this is one cell that has quietly gone missing from the
+    // player's map, and a haze bright enough to swallow the darkest of them
+    // would take the whole shoreline with it.
+    let closest = Infinity;
+    for (let y = 0; y < world.height; y++) {
+      for (let x = 0; x < world.width; x++) {
+        if (!isSeen(world, x, y)) continue;
+        closest = Math.min(closest, brightness(pixelAt(world, buf, x, y)));
+      }
+    }
+    expect(closest - brightness(UNSEEN)).toBeGreaterThanOrEqual(HAZE_MARGIN);
   });
 });
 
@@ -442,6 +524,267 @@ describe('a map of a colony that has been played', () => {
   });
 });
 
+// ------------------------------------------------------- the panel it draws on
+
+/**
+ * Enough of a browser to build a `Minimap` in and watch it draw.
+ *
+ * There is no jsdom here — `touch.test.ts` hits the same wall from the other
+ * side and answers it the same way — and the interesting thing was never the
+ * pixels anyway. It is what the canvas gets *told*: how wide a settler is drawn,
+ * how thick the camera rectangle is, and which cell a thumb on the face comes
+ * back as. So the context writes its calls down and the tests read them.
+ */
+class FakeCtx {
+  fillStyle = '';
+  strokeStyle = '';
+  lineWidth = 0;
+  imageSmoothingEnabled = true;
+  /** Every mark, in the order it went down. */
+  readonly fills: { x: number; y: number; w: number; h: number }[] = [];
+  /** The line width in force at each `stroke()`. */
+  readonly strokes: number[] = [];
+  /** How wide the terrain was blitted — the drawing space, in one number. */
+  blit = 0;
+
+  setTransform(): void {}
+  clearRect(): void {}
+  createImageData(w: number, h: number): { data: Uint8ClampedArray } {
+    return { data: new Uint8ClampedArray(w * h * 4) };
+  }
+  putImageData(): void {}
+  drawImage(_src: unknown, _x: number, _y: number, w: number): void {
+    this.blit = w;
+  }
+  fillRect(x: number, y: number, w: number, h: number): void {
+    this.fills.push({ x, y, w, h });
+  }
+  beginPath(): void {}
+  moveTo(): void {}
+  lineTo(): void {}
+  closePath(): void {}
+  stroke(): void {
+    this.strokes.push(this.lineWidth);
+  }
+}
+
+class FakeCanvas {
+  width = 0;
+  height = 0;
+  readonly style: Record<string, string> = {};
+  readonly ctx = new FakeCtx();
+  /** Where the panel sits on the glass, which is what a click is measured from. */
+  rect = { left: 0, top: 0, width: 0, height: 0 };
+  private readonly handlers = new Map<string, Array<(e: unknown) => void>>();
+
+  getContext(): FakeCtx {
+    return this.ctx;
+  }
+  addEventListener(type: string, fn: (e: unknown) => void): void {
+    const list = this.handlers.get(type) ?? [];
+    list.push(fn);
+    this.handlers.set(type, list);
+  }
+  fire(type: string, ev: unknown): void {
+    for (const fn of this.handlers.get(type) ?? []) fn(ev);
+  }
+  getBoundingClientRect(): { left: number; top: number; width: number; height: number } {
+    return this.rect;
+  }
+  setPointerCapture(): void {}
+  hasPointerCapture(): boolean {
+    return false;
+  }
+  releasePointerCapture(): void {}
+}
+
+class FakeDiv {
+  id = '';
+  className = '';
+  readonly children: FakeCanvas[] = [];
+  append(...kids: FakeCanvas[]): void {
+    this.children.push(...kids);
+  }
+}
+
+/** What the panel is really that wide, in CSS pixels, on each of the two layouts. */
+const PHONE_FACE = 96;
+const DESK_FACE = 200;
+
+interface Rig {
+  map: Minimap;
+  face: FakeCanvas;
+  ctx: FakeCtx;
+  /** The last cell the map asked the camera to fly to. */
+  focused(): { x: number; y: number } | null;
+}
+
+/**
+ * Build a minimap on a phone or on a desk, hand it to `fn`, and put the globals
+ * back. The device pixel ratio is 2 on both because the backing store is not
+ * what is under test: what a player can or cannot see is CSS pixels of the panel
+ * in front of them.
+ */
+function panel(phone: boolean, fn: (rig: Rig) => void): void {
+  const g = globalThis as Record<string, unknown>;
+  const had = { win: 'window' in g, doc: 'document' in g, dpr: 'devicePixelRatio' in g };
+  const old = { win: g.window, doc: g.document, dpr: g.devicePixelRatio };
+  const screen = phone ? { width: 390, height: 844 } : { width: 1512, height: 945 };
+  g.window = {
+    matchMedia: (q: string) => ({ matches: q.includes('coarse') ? phone : false }),
+    screen,
+    innerWidth: screen.width,
+    innerHeight: screen.height,
+  };
+  g.document = {
+    createElement: (tag: string) => (tag === 'canvas' ? new FakeCanvas() : new FakeDiv()),
+  };
+  g.devicePixelRatio = 2;
+  try {
+    let focused: { x: number; y: number } | null = null;
+    const map = new Minimap((x, y) => {
+      focused = { x, y };
+    });
+    const face = (map.el as unknown as FakeDiv).children[0]!;
+    fn({ map, face, ctx: face.ctx, focused: () => focused });
+  } finally {
+    if (had.win) g.window = old.win;
+    else delete g.window;
+    if (had.doc) g.document = old.doc;
+    else delete g.document;
+    if (had.dpr) g.devicePixelRatio = old.dpr;
+    else delete g.devicePixelRatio;
+  }
+}
+
+/**
+ * A length in the drawing space, in real pixels of the panel: what the module
+ * drew into, against what the player is shown. Those are the same number now —
+ * that is the whole fix — and the assertion is still written as the division,
+ * because the bug was precisely that they were not.
+ */
+function realPx(ctx: FakeCtx, shown: number, n: number): number {
+  return (n * shown) / ctx.blit;
+}
+
+/** The widths the marks came out at, by `MiniMark.size`. */
+function sizes(world: World, rig: Rig, possessedId: number): Map<number, number> {
+  const marks = marksOf(world, possessedId);
+  expect(rig.ctx.fills).toHaveLength(marks.length);
+  return new Map(marks.map((m, i) => [m.size, rig.ctx.fills[i]!.w]));
+}
+
+/** A world with one of every mark size on it, and the settler to stand inside. */
+function peopled(): { world: World; me: number } {
+  const world = opened(31);
+  const site = world.sites[0]!;
+  // A landmark is the smallest mark there is, and none has been sighted yet.
+  revealAround(world, site.x, site.y, 2);
+  return { world, me: livingColonists(world)[0]!.id };
+}
+
+// ------------------------------------------------------------------ functional
+
+describe('the size the map is drawn at', () => {
+  it('draws every mark big enough to still be a mark on a phone', () => {
+    const { world, me } = peopled();
+    panel(true, (rig) => {
+      rig.map.update(world, null, world.pawns.find((p) => p.id === me)!);
+      for (const f of rig.ctx.fills) {
+        expect(f.w).toBe(f.h);
+        // Three real pixels of the ninety-six the panel is wide. Drawn into a
+        // two-hundred pixel space and shrunk by the stylesheet, as it was, a
+        // settler reached the screen at one and a half — which is to say the
+        // phone showed the ground and nobody standing on it.
+        expect(realPx(rig.ctx, PHONE_FACE, f.w)).toBeGreaterThanOrEqual(3);
+      }
+      // And the three sizes are still three sizes. A floor that flattened them
+      // would hide the body the player is inside among the landmarks.
+      const by = sizes(world, rig, me);
+      expect(by.get(1)).toBe(3);
+      expect(by.get(2)).toBe(4);
+      expect(by.get(3)).toBe(5);
+    });
+  });
+
+  it('leaves the desk drawing on the numbers it has always had', () => {
+    const { world, me } = peopled();
+    panel(false, (rig) => {
+      rig.map.update(world, null, world.pawns.find((p) => p.id === me)!);
+      expect(rig.ctx.blit).toBe(DESK_FACE);
+      const by = sizes(world, rig, me);
+      expect(by.get(1)).toBe(3);
+      expect(by.get(2)).toBe(4);
+      expect(by.get(3)).toBe(6);
+    });
+  });
+
+  it('keeps the camera rectangle at least a real pixel wide on both', () => {
+    const world = opened(31);
+    const quad = [
+      { x: 30, y: 30 },
+      { x: 60, y: 30 },
+      { x: 60, y: 50 },
+      { x: 30, y: 50 },
+    ];
+    panel(false, (rig) => {
+      rig.map.update(world, quad, null);
+      expect(rig.ctx.strokes).toEqual([1]);
+    });
+    panel(true, (rig) => {
+      rig.map.update(world, quad, null);
+      // The one thing on this panel that is allowed to grow as the face shrinks:
+      // it is the answer to "where am I looking", and it used to arrive at half
+      // a pixel, which is no answer at all.
+      expect(realPx(rig.ctx, PHONE_FACE, rig.ctx.strokes[0]!)).toBeGreaterThanOrEqual(1);
+    });
+  });
+
+  it('writes the size it drew at onto the element itself', () => {
+    // So the panel and this module can never be looking at different numbers —
+    // the stylesheet does not have to shrink the canvas any more, and if it
+    // still does it can only agree.
+    const world = opened(31);
+    panel(true, (rig) => {
+      rig.map.update(world, null, null);
+      expect(rig.face.style.width).toBe(`${PHONE_FACE}px`);
+      expect(rig.ctx.blit).toBe(PHONE_FACE);
+      expect(rig.face.width).toBe(PHONE_FACE * 2);
+    });
+    panel(false, (rig) => {
+      rig.map.update(world, null, null);
+      expect(rig.face.style.width).toBe(`${DESK_FACE}px`);
+      expect(rig.face.width).toBe(DESK_FACE * 2);
+    });
+  });
+});
+
+// ------------------------------------------------------------------ experience
+
+describe('a thumb on the map a phone shows', () => {
+  it('lands on the cell underneath it', () => {
+    const world = createWorld(1);
+    panel(true, (rig) => {
+      rig.map.update(world, null, null);
+      // The map's corner on a phone: four pixels in, under the top bar.
+      rig.face.rect = { left: 4, top: 56, width: PHONE_FACE, height: PHONE_FACE };
+      rig.face.fire('pointerdown', {
+        pointerId: 1,
+        clientX: 4 + 72,
+        clientY: 56 + 24,
+        preventDefault: () => {},
+      });
+      // Three quarters across and a quarter down the face the player is actually
+      // touching. A click still measured against the desk's two hundred would
+      // land at a third of that and take the camera somewhere nobody pointed.
+      expect(rig.focused()).toEqual({
+        x: Math.floor((72 / PHONE_FACE) * world.width),
+        y: Math.floor((24 / PHONE_FACE) * world.height),
+      });
+    });
+  });
+});
+
 // ------------------------------------------------------------------- helpers
 
 function lift(color: number): number {
@@ -462,6 +805,35 @@ function hueOrder(c: number): number[] {
     .map((v, i) => [v, i] as const)
     .sort((a, b) => b[0] - a[0])
     .map(([, i]) => i);
+}
+
+/** The three channels, so a floor can be put under each of them separately. */
+function channels(c: number): number[] {
+  return [(c >> 16) & 255, (c >> 8) & 255, c & 255];
+}
+
+/**
+ * A cell the colony has not seen with a cell it has right beside it — the edge
+ * of what is known, which is the one place the two colours have to be told
+ * apart while they are touching.
+ */
+function frontier(world: World): { seen: { x: number; y: number }; unseen: { x: number; y: number } } {
+  for (let y = 1; y < world.height - 1; y++) {
+    for (let x = 1; x < world.width - 1; x++) {
+      if (isSeen(world, x, y)) continue;
+      for (const [dx, dy] of [
+        [1, 0],
+        [-1, 0],
+        [0, 1],
+        [0, -1],
+      ]) {
+        if (isSeen(world, x + dx!, y + dy!)) {
+          return { seen: { x: x + dx!, y: y + dy! }, unseen: { x, y } };
+        }
+      }
+    }
+  }
+  throw new Error('the map has no edge between walked and unwalked ground');
 }
 
 /** Some other unwalked cell, so two of them can be compared. */

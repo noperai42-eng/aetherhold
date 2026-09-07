@@ -32,9 +32,9 @@
  */
 
 import { foodDays } from './alerts';
-import { caravansOf, settlementsOf } from './settlements';
+import { settlementsOf } from './settlements';
 import { TICKS_PER_DAY, type World } from './types';
-import { livingColonists, msg } from './world';
+import { awayCount, livingColonists, msg } from './world';
 
 /** Settlers alive and on the books. Prisoners do not count until they join up. */
 export const NEED_PEOPLE = 8;
@@ -126,9 +126,15 @@ export function bestStanding(world: World): number {
  * medicine would read as a bug rather than a rule. Plural since the colony can
  * field two — a charter that came apart because the *second* party was out would
  * be the same bug, found later and by a player.
+ *
+ * It was found later and by a player, in the other away party. This counted the
+ * caravans and not the war party, so ordering the march cost the banner three
+ * settlers on the spot — a charter coming apart for doing the thing the warfare
+ * road spends four rungs teaching you to want. `awayCount` is now the one place
+ * that knows how many ways there are to be off the map.
  */
 export function charters(world: World): Charter[] {
-  const away = caravansOf(world).filter((c) => !c.pawn.dead).length;
+  const away = awayCount(world);
   const people = livingColonists(world).length + away;
   const days = foodDays(world);
   const turrets = builtCount(world, 'turret');

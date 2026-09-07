@@ -1,91 +1,86 @@
 /**
- * Need-driven research cost two colonies their founding. Which project took the
- * bench, and what did it push behind it?
+ * Does the colony ever get a workbench, and if not, what is standing in front of it?
  *
- * The sixty-day grid that judged the change came back with two enforced
- * principles broken that had held the round before — `the-first-act-is-finishable`
- * (5 of 10 founded → 4) and `the-long-road-is-walked` (6 of 10 walked past the
- * near ring → 4). Both are downstream of a colony being slower, and the grid
- * reports only the ending, so it cannot say which project arriving late did it.
+ * Medicine is the only thing that stops a wound turning into an infection, and the
+ * only two ways to get any are a trader and the bench. `probe-collapse` found seed
+ * 1312 at `med 0` from day two to the day the last settler died, with the larder
+ * full the whole way — so the question is not whether the colony could afford
+ * medicine, it is whether anything ever told it to make some.
  *
- * This walks one colony a tick at a time and writes down every time the bench
- * changes hands: which day, which project, what the colony had to eat, and which
- * pressure the Steward named. Run it against the tree as it stands and again
- * against the tree with the change backed out, and the difference between the
- * two lists is the whole answer.
- *
- * One seed, sixty days, about two minutes — against an hour and a half for a
- * grid that would still only report the ending.
- *
- * Not under `src/sim` or `src/eval`, so it does not move the fingerprint.
- *
- *   npx rolldown scripts/probe-bench.ts --format esm --platform node -d .eval/build
- *   node .eval/build/probe-bench.js <label> [difficulty/seed ...]
+ * Prints, per day: the bench, the medicine on the shelf, and which ambition the
+ * Steward marked — because `knowhow` is what plans a bench and it sits below
+ * `quarters` in the list.
  */
-
-import { foodDays } from '../src/sim/alerts';
-import { available } from '../src/sim/research';
-import { researchWants } from '../src/sim/steward';
-import { makeStreams, stepWorld } from '../src/sim/tick';
-import { hasWon } from '../src/sim/victory';
 import { createWorld } from '../src/sim/worldgen';
-import { livingColonists } from '../src/sim/world';
-import { TICKS_PER_DAY, type Difficulty, type World } from '../src/sim/types';
+import { makeStreams, stepWorld } from '../src/sim/tick';
+import { countResource, livingColonists } from '../src/sim/world';
+import { CRAFT_DEFS } from '../src/sim/crafting';
+import { AMBITIONS } from '../src/sim/steward';
+import { unhoused } from '../src/sim/quarters';
+import { TICKS_PER_DAY, type World } from '../src/sim/types';
 
-const label = process.argv[2] ?? 'now';
-const pairs =
-  process.argv.length > 3 ? process.argv.slice(3) : ['settler/20260729', 'calm/1312', 'settler/7'];
+const days = Number(process.argv[2] ?? 40);
+const seeds = process.argv.slice(3).map(Number);
 
-const DAYS = 60;
+const built = (world: World, kind: string): number =>
+  world.buildings.filter((b) => b.built && b.kind === kind).length;
 
-for (const pair of pairs) {
-  const [difficulty, seed] = pair.split('/') as [Difficulty, string];
-  const world: World = createWorld(Number(seed), difficulty);
-  const streams = makeStreams(world);
-
-  let current: string | null = null;
-  let foundedOn: number | null = null;
-  const bench: string[] = [];
-
-  for (let tick = 0; tick < DAYS * TICKS_PER_DAY; tick++) {
-    stepWorld(world, streams);
-    if (world.research.current !== current) {
-      current = world.research.current;
-      const day = Math.floor(world.tick / TICKS_PER_DAY);
-      // The Steward's own line for the pick, taken from the log rather than
-      // recomputed — the point of the probe is what the colony was told.
-      const said = world.messages.at(-1)?.text ?? '';
-      // What was on the table when the bench changed hands, and what each of it
-      // was worth. The pick alone cannot say whether a project lost narrowly or
-      // was never in the running, and that difference is the whole fix.
-      const wants = researchWants(world);
-      const table = available(world)
-        .map((d) => {
-          const w = wants.get(d.id);
-          return `${d.id}:${(w?.score ?? 0).toFixed(2)}/${d.cost}`;
-        })
-        .join(' ');
-      bench.push(
-        `    day ${String(day).padStart(2)}  ${(current ?? '—').padEnd(14)}` +
-          `food ${foodDays(world).toFixed(1).padStart(5)}d  hands ${String(livingColonists(world).length).padStart(2)}  ` +
-          `done ${String(world.research.done.length).padStart(2)}  ${said.slice(0, 50)}\n` +
-          `             open  ${table}`,
-      );
-    }
-    if (foundedOn === null && hasWon(world)) foundedOn = Math.floor(world.tick / TICKS_PER_DAY);
-    if (world.gameOver) break;
+/**
+ * The raw food nobody has claimed, as heaps rather than a total — because a heap
+ * is what a recipe actually spends.
+ *
+ * `benchRecipe` asks `freeStack` for a *single* stack holding the whole cost, so
+ * twelve raw food in twelve heaps of one buys no balm at all. The colony's own
+ * comment on that function already names the trap for rifles ("ninety steel in
+ * three heaps of thirty"); this column asks whether medicine is falling into it.
+ */
+function heaps(world: World): { big: number; total: number; most: number } {
+  const cost = CRAFT_DEFS.balm.input.cost;
+  let big = 0;
+  let total = 0;
+  let most = 0;
+  for (const s of world.items) {
+    if (s.kind !== 'rawfood' || s.carriedBy !== null || s.reservedBy !== null) continue;
+    total += s.amount;
+    most = Math.max(most, s.amount);
+    if (s.amount >= cost) big++;
   }
+  return { big, total, most };
+}
 
-  // Why the bench stopped, when it stopped. A run that ends with projects still
-  // on offer and nothing being studied has lost either the lab or the Steward,
-  // and those are different bugs.
-  const labs = world.buildings.filter((b) => b.kind === 'lab');
-  console.log(
-    `${label}  ${pair}  founded ${foundedOn === null ? 'never' : `day ${foundedOn}`}  ` +
-      `done ${world.research.done.length}: ${world.research.done.join(' ')}\n` +
-      `    end: current=${world.research.current} open=${available(world).length} ` +
-      `labs=${labs.length} built=${labs.filter((b) => b.built).length} ` +
-      `hands=${livingColonists(world).length} over=${world.gameOver} tick=${world.tick}`,
-  );
-  for (const line of bench) console.log(line);
+for (const seed of seeds) {
+  const world = createWorld(seed, 'harsh');
+  const streams = makeStreams(world);
+  console.log(`\nseed ${seed}`);
+  for (let d = 0; d < days; d++) {
+    // Which ambition is holding the line, asked the way `tickSteward` asks it:
+    // the first one whose `mark` returns above zero ends the pass, so everything
+    // below it never runs. Asked once a day on a copy of the board is close
+    // enough to name the blocker without changing what the run does — `mark`
+    // plans blueprints, so this is read on the last tick of the day and the
+    // colony then lives with whatever it planned.
+    // Off by default, and that default is the point. `mark` is not a read: it
+    // plans blueprints, so asking every ambition what it wants *changes what the
+    // colony builds*. Naming the blocker is worth that; measuring when the bench
+    // lands is not, and the first run of this probe did both at once. `WHY=1`
+    // asks, plain runs only watch.
+    let holding = AMBITIONS.length > 0 && process.env.WHY ? '?' : 'n/a';
+    for (let t = 0; t < TICKS_PER_DAY; t++) stepWorld(world, streams);
+    if (process.env.WHY) for (const a of AMBITIONS) {
+      if (a.mark(world) > 0) {
+        holding = a.id;
+        break;
+      }
+    }
+    if (holding === '?') holding = '-';
+    const alive = livingColonists(world);
+    const h = heaps(world);
+    console.log(
+      `day ${String(d).padStart(2)}  crew ${alive.length}  bench ${built(world, 'bench')}  ` +
+        `med ${countResource(world, 'medicine')}  raw ${countResource(world, 'rawfood')}  ` +
+        `free ${h.total} in heaps, biggest ${h.most}, usable ${h.big}  ` +
+        `unhoused ${unhoused(world).length}  steward ${holding}`,
+    );
+    if (alive.length === 0) break;
+  }
 }

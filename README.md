@@ -2149,4 +2149,5 @@ quality presets.
 See [ARCHITECTURE.md](ARCHITECTURE.md) for the layout, [PLAYTEST.md](PLAYTEST.md) for the
 tour, [ACCEPTANCE.md](ACCEPTANCE.md) for what the build promised and which test holds each
 promise down, and [ENDGAME.md](ENDGAME.md) for what is still missing at the far end of a
-run.
+run. If you came for the models rather than the game, [ASSETS.md](ASSETS.md) turns the
+whole set into `.glb` with one command and says what another project needs to know.

@@ -409,6 +409,34 @@ export function livingColonists(world: World) {
   return world.pawns.filter((p) => p.faction === 'colony' && !p.dead);
 }
 
+/**
+ * Settlers who are alive and yours but not on the map.
+ *
+ * There are two ways off the map and for nine rounds the sim only knew about
+ * one. A caravan lifts its party out of `world.pawns` so nothing can path to,
+ * feed or shoot a body that is four days away, and every counter that had to
+ * care wrote `caravansOf(world).filter((c) => !c.pawn.dead).length` inline.
+ * Then `joinWarParty` started doing the same lift for the same reason, into
+ * `world.war` instead, and none of those inline sums learned about it — so the
+ * one question the game must never get wrong got it wrong: a colony whose home
+ * is wiped while three settlers are on the moor printed "Aetherhold has fallen.
+ * No settlers remain." with three settlers alive and walking back to it, and
+ * the founding charter dropped from 8/8 to 5/8 on the afternoon a player
+ * ordered the march the warfare road spends four rungs teaching them to want.
+ *
+ * So the sum lives here, once, and takes both kinds. The name is the invariant:
+ * anybody who adds a third way to be off the map has one place to add it, and a
+ * counter written against this helper picks it up without being found first.
+ *
+ * Deliberately *not* used by `colonySize`, and that is not an oversight —
+ * `settlements.ts` says why at the definition.
+ */
+export function awayCount(world: World): number {
+  const travelling = (world.caravans ?? []).filter((c) => !c.pawn.dead).length;
+  const marching = (world.war?.pawns ?? []).filter((p) => !p.dead).length;
+  return travelling + marching;
+}
+
 export function hostiles(world: World) {
   // `fauna` is deliberately excluded: a deer in the yard is not a raid, and every
   // caller here is asking "is the colony under attack" — job panic, wanderer

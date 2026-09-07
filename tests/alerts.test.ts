@@ -9,10 +9,11 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { alerts, foodDays } from '../src/sim/alerts';
+import { alerts, foodDays, fuelHours } from '../src/sim/alerts';
 import { createWorld } from '../src/sim/worldgen';
 import { makeStreams, stepWorldN } from '../src/sim/tick';
-import { addItem, countResource, livingColonists } from '../src/sim/world';
+import { addItem, countResource, livingColonists, takeResource } from '../src/sim/world';
+import { tickPower, WOOD_BURN_TICKS } from '../src/sim/power';
 import { igniteFire } from '../src/sim/events';
 import { afflict } from '../src/sim/health';
 import { isBed } from '../src/sim/buildings';
@@ -418,5 +419,148 @@ describe('what a player does about it', () => {
     expect(row!.pawnId).toBe(only.id);
     // And it sits under the raid, not over it: shooting outranks bookkeeping.
     expect(panel.indexOf(row!)).toBeGreaterThan(panel.findIndex((a) => a.id === 'raid'));
+  });
+});
+
+/**
+ * The other pantry.
+ *
+ * Wood is the only resource in this colony that is spent by machines rather than
+ * by people, which is why it was the only one nothing on screen ever counted. A
+ * generator eats a log every fifteen minutes of colony time while the grid is
+ * short and a campfire eats one every thirteen while its room is cold, and the
+ * first line either of them earned was `Grid short - N buildings off` — a
+ * sentence that is only ever printed after the cold store has already stopped.
+ * These tests hold the row to the same rule as the rest of the strip: it appears
+ * while there is still daylight to fell a tree in, and it goes away by itself.
+ */
+describe('the woodpile', () => {
+  it('says nothing to a colony with a winter of wood in the yard', () => {
+    const world = createWorld(1337);
+    expect(countResource(world, 'wood')).toBeGreaterThan(0);
+    expect(ids(world)).not.toContain('fuel');
+  });
+
+  it('counts nothing at all in a colony where nothing burns wood', () => {
+    const world = createWorld(1337);
+    for (const b of world.buildings) if (b.kind === 'generator') b.built = false;
+    // Not zero hours — no hours. A colony with no fires is not running out of
+    // fuel, and an urgent row saying it was would be the strip crying wolf on
+    // every solar-and-batteries colony in the game.
+    expect(fuelHours(world)).toBeNull();
+    expect(ids(world)).not.toContain('fuel');
+  });
+
+  it('warns while there is still a working day in the pile, and shouts on the last log', () => {
+    const world = createWorld(1337);
+    takeResource(world, 'wood', 10_000);
+    // One generator burning one log every WOOD_BURN_TICKS is four and a half
+    // hours a log, so two logs is most of a night.
+    addItem(world, 'wood', 2, 34, 34);
+    expect(fuelHours(world)).toBeCloseTo(9, 6);
+    expect(find(world, 'fuel')?.level).toBe('warn');
+    expect(find(world, 'fuel')?.text).toContain('9 hours');
+
+    takeResource(world, 'wood', 10_000);
+    expect(find(world, 'fuel')?.level).toBe('urgent');
+    expect(find(world, 'fuel')?.text).toBe('No wood left to burn');
+  });
+
+  it('does not count a generator a flare has stopped from turning over', () => {
+    const world = createWorld(1337);
+    takeResource(world, 'wood', 10_000);
+    addItem(world, 'wood', 1, 34, 34);
+    expect(find(world, 'fuel')?.level).toBe('warn');
+
+    world.storyteller.flareUntil = world.tick + TICKS_PER_DAY;
+    // The grid is dead and the firebox is cold, so the woodpile is not being
+    // spent at all — and the flare row is already saying the true thing about
+    // the same hour. Two rows for one outage is how a strip stops being read.
+    expect(fuelHours(world)).toBeNull();
+    expect(ids(world)).not.toContain('fuel');
+    expect(ids(world)).toContain('flare');
+
+    world.storyteller.flareUntil = 0;
+    expect(ids(world)).toContain('fuel');
+  });
+});
+
+describe('who is actually coming for the settler on the floor', () => {
+  it('promises a doctor when one really can come', () => {
+    const world = createWorld(1337);
+    const p = livingColonists(world)[0]!;
+    p.downed = true;
+    expect(find(world, `downed:${p.id}`)?.hint).toContain('Doctor priority will come');
+  });
+
+  it('does not promise one to a colony lying unconscious in its own yard', () => {
+    const world = createWorld(1337);
+    const all = livingColonists(world);
+    expect(all.length).toBeGreaterThan(1);
+    for (const p of all) p.downed = true;
+
+    const rows = alerts(world).filter((a) => a.id.startsWith('downed:'));
+    // The defect, exactly: one row per body, every one of them saying help was
+    // on its way, on the afternoon that sentence was most completely false.
+    expect(rows).toHaveLength(all.length);
+    expect(rows.every((a) => !a.hint.includes('will come'))).toBe(true);
+    expect(rows[0]!.hint).toContain('Nobody is on their feet');
+  });
+
+  it('names the draft when everyone still standing is holding a rifle', () => {
+    const world = createWorld(1337);
+    const [patient, ...rest] = livingColonists(world);
+    patient!.downed = true;
+    for (const p of rest) p.drafted = true;
+    // The commonest way to lose somebody the game had already saved: the raid
+    // ends, one settler is down, and the survivors stay drafted because nothing
+    // says undrafting them is the thing that fetches the stretcher.
+    expect(find(world, `downed:${patient!.id}`)?.hint).toContain('Undraft one with T');
+  });
+
+  it('names the work board when nobody has doctoring switched on', () => {
+    const world = createWorld(1337);
+    const [patient, ...rest] = livingColonists(world);
+    patient!.downed = true;
+    for (const p of rest) p.priorities.doctor = 0;
+    expect(find(world, `downed:${patient!.id}`)?.hint).toContain('work board');
+  });
+
+  it('says feed them first when the only hands left are starving too', () => {
+    const world = createWorld(1337);
+    const [patient, ...rest] = livingColonists(world);
+    patient!.downed = true;
+    for (const p of rest) p.needs.food = 0;
+    // `jobs.ts` refuses the errand at this point on purpose — a rescuer running
+    // on empty deals with that first or two die instead of one — so the hint
+    // has to name the food, not the stretcher.
+    expect(find(world, `downed:${patient!.id}`)?.hint).toContain('starving themselves');
+  });
+});
+
+// -------------------------------------------------------------- experience
+
+describe('a colony that runs out of wood', () => {
+  it('hears about the woodpile before the grid starts shedding, not after', () => {
+    const world = createWorld(1337);
+    tickPower(world);
+    expect(world.power!.shed).toBe(0);
+    expect(ids(world)).not.toContain('fuel');
+
+    takeResource(world, 'wood', 10_000);
+    addItem(world, 'wood', 2, 34, 34);
+    tickPower(world);
+
+    // Nine hours of notice, with the lamps still lit and nothing yet lost.
+    expect(ids(world)).toContain('fuel');
+    expect(ids(world)).not.toContain('power');
+    expect(world.power!.shed).toBe(0);
+
+    // And here is the row the player used to get first. Everything it reports
+    // has already happened.
+    for (let t = 0; t < WOOD_BURN_TICKS * 3; t++) tickPower(world);
+    expect(world.power!.shed).toBeGreaterThan(0);
+    expect(ids(world)).toContain('power');
+    expect(ids(world)).toContain('fuel');
   });
 });

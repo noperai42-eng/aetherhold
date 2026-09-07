@@ -13,6 +13,7 @@
 import { describe, expect, it } from 'vitest';
 import { createWorld } from '../src/sim/worldgen';
 import { addBuilding, msg } from '../src/sim/world';
+import { createJob, isBuildingTargeted } from '../src/sim/jobs';
 import { makeStreams, stepWorld, stepWorldN } from '../src/sim/tick';
 import { alerts } from '../src/sim/alerts';
 import {
@@ -201,6 +202,50 @@ describe('a body is a problem you can fix', () => {
     // Otherwise the corpse evaporates out of the arms of the settler carrying it
     // to the grave, which is the one moment the player is watching.
     expect(world.pawns.some((p) => p.id === victim!.id)).toBe(true);
+  });
+
+  // A job whose owner is not in `world.pawns` can never be worked and can never
+  // be taken off them, so the thing it claims is claimed forever. Measured on
+  // seed 7: a rotted settler's queued `build` held one fence frame from day 11 to
+  // day 33, `boardClear` stayed false the whole time, and every Steward ambition
+  // below `yard` — the turret above all — never ran once on 158 unspent steel.
+  it('takes a rotted settler’s claims with them', () => {
+    const world = createWorld(21);
+    const [dead, alive] = settlers(world);
+    const frame = addBuilding(world, 'fence', Math.round(alive!.x) + 2, Math.round(alive!.y), false)!;
+    const job = createJob(world, fell(dead!), 'build', frame.x, frame.y, { buildingId: frame.id });
+    expect(isBuildingTargeted(world, frame.id)).toBe(true);
+
+    world.tick = 0;
+    for (let i = 0; i < Math.ceil((ROT_TICKS * 1.5) / GRAVE_INTERVAL); i++) {
+      world.tick += GRAVE_INTERVAL;
+      tickGraves(world);
+    }
+
+    expect(world.pawns.some((p) => p.id === dead!.id)).toBe(false);
+    expect(world.jobs.some((j) => j.id === job.id)).toBe(false);
+    // The point of all of it: somebody still living can pick the frame back up.
+    expect(isBuildingTargeted(world, frame.id)).toBe(false);
+  });
+
+  // The control. Rot is not a licence to tidy up other people's work — a body
+  // going cold on the far side of the map must not cancel the job of the settler
+  // standing over it.
+  it('leaves the living settler’s claim exactly where it was', () => {
+    const world = createWorld(22);
+    const [dead, alive] = settlers(world);
+    const frame = addBuilding(world, 'fence', Math.round(alive!.x) + 2, Math.round(alive!.y), false)!;
+    const job = createJob(world, alive!, 'build', frame.x, frame.y, { buildingId: frame.id });
+    fell(dead!);
+
+    world.tick = 0;
+    for (let i = 0; i < Math.ceil((ROT_TICKS * 1.5) / GRAVE_INTERVAL); i++) {
+      world.tick += GRAVE_INTERVAL;
+      tickGraves(world);
+    }
+
+    expect(world.jobs.some((j) => j.id === job.id)).toBe(true);
+    expect(isBuildingTargeted(world, frame.id)).toBe(true);
   });
 
   it('only runs on its interval', () => {

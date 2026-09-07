@@ -20,6 +20,7 @@
 import * as THREE from 'three';
 
 import { precipitation, snowShare, windStrength } from '../../sim/weather';
+import { radianceFor } from './sky';
 import type { QualitySettings } from './renderer';
 import type { World } from '../../sim/types';
 
@@ -54,6 +55,18 @@ const SNOW_STREAK = 0.22;
 const SNOW_SWAY = 0.55;
 /** Allocated once — `sync` runs every frame and must not make garbage. */
 const SNOW_TINT = new THREE.Color(SNOW_COLOR);
+/**
+ * Where rain and snow are mixed before the mix is converted for the shader.
+ *
+ * The lerp has to happen in the colours above, not in the radiance the shader
+ * gets. Sleet is halfway between a raindrop and a flake *to look at*, and the
+ * tone curve is squeezing hard by the time it reaches a flake, so a half-frozen
+ * sky sits only about a sixth of the way from rain to snow in light — measured
+ * 0.56 in blue where the midpoint of the two radiances is 1.06. Mixing after
+ * the conversion is one character shorter and turns every sleet storm in the
+ * game into a blizzard.
+ */
+const TINT = new THREE.Color();
 
 const RAIN_VERT = /* glsl */ `
   uniform float uTime;
@@ -103,6 +116,18 @@ const RAIN_VERT = /* glsl */ `
   }
 `;
 
+/**
+ * Three chunks and their order is the whole of it.
+ *
+ * Fog first, because fog is something the air does to light on its way here and
+ * it has to happen while the value is still light. Then the tone curve, then the
+ * encode into the sRGB framebuffer — the tail every other material in the scene
+ * gets from three and this one, writing `gl_FragColor` by hand, has to ask for.
+ * Without the last two the streaks were the only transparent thing in the game
+ * blending in a different space from what they were blending over, which is a
+ * storm that never quite lands on the colony it is falling on. `uColor` arrives
+ * as radiance (`radianceFor`) so that these can be here.
+ */
 const RAIN_FRAG = /* glsl */ `
   uniform vec3 uColor;
   uniform float uOpacity;
@@ -112,6 +137,8 @@ const RAIN_FRAG = /* glsl */ `
   void main() {
     gl_FragColor = vec4(uColor, uOpacity);
     #include <fog_fragment>
+    #include <tonemapping_fragment>
+    #include <colorspace_fragment>
   }
 `;
 
@@ -180,7 +207,7 @@ export class WeatherView {
       uSpeed: { value: 26 },
       uStreak: { value: 1 },
       uSway: { value: 0 },
-      uColor: { value: new THREE.Color(RAIN_COLOR) },
+      uColor: { value: radianceFor(TINT.setHex(RAIN_COLOR), new THREE.Color()) },
       uOpacity: { value: 0 },
     };
 
@@ -235,7 +262,7 @@ export class WeatherView {
     this.uniforms.uSpeed.value = mix(RAIN_SPEED + wind * 22, SNOW_SPEED + wind * 3.2, frozen);
     this.uniforms.uStreak.value = mix(1, SNOW_STREAK, frozen);
     this.uniforms.uSway.value = SNOW_SWAY * frozen;
-    this.uniforms.uColor.value.setHex(RAIN_COLOR).lerp(SNOW_TINT, frozen);
+    radianceFor(TINT.setHex(RAIN_COLOR).lerp(SNOW_TINT, frozen), this.uniforms.uColor.value);
     // Snow hangs in the air rather than falling through it, so the same amount
     // of weather reads as much thicker — which is what makes a blizzard feel
     // like one without spending a single extra drop on it.

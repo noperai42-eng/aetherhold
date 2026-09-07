@@ -37,6 +37,24 @@ export class Input {
 
   // ---- touch, as raw as the mouse state above ----
 
+  /**
+   * True once the player has done anything at all with their hands, and never
+   * false again.
+   *
+   * This exists because of audio. A browser refuses to start an `AudioContext`
+   * until a gesture has happened, so the app watches for one and unlocks — and
+   * what it used to watch for was a left click or the space bar. Neither of
+   * those exists on a phone. A player could found a colony, fight a raid and
+   * lose it on a touchscreen with the whole soundtrack sitting behind a lock
+   * nothing on the device could open, and the only door through was entering
+   * first person, which also calls `unlock`.
+   *
+   * Sticky rather than a per-frame flag, and set by *any* first contact rather
+   * than by a tap, because a tap is the one gesture a player might never make:
+   * dragging the camera around the valley is a gesture, means the same thing to
+   * the browser, and used to unlock nothing.
+   */
+  hasGestured = false;
   /** True once this session has seen a finger. The HUD reads it to change its advice. */
   touchSeen = false;
   /** A finger touched and lifted without travelling. Position is in `clientX`/`ndcX`. */
@@ -71,6 +89,7 @@ export class Input {
       const ev = e as KeyboardEvent;
       if (ev.repeat) return;
       if (isTypingTarget(ev.target)) return;
+      this.hasGestured = true;
       this.down.add(ev.code);
       this.pressedThisFrame.add(ev.code);
       // The browser's own bindings for these get in the way of playing.
@@ -91,6 +110,7 @@ export class Input {
     });
     this.on(el, 'mousedown', (e) => {
       const ev = e as MouseEvent;
+      this.hasGestured = true;
       this.mouseButtons.add(ev.button);
       this.clickedThisFrame.add(ev.button);
       this.readPosition(ev);
@@ -126,6 +146,7 @@ export class Input {
       // Stops iOS synthesising a mouse click a moment later, and stops the page
       // from treating a drag across the world as a scroll.
       ev.preventDefault();
+      this.hasGestured = true;
       this.touchSeen = true;
       this.touches.set(ev.pointerId, { x: ev.clientX, y: ev.clientY });
       this.el.setPointerCapture?.(ev.pointerId);

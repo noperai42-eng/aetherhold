@@ -204,10 +204,16 @@ const GOALS: Goal[] = [
   },
   {
     id: 'coldstore',
-    title: 'Build a cold store for the food',
-    hint: 'Power tab → Cooler, in a walled room with the stockpile. Meals keep for days in the cold and hours in the sun.',
-    earned: 'the food is in the cold',
-    measure: (w) => ({ at: builtCount(w, 'cooler'), of: 1 }),
+    // This counted one cooler until the Steward learnt to wall a cold store
+    // itself (`sim/steward.ts`, the `cellar` ambition), and then it was narrating
+    // the AI instead of the player — the same thing that happened to `floor` and
+    // then to `turret`. The Steward stops at one: `cellar` goes quiet the moment
+    // a cooler stands in a room, so the second is the first the colony will never
+    // buy for you, and the goal is a decision again.
+    title: 'Stand a second cooler over the stores',
+    hint: 'Power tab → Cooler, in a walled room with the stockpile. The colony builds the first cellar itself; a bigger cold room needs more than one machine.',
+    earned: 'the food is in the cold and stays there',
+    measure: (w) => ({ at: builtCount(w, 'cooler'), of: 2 }),
   },
   {
     id: 'turret',

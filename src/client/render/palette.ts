@@ -253,12 +253,25 @@ export const SKY_DUSK = new THREE.Color(0xc4784a);
 export const HORIZON_DAY = new THREE.Color(0xcfdce6);
 export const HORIZON_NIGHT = new THREE.Color(0x1b2634);
 /**
+ * The band the sky goes to in the last few degrees above the horizon by day —
+ * warmer and lighter than `HORIZON_DAY`, which is the colour of the lower sky
+ * in general. Without it the dome is one blue running into one paler blue, and
+ * read from eye level at noon it is a wall of one colour. This is the cream a
+ * clear sky actually thins to where the air is thickest.
+ */
+export const HORIZON_WARM = new THREE.Color(0xefe4d0);
+/**
  * The flat grey a fully overcast noon sky lerps toward. Slightly blue rather than
  * neutral: a pure grey dome reads as a rendering failure, a cool one reads as cloud.
  */
 export const OVERCAST_DAY = new THREE.Color(0x9fa8b2);
 
-export const SUN_DAY = new THREE.Color(0xfff2d8);
+// A few percent toward amber from the near-white it was. On the real renderer
+// the noon picture came out neutral-to-green: a pale key over a blue sky bounce
+// and a warm ground bounce averages to grey, and ACES pulls grey toward green.
+// The key has to be the warm thing so that the shade, lit by the sky alone,
+// reads blue against it.
+export const SUN_DAY = new THREE.Color(0xffeec8);
 export const SUN_DUSK = new THREE.Color(0xff9d5c);
 export const MOON = new THREE.Color(0x8ea8cc);
 
@@ -278,18 +291,23 @@ export const FACTION_COLOR = {
 
 /** Hide colours for the grazing herds. Warmer and duller than anything wearing cloth. */
 export const ANIMAL_COLOR = {
-  mossback: 0x6f6244,
-  dunhare: 0x9c8a68,
+  mossback: 0x6e5c42,
+  // Sandy dun. The belly and the scut are drawn paler off this by the rig, so
+  // the coat itself stays a colour and not the near-white it tinted to.
+  dunhare: 0x9a8560,
   // Rust, against the two dun browns and the grey. A brambletail is the smallest
   // thing on the map — three tenths of a mossback — so it cannot rely on shape to
   // be picked out of grass at manager zoom, and a player who is meant to notice
   // that the moor has more of them this month than last has to be able to count
   // them at a glance. The colour is doing the work the silhouette cannot.
   brambletail: 0xa4552c,
-  // Cold where the other two are warm. A fenwolf has to read as *not one of the
-  // herd* from across the map at manager zoom, before its shape resolves at all,
-  // because the whole decision it asks for is "is that thing in my pen mine".
-  fenwolf: 0x494551,
+  // Grey where the other three are brown. A fenwolf has to read as *not one of
+  // the herd* from across the map at manager zoom, before its shape resolves at
+  // all, because the whole decision it asks for is "is that thing in my pen
+  // mine". It was a cold blue-grey, and the per-animal tint, built for cloth,
+  // turned that through to lavender: the grey is warm now, a grey-brown, so a
+  // step either way on the wheel is still a wolf's coat.
+  fenwolf: 0x5f574d,
 } as const;
 
 /** A stable per-pawn clothing tint from their colorSeed, so bodies read apart. */

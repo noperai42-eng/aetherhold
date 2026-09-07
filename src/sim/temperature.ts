@@ -202,7 +202,7 @@ export function roomTargets(world: World): Map<number, number> {
 }
 
 /** How long one log keeps a campfire going. Six per game day, at 240 s a day. */
-const CAMPFIRE_BURN_TICKS = 800;
+export const CAMPFIRE_BURN_TICKS = 800;
 
 /** A campfire lights itself when its room falls below this. */
 export const CAMPFIRE_LIGHT_BELOW = 15;

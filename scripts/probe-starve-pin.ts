@@ -27,7 +27,7 @@ const seeds = [7, 424242, 1312, 99001, 20260729, 1234, 31, 5150, 8675309, 202609
 const difficulties: Difficulty[] = ['harsh', 'settler'];
 
 console.log('starvation columns · past founding');
-console.log('days  difficulty  seed       feet   floor  stranded   unfed  fits  verdict');
+console.log('days  difficulty  seed       feet   floor  stranded   unfed  fits  cost  verdict');
 for (const days of dayOptions) {
   for (const difficulty of difficulties) {
     for (const seed of seeds) {
@@ -38,7 +38,12 @@ for (const days of dayOptions) {
       // file, run without it, put harsh/424242 at 155.7 h upright at zero over
       // twenty days against the grid's 6.5 h over sixty. Both numbers are real.
       // Neither is about the other's colony.
+      // The clock, because this file sits nearest the 300 s per-test ceiling and
+      // a pin chosen on the columns alone has twice been backed out on cost. A
+      // candidate that fits and costs 90 s is not a candidate.
+      const started = Date.now();
       const r = runColony({ seed, days, difficulty, playPastFounding: true, steward: false });
+      const secs = (Date.now() - started) / 1000;
       const last = r.snapshots[r.snapshots.length - 1]!;
       // Exactly what `tells a walk home from a wait on the floor…` asserts, so a
       // run that reads `yes` here is a run the pin can be moved to unchanged.
@@ -59,6 +64,7 @@ for (const days of dayOptions) {
         last.strandedStarveHours.toFixed(1).padStart(10),
         last.unfedStarveHours.toFixed(1).padStart(8),
         (fits ? 'yes' : 'no').padStart(6),
+        `${secs.toFixed(0)}s`.padStart(6),
         '  ' + r.verdict,
       ];
       console.log(cells.join(''));

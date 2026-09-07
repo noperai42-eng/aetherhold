@@ -4,6 +4,812 @@ One round, one measured gap, one fix. Newest first.
 
 ---
 
+## 2026-09-06 — Round eleven, and the colour a stone is not
+
+**Track: the rendered game.** Three lanes, briefed straight off round ten's *still wrong* list
+with no interpretation needed: the tree's root flare, the scatter stones and the grass at manager
+zoom, and the settler silhouette at the zoom `3-colony` is taken at. The frames judged are `r10b`
+against `r11b` — `r11b` and not the round's own `r11`, because `r11` is the set that caught the
+regression below, and a fix has to be photographed before the round can close.
+
+### Better
+
+**The tree stands in the ground instead of on it.** `roots()` in `buildings.ts` takes the trunk
+lathe and pushes its lowest rings out along a five-lobed and a three-lobed wave a little out of
+step, dying out as `1 − (y / ROOT_RISE)²`, so the girth at the foot is carried by four or five
+root swells rather than by the flat disc the old profile flared into. Round ten called that disc
+a plant pot and it was the right word. No face of the new foot at ground level is more than
+thirty degrees off vertical, which is the measurement that separates a bole from a saucer, and it
+is pinned by a test rather than by the picture.
+
+**The stones broke off something.** The scatter dropped from a once-subdivided icosahedron to the
+bare twenty-sided one and the displacement rose from nine hundredths of the radius to three
+tenths, so no two faces are the same size and every lump has twenty flat sides and hard edges. On
+top of that: a per-face tone bake, free rotation, a size range widened from three-to-one to
+four-to-one weighted toward the chip, and twelve independent hashes where three had been doing
+all the work — so a big stone is no longer always turned the same way and always the same shade.
+In `2b-closeup` the pebbles two metres from the rock outcrop used to read as eggs beside it; they
+now read as pieces of the same rock. It is also a quarter of the triangles, and the stones are
+the one thing in `decor.ts` that casts a shadow, so the saving is taken twice.
+
+**The grass covers the ground at both zooms.** Seven tufts a cell instead of five, placed on a
+per-cell phase of the R2 low-discrepancy set rather than on independent hashes — which is what
+actually closed the holes; more tufts scattered independently is more scatter, not more cover. In
+`4-firstperson` the field went from marks printed on the turf to a sward you are standing in, and
+at the manager zoom of `3-colony` it stopped flattening back into chevrons, which was round ten's
+specific complaint. The thinning over worn ground is unchanged in effect: seven tufts at 0.075
+each on top of the flat 0.3 is the same 0.75 ceiling that five at 0.11 and three at 0.22 were.
+
+**A settler has arms.** `ARM_SPLAY` rolls each shoulder out by 0.12 radians and the sleeves take
+their own material off `sleeveOf(cloth)`. From directly overhead — which is exactly how
+`1-settlers` and `3-colony` see a person — the arms used to merge into the torso and the figure
+was a blue lozenge with a head on it. The gap between arm and body reads at both zooms now.
+
+The frame is heavier by the grass and lighter by the stones, and the grass wins: **123 draw calls
+/ 8,357,792 triangles**, against round ten's 123 / 8,000,822. Same binds, 4.5 % more work for the
+card.
+
+### The regression this round shipped, photographed, and fixed
+
+**The stones came out pink.** The lane that gave the stones their facets also widened the
+per-instance tone to match — hue from a sixteenth of a turn either way to a twelfth, saturation
+from a twentieth to a quarter. That is what a *smooth* lump wants: a smooth lump has one
+highlight sliding over it and needs colour to tell it from its neighbour. A faceted one does not.
+Twenty flat sides at twenty angles is already the whole of the variety, and the tone spent on top
+of it went somewhere the eye reads as a material rather than as a stone. `STONE_COLOR` is a
+mid-grey carrying a tenth of a saturation at hue 33°; a sixth of a turn down the wheel lands at
+11°, and a quarter of added saturation on top of that is a pink.
+
+Measured off the frames rather than argued: six chips in `2b-closeup` span 18.0° to 41.2° of hue
+in `r11` and 28.9° to 36.5° in `r11b` — a spread of 23° cut to 8°, with the low end, which is the
+end that reads as pink, moved 11° back up the wheel. In `5-dusk`, where the low sun pushes what
+is already warm further, the worst chip sat at hue 4.3° and now sits at 13.3°; the dusk scatter
+as a whole is no more saturated than round ten's eggs were at the same hour, and is a great deal
+better shaped.
+
+Hue is back inside a tenth of a turn, saturation to the tenth it was photographed at for ten
+rounds, lightness untouched. What survives is the part that was right: three properties on three
+independent hashes, so the field is still not one stamp — it is a field of grey stones that
+differ, rather than a field of stones that differ in colour.
+
+Nothing in the suite could see it, and that is the more useful half. The existing stone test
+checks a *lightness* band, and a pink of the right lightness is a pink; the variety test beside
+it is actively **satisfied** by the defect, because a pink stone is certainly not the same colour
+as its neighbour. `keeps every stone a grey, never a colour` writes down the two numbers a grey
+actually is — saturation under a fifth, hue inside the brown wedge — read in sRGB rather than in
+the linear working space, because the question is what the frame looked like and not what the
+buffer held.
+
+The grass gained the same kind of pin. `WEAR_COST_PER_TUFT` came down from 0.11 to 0.075 to keep
+the ceiling where two more tufts a cell would have pushed it, and that compensation was arithmetic
+in a comment and nothing else: raise the tufts-per-cell count again without lowering the step and
+the last tuft's y scale goes through zero into negative, which is a clump drawn upside down
+through the turf it stands on. The yard-versus-open-ground test could not have caught it — it
+compares averages, and a negative height makes an average *smaller*, so it would have gone green
+while the grass grew into the ground.
+
+### Still wrong
+
+- **The tree foot still catches red at dusk.** Smaller and less disc-like than round ten's saucer
+  and no longer the worst thing in `5-dusk`, but the roots take the low sun's warm light on
+  `BARK` and come out orange-red against green turf. The disc was the bug and the disc is fixed;
+  the colour under a low sun is a separate question nobody has asked yet.
+- **The minimap panel is still a 300-pixel box holding a 90-pixel picture.** Carried from round
+  ten unchanged, and `6-hud-colony` shows it is still the largest empty thing in the left column.
+- **The message log sits on top of the third crew card.** At the desk viewport the log panel's top
+  edge cuts through Pell Emberly's MOOD row in `6-hud-colony`. Both panels are draggable, so this
+  is a default-position defect and not a layout impossibility.
+
+### The harness
+
+`r11` came back 13/16 — `Page.captureScreenshot` timed out on `8-phone-details`, the frame taken
+immediately after tapping a roster row, and the `catch` took `8-phone-events` and `8-phone-more`
+with it. `r11b` took all sixteen from the same code on the same seed, so this is the contention
+timeout this project has seen before and not a slow frame in the game. The protocol timeout is
+already fifteen minutes; nothing is worth changing until it reproduces.
+
+### Verified
+
+- `npx tsc --noEmit -p .` — clean.
+- `npx vitest run` — the whole suite: **2319 passed, 13 skipped**, 116 files, 1520 s.
+- Two new tests written against the values that break them: reverting the stone tone widths turns
+  `keeps every stone a grey, never a colour` red, and raising `TUFTS_PER_CELL` without lowering
+  the step turns `leaves the last tuft on the barest cell standing` red. A test nobody has watched
+  fail is a test nobody has checked.
+- `r11b: 0 console errors, 26 showcase buildings stood, 17 ms/frame, colony frame 123 draw calls /
+  8357792 triangles / 0 points / 0 lines, 192 geometries, 2 textures, 15 of 151 instanced meshes
+  empty (13 of those hidden), 16/16 frames (all)`.
+- Sixteen frames opened one at a time against `r10b`.
+
+### Next target
+
+- The tree foot's colour under a low sun.
+- The two HUD defects above — both are position, not paint.
+- The stones and the grass are done. The buildings' interiors are the least-photographed surface
+  left in the set.
+
+---
+
+## 2026-09-06 — Round ten, and the instrument that lost two frames without saying so
+
+**Track: the rendered game.** Eight lanes — pawns, buildings, decor, landmarks, sky and weather,
+the minimap, the instanced pool, and a new one for contact shadows — briefed off round nine's
+*still wrong* list. The frames judged are `r9b` against `r10b`, and `r10b` rather than the
+round's own `r10` for a reason that turned out to be the round's headline: `r10` came back
+missing six of its sixteen frames and with the one frame that photographs the pawn models
+showing an empty patch of grass, and neither fact appeared anywhere in the harness output.
+
+### Better
+
+**Contact shadows, measured rather than lit.** New `src/client/render/occlusion.ts` bakes an
+ambient-occlusion term into each prototype's vertex colours at startup — ray-cast against the
+whole assembly plus a ground plane at `y = 0`, then multiplied into the colour attribute, which
+survives every per-instance tint the view pushes because `color_vertex.glsl` multiplies rather
+than replaces. A stove's feet come out at 0.8003 against a lid at 0.9593. In the frames it is
+the darkening where a tree meets the turf and where a wall meets the ground: everything in the
+colony now sits *on* the floor instead of hovering a centimetre over it. The bake is 396 ms and
+runs off `requestIdleCallback` after the colony is already drawing.
+
+**The wall became masonry.** Coursed brick up the face, a pale stone coping along the top and a
+post standing proud at each outside corner. At the manager zoom it is the difference between a
+perimeter and a row of cubes, and it is the first thing the eye lands on in `3-colony`.
+
+**The trees got a canopy instead of a cone.** Four lobed skirts, rumpled per seed, two variants
+so a wood is not one tree stamped forty times. With the contact darkening under them they read
+as trees at every zoom in the set.
+
+**The minimap stopped being a dead rectangle.** Unseen ground was 0x141a22 and the chrome around
+the panel is 20, 26, 34 — the same colour — so on day one the largest element in the left column
+was one flat box with a stamp of colour floating in it, which is what a widget that failed to
+load looks like. It is the panel's own solid carried toward the HUD's dim label grey now, with
+survey lines across it: a chart of country nobody has walked, which is what it actually is.
+
+**The frame is counted.** `renderer.info` read between two animation frames, so a round that
+makes the picture heavier says so in a number rather than in a screenshot timeout. The colony
+frame is **123 draw calls / 8,000,822 triangles / 191 geometries**, and alongside it the tally
+the wall clock cannot give: **15 of 151 instanced pools empty, 13 of those hidden**. That second
+number is `instanced.ts` this round — pooled meshes no longer set `frustumCulled = false`.
+The flag was covering for `InstancedMesh`'s own bounding sphere going stale (three computes it
+once, lazily, and nothing about `setMatrixAt` invalidates it), and the fix is to stop it going
+stale: `end()` recomputes the sphere after every rebuild and drops a pool with nothing in it out
+of the render list, which is where the thirteen come from.
+
+### Still wrong
+
+- **Every tree stands in a plant pot.** `tree.trunk`'s root flare (`buildings.ts`, the
+  `lathe([[0.44, 0], [0.3, 0.18], …])` profile) reads from the manager camera as a flat brown
+  disc lying on the grass, and at dusk it catches the warm light and reads as a *red* one. It is
+  the worst thing in `5-dusk` and it is not new — it predates this round — but nothing has ever
+  photographed the tree foot closely enough to see it.
+- **The scatter stones are eggs.** Dozens of pale, smooth, near-identical ovoids across the turf
+  in every world frame, next to a rock outcrop that this round gave real facets and value
+  variation to. The small stones are the un-upgraded version of the same idea and they now look
+  it.
+- **The grass reads differently at the two zooms.** In `2b-closeup` the tufts stand up out of the
+  ground; at the manager zoom of `3-colony` they flatten into scattered chevrons again. Round
+  nine's note says this class was fixed, and close up it was — the fix did not carry to the
+  distance the game is actually played at.
+- **The settlers are now the least detailed thing in the colony frame.** At the zoom `3-colony`
+  is taken at, a settler is a hair dot, a torso and two sticks, standing in front of a wall that
+  has coursing and a coping. Round nine and ten both went to the buildings; the models the player
+  spends the game watching did not keep up.
+
+### The harness, which this round broke and then fixed
+
+Two defects, both found by looking at what came out rather than by reading the code:
+
+- **`1-settlers` had no settler in it.** Every frame after the pause is taken of one colony
+  standing still, and the pause is a `Space` sent to the canvas. If it is swallowed — focus and
+  keypress landing either side of a slow frame under GPU contention — the settlers keep walking
+  through the two seconds of zooming and easing that follow, and the frame whose whole job is
+  the pawn models comes back as grass. `pause()` now presses, asks the app whether `speed === 0`,
+  presses again, and throws after three tries. The swallow itself was not reproduced; what is
+  fixed is that it can no longer be silent.
+- **The phone half took the report down with it.** `waitForFunction(tick >= 1800)` timed out
+  after the reload, the run died with a stack trace, and the shell's exit status was eaten by a
+  pipe — so ten frames on disk read from outside exactly like sixteen. The phone block runs
+  behind a `try`/`catch` now, its wait is 180 s, and the last line prints `16/16 frames (all)`
+  or names every frame that is missing.
+
+The world frames are also photographed with the HUD *down* and the interface frames with it
+*up*: for nine rounds the blank was one-way and taken once, so the half of the screen the player
+spends most of the game reading had never been in a frame at all.
+
+### Verified
+
+- `npx tsc --noEmit -p .` — clean.
+- `npx vitest run` over the seven touched render files — **228 passed**, 14.9 s. New:
+  `tests/occlusion.test.ts` (the bake, the black-material trap, the ordering rule against `dye`),
+  and `tests/minimap.test.ts`.
+- `r10b: 0 console errors, 26 showcase buildings stood, 17 ms/frame, colony frame 123 draw calls
+  / 8000822 triangles / 191 geometries, 2 textures, 15 of 151 instanced meshes empty (13 of those
+  hidden), 16/16 frames (all)`.
+- Sixteen frames opened one at a time against `r9b`, which is the only gate this track has.
+
+### Next target
+
+- The tree's root flare, the scatter stones, and the grass at manager zoom — a decor and
+  buildings round with the frames already naming their targets.
+- The settler models, at the zoom `3-colony` is taken at rather than the zoom `1-settlers` is.
+- The minimap panel is a chart of unwalked country on day one, which is honest and is still a
+  300-pixel box holding a 90-pixel picture. That is a layout question, not a colour one.
+
+## 2026-09-06 — The interface round, and the panels that clipped in silence
+
+**Track: the HUD, not the world.** The first round on this project whose subject is the
+instrument rather than the thing it points at, and it needed a new instrument of its own to run:
+`scripts/look/shot.mjs` had been hiding the HUD before every frame since it was written, which
+meant nine rounds of look work had been done against a game with its interface deliberately
+switched off. The harness now takes sixteen frames — the six model frames unchanged and in their
+places, plus `0-hud-help`, `6-hud-colony`, `7-hud-selected`, and seven phone frames at 390x844 on
+a device-pixel ratio of three.
+
+### Better
+
+**Contrast, measured rather than eyeballed.** Every colour a player reads was put through the
+sRGB-to-linear ratio against its real backdrop, which is not the panel: `.panel` is
+`rgba(14,19,26,0.82)` over live 3D, so the effective ground is 0.82 of the panel plus 0.18 of
+whatever the camera is looking at, and the brightest terrain in the round-8 frames is
+rgb(156,185,124). Against that, twelve places were below 4.5:1 and are not now. The alert red
+moved #e0745f to #e47661 (4.36 to 4.51). Twelve `opacity` multipliers on text became stated
+colours, which is the whole class: an unaffordable blueprint's cost went 2.21 to 4.26, the locked
+research, trade and road rows 2.11 and 2.21 to 5.25, the panel close cross 2.42 to 3.68, the drag
+grip 2.65 to 4.24. The tutorial's dismiss link was on `--edge` at 1.99:1 — a control at twice the
+contrast of nothing — and is now #7f878f with a 44-pixel square under it on a phone.
+
+**Panels that ran out of room stopped hiding it.** The alert strip drew the first six rows of a
+list that is routinely twenty long and then stopped, so a burning colony under raid with four
+settlers down was never told it had run out of food, because "No food left" was the seventh row.
+The cap is ten and the list ends with `+N more`. The log sliced a fixed seven lines because the
+box was once a fixed 132px; it has had a resize grip and a viewport-relative height for some time,
+so the count is derived from `clientHeight` now and a dragged panel fills.
+
+**Fourteen scroll containers, one of which said so.** This is the finding of the round and it came
+out of the phone frames rather than out of the code. On the desk a panel that overflows shows a
+scrollbar and can be dragged bigger, so the cut announces itself twice. The phone has neither —
+the scrollbar is hidden by rule and `makeMovable` returns early because there is nowhere to move a
+panel to. So three separate panels were photographed clipping in perfect silence: the top bar cut
+the clock to "12:0" and stopped; the next-steps panel ended on "Steel is what everything after
+this costs" with the rest below the fold; and the build sheet showed four of its eleven
+categories, so seven whole tabs of things to build were reachable only by a swipe that nothing on
+the screen suggested. Every phone container that scrolls now carries a `mask-image` fade in the
+axis it scrolls — 26px sideways, where a cut glyph has to be unmistakable, 20px down, which is
+about a line and a half. The desk's one instance of the same defect is different in cause and got
+its own fix: `.card .acts` is opaque and stuck to the floor of the help card, and on an 800-tall
+window its hard edge lands immediately below the heading "How a run ends", so the section that
+explains how the game is won photographed as a heading with nothing beneath it. A gradient stands
+on the button row and the text fades under it instead.
+
+**A key you can see is a key you can press.** Four of the seventeen colony bindings are one thin
+glyph — the apostrophe for the work board, the semicolon for the story, the backtick for a Picky,
+the erase glyph for cancel. Set bare in twelve-pixel mono on a dark panel each is three or four
+lit pixels, so the row beside it read as an action with no key at all. Every key in the help card
+now sits on a plate, which costs the wide rows nothing and is the difference between a mark and a
+key for the narrow ones.
+
+**"Walking to 4 meal."** The line on a settler card is on screen more than any other sentence in
+the game and had no test whatsoever, and it was printing the internal key straight into English:
+a settler carrying supper to the store was "walking to 4 meal", one fetching turnips "walking to
+51 rawfood". `resourceWord` was written for exactly this and its own comment argues the case —
+one table, not a second one that drifts out of step with the first — and this call site simply
+did not use it. It does now, and because the strip's headings are already plural for the things
+you count and bare for the things you weigh, "4 meals" and "169 wood" both come out right for
+free. Six tests, sweeping every resource in the game.
+
+**Small things that were wrong for small reasons.** A run of identical log lines collapses to one
+row and a count, and collapses before the slice rather than after, so eight repeated fences buy
+the player more of their afternoon rather than less of it. The watts cell was the only lowercase
+heading in the top bar, because eight resources come out of a table capitalised and the ninth was
+written by hand. A control-stack row said the cell at 86, 103 as "86,103", which every other
+number in this HUD trains you to read as eighty-six thousand. A blueprint tile with no hotkey lost
+its whole top line, because an empty block is a block of no height, so the Fence sat a line out of
+step with the Wall and the Door either side of it. The help button is a "?" in a crowded top bar
+and the word "Help" in the More drawer, where all ten of its neighbours are words.
+
+### Still wrong
+
+- **The minimap is a black box.** In every one of the nine HUD frames, desk and phone. On day one
+  the explored patch is a fraction of the panel and the rest is very nearly pure black, which does
+  not read as ground you have not walked yet — it reads as a widget that failed to load. It is the
+  largest dead area in the desk HUD and the highest-contrast edge on the screen, so it is also the
+  first thing the eye lands on. Being fixed in its own pass.
+- **The next-steps panel's close cross sits on its own row**, below the header rather than in the
+  corner of it, spending a whole line of a panel that is 19vh tall to hold one glyph.
+- **"Quality: medium" is the only button in the More drawer that wraps to two lines.**
+- **No frame has been taken of a colony in trouble.** Every HUD frame in this round is day one at
+  noon with three settlers, full bars and no alerts — which is exactly the state in which an alert
+  panel, a mood breakdown and a red bar cannot be judged at all. The contrast work above was
+  measured against terrain rather than photographed against it for the same reason.
+
+### Next
+
+The interface has no equivalent of the `2b-closeup` frame: a state deliberately composed to put
+the instruments under load. A fourth day, a raid landing, two settlers down, a fire, twenty alerts
+and a mood breakdown with six lines in it would photograph every panel this round touched in the
+condition it was built for, and none of them have ever been seen that way.
+
+**Gate.** `npx tsc --noEmit -p .` clean. Six interface test files, 109 tests, all passing —
+`scroll-cues` and `errand-line` are new this round, `alert-panel` gained seven. Sixteen frames in
+`.look/shots/r10ui/`, 0 console errors.
+
+---
+
+## 2026-09-06 — Round nine, and a class of bug that missed a member of itself
+
+**Track: the rendered game.** Six lanes through the workflow — pawns, buildings, decor, terrain,
+lighting, critters — briefed off round 8's *still wrong* list, then four corrections made by hand
+after every lane had reported green. The frames judged are `r8` against `r9b`, and `r9b` rather
+than the workflow's own `r9`, because that set was photographed before the corrections and would
+have certified a solar panel this round had just broken.
+
+### Better
+
+**The grass stopped being bird tracks.** From the manager camera a tuft was three fat darts meeting
+at one point, and the pair either side of the upright one lay along the turf: a field of them read
+as tracks pressed into the ground, which is what four rounds of frames had been showing without
+anyone naming it. Two separate causes. The blades met at a single root, so the junction was a notch
+rather than a patch of stems. And `tuftGeometry` scaled a blade with `scale(1, len, 1)` while the
+bow is a tip offset in blade-local units, so the shortest leaf kept a full-length bow: a quarter of
+a tuft-height tall and two and a half times that far out along the turf — broadside to the camera,
+which is the brightest thing a blade can be. Five thin blades on the same fifteen triangles now,
+uneven in length and unevenly bearinged, each rising out of its own patch of ground, scaled whole so
+the bow shrinks with the blade. In the first-person frame the difference is not subtle: pale
+chevrons lying in the dirt became grass standing up out of it.
+
+**The lamp is a lamp.** `lamp.shade` was stated as dark iron, came out at four thousandths of linear
+luminance under the building's own palette colour, and photographed as a black bowl with the gold
+plate of the bulb showing under it. It is a pale globe now, in both the noon and the dusk frame.
+The rule the round settled on: `paint(kind, target, rough, metal)` divides the wanted colour by
+`BUILDING_COLOR[kind]` per channel in linear light, so a part lands on the colour it states whatever
+the palette does underneath it. `tone()` states a multiplier and is where the whole class came from.
+
+**The machines read as machines.** Against r8 the stove's flue is a pipe rather than a black stub and
+its door and vents are visible; the heater has a grille and feet; the generator's skid, wheel and
+trim separate; the solar panel's rim is a grey frame with the glass reading darker than it, instead
+of the bright silver tray the lane left behind.
+
+**The site marker stopped being a heptagon.** The flat gold seven-sided disc lying in the grass in
+every zoo frame since round 4 was `landmarks.ts`: an unlit flat-shaded octahedron, every face taking
+the identical amber, so from overhead it was a polygon cut out of the ground. It is a spun bead with
+the sun baked into its vertex colours now — still unlit, still four draw calls, 192 triangles.
+
+**The hunt marker cleared the fenwolf.** `markAt` expressed a world-space intent in body space, so
+the clearance scaled with the species: 0.230 on a mossback, 0.098 on a fenwolf, 0.027 on a
+brambletail — the marker was inside the small animals. Adding the clearance after the scale puts
+every species and every calf at 0.240.
+
+**Hands.** The arm capsule ran 0.6 long with the hand at y = −0.57 and a palm half-extent of 0.0446
+against a sleeve radius of 0.065, so the hand was inside the cloth. Sleeve 0.53, wrist −0.575, palm
+0.072 across ten meridians: there is a hand past the cuff in the settler frame now.
+
+### Corrected by hand, after the lanes reported green
+
+Four, all found by looking at frames and hex, none by the gate.
+
+**The round's own class missed a member.** `stove.plate` — the hotplates, upward-facing, on the
+building the round's note names as a victim of the bug — sat at 0.0042, half the lamp shade that
+started the round. It survived the round's own floor test because that test exempts anything
+carrying an emissive, and eight thousandths of glow is not "bright enough to be read off". The
+exemption now requires the emissive to clear the floor itself; the seven parts that genuinely make
+light sit between 0.046 and 0.897, so the tighter rule costs nothing real.
+
+**`paint()` erased the palette families.** Because it states an absolute target, `BUILDING_COLOR`
+stopped reaching the painted parts: `gen.trim` and `batt.trim` came out byte-identical, and so did
+`bench.vise` and `solar.mount`, collapsing distinctions the palette's own comment calls deliberate.
+Eight targets re-stated, families separated by hue, luminance held where it was.
+
+**`solar.frame` was a blowout.** 0.2117 — brighter than grass at 0.124 and a stone wall at 0.159,
+across a 0.77 m² backing plate, on the one building the palette documents as darkest because it is
+glass. Down to 0.1037.
+
+**The conduit test passed on the shape it was written to reject.** The capsule stood exactly 0.06 off
+the floor and the assertion was `toBeLessThanOrEqual(0.06)`; only the aspect check caught it. Strict
+now.
+
+### Still wrong
+
+**The mossback wears its marker as a collar.** The clearance fix is a constant added after the scale,
+and 0.240 is barely more than the 0.230 the mossback already had — so on the largest animal the
+marker still rides its neck and reads as a red band around the throat in both zoo frames. The
+clearance wants measuring off the species' silhouette, not off a number that happens to clear a
+fenwolf.
+
+**The site marker is dough.** The bead is round, which was the fix, but it is pale tan with almost
+no shading contrast and it has lost the amber that made it read as a marker rather than a lump. It
+is the brightest thing in `C2-items-close` and it says nothing.
+
+**The turf lost density.** Five thin blades cover less ground than three fat ones on the same
+instance count, and from the manager camera the field reads sparser than r8 — the fix for the shape
+was paid for out of the coverage. Either the count or the blade width wants raising; the tuft
+budget has nothing spare, so it is the count.
+
+**The stove is the brightest thing in the yard.** Every stove target is a mid-dark grey (0x44 to
+0x56) yet the body photographs near-white in the close-up, brighter than the statue's stone plinth.
+That is metalness 0.25–0.3 against a bright environment map, not albedo. Legible as a steel range,
+but it out-shouts the palette and no test looks at a ceiling — the floor test has no twin.
+
+**The walls are still bit-identical, and now it is measured.** One wall block face is 3,840 pixels
+carrying seven RGB values, 99.6% of them one value, plane-fit residual 0.000 at p10, p50 and p90,
+against open ground at p50 1.032 from 1,358 colours. The trap in measuring it: a crop of the "wall
+region" reads p50 14.751 because it is all mortar joints, and would pass.
+
+### Next
+
+Round 10, in the order the evidence supports. Baked vertex AO in `buildings.ts` is proved out
+end-to-end — triangle-accurate occluders through a uniform grid, seam vertices 12–18% below open
+faces on the stove, generator, bed and lamp, bit-identical to brute force at a third of the cost,
+and deterministic. It has to be baked per building rather than per pool (13 of 30 sampled prototypes
+get nothing at all from self-occlusion), it must run after `dye`/`dyeEnds` because those overwrite
+the attribute, and its floor is set by one part: `bed.frame` at 0.03283 against the test's 0.025
+allows no multiplier below 0.762, so 0.80. It costs about 25× the current geometry build, which is
+the reason to defer the bake behind first paint rather than the reason not to do it. Then wall
+grain, on the albedo term and not roughness — at roughness 0.9 under a diffuse sky a roughness
+perturbation measures as zero. Then the first real draw-call and triangle count of a live colony:
+`renderer.info` appears nowhere in this project, so the frame-time regression LOOK.md claims to
+watch has never had a baseline that was not a 26-building showcase.
+
+Gate re-run by hand before the commit: `tsc` clean, twelve render test files, 265 tests, 403 test
+lines added and nine removed. The nine are one assertion — the tuft's three-blade triangle budget —
+replaced by five tests that pin the new budget, the vertex count, the root separation, the bow and
+the blade's slimness, with the folded blade's own five triangles kept in a test of its own because
+`fx.ts` still builds leaves out of it. `r9b: 0 console errors, 26 showcase buildings stood, 17
+ms/frame`, which is r7's and r8's number.
+
+---
+
+## 2026-09-06 — Round eight, and a light that was applying its own falloff twice
+
+**Track: the rendered game.** Four lanes. The sixth frame added at the end of round 7 paid for
+itself in the first hour: the defect it exposed was not a lighting preference, it was arithmetic.
+
+### Better
+
+**The sun was multiplied by its own angle twice.** With the sun eight degrees up, nothing in the
+colony cast a shadow — not the wall, not the trees, not the pawns. The shadow map was innocent
+(forcing the floor to 1.0 photographs crisp shadows), and so was `shadowStrength`, which floors at
+0.38 and never switches off. What the eye reads is the shadow's strength times *the sun's share of
+the light landing on the cell*, and that share was 0.207: `sun.intensity` was scaling itself by
+sin(elevation) when the shading maths already applies N·L, so the key light spent the evening worth
+a fifth of the frame, while a readability floor built for a moonless night had already climbed to
+1.49 with the sun still up. An omnidirectional term was outshouting the sun two to one. A shadow can
+only take away what the sun was putting there, and it was putting 8%.
+
+The numbers, before and after, at noon and at 17:24 — sun / shadow / hemisphere / fill / ambient:
+
+    before  noon  2.577 / 1.000 / 0.731 / 0.680 / 0.300     dusk  0.719 / 0.380 / 0.401 / 0.292 / 1.490
+    after   noon  2.577 / 1.000 / 0.731 / 0.680 / 0.300     dusk  1.912 / 0.590 / 0.273 / 0.199 / 0.522
+
+Noon is unchanged by construction and unchanged in the frames. At eight degrees the sun's share goes
+0.207 to 0.542 and a shadow now takes a third of the light where it took a twelfth. The evening also
+has a colour for the first time: the sun held its daylight mix until six degrees, and the fill light,
+which stands on the anti-solar side, was taking the sunset tint and acting as a second sun behind the
+camera — cancelling the warm-against-cool split that evening is made of. Light on flat ground, red
+over blue: noon 1.238, dusk 0.709 → 1.700. The old dusk ground was literally bluer than midday.
+
+**The grave, the trap and the statue**, the last three kinds that read as flat objects. The grave is
+a heaped mound with clods turned into it and a timber cross at its head; the trap is a sprung frame
+with jaws, teeth and a visible trigger standing a hand's width above the rails; the statue is a
+figure with shoulders, a head and one raised arm. All three are legible from the manager camera now.
+
+**The trees, at branch scale.** Round 7's lobes were limb-sized and from overhead read as broccoli.
+Amplitude down (0.24 → 0.15), frequency up (3–8 lobes on 24-segment skirts, a flatter spectral
+falloff so the high lobes survive), and two crown variants hashed per tree, so each rim crosses its
+own mean girth six to twelve times and no two trees repeat a silhouette. This is the best the wood
+has looked.
+
+**The tail, and the class of bug behind it.** The mossback's tail was a nine-sided capsule in the
+hoof tone whose flat end cap pointed at the standard camera — a black hexagon in the rump. It is a
+swept tapering tube ending in a dome, in the coat's own deeper tone, and the lane went looking for
+the same shape elsewhere: darkest tone, presented end-on, too few segments. Boots were raised; the
+hooves, the nose and the antler tines were found, priced and left, with the reasons written down.
+The mossback is at 2,482 of its 2,500 triangles, paid for by taking the collar's tube section from
+six sides to four.
+
+**The stripped bush, fourth round and finally a plant.** Not a rebuild — colour, ordering and
+symmetry. Grey-beige to the ripe bush's own green a little duller (a picked bush has lost its
+berries, not its chlorophyll); the canes dropped below the leaves instead of caging them; seven
+leaves at uneven bearings with one wide gap, two of them plainly larger, the knot carried off-axis,
+and a seeded yaw per cell so a hedge is not one stamp printed. Beside the ripe bush it now reads as
+the same plant in two states.
+
+### Still wrong
+
+**Nothing in this game should be black at noon.** The new lamp shade is a well-argued piece of
+geometry — a shell turned down the outside and back up the inside so it is not a hole seen from
+below — and from the manager camera at midday it renders as a flat black bowl, the darkest thing in
+the frame. The watermill wheel reads nearly as dark. Whatever the cause (an inverted shell, or a tone
+that was picked against a brighter ambient than the one this round shipped), it is the same defect
+the tail had: a part the camera meets face-on with no light on it.
+
+**Grass is a bird track.** At the settler camera a tuft is a three-pointed star with a hard notch,
+and a field of them reads as a scatter of arrowheads rather than as grass. Rounds 6 and 8 both
+improved the colour, the lean and the density of a shape that is itself wrong at close range.
+
+**My briefing error, worth recording.** I put the conduit — which reads as a blue barbell lying on
+the floor — in the decor lane's brief. It is built in `buildings.ts` and coloured in `palette.ts`,
+neither of which that lane owns, so it came back correctly reported as untouched while the lane that
+could have fixed it was never asked. A brief has to name the lane that owns the file, not the lane
+that owns the subject.
+
+Gate re-run by hand before the commit: `tsc` clean, eleven render test files, 241 tests, 393 test
+lines added and none removed.
+
+---
+
+## 2026-09-06 — Round seven, and the instrument that could carry it
+
+**Track: the rendered game.** Four lanes, briefed off round 6's leftovers, and one of the four
+existed only because the previous round had been measured and found to have delivered nothing.
+
+### Better
+
+**The ground has grain.** Round 6 asked twice for texture in the dirt and got none, because a colour
+set at the corners of a shared lattice is ramped across the whole cell before it is ever drawn. This
+round did not touch those constants — it changed the instrument, and put the variation where it can
+vary at the frequency of a pixel. It arrived, and it is measured rather than admired: fit a plane to
+every 32x32 tile and take what is left over on the flat ground, and the tenth percentile goes 0.155
+to 0.897 grey levels in the close-up and 0.221 to 1.111 in the colony frame — five times the detail
+on the surfaces that had none. In the frames there is no banding and no tile you can find twice.
+
+**The machines stand on something.** A stove, a generator, a battery and a cooler all sat directly
+in the dirt with a flat face where a machine has a mechanism. They have feet and skids now, a firebox
+door on hinges with a lever for a handle, a flue with collars and a rain cap, louvres recessed into
+their housing with the blades tipped, cable glands and cables. The solar panel has a bolted plinth
+and a yoke, with rails and purlins under the glass instead of a slab on a post.
+
+**The trees stopped being rings.** Round 6 rebuilt a tree as four skirts and from directly overhead
+they still read as concentric circles, because every skirt was a circle. Each skirt's rim radius now
+runs per meridian between 0.57 and 1.13 of its nominal, so no two tiers share an outline and the
+edge is lobed rather than turned. In profile a stand of them reads as a forest.
+
+**The mossback's saddle.** It was a tube laid tangent to the animal's back, painted in the hoof tone,
+which at eye level was a dark seam cut into the shoulder — the hole burnt in the hide that round 6
+logged. It is an offset shell of the animal's own body ellipsoid now, in a tone of its own, so it
+sits on the hide as markings rather than through it. Hands gained a thumb and boots a heel, ball and
+toe, which is what stops a foot reading as a wedge.
+
+### Still wrong
+
+**The tail flag, which is the same bug one part further back.** `pawns.ts:1326`: the mossback's tail
+is a nine-sided capsule in the darkest tone, and from behind — the angle the colony frame actually
+shows — you see its end cap, a flat black hexagon set into the rump. The shoulder crop across rounds
+5, 6 and 7 shows the stripe leaving and the hexagon staying. Two rounds have now fixed a dark part
+that was read as a hole and left the neighbouring dark part alone.
+
+**The stripped bush, a fourth time.** Stone, then lichened stone, then dead spider, and now a dried
+flower: the silhouette is finally right — broad leaves, low, gappy — but the leaves are grey-beige
+rather than green, the canes cross *over* the canopy instead of running under it, and the whole thing
+is radially symmetric, which no bush is. The camera was the problem for three rounds; this round it
+is the colour and the ordering.
+
+**Smaller.** From overhead the new tree lobes are coarse enough to read as broccoli. The hunt mark is
+still a large flat wedge when an animal is near the camera. In the wide showcase frame the grave
+reads as a doormat and the trap as a plate.
+
+**Not a bug, checked and dismissed.** The flat gold squares scattered through the showcase frame,
+which have looked like a missing model since round 3, are pen-zone paint — `fx.ts:491`, straw-gold
+for every zone that is not a stockpile. They are the overlay doing its job. *(Half right, corrected
+in round 8: the solid squares lying on the ground are that zone paint, but the ones hovering over
+the turret, the cooler and the lamp are a different overlay — the unpowered mark at `fx.ts:295`, a
+four-sided ring over any built machine that wants watts and is not getting any. Two overlays in the
+same colour family, and I named one of them for both.)*
+
+### The harness gained a frame
+
+Every frame in this loop has been pinned to noon, which is the fairest light to judge a model in and
+the least revealing about the light itself: the sun is overhead, the shadows are short, and the warm
+band at the horizon never appears. A lighting lane cannot be judged that way, so `shot.mjs` now takes
+a sixth frame with the sun about eight degrees up and puts the clock back afterwards. A round-7
+baseline for it was captured before round 8 was briefed, so the first lighting change has a before.
+
+Gate re-run by hand before the commit: `tsc` clean, eleven render test files, 229 tests, and every
+test change in the diff an addition.
+
+---
+
+## 2026-09-06 — Round six, and a grain the frame never got
+
+**Track: the rendered game.** Four lanes again, briefed off the round-5 frames: the grass, the
+trees, the furniture at manager zoom, the ears at a metre and a half, and the trampled ground.
+
+### Better
+
+**The wood.** A tree was three bowls stacked — each tier's widest point sat *above* where it met the
+trunk, so every underside faced up and the whole thing was three cones standing on their points. It
+is four skirts now, each running out and *down* from the trunk to a rim that hangs below the joint,
+with radius and droop both falling off with height, a bole better than a third of the tree, and
+girth hashed separately from height so a stand is tall-thin beside squat-wide instead of one shape
+repeated. At eye level the horizon is a forest; from above a tree has a trunk.
+
+**The grass.** It was one stamp: same size, same green, same lean, uniform density, carrying on
+unchanged across bare earth. Per-tuft height, rotation, lean and tone now vary deterministically and
+the density falls where the ground is bare. The wallpaper read is gone at both cameras — this is the
+single biggest change to how a frame of this game looks, and it is the cheapest geometry in it.
+
+**The beds.** A bed was a brown tile with a paler tile on it. It has legs, side and end rails, head
+posts, a mattress dropped inside the rails and standing proud of them, a pillow with a pillow's
+proportion and a blanket folded over the foot. Tables got an apron and legs that taper the right way
+round — they were thin at the top and thick at the floor, which is a stool.
+
+**The ears.** The dunhare's two ears were 6 cm wide, 2.7 cm thick and nearly coplanar, so at a metre
+and a half they collapsed into one dark stick through the head. They are lathe blades now, 11 cm
+across with a 7 cm gap at the midline and a pale lining that stands proud down the middle and sinks
+into the rim at the edges — a lit cup in a dark blade, nothing coplanar. Same pass on all four
+species; eyes, noses, muzzles and tail tips all gained a segment or two. Paid for inside the 2,500
+budget by cutting a hidden second egg out of the hare's saddle and taking the collar torus from
+10×24 to 6×22.
+
+**A bug the lane found on its own.** One shared collar torus is cut to a mossback's throat and every
+species wore it unscaled: on a dunhare it was a hoop nearly half again the width of the animal's own
+head, hanging in the air, touching nothing. It scales to each species' neck radius now, with a test
+that reads the neck lathe's own rings and asserts the strap straddles the hide.
+
+### Still wrong, and one of them measured
+
+**The ground grain never reached the frame.** The terrain lane raised the speckle share, the speckle
+depth and the mottle lift, and the frames look exactly as they did. Not a judgement call: fit a plane
+to every 32×32 tile of a frame and measure what is left, and the flat-ground residual is 0.185 →
+0.209 grey levels in the closeup and 0.325 → 0.321 in the colony frame. A quarter of one grey level
+is a smooth gradient with nothing on it.
+
+The reason is structural and it is in the file's own first line: *one non-indexed quad per cell,
+coloured at its corners*, on a lattice where a corner is shared by neighbouring cells. A per-corner
+value cannot be grain. It is bilinearly ramped across a whole cell — two hundred pixels at closeup —
+and averaged with its neighbours before that. The instrument cannot produce the thing being asked
+for, however the constants are tuned. If the ground is to have texture it has to come from the
+material (noise in the fragment shader, or a small tiled map multiplied into the vertex colour) or
+from scattered geometry, the way the loose stones already are. That is the round-7 brief, and it is
+worth writing down as a general lesson: *before briefing an amplitude, check the instrument can carry
+the frequency.*
+
+**The stripped bush, twice overcorrected.** Round 4 left it near-black and it read as a stone; round
+5 lifted the colour and it read as a lichened stone; round 6 opened the silhouette into a cage of
+thin branches and from directly overhead it now reads as a dead spider. Three rounds on one small
+object says the object is being briefed from the wrong camera.
+
+**Smaller.** From directly overhead a tree is still a set of concentric rings — the outline is not
+broken enough. The mossback's dark saddle reads as a hole burnt in its shoulder at eye level.
+
+Gate re-run by hand: `tsc` clean, eleven render test files, 227 tests (twelve new, and every test
+change in the diff is an addition — no assertion was relaxed to make a lane green).
+
+---
+
+## 2026-09-05 — Round five, and a probe that asked one animal at a time
+
+**Track: the rendered game.** The first round driven entirely from inside the repo — the harness in
+`scripts/look`, the round workflow in `.claude/workflows/look-round.js`, the method in
+[LOOK.md](LOOK.md) — and briefed straight off round 4's leftovers. Four lanes, four builders, the
+same five frames plus the zoo, read by eye afterwards.
+
+### The brief, and what came back
+
+**Buildings.** The wall was breeze block at 1.6 m: five courses over two and a half metres put a
+half-metre block on a timber cabin, and heavy mortar between them. It is seven courses now, with a
+3.6 cm recessed joint that reads as a shadow line rather than as grout, every board a hair lighter or
+darker than its neighbours, and the vertical joints of one course broken against the next. A course
+that stops at a doorway stops short and is closed by a separate part, so the joints beside a jamb no
+longer stack into one column. The watermill got a pitched roof.
+
+**Decor and crops.** A crop is green at every stage now and only the produce turns gold — the old
+plant ripened *into* yellow-olive, so a field ready to cut read as a field that had died, and a
+player scanning for food was scanning for the colour of drought. The seedling is a rosette of four
+broad leaves instead of a nearly invisible spike, and the leafy stage bows two tiers of leaves off a
+stalk. Gold is a vertex-colour ratio on the heads rather than three fixed numbers, so it stays gold
+the next time the leaves move.
+
+**Pawns.** The hunt mark was an orange traffic cone in first person; it is a small hollow teardrop
+that hugs the animal, sitting at a height each species names itself. The dunhare, which from manager
+zoom was a pale smudge, got a dark saddle and dark ears raked back over its spine.
+
+**Terrain.** Per-patch luminance noise on the ground, so the grass is no longer one flat sheet under
+the camera at manager zoom.
+
+### The verdict, from the frames
+
+**Better,** in all four lanes: the wall reads as boards at first-person distance, the mill has a
+roof, the ground has variation, a ripe plot is green carrying gold, the seedling is visible, the mark
+is small, and the hare is legible from above.
+
+**Still wrong.** The stripped bramble overshot. It was near-black and read as a stone; lifted to a
+pale grey-green it now reads as a lichened stone. Colour was the wrong instrument — the shape is what
+says foliage.
+
+**Two frames, one question, one probe.** In both the round-4 and round-5 zoo frames the hunt mark
+appeared to hover over the animal *beside* the hunted one. The code says it cannot: the mark is a
+child of the animal's own rig and its visibility is that animal's `hunted` flag. So rather than brief
+a bug from a crowded row, the scene was reduced to the claim — one hunted dunhare, alone, nearest
+other animal thirty-three cells away. The mark is over the hare. The reading was mine, not the
+renderer's; the zoo row is simply dense, and it ticks twice before the shot.
+
+The gate: `tsc` clean, eleven render test files, 215 tests green — run again by hand before the
+commit, because a builder's green is a claim and the tests are the thing being changed.
+
+Leftovers for round 6: the stripped bush's silhouette; the hare's ears, which at close zoom collapse
+into a single dark sliver; and the grass tufts, which at that zoom are flat two-blade chevrons.
+
+---
+
+## 2026-09-05 — Four rounds of looking, and the camera that made them repeatable
+
+**Track: the rendered game.** Every other entry here is a grid answering a number. This one is a
+camera answering a question no grid can be asked — does a thing look like what it is — and the
+four rounds it took to get the models off their boxes and cones. The method, the instruments and
+the gotchas are now written down in [LOOK.md](LOOK.md); this is the log of the rounds.
+
+### The loop
+
+One brief per lane, built in parallel by agents that never touch each other's files, gated by
+`tsc` and the render tests, then the *same frames* photographed again and read by eye. Same seed
+(4242, typed into the setup card — `world.seed` is a constant and lies), same tick (the first past
+1800), same hour (noon; dusk hides everything), HUD hidden, the ground round the camera revealed by
+hand. Five standard frames — settlers close, the twenty-six-building showcase wide, the showcase
+close, the colony from high up, and a settler's own eyes — plus, from round 4, a staged zoo of every
+animal, every crop stage and every loose item on clear ground.
+
+The one rule that carried the quality: the driver opens every PNG. Builders return `green: true`
+and a summary, and a summary is not a photograph. Two of the four rounds had a verdict overturned
+by looking.
+
+| round | lanes | what shipped |
+|---|---|---|
+| 1 | all six | rounded primitives in place of boxes, an environment map on the scene |
+| 2 | pawns, buildings | settlers got a figure; buildings got their parts |
+| 3 | pawns, buildings, decor, terrain | hairlines, belts, boots, rifle stocks, masonry, corner posts, door frames, one stone palette, knee-high grass, and `groundLiftAt` so marks and rings sit *on* the ground |
+| 4 | pawns, buildings, decor, terrain | the animals, the crops, the bushes and everything dropped on the floor |
+
+### Round 4, read frame by frame
+
+The brief came from the first zoo frames, where four species were one silhouette at four scales and
+five of six item kinds were the same bevelled cube in different colours.
+
+**Better.** Each animal now reads as itself at manager zoom: the mossback is a humped grazer with
+three-tined antlers, a dorsal ridge and hooves; the dunhare a crouched rump-high shape with ears
+taller than its skull; the brambletail a russet fox with an actual brush; the fenwolf a grey-brown
+hunter with a ruff — and no longer lavender, which was `pawnTint` (built for cloth, +68° of hue on
+the seed) applied to a cold blue-grey base. Hides go through `hideTint` now, which varies lightness
+and holds hue. Items are six objects: crossed logs with pale cut ends, a pyramid of ingots, a heaped
+mound with tubers, a strapped crate, a white case with a red cross, a rolled pelt. `components` and
+`assemblies` had *no pool at all* and had been invisible on the ground since they were added. Walls
+break bond, so the first-person wall stopped reading as a filing cabinet. Crops are three shapes
+rather than one scaled three ways, the growing zone is tilled brown with furrows instead of a pale
+green square, and ripeness on a bramble is berries rather than the whole bush turning yellow. Rock
+is angular with a flatter plateau and a darker underside; the pillowy boulders are gone.
+
+**Still wrong.** The seedling stage is nearly invisible at manager zoom. The mid and ripe crops still
+share a flat yellow rosette under the new golden heads, so a ripe plant reads yellow rather than
+green-with-a-crop. A stripped bramble is dark enough to read as a stone. The hunt mark is an enormous
+orange cone in first person. The wall's mortar lines are heavy and its blocks read oversized at 1.6 m.
+
+**A verdict I got wrong.** I had logged "the hide stack drew as a flat amber diamond flush with the
+ground — it is sunk", and briefed the bug. It is a *pen* zone cell: `fx.ts` paints stockpiles blue
+and everything else straw-gold, and the same flat gold quads sit beside the game table in the round-3
+closeup with no item near them. The builder said so from the code, held its ground, and was right. A
+real sinking bug did exist next to it — `itemRest` ignored `groundLiftAt`, so under a full snowpack a
+stack was a lid flush with the snow — and that is fixed.
+
+Budgets held: mossback 2452 triangles of 2500 with collar, tag and mark shown, dunhare 2300,
+brambletail 2084, fenwolf 2336; bush 280, headed crop 283; item stacks 144–648. The gate stood
+twenty-six showcase buildings with no console errors at 17 ms a frame, and `tsc` plus the eleven
+render test files (206 tests) are green.
+
+### What the harness cost to get right
+
+Two artefacts wasted more time than any bug in the game. Headless Chrome without
+`--ignore-gpu-blocklist --use-angle=metal` falls to SwiftShader, where a frame takes seconds, the sim
+advances a few ticks a minute, `world.seen` never fills — and every frame comes out hazed grey-blue
+by the shroud, which looks exactly like a lighting regression. A whole round was judged "fog
+everywhere" and the lighting lane was nearly briefed for it. And the first-person camera reads a rig
+that only learns its position from a sim tick, so a pawn teleported into a staged scene while paused
+renders where it used to stand and the camera shoots the old spot. Tick twice before the shot.
+
+Both are now in `scripts/look/chrome.mjs` and LOOK.md rather than in anybody's memory.
+
+Round 4 cost 32 minutes of wall clock and about 650k tokens across six agents. The leftovers above
+are the round-5 brief.
+
+---
+
 ## 2026-08-14 — The fence that was worth eight cells
 
 **Track A: a measured fix.** The last round shipped two sim changes under one sixty-day grid and the

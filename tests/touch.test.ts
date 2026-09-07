@@ -69,10 +69,16 @@ function withBrowser<T>(fn: (el: Stub, win: Stub) => T): T {
   const doc = stub();
   const hadWindow = 'window' in g;
   const hadDoc = 'document' in g;
+  const hadEl = 'HTMLElement' in g;
   const oldWindow = g.window;
   const oldDoc = g.document;
+  const oldEl = g.HTMLElement;
   g.window = win;
   g.document = doc;
+  // `isTypingTarget` asks `t instanceof HTMLElement`, and `instanceof` against an
+  // undefined right-hand side is a TypeError rather than a false. Any key event
+  // fired at the window without this throws inside the listener.
+  g.HTMLElement = class {};
   try {
     return fn(el, win);
   } finally {
@@ -80,6 +86,8 @@ function withBrowser<T>(fn: (el: Stub, win: Stub) => T): T {
     else delete g.window;
     if (hadDoc) g.document = oldDoc;
     else delete g.document;
+    if (hadEl) g.HTMLElement = oldEl;
+    else delete g.HTMLElement;
   }
 }
 
@@ -809,3 +817,88 @@ function clearGround(world: World, cam: ManagerCamera): { x: number; y: number }
   }
   throw new Error('nowhere on this map to stand a wall');
 }
+
+// ------------------------------------------------------- audio on a touchscreen
+
+/** One method's body, sliced out of a source file by brace depth. */
+function methodBody(text: string, name: string): string {
+  const at = text.indexOf(`private ${name}(`);
+  expect(at, `${name} is gone from app.ts — this test is measuring nothing`).toBeGreaterThan(-1);
+  let i = text.indexOf('{', at);
+  let depth = 0;
+  for (let j = i; j < text.length; j++) {
+    if (text[j] === '{') depth++;
+    else if (text[j] === '}' && --depth === 0) return text.slice(i, j + 1);
+  }
+  throw new Error(`${name} never closes`);
+}
+
+const APP = Object.values(
+  import.meta.glob('../src/client/app.ts', { query: '?raw', import: 'default', eager: true }),
+)[0] as string;
+
+describe('audio unlocks for hands as well as for a keyboard', () => {
+  it('has seen no gesture before the player touches anything', () => {
+    withBrowser((el) => {
+      expect(reader(el).hasGestured).toBe(false);
+    });
+  });
+
+  it('counts a finger going down', () => {
+    withBrowser((el) => {
+      const input = reader(el);
+      el.fire('pointerdown', touchEvent(1, 500, 400));
+      expect(input.hasGestured).toBe(true);
+    });
+  });
+
+  it('counts a drag that never becomes a tap', () => {
+    // The gesture a phone player is most likely to make first is pushing the
+    // valley around, and it produces no tap at all. Gating audio on `tapped`
+    // would leave that player in silence for as long as they only ever panned.
+    withBrowser((el) => {
+      const input = reader(el);
+      el.fire('pointerdown', touchEvent(2, 200, 200));
+      el.fire('pointermove', touchEvent(2, 400, 260));
+      el.fire('pointerup', touchEvent(2, 400, 260));
+      expect(input.tapped).toBe(false);
+      expect(input.hasGestured).toBe(true);
+    });
+  });
+
+  it('counts a key, and forgets neither at the end of the frame', () => {
+    // Sticky is the whole point: `unlock` is called from the frame loop, and a
+    // per-frame flag would have to be caught on exactly the right frame.
+    withBrowser((el, win) => {
+      const input = reader(el);
+      win.fire('keydown', { code: 'KeyW', repeat: false, target: null, preventDefault: () => {} });
+      input.endFrame();
+      expect(input.pressed('KeyW')).toBe(false);
+      expect(input.hasGestured).toBe(true);
+    });
+  });
+
+  it('is what the app actually unlocks audio on', () => {
+    // The app cannot be built in node — it wants a canvas and a GL context — so
+    // the wiring is read instead. Without this the flag above can be perfect and
+    // still connected to nothing, which is exactly the state this fixed: a phone
+    // player could found a colony, fight a raid and lose it in silence, because
+    // the unlock was gated on a left click or the space bar.
+    const body = methodBody(APP, 'globalKeys');
+    expect(body).toContain('this.input.hasGestured');
+    expect(body).toContain('this.sfx.unlock()');
+    expect(body).not.toContain("this.input.clicked(0) || this.input.pressed('Space')");
+  });
+
+  it('listens from where the camera is looking, not from whoever is asleep', () => {
+    // The overhead ear used to be `livingColonists(w)[0]`, which is the same
+    // person all game and is wherever they happen to be standing — so the
+    // ambient bed put a roof over a player watching rain on the open moor
+    // because that settler was indoors, and took it off again when they stepped
+    // out. `render` already focuses `this.cam.target`; the ear now agrees with
+    // the eye.
+    const body = methodBody(APP, 'driveAmbience');
+    expect(body).toContain('this.cam.target');
+    expect(body).not.toContain('livingColonists');
+  });
+});

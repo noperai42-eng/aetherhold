@@ -11,7 +11,17 @@
   --edge: rgba(214, 168, 92, 0.35);
   --edge-strong: #d6a85c;
   --good: #8ddc9a;
-  --bad: #e0745f;
+  /* Lifted from #e0745f, the one token in this palette that failed anywhere. A
+     panel is 82% opaque over live terrain, so what a colour actually sits on is
+     the panel mixed with the ground beneath it, and the brightest ground the
+     round-8 frames caught — snow and pale sand at rgb(156, 185, 124) — leaves
+     #28312c behind the text. The old red measured 4.36:1 there against a 4.5
+     bar, because the urgent alert headline it colours is 11.5px at weight 600,
+     which is not WCAG large text. #e47661 is the first value up from it that
+     clears 4.5, and to the eye it is the same red. The pale ground is winter
+     and the urgent alerts are winter, so the failure and the need are the same
+     season. */
+  --bad: #e47661;
   --warn: #e6c35c;
   --threat: #ff8a6a;
   --font: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
@@ -200,6 +210,17 @@ body {
   display: flex;
   flex-direction: column;
   gap: 5px;
+  /* The strip had no ceiling and hud.ts appends one card per living settler, so
+     it grew until it ran off the bottom of the screen — and the game's own win
+     condition asks for eight settlers, which is exactly where the last cards
+     stop being clickable. The band this panel owns is what is left between the
+     map above it and the build bar below it: the top bar, the 224px the map and
+     its gaps take, the bar's measured height, and 24px of air. `pointer-events`
+     is already auto on `.colonist`, so the wheel lands on the strip rather than
+     falling through to the world behind it. */
+  max-height: calc(100vh - var(--topbar-h, 44px) - 224px - var(--buildbar-h, 112px) - 24px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 .colonist {
@@ -428,14 +449,22 @@ body {
 }
 
 /* A rule with a word on it. Without one, the bond rows read as three more
-   skills with very strange names. */
+   skills with very strange names.
+
+   Quiet by colour rather than by opacity, and that now goes for every
+   permanently-dimmed line in this file. `opacity` states a multiplier over
+   whatever ink is underneath it, and a multiplier does not know what it is
+   standing on: --dim is #9aa3ad, which measures 5.25:1 on a panel over the
+   brightest ground the game draws, so it carries about three quarters of a stop
+   of headroom and a 0.7 spends a whole one — about 3.4:1, under the 4.5 that
+   body text needs. Naming the colour is the same instruction with the
+   arithmetic already done, and it survives a change of backdrop. */
 #inspector .sect {
   font-family: var(--mono);
   font-size: 9px;
   letter-spacing: 0.14em;
   text-transform: uppercase;
   color: var(--dim);
-  opacity: 0.7;
   margin: 8px 0 3px;
   padding-top: 5px;
   border-top: 1px solid var(--edge);
@@ -539,7 +568,6 @@ body {
   letter-spacing: 0.14em;
   text-transform: uppercase;
   color: var(--dim);
-  opacity: 0.7;
   margin: 8px 0 4px;
   padding-top: 5px;
   border-top: 1px solid var(--edge);
@@ -552,9 +580,12 @@ body {
   letter-spacing: 0.1em;
 }
 
+/* The `opacity: 1` that used to sit here never did anything: opacity applies to
+   the element it is written on and everything inside it, so a child cannot climb
+   back out of a parent's. Now that `.stack-head` states its colour instead, the
+   amber is simply the amber. */
 #inspector .stack-head b.hand {
   color: var(--accent, #d6a85c);
-  opacity: 1;
 }
 
 #inspector .stack-row {
@@ -579,17 +610,19 @@ body {
   color: var(--ink);
 }
 
+/* The ordinal down the left. Quieter than the row it numbers, and quieter by
+   naming --dim rather than by a 0.6 that would have taken --ink on a live row
+   down to a number nobody can read at 9px. */
 #inspector .stack-n {
   font-style: normal;
   font-size: 9px;
   letter-spacing: 0.06em;
   min-width: 22px;
-  opacity: 0.6;
+  color: var(--dim);
 }
 
 #inspector .stack-row.live .stack-n {
   color: var(--good);
-  opacity: 1;
 }
 
 #inspector .stack-what {
@@ -602,7 +635,7 @@ body {
 #inspector .stack-at {
   font-style: normal;
   font-size: 10px;
-  opacity: 0.55;
+  color: var(--dim);
 }
 
 #inspector .stack-x {
@@ -623,7 +656,6 @@ body {
 #inspector .stack-hint {
   font-size: 10px;
   color: var(--dim);
-  opacity: 0.75;
   padding: 2px 0;
 }
 
@@ -744,6 +776,12 @@ body {
   font-family: var(--mono);
   font-size: 10px;
   color: var(--edge-strong);
+  /* Eleven blueprints hold a digit and the rest hold nothing, which is right —
+     there are more things to build than there are keys to build them with. But
+     an empty block is a block of no height, so the Fence tile pulled its whole
+     label up by a line and sat out of step with the Wall and the Door either
+     side of it. The reserved line keeps one row of tiles on one baseline. */
+  min-height: 1.2em;
 }
 
 .tile .lbl {
@@ -759,8 +797,33 @@ body {
   color: var(--dim);
 }
 
+/*
+ * A tile you cannot afford yet. This was `opacity: 0.45` over the whole tile,
+ * which is the worst case of the multiplier problem in the file: the cost line
+ * is the answer to "why can't I build a wall?", it is 10px, and at 0.45 over the
+ * panel it measured 2.2:1 — a sentence the player is being asked to read and
+ * cannot. The dimming moves to the container. The tile sinks by carrying a
+ * fainter border and half the fill of an affordable one, and the three things
+ * written on it say what colour they are: the name quiet, the hotkey a muted
+ * amber because it is a hint rather than a reading, and the cost in --bad,
+ * because the cost is not merely dim — it is the thing that is wrong.
+ */
 .tile.no {
-  opacity: 0.45;
+  opacity: 1;
+  border-color: rgba(255, 255, 255, 0.06);
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.tile.no .lbl {
+  color: var(--dim);
+}
+
+.tile.no .key {
+  color: rgba(214, 168, 92, 0.55);
+}
+
+.tile.no .cost {
+  color: var(--bad);
 }
 
 /* ---------- log ---------- */
@@ -779,7 +842,16 @@ body {
   bottom: calc(var(--buildbar-h, 112px) + 12px);
   left: 8px;
   width: 320px;
-  max-height: 132px;
+  /* This was a flat 132px, and the movable-panel section below hands this panel
+     `resize: both` — which the help card tells the player to use. An inline
+     height written by the resize grip loses to a max-height every time, so the
+     grip moved and the panel did not, which reads as the drag not having worked
+     at all. The cap has to be somewhere, because the panel is anchored to the
+     bottom and an unbounded one grows up through the top bar; so it becomes a
+     ceiling rather than a size — the smaller of a comfortable share of the
+     viewport and whatever room is actually left between the top bar and the
+     build bar. `#inspector` already worked for exactly this reason. */
+  max-height: min(40vh, calc(100vh - var(--topbar-h, 44px) - var(--buildbar-h, 112px) - 48px));
   overflow: hidden;
   padding: 6px 8px;
   display: flex;
@@ -791,6 +863,21 @@ body {
   font-size: 11px;
   line-height: 1.35;
   color: var(--dim);
+}
+
+/*
+ * How many times a collapsed line happened. Deliberately quieter than the line
+ * it trails: the sentence is what the player reads and the count is what they
+ * check afterwards, so it is dimmer, smaller and set in the mono face that the
+ * rest of this HUD uses for every number. Not italic despite the tag — `i` is
+ * simply the shortest element that was not already spoken for in here.
+ */
+#log div i {
+  font-family: var(--mono);
+  font-style: normal;
+  font-size: 10px;
+  color: var(--edge-strong);
+  margin-left: 5px;
 }
 
 #log div.good {
@@ -817,7 +904,11 @@ body {
   bottom: calc(var(--buildbar-h, 112px) + 12px);
   right: 8px;
   width: 252px;
-  max-height: 216px;
+  /* A ceiling rather than a size, for the reason spelled out over `#log`: this
+     panel is draggable too, and a flat 216px silently swallowed every drag. A
+     little more of the viewport than the log gets, because what is still true
+     outranks what already happened. */
+  max-height: min(46vh, calc(100vh - var(--topbar-h, 44px) - var(--buildbar-h, 112px) - 48px));
   padding: 6px 26px 6px 8px;
   display: flex;
   flex-direction: column;
@@ -905,12 +996,24 @@ body {
  * the header rather than buried in a menu, because that is where somebody who
  * has had enough of being told what to do is already looking.
  */
+/*
+ * Quiet had gone as far as invisible. --edge is a 35%-alpha border token and
+ * this was the only place in the file that used it as ink; composited on a panel
+ * it lands at about 2:1 at 11px, which is a glyph the player cannot find and,
+ * once found, cannot be sure of. And the target was the glyph itself, roughly 8
+ * by 13 CSS pixels, sitting among 44px controls on a phone. It stays the
+ * quietest thing on the header — #7f878f is 3.68:1, right for a control and
+ * deliberately short of what body text gets — but the padding is negative
+ * margin's opposite number here: the box grows to something a thumb can hit
+ * while the row it sits in does not move a pixel.
+ */
 .goalhead a.off {
   cursor: pointer;
-  font-size: 11px;
+  font-size: 12px;
   line-height: 1;
-  color: var(--edge);
-  padding: 0 1px;
+  color: #7f878f;
+  padding: 6px 8px;
+  margin: -6px -6px -6px 0;
 }
 
 .goalhead a.off:hover {
@@ -1165,21 +1268,23 @@ body {
   color: #cf9a4a;
 }
 
+/* Cancelling a row. --dim at half strength was 2.42:1; #7f878f is 3.68:1, which
+   is the bar a control has to clear rather than the 4.5 a sentence does, and it
+   is still a shade below the --dim of the row's own text — which was the whole
+   point of the 0.5. */
 .bd-x {
   flex: 0 0 auto;
   background: none;
   border: 0;
-  color: var(--dim);
+  color: #7f878f;
   cursor: pointer;
   font-size: 12px;
   line-height: 1;
   padding: 2px 4px;
-  opacity: 0.5;
 }
 
 .bd-x:hover {
   color: var(--bad);
-  opacity: 1;
 }
 
 .bd-note {
@@ -1339,8 +1444,15 @@ body {
   background: rgba(214, 168, 92, 0.1);
 }
 
+/* Not yet reachable, which is not the same as not worth reading: the blurb on a
+   locked project is the sentence that tells the player what they are working
+   towards, and at 0.42 over the panel it measured 2.11:1. The card recedes the
+   way `.tile.no` does — a fainter border and a hint of fill — and every word on
+   it keeps the colour its own rule gives it. */
 #researchtab .proj.locked {
-  opacity: 0.42;
+  opacity: 1;
+  border-color: rgba(255, 255, 255, 0.06);
+  background: rgba(255, 255, 255, 0.02);
 }
 
 #researchtab .proj.done .ttl span {
@@ -1550,9 +1662,15 @@ body {
   background: rgba(214, 168, 92, 0.1);
 }
 
-/* Unaffordable, not gone: "you have 40 of 60" is the thing worth reading. */
+/* Unaffordable, not gone: "you have 40 of 60" is the thing worth reading — and
+   at `opacity: 0.45` it was 2.2:1, so the rule said one thing and did the other.
+   Same answer as `.tile.no` and the locked project: the card sinks, the terms
+   on it stay the colour they were written in. `.asked` and `.terminal` below
+   still beat this by coming after it. */
 #tradetab .deal.locked, #roadtab .deal.locked {
-  opacity: 0.45;
+  opacity: 1;
+  border-color: rgba(255, 255, 255, 0.06);
+  background: rgba(255, 255, 255, 0.02);
 }
 
 #tradetab .deal.done, #roadtab .deal.done {
@@ -1936,9 +2054,25 @@ body {
   font-size: 12px;
 }
 
+/*
+ * A plate under every key, because four of them are one thin glyph.
+ *
+ * The colony bindings include the apostrophe for the work board, the semicolon
+ * for the story, the backtick for a Picky and the erase glyph for cancel. Set
+ * bare in a twelve-pixel mono on a dark panel, each of those is three or four
+ * lit pixels — a speck the eye files as dust, so the row beside it reads as an
+ * action with no key at all. The plate costs the wide rows nothing (it grows to
+ * whatever it holds) and it is the difference between a mark and a key for the
+ * narrow ones.
+ */
 .card dt {
   font-family: var(--mono);
   color: var(--edge-strong);
+  justify-self: start;
+  padding: 1px 6px;
+  border: 1px solid var(--edge);
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.05);
 }
 
 .card dd {
@@ -2109,6 +2243,31 @@ body {
   bottom: -20px;
   padding: 8px 0 20px;
   background: var(--panel-solid);
+}
+
+/*
+ * The cut edge, made visible.
+ *
+ * The row above is opaque and it is stuck to the floor of a card that scrolls,
+ * so text slides under it and stops dead at a hard horizontal line. On the help
+ * card that line falls, on an 800-tall window, immediately below the heading
+ * "How a run ends" — so the one section that explains how the game is won reads
+ * as a heading with nothing under it, and a new player has no reason to scroll.
+ *
+ * A gradient standing on top of the row fades the last two lines out instead of
+ * guillotining them, which is the whole of the cue. When the card is short
+ * enough not to scroll, the fade paints panel-solid onto panel-solid and is
+ * invisible, so this costs nothing in the case where there is nothing to say.
+ */
+.card .acts::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 100%;
+  height: 28px;
+  pointer-events: none;
+  background: linear-gradient(to top, var(--panel-solid), transparent);
 }
 
 /* ---------- headline cards ---------- */
@@ -2303,7 +2462,11 @@ body {
   line-height: 19px;
   text-align: center;
   font-size: 12px;
-  color: rgba(154, 163, 173, 0.55);
+  /* --dim written out, because the alpha is doing the dimming here rather than
+     the token. It was 0.55, which is 2.65:1 on a panel — a grip nobody can see
+     is a panel nobody knows is draggable. 0.85 brings it to 4.24:1 and still
+     leaves it quieter than anything written on the panel. */
+  color: rgba(154, 163, 173, 0.85);
   pointer-events: auto;
   cursor: grab;
   touch-action: none;
@@ -2386,6 +2549,44 @@ body {
   border-radius: 3px;
 }
 
+/* ---------- targets, sized by what is pointing at them ---------- */
+
+/*
+ * Every 44px rule in this file lives under `#hud.phone`, and `#hud.phone` comes
+ * from a screen-size test — which is right for a layout and wrong for a target.
+ * An iPad is not a phone and gets the desk arrangement, and on the desk
+ * arrangement `#speeds button, .btn` is 12px type with 3px of vertical padding,
+ * which computes to about 22px tall. `hud.ts` puts fourteen of those in the top
+ * bar next to four speed buttons: eighteen 22px targets, which between them are
+ * every destination in the game, all of them missed by a finger about as often
+ * as they are hit.
+ *
+ * So the size follows the input device rather than the screen. `pointer: coarse`
+ * reports the *primary* pointer, so a touchscreen laptop that is driven by its
+ * trackpad still gets the small ones — it is the machine being fingered that
+ * matches, not the machine that could be. `#topbar` wraps and `hud.ts` publishes
+ * the bar's measured height as --topbar-h from a ResizeObserver, so if the taller
+ * buttons take a second row every panel anchored below the bar follows on its
+ * own and nothing has to be told about it. The `#hud.phone` rules below are more
+ * specific and still say what a phone needs; this is the floor underneath them.
+ */
+@media (pointer: coarse) {
+  #speeds button,
+  .btn {
+    min-height: 44px;
+    min-width: 44px;
+    padding: 8px 12px;
+  }
+
+  /* The work grid is a table of one-tap cells, and 26px of cell is a mis-set
+     priority rather than a miss. The same 34px a phone already gets further
+     down, for the same finger. */
+  #worktab td.p {
+    min-width: 34px;
+    height: 34px;
+  }
+}
+
 /* ============================================================ the phone layout
 
    One HUD, two presentations. Everything below is scoped to `#hud.phone`, which
@@ -2434,6 +2635,52 @@ body {
   display: none;
 }
 
+/*
+ * Every clipped edge on the phone says it is clipped.
+ *
+ * On the desk a panel that overflows shows a scrollbar and can be dragged
+ * bigger, so the cut announces itself twice over. The phone has neither: the
+ * scrollbar is hidden two rules up, and `makeMovable` returns early on a phone
+ * because there is nowhere to move a panel to. So a phone panel that clips its
+ * content clips it in perfect silence, and the only evidence is a sentence that
+ * stops mid-word — which reads as a broken layout, not as a panel you can push.
+ *
+ * Three of these were caught in one round of photographs. The top bar cut the
+ * clock to "12:0" and stopped. The next-steps panel ended on "Steel is what
+ * everything after this costs" with the rest of the sentence below the fold.
+ * The build sheet showed four of its eleven categories, so seven whole tabs of
+ * things to build were reachable only by a swipe nothing suggested.
+ *
+ * A mask rather than an overlay, because a mask lives in the element's own box
+ * and not in the scrolled content, so it stays at the edge while the content
+ * runs under it. The panel's background fades with it, and that is the point: a
+ * bar that dissolves at its edge is a bar with more beyond the edge. Twenty-six
+ * pixels sideways, where a cut glyph has to be unmistakable, and twenty down,
+ * which is about a line and a half of the twelve-pixel type these sheets use.
+ */
+#hud.phone #topbar,
+#hud.phone #buildbar .bartabs {
+  -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 26px), transparent);
+  mask-image: linear-gradient(to right, #000 calc(100% - 26px), transparent);
+}
+
+#hud.phone #goals,
+#hud.phone #colonists,
+#hud.phone #inspector,
+#hud.phone #buildbar,
+#hud.phone #log,
+#hud.phone #alerts,
+#hud.phone[data-sheet='more'] #sysbtns,
+#hud.phone #worktab,
+#hud.phone #boardtab,
+#hud.phone #researchtab,
+#hud.phone #tradetab,
+#hud.phone #roadtab,
+#hud.phone #chronicletab {
+  -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 20px), transparent);
+  mask-image: linear-gradient(to bottom, #000 calc(100% - 20px), transparent);
+}
+
 #hud.phone #clock {
   min-width: 0;
   font-size: 12px;
@@ -2478,15 +2725,6 @@ body {
   left: 4px;
 }
 
-/* `minimap.ts` writes the face size inline from its own constant, which is the
-   right size on a desk and a quarter of the width of a phone. Overridden rather
-   than parameterised: the bitmap is drawn at the desk size and scaled down, so
-   the map stays sharp and the module keeps one number. */
-#hud.phone #minimap canvas {
-  width: 96px !important;
-  height: 96px !important;
-}
-
 /* ---- next steps: a banner, not a sheet ----
 
    The curriculum is the one panel whose whole job is to be read while you are
@@ -2503,6 +2741,24 @@ body {
   overscroll-behavior: contain;
   font-size: 12px;
   padding: 6px 24px 7px 8px;
+}
+
+/* The banner's own way out, and the only control on the glass that is not on a
+   sheet — so it is the only one that would otherwise have escaped the 44px rule
+   the rest of the phone layout follows. It becomes a square with the glyph in
+   the middle of it rather than a glyph with a little padding round the edge, and
+   it steps out of the header's baseline row so that a 44px box does not drag the
+   title and the count down with it. The desk rule's negative margin goes with
+   it: that margin exists to stop a 22px row from growing, and here the row
+   growing is the whole idea. */
+#hud.phone .goalhead a.off {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  align-self: center;
+  min-width: 44px;
+  min-height: 44px;
+  margin: 0;
 }
 
 /* ---- the sheets ---- */
@@ -2724,6 +2980,15 @@ body {
 }
 
 #hud.phone .card dt {
+  /* No plate here. The plate exists because four of the desk's colony bindings
+     are a single thin glyph and a bare apostrophe reads as dust; the phone card
+     has no keys in it at all — its terms are "Build", "Two fingers", "Inside a
+     body", words that are perfectly legible in amber and would only look like
+     buttons if they were boxed. Fixing a desk problem on a phone that does not
+     have it is how a fix becomes a regression. */
+  padding: 0;
+  border: 0;
+  background: none;
   margin-top: 8px;
 }
 

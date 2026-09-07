@@ -264,8 +264,15 @@ export class App {
       this.ambienceStarted = true;
     }
     const w = this.world;
-    // Where the ear is: the body in first person, the colony's heart from above.
-    const ear = pawn ?? livingColonists(w)[0] ?? null;
+    // Where the ear is: the body in first person, and from above wherever the
+    // camera is pointed. It used to be the first living colonist, which is the
+    // same person all game and is wherever they happen to be standing — so a
+    // player looking at the rain on the moor heard the inside of a hut two
+    // hundred cells away because somebody was asleep in it, and the roof came
+    // off the sound the moment that settler stepped outdoors. The camera is what
+    // the player is listening from, and it is already what they are looking
+    // from: `render` focuses the same point.
+    const ear = pawn ?? this.cam.target;
     this.ambience.update(
       {
         timeOfDay: timeOfDay(w),
@@ -275,7 +282,7 @@ export class App {
         rain: rainfall(w),
         wind: windStrength(w),
         threat: this.threatLevel(),
-        indoors: ear !== null && indoors(w, Math.round(ear.x), Math.round(ear.y)),
+        indoors: indoors(w, Math.round(ear.x), Math.round(ear.y)),
         firstPerson: this.mode === 'fps',
       },
       dt,
@@ -425,7 +432,11 @@ export class App {
   }
 
   private globalKeys(): void {
-    if (this.input.clicked(0) || this.input.pressed('Space')) this.sfx.unlock();
+    // Any first contact at all, not a click and not the space bar. Both of those
+    // are things a phone does not have, and audio that only a keyboard can turn
+    // on is audio no touchscreen player has ever heard. `unlock` is safe to call
+    // every frame — it resumes a suspended context and returns.
+    if (this.input.hasGestured) this.sfx.unlock();
 
     if (this.input.pressed('Escape') && this.hud.helpOpen) {
       this.hud.toggleHelp();

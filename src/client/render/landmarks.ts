@@ -22,8 +22,10 @@
  */
 
 import * as THREE from 'three';
+import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
 
-import { BUILDING_COLOR, RESOURCE_COLOR, TERRAIN_COLOR } from './palette';
+import { STONE_COLOR, STONE_ROUGHNESS, lumpyGeometry } from './decor';
+import { BUILDING_COLOR, RESOURCE_COLOR } from './palette';
 import type { Site, World } from '../../sim/types';
 
 /** How high the marker floats, and how far it bobs either side of that. */
@@ -31,6 +33,57 @@ const PIN_HEIGHT = 2.05;
 const PIN_BOB = 0.16;
 /** Amber, the colour the HUD already uses for "you could do something here". */
 const PIN_COLOR = 0xd8a24a;
+/**
+ * How much more saturated than that both ends of the bead's baked light are.
+ *
+ * The lit and shaded tones used to be `PIN_COLOR` moved in lightness alone, and
+ * on an amber in linear light that is a walk toward white: a shade of +0.18 is
+ * 0xf6c27a, which is a pale tan and not an amber at all. A solid of revolution
+ * shows the camera mostly its own sides, whose normals sit near the middle of the
+ * half-lambert term, so most of the bead was parked at that end — and then ACES
+ * at 1.3 exposure lifted and desaturated it once more on the way to the frame.
+ * What arrived was the palest, flattest object in the picture: a lump of dough
+ * beside its cairn, on ground it was supposed to be marking.
+ *
+ * So both ends are pushed back up the saturation axis before they are moved apart
+ * on the lightness one. `PIN_COLOR` sits at 0.82 saturation in linear light and
+ * this takes both tones to a whisker under 1, which drains the blue out of the
+ * pale end and leaves an amber that survives the tone mapper. Measured against
+ * `TERRAIN_COLOR.sand`, which is the pale ground a marker most often stands on:
+ * chroma per unit luminance went from 1.97× the sand's to 2.42×, and the bead's
+ * own light-to-dark range from 2.2:1 to 4.8:1. It also came *down* in mean
+ * luminance, from 1.85× the sand to 1.47×, and that is the trade and not a
+ * regression — brightness was what the colour was being spent on.
+ */
+const PIN_SATURATE = 0.18;
+/**
+ * The marker's profile, spun about its own axis: a bead pinched top and bottom.
+ *
+ * It used to be a bare octahedron, and from the isometric camera that was a
+ * mistake with a name. Unlit and eight-sided, every face took exactly the same
+ * amber, so what reached the frame was the silhouette and nothing else: a flat
+ * seven-sided disc, and — since it hangs two metres up while the camera is
+ * seven metres up — one magnified half again by perspective, so it read as a
+ * gold coin nine tenths of a cell across lying on the grass beside the cairn,
+ * with tufts on the nearer cells drawn over it. A marker that reads as
+ * something lying on the ground is worse than no marker.
+ *
+ * So it is spun rather than faceted, and slimmer than it was, and its shading
+ * is painted into the geometry (`pinGeometry`) rather than left to a light it
+ * does not take. The x values are radii and the y values heights, centred on
+ * the origin so the instance position goes on meaning "where the marker hangs".
+ */
+const PIN_PROFILE = [
+  [0, -0.26],
+  [0.075, -0.18],
+  [0.14, -0.08],
+  [0.175, 0],
+  [0.155, 0.09],
+  [0.105, 0.17],
+  [0, 0.24],
+] as const;
+/** How many times round. Sixteen, over the profile's six bands: 192 triangles for a marker. */
+const PIN_SEGMENTS = 16;
 
 /** Room for the biggest arrangement any one site can produce, so nothing clips. */
 const STONES_PER_SITE = 8;
@@ -65,16 +118,28 @@ export class LandmarkView {
   constructor(world: World) {
     const n = Math.max(1, world.sites.length);
     // Three primitives cover every arrangement below, so the whole set of finds
-    // on a map costs four draw calls rather than one per rock.
-    this.stones = instanced(new THREE.DodecahedronGeometry(0.5, 0), n * STONES_PER_SITE);
-    this.blocks = instanced(new THREE.BoxGeometry(1, 1, 1), n * BLOCKS_PER_SITE);
-    this.shards = instanced(new THREE.OctahedronGeometry(0.5, 0), n * SHARDS_PER_SITE);
-    // Unlit, so it reads as a marker and not as an object with a light on it.
-    // Fog still touches it: a pin you can see through a snowstorm would be the
-    // one thing on the map that ignores the weather.
+    // on a map costs four draw calls rather than one per rock. Each is a rounded,
+    // smooth-lit version of the shape it stands for: a stone is a worn lump, a
+    // plank has softened edges so its silhouette does not cut like a wireframe,
+    // and an ore chunk is a nugget — still pinched along its axes, which is what
+    // keeps it from reading as one more pebble.
+    this.stones = instanced(
+      lumpyGeometry(new THREE.IcosahedronGeometry(0.5, 1), 0.07, 11.3),
+      n * STONES_PER_SITE,
+    );
+    this.blocks = instanced(new RoundedBoxGeometry(1, 1, 1, 1, 0.08), n * BLOCKS_PER_SITE);
+    this.shards = instanced(
+      lumpyGeometry(new THREE.OctahedronGeometry(0.5, 2), 0.12, 17.9),
+      n * SHARDS_PER_SITE,
+    );
+    // Unlit, so it reads as a marker and not as an object with a light on it —
+    // which is why its shading has to be painted on, and is. Fog still touches
+    // it: a pin you can see through a snowstorm would be the one thing on the
+    // map that ignores the weather. White here because the amber rides in the
+    // vertex colours, and the two multiply.
     this.pins = new THREE.InstancedMesh(
-      new THREE.OctahedronGeometry(0.26, 0),
-      new THREE.MeshBasicMaterial({ color: PIN_COLOR }),
+      pinGeometry(),
+      new THREE.MeshBasicMaterial({ color: 0xffffff, vertexColors: true }),
       n,
     );
     this.pins.frustumCulled = false;
@@ -102,8 +167,9 @@ export class LandmarkView {
       const p = this.pinAt[i]!;
       const phase = t / 20 + p.phase;
       v.set(p.x, PIN_HEIGHT + Math.sin(phase * 1.1) * PIN_BOB, p.y);
-      // Turning as well as bobbing, because an octahedron seen edge-on from the
-      // isometric camera is a diamond that could be part of the ground.
+      // Bobbing and precessing. The bead is a solid of revolution, so a turn
+      // about its own axis alone would be invisible; what shows is its tilt
+      // going round with the turn, and nothing on the ground bobs or wobbles.
       e.set(0, phase * 0.7, 0.35);
       q.setFromEuler(e);
       m.compose(v, q, one);
@@ -172,7 +238,10 @@ function cairn(site: Site, stones: Piece[]): void {
       sx: r[i]! * 2,
       sy: r[i]! * 1.5,
       sz: r[i]! * 2,
-      color: shade(TERRAIN_COLOR.rock, (b - 0.5) * 0.12),
+      // The loose-stone colour and not the cliff's: a cairn is built from what
+      // was lying about, and in the cliff's navy it was three black pucks that
+      // read as a different kind of stone from every pebble around it.
+      color: shade(STONE_COLOR, (b - 0.5) * 0.12),
     });
     // Less than the two radii between centres, so they overlap and bite.
     y += r[i]! * 1.05;
@@ -222,7 +291,7 @@ function openCrate(site: Site, blocks: Piece[], stones: Piece[]): void {
       sx: 0.2,
       sy: 0.14,
       sz: 0.2,
-      color: shade(TERRAIN_COLOR.rock, (a - 0.5) * 0.1),
+      color: shade(STONE_COLOR, (a - 0.5) * 0.1),
     });
   }
 }
@@ -249,7 +318,12 @@ function oreFace(site: Site, shards: Piece[]): void {
       sx: r * 2,
       sy: r * 1.6,
       sz: r * 2,
-      color: shade(TERRAIN_COLOR.rock, -0.06 + (b - 0.5) * 0.08),
+      // Darker than a loose stone — it is the dark that makes the metal bright —
+      // but the same warm grey, so the split face and the scatter around it are
+      // one rock and not a navy chunk dropped among brown pebbles. A small step
+      // down: `shade` works in linear light, where this grey has little
+      // lightness to spare, and twice this went black.
+      color: shade(STONE_COLOR, -0.06 + (b - 0.5) * 0.06),
     });
   }
   // The metal itself: small, bright, and sitting in the broken faces. Three is
@@ -289,7 +363,9 @@ function coldCamp(site: Site, blocks: Piece[], stones: Piece[]): void {
       sx: 0.18,
       sy: 0.13,
       sz: 0.18,
-      color: shade(TERRAIN_COLOR.rock, -0.1 + j * 0.1),
+      // Fieldstone, sooted a little on the fire side: the loose-stone grey a
+      // shade down, never the cliff's navy.
+      color: shade(STONE_COLOR, -0.1 + j * 0.1),
     });
   }
   // Two spent sticks across the ring, charred rather than timber-coloured: the
@@ -324,10 +400,67 @@ function coldCamp(site: Site, blocks: Piece[], stones: Piece[]): void {
   });
 }
 
+/**
+ * The marker, as a solid: `PIN_PROFILE` spun about the y axis, with a sun baked
+ * into its vertex colours.
+ *
+ * The material is unlit on purpose — a marker that dims at dusk with the rest of
+ * the colony is a marker the player stops seeing on the evening they most need
+ * it — and the price of that is a shape with no shading at all, which is how the
+ * old octahedron came out as a flat disc. Painting the light in gets both: the
+ * amber never darkens with the hour, and the bead still has a lit top, a shaded
+ * underside and a band between them that turns as the pin bobs and precesses.
+ *
+ * How far apart those two tones stand is the whole of whether it reads as round.
+ * At the 2.2:1 in linear luminance they were first set to, a marker forty pixels
+ * across at manager zoom was one tone with a hint of another at its rim, which the
+ * eye files as a blob and not as a sphere; at the 4.8:1 `PIN_SATURATE` opens up,
+ * the top of the bead is plainly the lit side of something and the underside is
+ * plainly in its own shadow. Averaged over the top half of the silhouette against
+ * the bottom half — which is the number that survives the azimuth, since half of
+ * every ring is turned away from the sun — that is a ramp of 1.81:1 where it used
+ * to be 1.38:1.
+ *
+ * The tone is each vertex's own normal against a high sun leaning a little to
+ * one side. Straight up alone was tried first and photographed flat: on a solid
+ * of revolution seen side-on, a tone that varies only with height gives the
+ * silhouette a top-to-bottom gradient and no left-to-right one at all, which
+ * the eye reads as a shaded disc rather than as a bead. The lean is what rounds
+ * it. Being fixed in the object it turns with the marker, so the highlight
+ * sweeps round as the pin precesses — on a thing whose whole job is to catch
+ * the eye that reads as a glint, not as an error.
+ */
+function pinGeometry(): THREE.BufferGeometry {
+  const geo = new THREE.LatheGeometry(
+    PIN_PROFILE.map(([r, y]) => new THREE.Vector2(r, y)),
+    PIN_SEGMENTS,
+  );
+  // Nothing here is textured, and the uv attribute is two floats a vertex on a
+  // mesh the whole map shares.
+  geo.deleteAttribute('uv');
+  const n = geo.getAttribute('normal') as THREE.BufferAttribute;
+  const lit = new THREE.Color(PIN_COLOR).offsetHSL(0, PIN_SATURATE, 0.16);
+  const dark = new THREE.Color(PIN_COLOR).offsetHSL(0, PIN_SATURATE, -0.28);
+  const sun = new THREE.Vector3(0.34, 0.88, 0.33).normalize();
+  const c = new THREE.Color();
+  const col = new Float32Array(n.count * 3);
+  for (let i = 0; i < n.count; i++) {
+    const t = (n.getX(i) * sun.x + n.getY(i) * sun.y + n.getZ(i) * sun.z + 1) / 2;
+    c.copy(dark).lerp(lit, t);
+    col[i * 3] = c.r;
+    col[i * 3 + 1] = c.g;
+    col[i * 3 + 2] = c.b;
+  }
+  geo.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+  return geo;
+}
+
 function instanced(geo: THREE.BufferGeometry, count: number): THREE.InstancedMesh {
+  // The same material the loose stones use, for the same reason: the sky map
+  // rims a lump that the sun alone leaves as a flat disc of its own colour.
   const mesh = new THREE.InstancedMesh(
     geo,
-    new THREE.MeshLambertMaterial({ color: 0xffffff, flatShading: true }),
+    new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: STONE_ROUGHNESS }),
     count,
   );
   mesh.castShadow = true;

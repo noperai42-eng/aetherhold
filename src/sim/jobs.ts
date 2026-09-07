@@ -765,7 +765,11 @@ const TOPUP_DETOUR = 8;
  *     colony had the steel, the bench, and the priority set, and stood there
  *     unarmed for twenty days because no pile ever reached the threshold.
  */
-export function findStockpileCell(world: World, kind: ResourceKind, from?: { x: number; y: number }): { x: number; y: number } | null {
+function dropPools(
+  world: World,
+  kind: ResourceKind,
+  from?: { x: number; y: number },
+): { cold: DropCell[]; rest: DropCell[] } {
   const perishable = SPOIL_DAYS[kind] !== undefined;
   const cold: DropCell[] = [];
   const rest: DropCell[] = [];
@@ -784,7 +788,41 @@ export function findStockpileCell(world: World, kind: ResourceKind, from?: { x: 
       else rest.push(cell);
     }
   }
+  return { cold, rest };
+}
+
+export function findStockpileCell(world: World, kind: ResourceKind, from?: { x: number; y: number }): { x: number; y: number } | null {
+  const { cold, rest } = dropPools(world, kind, from);
   return pickDropCell(cold.length > 0 ? cold : rest);
+}
+
+/**
+ * Is there a below-freezing stockpile cell with room in it for `kind`?
+ *
+ * The question `needsHauling` asks about food that is already put away, and it is
+ * deliberately about *room* and not merely about a cold room existing. A full
+ * cellar is not somewhere to put anything, so the sack in the cabin stays in the
+ * cabin — which is the fallback the colony wants and, just as importantly, the
+ * thing that stops a hauler picking a sack up, finding nowhere cold to set it
+ * down, and putting it back where it started for ever.
+ *
+ * Memoised on the tick because the haul scan asks it once per sack per settler
+ * and the answer cannot change between two sacks in the same pass: the walk over
+ * every cell of every stockpile taking each one's temperature is the same walk
+ * `findStockpileCell` is careful to do only once per kind.
+ */
+let coldSeen: { tick: number; world: World; by: Map<ResourceKind, boolean> } | null = null;
+
+export function coldStoreOpen(world: World, kind: ResourceKind): boolean {
+  if (SPOIL_DAYS[kind] === undefined) return false;
+  if (!coldSeen || coldSeen.tick !== world.tick || coldSeen.world !== world) {
+    coldSeen = { tick: world.tick, world, by: new Map() };
+  }
+  const known = coldSeen.by.get(kind);
+  if (known !== undefined) return known;
+  const open = dropPools(world, kind).cold.length > 0;
+  coldSeen.by.set(kind, open);
+  return open;
 }
 
 type DropCell = { x: number; y: number; fill: number; d: number };
@@ -815,7 +853,22 @@ function pickDropCell(pool: DropCell[]): { x: number; y: number } | null {
 function needsHauling(world: World, s: ItemStack): boolean {
   if (s.carriedBy !== null || s.reservedBy !== null) return false;
   const z = zoneAt(world, s.x, s.y);
-  if (z && z.kind === 'stockpile' && z.accepts.includes(s.kind)) return false;
+  if (z && z.kind === 'stockpile' && z.accepts.includes(s.kind)) {
+    // Put away is not the same as put away *properly*. Food in a warm store is
+    // still on the clock — `spoilFactor` is `temp / 20` above freezing and a hard
+    // zero below it — so a sack of meat in the cabin with a cold cellar standing
+    // empty across the yard is in the wrong place, and the colony should move it
+    // rather than wait for the next harvest to be routed there while this one
+    // rots. Measured on seed 7 over forty days: 268 food spoiled and not one unit
+    // was ever frozen.
+    //
+    // Only ever *towards* the cold. If there is nowhere cold with room — no
+    // cellar yet, or a full one — this returns false and the sack stays where it
+    // is, which is both the fallback the colony wants and what stops two warm
+    // cells passing the same sack back and forth for ever.
+    if (cellTemp(world, s.x, s.y) <= FREEZING) return false;
+    return coldStoreOpen(world, s.kind);
+  }
   return true;
 }
 

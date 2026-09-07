@@ -15,8 +15,10 @@ import { HOME_X, HOME_Y, createWorld } from '../src/sim/worldgen';
 import { canSow, growingCells } from '../src/sim/farming';
 import { buildingAt, isWalkable } from '../src/sim/grid';
 import { regionAt } from '../src/sim/regions';
-import { indoors } from '../src/sim/rooms';
+import { indoors, roomAt } from '../src/sim/rooms';
 import { addBuilding, addItem, countResource, livingColonists, removeBuilding } from '../src/sim/world';
+import { isBed } from '../src/sim/buildings';
+import { unhoused } from '../src/sim/quarters';
 import { makeStreams, stepWorldN } from '../src/sim/tick';
 import { makePawn } from '../src/sim/pawn';
 import { Rng } from '../src/sim/rng';
@@ -30,6 +32,7 @@ import {
   DESIG_HARVEST,
   DESIG_NONE,
   DESIG_FLOOR_PLANK,
+  markBuildingsChanged,
   packCell,
   unpackX,
   unpackY,
@@ -56,7 +59,7 @@ import {
   tickSteward,
   yardRing,
 } from '../src/sim/steward';
-import type { Pawn, ResourceKind, World } from '../src/sim/types';
+import type { Building, Pawn, ResourceKind, World } from '../src/sim/types';
 
 /** A daytime tick the Steward actually wakes on. */
 const NOON = 2400;
@@ -98,6 +101,102 @@ function setStock(world: World, kind: ResourceKind, amount: number): void {
 function wellStocked(world: World): void {
   setStock(world, 'wood', 400);
   setStock(world, 'steel', 300);
+}
+
+/**
+ * Give everybody somewhere to sleep, which is the one thing the ward waits on.
+ *
+ * Where the bunks stand does not matter to `sickbay` — it counts them — and
+ * putting them out of the hall on purpose leaves the room's own wall line free
+ * for the ward bed the test is actually looking for.
+ */
+function bunkEveryone(world: World): void {
+  let short = livingColonists(world).length - world.buildings.filter((b) => isBed(b.kind) && b.built).length;
+  for (let y = HOME_Y - 10; short > 0 && y < HOME_Y + 10; y++) {
+    for (let x = HOME_X - 10; short > 0 && x < HOME_X + 10; x++) {
+      if (indoors(world, x, y)) continue;
+      if (addBuilding(world, 'bed', x, y, true)) short--;
+    }
+  }
+  expect(short).toBe(0);
+}
+
+/**
+ * A small walled room with a door, standing on ground the test cleared first.
+ *
+ * Built by hand for the same reason `annex.test.ts` builds its hall by hand: the
+ * cases here are about *what the Steward puts in an empty room*, and a room
+ * taken off a seed comes with whatever that seed happened to leave in it.
+ */
+/**
+ * Give one settler a room of their own, which is what `cells` waits on.
+ *
+ * The colony has to have proved it can carve a room and given the first one away
+ * before it walls one for a prisoner — so a fixture that skips this is a colony
+ * with a cell block and everybody still in the barracks.
+ */
+function someoneHoused(world: World, x0: number, y0: number): void {
+  const inside = spareRoom(world, x0, y0);
+  const bed = addBuilding(world, 'bed', inside.x, inside.y, true);
+  expect(bed).not.toBeNull();
+  bed!.ownerId = livingColonists(world)[0]!.id;
+  markBuildingsChanged(world);
+  expect(unhoused(world).length).toBeLessThan(livingColonists(world).length);
+}
+
+function gunOnTheWall(world: World): void {
+  // Well away from the cabin, and both halves of that matter. Dropped on
+  // `HOME + 4` first, which is the cabin floor on most seeds, so `addBuilding`
+  // refused it and the colony had no gun. Clearing that patch first was worse:
+  // `clearPatch` takes down whatever is standing, so it opened the hall's own
+  // wall, the cabin stopped being a room, and `heart` fell through to the 3×3
+  // box this file had just built for the prisoner — which `bedlessRooms` skips,
+  // because the heart is the hall. Twice the test failed for a reason that had
+  // nothing to do with cells.
+  clearPatch(world, HOME_X + 15, HOME_Y + 15, HOME_X + 17, HOME_Y + 17);
+  const turret = addBuilding(world, 'turret', HOME_X + 16, HOME_Y + 16, true);
+  expect(turret).not.toBeNull();
+}
+
+/**
+ * A generator with headroom, standing well clear of anything that matters.
+ *
+ * The cellar refuses to plug a cooler into a grid that cannot hold it — the shed
+ * order drops coolers before turrets, so an unsupported one thaws on exactly the
+ * night the guns are firing. Every cellar test therefore needs watts before it
+ * needs anything else.
+ */
+function powerToSpare(world: World, x: number, y: number): Building {
+  clearPatch(world, x - 1, y - 1, x + 1, y + 1);
+  const gen = addBuilding(world, 'generator', x, y, true);
+  expect(gen).not.toBeNull();
+  gen!.fuel = 10_000;
+  markBuildingsChanged(world);
+  return gen!;
+}
+
+function spareRoom(world: World, x0: number, y0: number): { x: number; y: number } {
+  const x1 = x0 + 2;
+  const y1 = y0 + 2;
+  clearPatch(world, x0 - 2, y0 - 2, x1 + 2, y1 + 2);
+  const door = { x: x0 + 1, y: y1 + 1 };
+  for (let x = x0 - 1; x <= x1 + 1; x++) {
+    addBuilding(world, 'wall', x, y0 - 1, true);
+    // The doorway is left open in the wall line rather than walled and then
+    // doored over: `addBuilding` will not put a door on an occupied cell, so
+    // laying the wall first gave a sealed box, and `planBlueprint` refuses every
+    // cell of a room no settler can walk into — which is exactly how it refuses
+    // the caves this map generates, and why it took three passes to notice the
+    // test's room was one of them.
+    if (x !== door.x) addBuilding(world, 'wall', x, y1 + 1, true);
+  }
+  for (let y = y0; y <= y1; y++) {
+    addBuilding(world, 'wall', x0 - 1, y, true);
+    addBuilding(world, 'wall', x1 + 1, y, true);
+  }
+  expect(addBuilding(world, 'door', door.x, door.y, true)).not.toBeNull();
+  markBuildingsChanged(world);
+  return { x: x0 + 1, y: y0 + 1 };
 }
 
 /**
@@ -391,6 +490,103 @@ describe('what the colony decides to do next', () => {
     }
   });
 
+  /**
+   * The gate is decided before the ring closes, not after.
+   *
+   * `gate` returns 0 until the line is eighty per cent walled, so it costs
+   * nothing sitting above `yard`; below it, it was unreachable, because `yard`
+   * keeps returning a number for as long as it has posts left to lay. The colony
+   * therefore hung its gate one tick after it had already shut itself in.
+   */
+  it('hangs the gate while there are still posts left to lay', () => {
+    const world = createWorld(18);
+    world.tick = NOON;
+    wellStocked(world);
+    const room = heart(world)!;
+    const ring = yardRing(world, room);
+    // Nine tenths of a fence: past the gate's threshold, and still short of a
+    // closed ring, which is the exact window that used to be unreachable.
+    const gaps = Math.floor(ring.length * 0.1);
+    for (const c of ring.slice(gaps)) addBuilding(world, 'fence', c.x, c.y, true);
+    expect(ring.filter((c) => buildingAt(world, c.x, c.y)?.kind === 'fence').length).toBeGreaterThan(0);
+
+    let door: Building | undefined;
+    for (let i = 0; i < AMBITIONS.length * 2 && !door; i++) {
+      tickSteward(world);
+      door = world.buildings.find((b) => b.kind === 'door' && !b.built);
+      if (door) break;
+      for (const b of world.buildings.filter((x) => !x.built)) removeBuilding(world, b);
+      world.cellDesig.fill(DESIG_NONE);
+    }
+    expect(door).toBeDefined();
+    // On the ring, where a post used to be — not on the cabin.
+    expect(ring.some((c) => c.x === door!.x && c.y === door!.y)).toBe(true);
+    // And there is still fence left to lay, which is the whole point.
+    expect(ring.some((c) => !buildingAt(world, c.x, c.y))).toBe(true);
+  });
+
+  /**
+   * The control. Promoting `gate` must not make it jump the gun: a gate in a
+   * fence with three posts in it is a door standing in a field, and the colony
+   * should still be laying fence.
+   */
+  it('will not hang a gate in a line that is barely started', () => {
+    const world = createWorld(18);
+    world.tick = NOON;
+    wellStocked(world);
+    const room = heart(world)!;
+    const ring = yardRing(world, room);
+    for (const c of ring.slice(0, Math.floor(ring.length * 0.3))) addBuilding(world, 'fence', c.x, c.y, true);
+
+    for (let i = 0; i < AMBITIONS.length * 2; i++) {
+      tickSteward(world);
+      expect(world.buildings.some((b) => b.kind === 'door' && !b.built)).toBe(false);
+      for (const b of world.buildings.filter((x) => !x.built)) removeBuilding(world, b);
+      world.cellDesig.fill(DESIG_NONE);
+    }
+  });
+
+  /**
+   * Played out: the colony finishes its fence and is still able to walk out of it.
+   *
+   * This is the failure as it actually happened on seed 1312 at harsh. On day 38
+   * the last post went in, and all seven settlers spent three days inside a
+   * sixty-four cell pocket — fifty-four walls, thirteen posts, no door — while
+   * the twenty-seven thousand cells they had been chopping and hunting that
+   * morning sat on the other side of it. Nothing in the sim told them; they just
+   * stopped being able to do anything outdoors.
+   *
+   * So the assertion is the one a player would make: build the whole ring out,
+   * and check that the settlers can still reach the map.
+   */
+  it('finishes the fence without shutting the settlers inside it', () => {
+    const world = createWorld(18);
+    world.tick = NOON;
+    wellStocked(world);
+    const outside = { x: 4, y: 4 };
+    const reach = () =>
+      livingColonists(world).some((p) => regionAt(world, Math.round(p.x), Math.round(p.y)) === regionAt(world, outside.x, outside.y));
+    expect(reach()).toBe(true);
+
+    // Run the Steward and actually raise what it plans, which is the only way the
+    // ring ever closes — and the only way the trap ever sprang.
+    for (let i = 0; i < AMBITIONS.length * 6; i++) {
+      wellStocked(world);
+      tickSteward(world);
+      for (const b of world.buildings.filter((x) => !x.built)) b.built = true;
+      markBuildingsChanged(world);
+      world.cellDesig.fill(DESIG_NONE);
+      expect(reach()).toBe(true);
+    }
+
+    // The fence really did go up — otherwise this passes by never building one.
+    const room = heart(world)!;
+    const ring = yardRing(world, room);
+    const posts = ring.filter((c) => buildingAt(world, c.x, c.y)?.kind === 'fence').length;
+    expect(posts).toBeGreaterThan(ring.length * 0.5);
+    expect(ring.some((c) => buildingAt(world, c.x, c.y)?.kind === 'door')).toBe(true);
+  });
+
   /** A post already standing in the soil comes out, so old saves heal themselves. */
   it('pulls out a fence post left standing in the garden', () => {
     const world = createWorld(18);
@@ -502,6 +698,173 @@ describe('what the colony decides to do next', () => {
     expect(raised).toBeLessThanOrEqual(4);
     // And it knows when to stop.
     expect(defence.mark(world)).toBe(0);
+  });
+
+  /**
+   * The ward was the last thing in the sim that nobody could reach.
+   *
+   * A medbed multiplies immunity gain by 1.3 where a bunk gives 1.0, and
+   * `findFreeBed` has always steered the ill towards one and the well away — but
+   * no ambition ever planned one and worldgen places none, so on forty days of
+   * seed 7 not a single hour of illness was spent in a ward bed, because there
+   * was no ward bed in the world to spend it in.
+   */
+  it('builds a ward bed once every settler has a bunk', () => {
+    const world = createWorld(24);
+    world.tick = NOON;
+    wellStocked(world);
+    const sickbay = AMBITIONS.find((a) => a.id === 'sickbay')!;
+    // Everybody housed, which is the precondition the ward waits on.
+    bunkEveryone(world);
+
+    expect(sickbay.mark(world)).toBe(1);
+    const marked = world.buildings.filter((b) => !b.built);
+    expect(marked).toHaveLength(1);
+    expect(marked[0]!.kind).toBe('medbed');
+    // Indoors, with the doctor and the pantry — a ward in the yard is a bed in
+    // the rain.
+    expect(indoors(world, marked[0]!.x, marked[0]!.y)).toBe(true);
+  });
+
+  /**
+   * The control, and the reason the gate is there at all: `SICKBAY_PULL` keeps
+   * healthy settlers out of the ward, so a ward built while somebody is sleeping
+   * on the floor is a bed that helps nobody.
+   */
+  it('will not build a ward while somebody is still on the floor', () => {
+    const world = createWorld(24);
+    world.tick = NOON;
+    wellStocked(world);
+    const sickbay = AMBITIONS.find((a) => a.id === 'sickbay')!;
+    for (const b of world.buildings.filter((x) => isBed(x.kind))) removeBuilding(world, b);
+
+    expect(sickbay.mark(world)).toBe(0);
+    expect(world.buildings.some((b) => b.kind === 'medbed')).toBe(false);
+  });
+
+  it('stops at two ward beds however big the colony gets', () => {
+    const world = createWorld(24);
+    world.tick = NOON;
+    wellStocked(world);
+    const sickbay = AMBITIONS.find((a) => a.id === 'sickbay')!;
+    // Twelve settlers: one ward bed per four would want three, and the cap says
+    // two. A third is thirty-two of the colony's materials standing empty for
+    // the nine days in ten that nobody is ill.
+    const home = livingColonists(world)[0]!;
+    while (livingColonists(world).length < 12) {
+      world.pawns.push(makePawn(world, new Rng(world.pawns.length + 1), 'colony', home.x, home.y));
+    }
+    bunkEveryone(world);
+
+    let raised = 0;
+    for (let i = 0; i < 8; i++) {
+      if (sickbay.mark(world) === 0) break;
+      for (const b of world.buildings.filter((x) => !x.built)) {
+        expect(b.kind).toBe('medbed');
+        b.built = true;
+        raised++;
+      }
+    }
+    expect(raised).toBe(2);
+    expect(sickbay.mark(world)).toBe(0);
+  });
+
+  /**
+   * The prison was the other half of the sim nobody could reach.
+   *
+   * One built prisonbed is the whole condition on the warden's capture path, and
+   * nothing ever built one — so capture, prisoner meals, the resistance clock and
+   * recruitment were all live code that never ran. Seed 7 left eighteen raiders
+   * lying on the ground alive over forty days.
+   */
+  it('puts the prison bunk in a room of its own', () => {
+    const world = createWorld(26);
+    world.tick = NOON;
+    wellStocked(world);
+    bunkEveryone(world);
+    gunOnTheWall(world);
+    someoneHoused(world, HOME_X + 10, HOME_Y + 10);
+    const inside = spareRoom(world, HOME_X + 10, HOME_Y + 16);
+    const cells = AMBITIONS.find((a) => a.id === 'cells')!;
+
+    expect(cells.mark(world)).toBe(1);
+    const marked = world.buildings.filter((b) => !b.built);
+    expect(marked).toHaveLength(1);
+    expect(marked[0]!.kind).toBe('prisonbed');
+    // In the spare room, not in the corner of the hall — the isolation is the
+    // point, exactly as it is for the sick.
+    expect(roomAt(world, marked[0]!.x, marked[0]!.y)?.id).toBe(roomAt(world, inside.x, inside.y)?.id);
+  });
+
+  /**
+   * A cell is an invitation to hold somebody who wants out. A colony that cannot
+   * win the fight it is already in has no business starting a second one indoors.
+   */
+  it('will not wall a cell before there is a gun on the wall', () => {
+    const world = createWorld(26);
+    world.tick = NOON;
+    wellStocked(world);
+    bunkEveryone(world);
+    someoneHoused(world, HOME_X + 10, HOME_Y + 10);
+    spareRoom(world, HOME_X + 10, HOME_Y + 16);
+    for (const b of world.buildings.filter((x) => x.kind === 'turret')) removeBuilding(world, b);
+    const cells = AMBITIONS.find((a) => a.id === 'cells')!;
+
+    expect(cells.mark(world)).toBe(0);
+    expect(world.buildings.some((b) => b.kind === 'prisonbed')).toBe(false);
+  });
+
+  /**
+   * The fairness rule, stated as a condition rather than left to the running
+   * order. `cells` used to sit below `quarters` and lean on it returning 0 —
+   * which it does, in principle, once nobody is unhoused. Over forty harsh days
+   * `quarters` never got there: seed 7 finished with three settlers still without
+   * a room, so the cell block was a feature no colony could ever reach.
+   */
+  it('will not wall a cell while nobody has a room of their own', () => {
+    const world = createWorld(26);
+    world.tick = NOON;
+    wellStocked(world);
+    bunkEveryone(world);
+    gunOnTheWall(world);
+    spareRoom(world, HOME_X + 10, HOME_Y + 16);
+    const cells = AMBITIONS.find((a) => a.id === 'cells')!;
+
+    expect(unhoused(world).length).toBe(livingColonists(world).length);
+    expect(cells.mark(world)).toBe(0);
+    expect(world.buildings.some((b) => b.kind === 'prisonbed')).toBe(false);
+  });
+
+  /**
+   * `isBed` says a prison bunk is not a bed, which is true and was nearly a bug:
+   * `bedlessRooms` reads "no bed in it" as "nobody has claimed it", so the cell
+   * block the Steward had just walled came back up as a spare bedroom and the
+   * next settler was given a bunk beside the raider.
+   */
+  it('does not hand the cell block out as somebody’s bedroom', () => {
+    const world = createWorld(26);
+    world.tick = NOON;
+    wellStocked(world);
+    const inside = spareRoom(world, HOME_X + 10, HOME_Y + 16);
+    addBuilding(world, 'prisonbed', inside.x, inside.y, true);
+    markBuildingsChanged(world);
+    // By position, never by a captured id: `markBuildingsChanged` renumbers the
+    // rooms, so an id held across a rebuild names a different room or none.
+    const cell = () => roomAt(world, inside.x, inside.y)?.id;
+    expect(cell()).toBeDefined();
+    const quarters = AMBITIONS.find((a) => a.id === 'quarters')!;
+
+    // Somebody wants a room, so `quarters` is looking for one to give them.
+    expect(unhoused(world).length).toBeGreaterThan(0);
+    for (let i = 0; i < 4; i++) {
+      quarters.mark(world);
+      for (const b of world.buildings.filter((x) => !x.built)) {
+        expect(roomAt(world, b.x, b.y)?.id).not.toBe(cell());
+        b.built = true;
+      }
+      markBuildingsChanged(world);
+    }
+    expect(world.buildings.some((b) => b.kind === 'bed' && roomAt(world, b.x, b.y)?.id === cell())).toBe(false);
   });
 
   /**
@@ -1451,5 +1814,114 @@ describe('a board stuck on something the colony has not got', () => {
     expect(gen.built).toBe(false);
     expect(countResource(world, 'wood')).toBeGreaterThan(0);
     expect(world.messages.some((m) => /sends people out for timber/i.test(m.text))).toBe(true);
+  });
+});
+
+describe('the cold store', () => {
+  /**
+   * The last mechanic in the sim with no door into it.
+   *
+   * `spoilage.ts` states the bargain in its own header — "grow what you eat, or
+   * build a room cold enough to keep the rest" — and every moving part was
+   * already wired: a hard zero spoil rate below freezing, one cooler chilling a
+   * small sealed room hard because the term is `q / room.size`, and
+   * `findStockpileCell` carrying perishables to a freezing cell "however far it
+   * is". What was missing was an ambition that ordered one. Measured on seed 7
+   * over forty harsh days before this existed: 268 food spoiled, the larder sat
+   * at 11C, and not one unit was ever frozen.
+   */
+  it('puts a cooler in a walled room once the grid can carry it', () => {
+    const world = createWorld(24);
+    world.tick = NOON;
+    wellStocked(world);
+    powerToSpare(world, HOME_X + 15, HOME_Y + 15);
+    spareRoom(world, HOME_X + 8, HOME_Y + 8);
+    const cellar = AMBITIONS.find((a) => a.id === 'cellar')!;
+
+    expect(cellar.mark(world)).toBe(1);
+    const marked = world.buildings.filter((b) => !b.built);
+    expect(marked).toHaveLength(1);
+    expect(marked[0]!.kind).toBe('cooler');
+    // Indoors, and that is the whole mechanic rather than a nicety: `roomTargets`
+    // only counts a device that is standing in a room, so a cooler in the yard
+    // chills the sky. Its own blurb says "useless outdoors".
+    expect(indoors(world, marked[0]!.x, marked[0]!.y)).toBe(true);
+  });
+
+  /**
+   * The control on the gate above. A cooler is 90 W and `SHED_ORDER` drops
+   * coolers before turrets, so one plugged into a grid with no headroom is a
+   * freezer that goes off the moment the colony needs its guns.
+   */
+  it('will not plug a cooler into a grid that cannot carry it', () => {
+    const world = createWorld(24);
+    world.tick = NOON;
+    wellStocked(world);
+    spareRoom(world, HOME_X + 8, HOME_Y + 8);
+    const cellar = AMBITIONS.find((a) => a.id === 'cellar')!;
+
+    // Every generator in the world stopped. Worldgen ships one, so this is a
+    // removal rather than an omission.
+    for (const b of world.buildings.filter((q) => q.kind === 'generator')) removeBuilding(world, b);
+    markBuildingsChanged(world);
+
+    expect(cellar.mark(world)).toBe(0);
+    expect(world.buildings.some((b) => b.kind === 'cooler')).toBe(false);
+  });
+
+  /**
+   * A cold room the food does not know about is a cold room full of nothing.
+   * `findStockpileCell` only prefers a freezing cell if a stockpile is painted on
+   * one, so the zone is exactly as load-bearing as the cooler.
+   */
+  it('paints a food stockpile in the cold store once the cooler stands', () => {
+    const world = createWorld(24);
+    world.tick = NOON;
+    wellStocked(world);
+    powerToSpare(world, HOME_X + 15, HOME_Y + 15);
+    const inside = spareRoom(world, HOME_X + 8, HOME_Y + 8);
+    expect(addBuilding(world, 'cooler', inside.x, inside.y, true)).not.toBeNull();
+    markBuildingsChanged(world);
+    const cellar = AMBITIONS.find((a) => a.id === 'cellar')!;
+
+    expect(cellar.mark(world)).toBeGreaterThan(0);
+    const room = roomAt(world, inside.x, inside.y)!;
+    const zone = world.zones.find(
+      (z) => z.kind === 'stockpile' && z.cells.some((c) => roomAt(world, unpackX(world, c), unpackY(world, c))?.id === room.id),
+    );
+    expect(zone).toBeDefined();
+    expect(zone!.accepts).toContain('rawfood');
+    expect(zone!.accepts).toContain('meal');
+    // Food and nothing else. A cellar that took timber would fill with building
+    // material and have no room left for the harvest it was cut for.
+    expect(zone!.accepts).not.toContain('wood');
+  });
+
+  /**
+   * The same trap the cell block fell into, and the reason `bedlessRooms` grew a
+   * second clause. That list means "rooms nobody has claimed"; a cooler is not a
+   * bed, so without the extra check the cold store reads as empty and `quarters`
+   * puts somebody's bunk in the freezer.
+   */
+  it('does not hand the cold store out as somebody\'s bedroom', () => {
+    const world = createWorld(24);
+    world.tick = NOON;
+    wellStocked(world);
+    powerToSpare(world, HOME_X + 15, HOME_Y + 15);
+    const inside = spareRoom(world, HOME_X + 8, HOME_Y + 8);
+    expect(addBuilding(world, 'cooler', inside.x, inside.y, true)).not.toBeNull();
+    markBuildingsChanged(world);
+
+    // Read by position rather than by id: `markBuildingsChanged` renumbers rooms,
+    // so an id captured before the cooler went in names a different room after.
+    const cold = () => roomAt(world, inside.x, inside.y)?.id;
+    const before = cold();
+    const quarters = AMBITIONS.find((a) => a.id === 'quarters')!;
+    quarters.mark(world);
+
+    for (const b of world.buildings) {
+      if (!isBed(b.kind)) continue;
+      expect(roomAt(world, b.x, b.y)?.id).not.toBe(before);
+    }
   });
 });
