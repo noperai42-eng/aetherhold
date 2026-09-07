@@ -437,6 +437,106 @@ function rumple(g: THREE.LatheGeometry, amp: number, seed: number): THREE.Buffer
 }
 
 /**
+ * How far a root buttress runs out past the bole at the ground, in metres, and
+ * how high up the trunk it has faded back into it. A ridge is the sum of a
+ * five-lobed and a three-lobed wave a little out of step, so the roots come out
+ * unequal — five strong ones with a couple of them fattened where the two waves
+ * agree — rather than as the five identical spokes a single harmonic would give.
+ */
+const ROOT_REACH = 0.15;
+const ROOT_RISE = 0.75;
+
+/**
+ * Roots pushed out of the foot of a trunk, so that where it meets the turf is a
+ * ring of buttresses rather than a skirt of revolution.
+ *
+ * This exists because of one measurement. The round-10 frames showed a bright
+ * red-brown ellipse lying on the grass under every tree, reading as a terracotta
+ * saucer the tree had been stood in, and it was the trunk's own root flare: a
+ * frustum from 0.44 m at the ground to 0.30 m at 0.18, whose normal stands
+ * 37.9 degrees above the horizontal. The manager camera looks down its axis at
+ * 52.7 degrees, so that surface faces it within fifteen degrees — of the
+ * 0.5255 m² of trunk below a quarter of a metre, every square centimetre came
+ * out over thirty degrees from vertical, and averaged over camera yaw it
+ * presented 0.2547 m², which is 48.5 % of its own area against a ceiling of
+ * 50 % for *any* solid of revolution. There is no camera angle at which that
+ * flare is not showing the manager its full face.
+ *
+ * The lighting cannot rescue it either, and that is worth writing down because
+ * it looks like a shadow bug and is not one. The crown's lowest boughs hang at
+ * 1.7 m and reach 0.86 m out; at any sun high enough to be called day their
+ * shadow lands more than a metre from the axis, and the flare is 0.44 m of
+ * radius. A conifer here cannot shade its own foot. All the darkness available
+ * at the ground is the contact bake, and a 37.9-degree face loses only
+ * (1 − cos 52.1°) / 2 of its hemisphere to the floor: the ring measured 0.875 to
+ * 0.9375, well clear of the 0.80 the bake is allowed to reach.
+ *
+ * A lathe is rotationally symmetric, which is exactly why a wide flare on one
+ * reads as machined. So the lever taken is the shape: the profile's foot is
+ * pulled in from 0.44 to 0.30 and stretched up from 0.18 to 0.42, until no face
+ * anywhere below the crown lies further than 15.0 degrees back from the
+ * vertical, and the girth the old flare was carrying comes back as buttresses.
+ * The band below a quarter of a metre goes from 0.5255 m² of which 100 % lies
+ * back past thirty degrees to 0.3064 m² of which none of it does, and what it
+ * presents to the manager falls from 0.2547 m² to 0.0885.
+ *
+ * The darkening comes with it rather than being asked for separately, which is
+ * the argument for doing it this way round. A vertical face at ground level
+ * loses half its hemisphere to the floor where a 37.9-degree one loses a fifth,
+ * so the same bake with the same constants takes the ring from 0.875–0.9375 down
+ * to 0.800–0.875 — onto the floor, at no cost and with nothing tuned.
+ *
+ * The other three levers were measured and left. Narrowing the flare alone keeps
+ * a smaller turned circle, and a turned circle is what reads as a pot; it also
+ * costs the bole the girth that stops a tree being a cone on a stick. Passing a
+ * darker `floor` for the tree domain treats the symptom, applies to the whole
+ * trunk rather than to the foot, and would have to be argued against the number
+ * `AO_FLOOR` was set from. Sinking the foot below the turf buries the widest
+ * ring but leaves the same frustum showing above it, only shorter, and it puts
+ * geometry under a ground plane the bake states rather than measures.
+ *
+ * It costs nothing: the same lathe, the same 280 triangles, no new pool and so
+ * no new draw call. The displacement is radial only — a root is a swelling of
+ * the bole, not a lump stuck on it — and it dies out as `1 − (y / ROOT_RISE)²`,
+ * which is flat where it meets the ground so the fin stands up instead of
+ * sloping away the moment it leaves the turf. The lathe keeps two copies of its
+ * first meridian and both waves have a whole number of lobes, so the seam gets
+ * the same push on both sides; only its normals need averaging afterwards, for
+ * the same reason `rumple` averages them.
+ */
+function roots(g: THREE.LatheGeometry, reach: number, rise: number): THREE.BufferGeometry {
+  const { points, segments } = g.parameters;
+  const P = points.length;
+  const pos = g.attributes.position as THREE.BufferAttribute;
+  for (let k = 0; k < pos.count; k++) {
+    const y = pos.getY(k);
+    if (y >= rise) continue;
+    const t = y / rise;
+    const a = ((Math.floor(k / P) % segments) / segments) * TAU;
+    const ridge = Math.max(0, 0.5 + 0.35 * Math.cos(5 * a) + 0.15 * Math.cos(3 * a + 1.1));
+    const r = Math.hypot(pos.getX(k), pos.getZ(k));
+    // Radius rather than scale, so a root is the same handspan of timber at
+    // every height it survives to rather than a fraction of a bole that is
+    // itself tapering away underneath it.
+    const s = r > 0 ? (r + reach * ridge * (1 - t * t)) / r : 1;
+    pos.setXYZ(k, pos.getX(k) * s, y, pos.getZ(k) * s);
+  }
+  g.computeVertexNormals();
+  const nrm = g.attributes.normal as THREE.BufferAttribute;
+  for (let j = 0; j < P; j++) {
+    const a = j;
+    const b = segments * P + j;
+    const x = nrm.getX(a) + nrm.getX(b);
+    const y = nrm.getY(a) + nrm.getY(b);
+    const z = nrm.getZ(a) + nrm.getZ(b);
+    const len = Math.hypot(x, y, z) || 1;
+    nrm.setXYZ(a, x / len, y / len, z / len);
+    nrm.setXYZ(b, x / len, y / len, z / len);
+  }
+  return g;
+}
+
+/**
  * The bond of a plank wall, in the numbers everything else about it is derived
  * from. Seven courses over the same two and a half metres, not five: at five a
  * block was very nearly half a metre tall and the wall read as breeze block
@@ -2444,25 +2544,42 @@ export class BuildingsView {
     // the circle a lathe wants to give.
     //
     // Better than a third of the tree is bare trunk, and the trunk is thick at
-    // the foot: a 0.44 root flare against a 0.86 crown is a bole a quarter of the
-    // crown's width, which is what makes it a tree rather than a cone with a
-    // stick under it when the camera is looking down at it. The taper runs the
-    // whole way to keep the flare a flare, and the trunk continues up inside the
-    // crown so no skirt can show daylight under it.
+    // the foot, because a bole with real girth on it is what makes this a tree
+    // rather than a cone with a stick under it when the camera is looking down at
+    // it: the widest root stands 0.450 against the 0.210 shaft a metre up. The
+    // taper runs the whole way, and the trunk continues up inside the crown so no
+    // skirt can show daylight under it.
+    //
+    // The girth at the foot is carried by roots and not by a flare. The flare it
+    // replaces ran from 0.44 m at the ground to 0.30 at 0.18, and a frustum that
+    // wide and that shallow is a saucer: see `roots` for the measurement that
+    // condemned it and for what a buttress does instead. What is left here is the
+    // bole those roots swell out of, and it is drawn to two rules. No face of it
+    // below the crown lies more than 15.0 degrees back from the vertical, ridge
+    // or valley, so nothing at the tree's foot turns to the manager camera the
+    // way that flare did. And the foot is 0.30 where the old profile had already
+    // pulled in to 0.24 by 0.45, so that taking the flare off does not leave the
+    // hard cylinder edge on the grass the flare was added in the first place to
+    // cover: even the valley between two roots runs into the turf on a slope,
+    // not as a pipe cut off at it.
     this.pool(
       'tree.trunk',
-      lathe(
-        [
-          [0.44, 0],
-          [0.3, 0.18],
-          [0.24, 0.45],
-          [0.2, 1.0],
-          [0.17, 1.9],
-          [0.14, 2.7],
-          [0.1, 3.3],
-          [0.06, 3.9],
-        ],
-        20,
+      roots(
+        lathe(
+          [
+            [0.3, 0],
+            [0.27, 0.12],
+            [0.25, 0.42],
+            [0.21, 1.0],
+            [0.17, 1.9],
+            [0.14, 2.7],
+            [0.1, 3.3],
+            [0.06, 3.9],
+          ],
+          20,
+        ),
+        ROOT_REACH,
+        ROOT_RISE,
       ),
       solidMat(0.9),
       256,

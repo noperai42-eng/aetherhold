@@ -25,6 +25,7 @@ import { describe, expect, it } from 'vitest';
 import { QUALITY } from '../src/client/render/renderer';
 import {
   ANIMAL_COLOR,
+  FACTION_COLOR,
   HORIZON_DAY,
   HORIZON_NIGHT,
   HORIZON_WARM,
@@ -35,8 +36,9 @@ import {
   SKY_NIGHT,
   SUN_DAY,
   SUN_DUSK,
+  pawnTint,
 } from '../src/client/render/palette';
-import { HAIR_TONES, PawnsView, hideTint } from '../src/client/render/pawns';
+import { HAIR_TONES, PawnsView, hideTint, sleeveOf } from '../src/client/render/pawns';
 import { PickiesView } from '../src/client/render/pickies';
 import { SETTLER_LEG } from '../src/client/gait';
 import { POOF_TICKS, summonPicky } from '../src/sim/pickies';
@@ -1663,6 +1665,166 @@ describe('what a body is made of', () => {
       }
     }
     expect(settlers).toBeGreaterThan(0);
+    view.dispose();
+  });
+
+  it('dyes every sleeve a clear step below its shirt, for every faction and every seed, without dropping one through the floor', () => {
+    // The arms and the torso wore one material, and at the zoom the colony is
+    // played at that is half a settler in a single value. The step has a floor
+    // and a ceiling and both were measured off a frame, which is why they are
+    // written here as numbers rather than as whatever the constant happens to
+    // say: below about nine the shoulder does not read (a colonist at a bench
+    // had five points of shading valley there and it was not enough — the arm
+    // ran on out of the torso as one slab), and above about fourteen the sleeve
+    // falls onto the trousers it crosses at the thigh, which had fifteen points
+    // of room and no more. A test that only asked "is the sleeve darker" would
+    // pass on a step of one and on a step that painted the arms black.
+    for (const base of Object.values(FACTION_COLOR)) {
+      for (let seed = 0; seed < 4096; seed++) {
+        const shirt = pawnTint(base, seed);
+        const sleeve = sleeveOf(shirt);
+        const drop = lightness(shirt) - lightness(sleeve);
+        expect(drop, `shirt ${shirt.getHexString()} seed ${seed}`).toBeGreaterThanOrEqual(9);
+        expect(drop, `shirt ${shirt.getHexString()} seed ${seed}`).toBeLessThanOrEqual(14);
+        // The same floor every material in the colony is held to: under it the
+        // sun, the sky and the ground bounce all land in the same few codes and
+        // a sleeve stops being cloth and starts being a hole in the settler.
+        expect(luminance(sleeve), `sleeve ${sleeve.getHexString()}`).toBeGreaterThan(0.025);
+      }
+    }
+    // And it is the shirt in another tone, not another garment: the same dye
+    // with less light on it, which is one scalar across the linear channels.
+    // Hue survives that, and so do the ratios between the channels — the
+    // property actually worth pinning, because a sleeve *mixed* toward black
+    // rather than dimmed would drift off the faction's hue by a different
+    // amount in every tint and the arms would stop saying who this is.
+    //
+    // sRGB's HSL saturation is the wrong question to ask of it and is left
+    // unasserted on purpose: the transfer curve is not linear, so a colour that
+    // is honestly the same dye at less light reads about a tenth less
+    // "saturated" there. Asserting it would pin the encoding, not the cloth.
+    const shirt = new THREE.Color(FACTION_COLOR.colony);
+    const sleeve = sleeveOf(shirt);
+    const a = { h: 0, s: 0, l: 0 };
+    const b = { h: 0, s: 0, l: 0 };
+    shirt.getHSL(a, THREE.SRGBColorSpace);
+    sleeve.getHSL(b, THREE.SRGBColorSpace);
+    expect(b.h, 'the sleeve keeps the shirt hue').toBeCloseTo(a.h, 3);
+    const share = sleeve.b / shirt.b;
+    expect(share, 'the sleeve is the shirt with less light on it').toBeLessThan(1);
+    expect(sleeve.r / shirt.r, 'red falls by the share blue did').toBeCloseTo(share, 6);
+    expect(sleeve.g / shirt.g, 'green falls by the share blue did').toBeCloseTo(share, 6);
+  });
+
+  it('hangs the arms out of the body, so the sleeve has ground behind it and not the shirt', () => {
+    // Plumb arms on this body are pressed against the cloth: the shoulder is at
+    // 0.27 across, the sleeve is 0.065 round and the torso is 0.20 across at the
+    // waist, which leaves five millimetres — under a pixel from eleven cells up,
+    // so the arm and the shirt shared one outline with no notch in it. The roll
+    // is a constant at the shoulder and the pose table only ever writes
+    // `rotation.x`, so the clearance below is the same in the walk, at the bench
+    // and lying down: `rotation.x` cannot move a point's x.
+    const { view, world } = bodies();
+    let arms = 0;
+    view.group.updateMatrixWorld(true);
+    for (const rig of view.group.children) {
+      const pawn = world.pawns.find((p) => p.x === rig.position.x && p.y === rig.position.z)!;
+      if (pawn.animal) continue;
+      const sleeves = drawn(rig).filter((m) => m.name === 'arm');
+      expect(sleeves, 'two arms').toHaveLength(2);
+      for (const sleeve of sleeves) {
+        const hand = sleeve.children.find((o): o is THREE.Mesh => o instanceof THREE.Mesh && o.name === 'hand')!;
+        // In the rig's own frame, where +X is the settler's left-to-right.
+        const wrist = rig.worldToLocal(hand.getWorldPosition(new THREE.Vector3()));
+        expect(Math.sign(wrist.x), 'the wrist stays on its own side').toBe(Math.sign(sleeve.position.x));
+        expect(
+          Math.abs(wrist.x) - Math.abs(sleeve.position.x),
+          'the wrist stands outboard of the shoulder',
+        ).toBeGreaterThan(0.05);
+        arms++;
+      }
+    }
+    expect(arms).toBeGreaterThan(0);
+    view.dispose();
+  });
+
+  it('keeps a settler at a bench from reading as one slab — overhead, the shoulder and the sleeve take the same light and only the dye can separate them', () => {
+    // This is the frame the round was briefed from: a colonist working inside
+    // the wall, seen from the camera the game is actually played at. Its torso
+    // measured L* 33 and the arm held out of it measured 28 at the shoulder and
+    // ran smoothly up to 49 at the wrist — a gradient with no edge in it, so the
+    // eye joined the two and read a signpost bolted to a body.
+    //
+    // The reason no amount of lighting was ever going to fix that is measured
+    // here rather than asserted: at a bench the sleeve's crown and the top of
+    // the shoulder present very nearly the same normal, so a sun overhead lands
+    // on both within a tenth of the same strength — about two points of L* at
+    // the luminances a settler wears. Two points is under a just-noticeable
+    // step. Whatever separates a shoulder from an arm has to be in the cloth,
+    // and this test fails the day it stops being.
+    const world = createWorld(SEED);
+    for (const p of world.pawns) {
+      if (p.animal) continue;
+      p.activity = 'working';
+      p.animPhase = 0; // the pose table's swing at rest, so the angle is the table's own
+    }
+    const view = new PawnsView();
+    view.onTick(world);
+    view.sync(world, 0, null);
+    view.group.updateMatrixWorld(true);
+
+    const q = new THREE.Quaternion();
+    const torsoBox = new THREE.Box3();
+    const armBox = new THREE.Box3();
+    let checked = 0;
+    for (const rig of view.group.children) {
+      const pawn = world.pawns.find((p) => p.x === rig.position.x && p.y === rig.position.z)!;
+      if (pawn.animal) continue;
+      const torso = part(rig, 'torso');
+      for (const sleeve of drawn(rig).filter((m) => m.name === 'arm')) {
+        // The two really do meet: a value step across a boundary that is not
+        // there would prove nothing.
+        torsoBox.setFromObject(torso);
+        armBox.setFromObject(sleeve);
+        expect(torsoBox.intersectsBox(armBox), 'the sleeve meets the shirt').toBe(true);
+
+        // The shoulder's crown is the torso's own +Y — the rig is only ever
+        // yawed, and yaw does not tip it. The sleeve's is the point on the tube
+        // that faces most nearly up: up with its component along the tube taken
+        // out, which is what a cylinder's topmost surface normal is.
+        const shoulderUp = new THREE.Vector3(0, 1, 0).applyQuaternion(torso.getWorldQuaternion(q));
+        const axis = new THREE.Vector3(0, -1, 0).applyQuaternion(sleeve.getWorldQuaternion(q));
+        const sleeveUp = new THREE.Vector3(0, 1, 0).addScaledVector(axis, -axis.y);
+        expect(sleeveUp.length(), 'the arm is not straight up, so it has a crown').toBeGreaterThan(0.2);
+        sleeveUp.normalize();
+
+        // What a sun straight overhead can make of that difference, in the
+        // units the eye counts in: the same cloth at the two normals, through
+        // three's own diffuse term, converted to L*. The arm at a bench sits
+        // about thirty degrees off the vertical, which is a tenth of the light,
+        // and a tenth of the light is between two and five points on the
+        // brightest shirt any faction wears — under the step it takes to read
+        // as an edge. That is the whole reason this could never have been fixed
+        // in the light rig, and it is measured here rather than asserted.
+        const shirt = (torso.material as THREE.MeshStandardMaterial).color;
+        const cuff = (sleeve.material as THREE.MeshStandardMaterial).color;
+        const overhead = new THREE.Vector3(0, 1, 0);
+        const lstarOf = (y: number): number => (y > 0.008856 ? 116 * Math.cbrt(y) - 16 : 903.3 * y);
+        const lit = (n: THREE.Vector3): number => lstarOf(luminance(shirt) * Math.max(0, n.dot(overhead)));
+        const bySun = lit(shoulderUp) - lit(sleeveUp);
+        expect(bySun, `${pawn.faction} shoulder against sleeve, by light alone`).toBeLessThan(5);
+
+        // So the dye must, by more than three just-noticeable steps — the same
+        // margin the hair is held above the skin for the same reason — and by
+        // more than the sun manages on its own, so the edge belongs to the
+        // cloth and not to which way the arm happens to be swung.
+        const byDye = lightness(shirt) - lightness(cuff);
+        expect(byDye, `${pawn.faction} sleeve`).toBeGreaterThanOrEqual(9);
+        expect(byDye, `${pawn.faction} sleeve against its own shading`).toBeGreaterThan(bySun);
+        checked++;
+      }
+    }
+    expect(checked, 'a settler at a bench to look at').toBeGreaterThan(0);
     view.dispose();
   });
 

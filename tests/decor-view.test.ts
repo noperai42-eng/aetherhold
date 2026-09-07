@@ -135,18 +135,66 @@ describe('what the scatter notices changing', () => {
 });
 
 describe('where the scatter lands', () => {
-  it('puts five clumps on every clear patch of turf', () => {
-    // Five and not the three this said for eight rounds, and the change is a
-    // decision rather than a discovery: round 9 respent the tuft's triangles on
-    // five slim blades instead of three broad ones, which fixed the bird-track
-    // silhouette and cost coverage doing it, and the count is where that coverage
-    // comes back. What this assertion is actually for is unchanged — every clear
+  it('puts seven clumps on every clear patch of turf', () => {
+    // Seven, and each rise in this number has been a decision rather than a
+    // discovery. Round 9 respent the tuft's triangles on five slim blades and
+    // went from three clumps to five to pay for the coverage that cost; round
+    // 10 found the same tufts still reading as scattered marks from the manager
+    // camera, where the eye is not resolving a blade at all and is only asking
+    // whether the ground is covered. Five roots a cell stand 0.447 m apart on
+    // average and seven stand 0.378 m apart, which is the gap closing by about
+    // a sixth. What this assertion is actually for is unchanged — every clear
     // cell of turf gets the same number of clumps, so nothing on the map is
-    // quietly bald — and it is written against the pool's own sizing, so a count
-    // raised here without raising the pool would overflow rather than pass.
+    // quietly bald — and it is written against the pool's own sizing, so a
+    // count raised here without raising the pool would overflow rather than pass.
     const world = meadow();
     const { tufts } = meshes(new DecorView(world));
-    expect(tufts.count).toBe(world.width * world.height * 5);
+    expect(tufts.count).toBe(world.width * world.height * 7);
+  });
+
+  it('leaves no bare gap between clumps at the range the map is played from', () => {
+    // The experience test for round 10's grass. Close up the tufts were already
+    // right; the defect only exists at manager zoom, where a blade is a couple
+    // of pixels and the eye is not reading blades at all — it is asking whether
+    // the ground is covered. What it saw instead was scattered pale marks with
+    // turf showing between them, which is what "bird tracks" has meant every
+    // time it has come back. So the thing to measure is not a tuft. It is the
+    // hole: stand on every point of a ten-metre square of open turf and ask how
+    // far the nearest clump is.
+    //
+    // Uniform random placement is the trap here, and it is why round 9's fix did
+    // not carry. Independent points clump and leave holes, and the holes shrink
+    // with the square root of the count, so buying coverage with density alone
+    // is ruinous. Measured at this sampling: five a cell dropped uniformly, the
+    // old scheme, leaves a worst hole of 0.629 m; seven a cell dropped uniformly
+    // still leaves 0.544 m; seven placed one per stratum of a low-discrepancy
+    // sequence leaves 0.436 m on the pinned world. The ceiling below sits under
+    // both of the first two on purpose — this test is here to fail if the
+    // placement ever goes back to independent hashes, however many tufts are
+    // bought to cover for it.
+    const world = meadow();
+    const view = new DecorView(world);
+    const { tufts } = meshes(view);
+    const m = new THREE.Matrix4();
+    const pos = new THREE.Vector3();
+    const roots: { x: number; z: number }[] = [];
+    for (let i = 0; i < tufts.count; i++) {
+      tufts.getMatrixAt(i, m);
+      pos.setFromMatrixPosition(m);
+      // A margin either side of the square, so a point on its edge is judged
+      // against the clumps outside it too and the frame is not its own hole.
+      if (pos.x > 38 && pos.x < 52 && pos.z > 38 && pos.z < 52) roots.push({ x: pos.x, z: pos.z });
+    }
+    let worst = 0;
+    for (let gx = 40; gx <= 50; gx += 0.2) {
+      for (let gz = 40; gz <= 50; gz += 0.2) {
+        let nearest = Infinity;
+        for (const r of roots) nearest = Math.min(nearest, Math.hypot(r.x - gx, r.z - gz));
+        worst = Math.max(worst, nearest);
+      }
+    }
+    expect(worst).toBeLessThan(0.5);
+    view.dispose();
   });
 
   it('keeps grass out of buildings and off sown plots', () => {
@@ -219,9 +267,9 @@ describe('where the scatter lands', () => {
   });
 
   it('gives every tuft on a cell its own height, bearing and tone', () => {
-    // Five tufts a cell drawn at one height, one bearing and one green is one
-    // stamp printed five times, and a map of that reads as a texture laid over
-    // the ground rather than as ground. The five on a cell have to differ in
+    // Seven tufts a cell drawn at one height, one bearing and one green is one
+    // stamp printed seven times, and a map of that reads as a texture laid over
+    // the ground rather than as ground. The seven on a cell have to differ in
     // all three, and the map as a whole has to take many values of each — a
     // handful of them would be a pattern the eye finds in a second. The count
     // here follows the tufts-per-cell number on purpose: the first run of
@@ -242,7 +290,7 @@ describe('where the scatter lands', () => {
     // clamps, so nothing here should either.
     const tones = new Set<string>();
     const tone = (): string => `${c.r.toFixed(6)},${c.g.toFixed(6)},${c.b.toFixed(6)}`;
-    for (let i = 0; i < 5; i++) {
+    for (let i = 0; i < 7; i++) {
       tufts.getMatrixAt(i, m);
       m.decompose(new THREE.Vector3(), q, scale);
       heights.add(scale.y.toFixed(4));
@@ -250,9 +298,9 @@ describe('where the scatter lands', () => {
       tufts.getColorAt(i, c);
       tones.add(tone());
     }
-    expect(heights.size).toBe(5);
-    expect(bearings.size).toBe(5);
-    expect(tones.size).toBe(5);
+    expect(heights.size).toBe(7);
+    expect(bearings.size).toBe(7);
+    expect(tones.size).toBe(7);
     for (let i = 0; i < 300; i++) {
       tufts.getMatrixAt(i, m);
       m.decompose(new THREE.Vector3(), q, scale);
@@ -292,7 +340,7 @@ describe('where the scatter lands', () => {
     // edge of a trampled yard was the tell that it was a texture and not a
     // place — so a tuft with cleared ground around it stands lower, and the
     // later tufts on that cell nearly not at all. What must *not* change is how
-    // many there are: the pool is sized at five a cell and so is every count
+    // many there are: the pool is sized at seven a cell and so is every count
     // in this file, and bare ground is meant to read as bare because almost
     // nothing is standing on it.
     const world = meadow();
@@ -300,7 +348,7 @@ describe('where the scatter lands', () => {
       for (let x = 20; x < 24; x++) world.cellBuilding[packCell(world, x, y)] = 1;
     }
     const { tufts } = meshes(new DecorView(world));
-    expect(tufts.count).toBe((world.width * world.height - 16) * 5);
+    expect(tufts.count).toBe((world.width * world.height - 16) * 7);
     const m = new THREE.Matrix4();
     const pos = new THREE.Vector3();
     const scale = new THREE.Vector3();
@@ -322,6 +370,49 @@ describe('where the scatter lands', () => {
     }
     expect(yardN).toBeGreaterThan(0);
     expect(yard / yardN).toBeLessThan((open / openN) * 0.9);
+  });
+
+  it('leaves the last tuft on the barest cell standing, not growing downwards', () => {
+    // The ceiling on the thinning, pinned as behaviour rather than as arithmetic.
+    // `left` multiplies the instance's y scale, and the cost is paid per tuft, so
+    // the seventh one on a fully-worn cell pays 0.3 + 6 x 0.075 of itself. That
+    // sum is 0.75 today and every term in it is a number somebody may reasonably
+    // change: raise the tufts-per-cell count without lowering the per-tuft step
+    // and the last tuft's scale goes through zero into negative, which is a clump
+    // drawn upside down through the turf it stands on. Nothing else here would
+    // notice. The yard-versus-open test above compares averages, and a negative
+    // height makes an average *smaller* — it would go green while the grass grew
+    // into the ground.
+    const world = meadow();
+    // Worn as far as the sim can wear it: all eight neighbours bare, which is the
+    // only input to the wear fraction and puts it at 1.
+    const x = 20;
+    const y = 20;
+    for (let dy = -1; dy <= 1; dy++) {
+      for (let dx = -1; dx <= 1; dx++) {
+        if (dx === 0 && dy === 0) continue;
+        setTerrain(world, x + dx, y + dy, 'dirt');
+      }
+    }
+
+    const { tufts } = meshes(new DecorView(world));
+    const m = new THREE.Matrix4();
+    const pos = new THREE.Vector3();
+    const scale = new THREE.Vector3();
+    const heights: number[] = [];
+    for (let i = 0; i < tufts.count; i++) {
+      tufts.getMatrixAt(i, m);
+      m.decompose(pos, new THREE.Quaternion(), scale);
+      if (Math.round(pos.x) === x && Math.round(pos.z) === y) heights.push(scale.y);
+    }
+
+    // The cell keeps all seven: thinning is a change of height, not a cull, and a
+    // cull would be a hole in the R2 set that the placement work exists to avoid.
+    expect(heights.length).toBe(7);
+    for (const h of heights) expect(h).toBeGreaterThan(0);
+    // And the bare cell is genuinely bare-looking, so this is not passing on a
+    // world where the wear never reached the cell at all.
+    expect(Math.min(...heights)).toBeLessThan(0.2);
   });
 
   it('puts the same blades in the same places every time', () => {
@@ -349,22 +440,116 @@ describe('what a blade and a stone are made of', () => {
     view.dispose();
   });
 
-  it('lights grass and stones as curved surfaces, seen from either side', () => {
-    // Flat shading is what makes a pebble read as a die and a blade as a spike:
-    // one normal per facet. A blade is also a sheet with no back, so it has to
-    // draw from both sides or it vanishes for half a turn in first person.
+  it('lights a blade as a curved sheet, seen from either side', () => {
+    // A blade is a sheet with no back, so it has to draw from both sides or it
+    // vanishes for half a turn in first person; and it is welded and smooth
+    // because a blade caught mid-bow wants the light to run along it. Break it
+    // into facets and the waist takes a hard step, which is a folded strip of
+    // tin and not grass.
     const view = new DecorView(meadow());
-    const { tufts, stones } = meshes(view);
-    const grass = tufts.material as THREE.MeshLambertMaterial;
-    const rock = stones.material as THREE.MeshLambertMaterial;
+    const grass = meshes(view).tufts.material as THREE.MeshLambertMaterial;
     expect(grass.flatShading).toBe(false);
     expect(grass.side).toBe(THREE.DoubleSide);
-    expect(rock.flatShading).toBe(false);
-    // A stone whose corners were never welded would still be facets under a
-    // smooth material — every triangle carrying its own three vertices.
-    expect(stones.geometry.index).not.toBeNull();
-    expect(stones.geometry.getAttribute('position').count).toBeLessThan(triangles(stones.geometry) * 3);
-    expect(triangles(stones.geometry)).toBeLessThanOrEqual(200);
+    view.dispose();
+  });
+
+  it('breaks a stone into flat faces instead of rounding it into an egg', () => {
+    // This reverses what this file asserted for ten rounds, and the frames are
+    // the argument rather than a preference. Round 10 caught the outcrop and the
+    // scatter two metres apart in one shot: the outcrop steps in value from one
+    // face to the next and reads as rock, and the pebbles beside it carry a
+    // single highlight sliding over a smooth ovoid and read as eggs lying in the
+    // dirt — worst in the dusk frame, where the low sun lays a warm rim round
+    // each one. A smooth lump *is* an egg, so the welded, indexed, one-normal-
+    // per-vertex stone the old assertion pinned was pinning the defect itself.
+    // What replaces it is the opposite property, asserted as directly: every
+    // triangle owns its three vertices, all three carry the same normal, and
+    // neighbours disagree by an angle the eye can see. The old assertion is not
+    // relaxed into this one — it is contradicted by it, on purpose.
+    //
+    // The triangle ceiling stays where it was. This is instanced a few thousand
+    // times a frame and the shape is worth twenty triangles, not two hundred.
+    const view = new DecorView(meadow());
+    const geo = meshes(view).stones.geometry;
+    expect(geo.index).toBeNull();
+    expect(geo.getAttribute('position').count).toBe(triangles(geo) * 3);
+    expect(triangles(geo)).toBeLessThanOrEqual(200);
+
+    const n = geo.getAttribute('normal');
+    const p = geo.getAttribute('position');
+    const faces = p.count / 3;
+    const normals: THREE.Vector3[] = [];
+    const corners: string[][] = [];
+    for (let f = 0; f < faces; f++) {
+      const first = new THREE.Vector3().fromBufferAttribute(n, f * 3);
+      const three: string[] = [];
+      for (let k = 0; k < 3; k++) {
+        // One normal per facet is what "flat" means here. The material never
+        // says `flatShading`, so if this ever welded again the stones would go
+        // smooth silently and nothing else in the file would notice.
+        expect(first.dot(new THREE.Vector3().fromBufferAttribute(n, f * 3 + k))).toBeGreaterThan(0.999);
+        three.push(
+          `${p.getX(f * 3 + k).toFixed(5)},${p.getY(f * 3 + k).toFixed(5)},${p.getZ(f * 3 + k).toFixed(5)}`,
+        );
+      }
+      normals.push(first);
+      corners.push(three);
+    }
+
+    // Two faces sharing an edge are two corners in common. Twenty faces knocked
+    // out of true give thirty such pairs, and the angle across each of those
+    // edges is the step in brightness a player sees. Measured: 14.0° at the
+    // shallowest, 40.4° at the median, 68.2° at the sharpest. The floor is set
+    // under the shallowest and the median floor under the median, so a shape
+    // that quietly relaxed back towards a ball would fail here before it ever
+    // reached a frame.
+    const angles: number[] = [];
+    for (let a = 0; a < faces; a++) {
+      for (let b = a + 1; b < faces; b++) {
+        if (corners[a]!.filter((k) => corners[b]!.includes(k)).length !== 2) continue;
+        angles.push((Math.acos(Math.min(1, Math.max(-1, normals[a]!.dot(normals[b]!)))) * 180) / Math.PI);
+      }
+    }
+    angles.sort((a, b) => a - b);
+    expect(angles.length).toBeGreaterThanOrEqual(faces);
+    expect(angles[0]).toBeGreaterThan(10);
+    expect(angles[Math.floor(angles.length / 2)]).toBeGreaterThan(30);
+    view.dispose();
+  });
+
+  it('gives one stone its own light and dark faces before any sun reaches it', () => {
+    // Faceting alone gives a stone a lit side and a shaded side, and that is the
+    // sun's doing: it goes flat in the shadow of a wall and nearly flat under
+    // the low sun of the dusk frame, which is where the eggs were worst. A tone
+    // baked per face survives both, and it is what says one break is fresh and
+    // another weathered. Constant across a triangle, or it is a gradient and the
+    // facet stops reading as a facet. Measured spread: 0.862 to 1.122, a ratio
+    // of 1.30 between the palest face and the darkest.
+    const view = new DecorView(meadow());
+    const geo = meshes(view).stones.geometry;
+    const col = geo.getAttribute('color');
+    expect(col).toBeTruthy();
+    // The order matters and is the trap `occlusion.ts` documents: a material
+    // with `vertexColors` and no colour attribute renders every stone black.
+    expect((meshes(view).stones.material as THREE.MeshStandardMaterial).vertexColors).toBe(true);
+    const faces = col.count / 3;
+    const tones = new Set<string>();
+    let lo = Infinity;
+    let hi = 0;
+    for (let f = 0; f < faces; f++) {
+      const v = col.getX(f * 3);
+      for (let k = 1; k < 3; k++) expect(col.getX(f * 3 + k)).toBeCloseTo(v, 6);
+      tones.add(v.toFixed(5));
+      lo = Math.min(lo, v);
+      hi = Math.max(hi, v);
+    }
+    expect(tones.size).toBeGreaterThan(faces * 0.8);
+    expect(hi / lo).toBeGreaterThan(1.2);
+    // And it must stay a multiplier over the per-instance tint rather than a
+    // replacement for it, or every stone on the map takes the same twenty
+    // tones and the field goes back to being one object stamped out.
+    expect(hi).toBeLessThan(1.3);
+    expect(lo).toBeGreaterThan(0.75);
     view.dispose();
   });
 
@@ -500,6 +685,55 @@ describe('what a blade and a stone are made of', () => {
     view.dispose();
   });
 
+  it('leans a tuft into a sheaf rather than opening it into a star', () => {
+    // Round 9 spread the five blades evenly round the root — 72° apart, all
+    // reaching about as far — because that was the cure for the three-pointed
+    // star. From the manager camera it turned into a different glyph: a small
+    // symmetrical rosette, and a field of rosettes reads as marks pressed into
+    // the turf rather than as grass, which is what the round-10 colony frame
+    // shows. Real grass grows in a sheaf: a few long blades going the same way
+    // and shorter ones falling away behind, so the clump has a front and a back
+    // and neighbouring clumps interlock instead of tiling.
+    //
+    // Measured on the table this is built from — tip bearings 18.3°, 28.4°,
+    // 58.9°, −62.7° and −164.4°, at heights 1.00, 0.82, 0.63, 0.47 and 0.36.
+    // Every number below is a property an even star would fail: its neighbours
+    // sit exactly 72° apart, so it has no arc under 45° holding the long
+    // blades, no gap over 120° behind them, and no pair closer than 20°.
+    const view = new DecorView(meadow());
+    const p = meshes(view).tufts.geometry.getAttribute('position');
+    const blades = p.count / 5;
+    expect(blades).toBe(5);
+    const tips: { bearing: number; height: number }[] = [];
+    for (let b = 0; b < blades; b++) {
+      let top = b * 5;
+      for (let k = 1; k < 5; k++) if (p.getY(b * 5 + k) > p.getY(top)) top = b * 5 + k;
+      tips.push({
+        bearing: (Math.atan2(p.getZ(top), p.getX(top)) * 180) / Math.PI,
+        height: p.getY(top),
+      });
+    }
+
+    // Stepped, not five spikes of a height: each blade shorter than the last by
+    // a real margin, so the clump has a silhouette instead of an outline.
+    const byHeight = [...tips].sort((a, b) => b.height - a.height);
+    for (let i = 1; i < byHeight.length; i++) {
+      expect(byHeight[i]!.height).toBeLessThan(byHeight[i - 1]!.height * 0.9);
+    }
+
+    // The three that carry the clump's mass go one way.
+    const lead = byHeight.slice(0, 3).map((t) => t.bearing).sort((a, b) => a - b);
+    expect(lead[2]! - lead[0]!).toBeLessThan(45);
+
+    const bearings = tips.map((t) => t.bearing).sort((a, b) => a - b);
+    const gaps = bearings.map((b, i) => ((bearings[(i + 1) % 5]! - b + 360) % 360)).sort((a, b) => a - b);
+    // A back to the clump...
+    expect(gaps[4]).toBeGreaterThan(120);
+    // ...and blades that overlap at the front rather than fanning out from it.
+    expect(gaps[0]).toBeLessThan(20);
+    view.dispose();
+  });
+
   it('still keeps a creased blade to five triangles, for the leaves built out of it', () => {
     // The tuft stopped using this shape, but `fx.ts` did not: a stripped bush's
     // leaves are folded blades, and they are instanced across the moor. The
@@ -631,6 +865,187 @@ describe('what a blade and a stone are made of', () => {
     view.dispose();
   });
 
+  it('keeps every stone a grey, never a colour', () => {
+    // The lightness band above is one half of "this is rock"; this is the other,
+    // and it is the half a round actually broke. Widening the per-instance tone
+    // to match the new faceting took the hue a sixth of a turn either way off a
+    // mid-grey that only carries a tenth of a saturation to begin with, and
+    // added a quarter of saturation on top: at the bottom of that range a stone
+    // comes out at hue 0.026 with saturation 0.21, which is a pink. Round 11
+    // photographed five of them lying in the yard and a dozen across the field
+    // at dusk, where the low sun pushes what is already pink further.
+    //
+    // Nothing in the suite could see it. The lightness test passes a pink
+    // happily — a pink of the right lightness is a pink — and the variety test
+    // below is *satisfied* by it, because a pink stone is certainly not the same
+    // colour as its neighbour. So the band is written here as the two numbers a
+    // grey is: a saturation that stays under a fifth, and a hue that stays
+    // inside the brown wedge the palette entry sits in. Read in sRGB rather than
+    // the linear working space, because the question is what the frame looked
+    // like and not what the buffer held.
+    const view = new DecorView(createWorld(SEED));
+    const { stones } = meshes(view);
+    expect(stones.count).toBeGreaterThan(1);
+    const c = new THREE.Color();
+    for (let i = 0; i < stones.count; i++) {
+      stones.getColorAt(i, c);
+      const { h, s } = c.getHSL({ h: 0, s: 0, l: 0 }, THREE.SRGBColorSpace);
+      expect(s).toBeLessThan(0.18);
+      expect(h).toBeGreaterThan(0.05);
+      expect(h).toBeLessThan(0.13);
+    }
+    view.dispose();
+  });
+
+  it('scatters stones at different sizes, ways up and proportions', () => {
+    // The egg was not only smooth. In the round-10 closeup the scatter is also
+    // uniform: near enough one size, one tone, and every lump sitting the same
+    // way up with its long axis flat to the ground, which is what makes a field
+    // of them read as laid rather than dropped. The fix is twelve independent
+    // hashes where there were two, and this is the measurement of it — the
+    // numbers are what the scatter now produces on the pinned world, and each
+    // floor sits under the measured value with room but not much.
+    //
+    // Way up is the one that matters most and was worst: the old rotation was a
+    // spin about Y alone, so every stone showed its top to the sun. Now the
+    // tilt off vertical runs 1.4° to 98.6° with a median of 35.2°, and better
+    // than a tenth of them are past 60° — lying on a side, showing a face that
+    // was underneath.
+    const world = createWorld(SEED);
+    const view = new DecorView(world);
+    const { stones } = meshes(view);
+    const n = Math.min(600, stones.count);
+    expect(n).toBeGreaterThan(100);
+    const m = new THREE.Matrix4();
+    const q = new THREE.Quaternion();
+    const scale = new THREE.Vector3();
+    const up = new THREE.Vector3();
+    const c = new THREE.Color();
+    const tilts: number[] = [];
+    const aspects: number[] = [];
+    const hues = new Set<string>();
+    let smallest = Infinity;
+    let largest = 0;
+    for (let i = 0; i < n; i++) {
+      stones.getMatrixAt(i, m);
+      m.decompose(new THREE.Vector3(), q, scale);
+      up.set(0, 1, 0).applyQuaternion(q);
+      tilts.push((Math.acos(Math.min(1, Math.max(-1, up.y))) * 180) / Math.PI);
+      // Height against width: a stone that is always the same shape is a bead,
+      // whatever size it is drawn at.
+      aspects.push(scale.y / scale.x);
+      smallest = Math.min(smallest, scale.x, scale.y, scale.z);
+      largest = Math.max(largest, scale.x, scale.y, scale.z);
+      stones.getColorAt(i, c);
+      hues.add(c.getHSL({ h: 0, s: 0, l: 0 }, THREE.SRGBColorSpace).h.toFixed(4));
+    }
+    tilts.sort((a, b) => a - b);
+    aspects.sort((a, b) => a - b);
+    expect(tilts[Math.floor(n / 2)]).toBeGreaterThan(20);
+    expect(tilts.filter((t) => t > 60).length).toBeGreaterThan(n * 0.05);
+    // And not all knocked over either — some still sit close to the way they
+    // were dropped, or the tilt reads as a second stamp rather than as chance.
+    expect(tilts[0]).toBeLessThan(10);
+    expect(aspects[n - 1]! / aspects[0]!).toBeGreaterThan(2);
+    expect(largest / smallest).toBeGreaterThan(3);
+    expect(hues.size).toBeGreaterThan(n * 0.5);
+    view.dispose();
+  });
+
+  it('beds every stone into the ground and buries none of it', () => {
+    // A stone drawn on the ground plane floats: its underside is a hard ellipse
+    // of shadow with daylight under it, and from the manager camera that is a
+    // sticker. So it is sunk, and the depth has to hold for every rotation the
+    // hashes can produce — the narrowest a lump can be through any axis is
+    // about 0.28 of its radius, which is what the sink is set under. Measured
+    // over every instance on the pinned world: the shallowest sits 0.020 m into
+    // the dirt and the lowest crown stands 0.040 m clear of it. Both signs
+    // matter — one is floating, the other is a stone buried out of sight and
+    // paid for anyway.
+    const world = createWorld(SEED);
+    const view = new DecorView(world);
+    const { stones } = meshes(view);
+    const p = stones.geometry.getAttribute('position');
+    const m = new THREE.Matrix4();
+    const v = new THREE.Vector3();
+    let shallowest = Infinity;
+    let lowestCrown = Infinity;
+    for (let i = 0; i < stones.count; i++) {
+      stones.getMatrixAt(i, m);
+      let lo = Infinity;
+      let hi = -Infinity;
+      for (let k = 0; k < p.count; k++) {
+        v.fromBufferAttribute(p as THREE.BufferAttribute, k).applyMatrix4(m);
+        lo = Math.min(lo, v.y);
+        hi = Math.max(hi, v.y);
+      }
+      shallowest = Math.min(shallowest, -lo);
+      lowestCrown = Math.min(lowestCrown, hi);
+    }
+    expect(shallowest).toBeGreaterThan(0.005);
+    expect(lowestCrown).toBeGreaterThan(0.02);
+    view.dispose();
+  });
+
+  it('shows no two stones in one frame as the same object', () => {
+    // The experience test for the egg field. A player never inspects one stone;
+    // they look at a yard of them and either see rubble or see a pattern. So
+    // this asks the question the frame asks: take the busiest twenty metres of
+    // ground the map has — about what fills the colony shot — and count how
+    // many of the stones in it are distinguishable from each other by the three
+    // things the eye actually reads at that range: how big, how light, and
+    // which way up. Buckets are deliberately coarse, roughly the finest
+    // difference that survives the tone map at manager zoom.
+    //
+    // Measured on the pinned world: 45 stones in the densest twenty-metre
+    // window, 42 of them distinct — 14 size buckets, 7 tone buckets, 8 tilt
+    // buckets. Before this round the size came off one hash and the way up off
+    // that same hash, so every stone of a size sat identically and the whole
+    // window collapsed towards a handful of shapes.
+    const world = createWorld(SEED);
+    const view = new DecorView(world);
+    const { stones } = meshes(view);
+    const m = new THREE.Matrix4();
+    const pos = new THREE.Vector3();
+    const at: { x: number; z: number; i: number }[] = [];
+    for (let i = 0; i < stones.count; i++) {
+      stones.getMatrixAt(i, m);
+      pos.setFromMatrixPosition(m);
+      at.push({ x: pos.x, z: pos.z, i });
+    }
+    let best: typeof at = [];
+    for (let x = 0; x < world.width - 20; x += 10) {
+      for (let z = 0; z < world.height - 20; z += 10) {
+        const win = at.filter((s) => s.x >= x && s.x < x + 20 && s.z >= z && s.z < z + 20);
+        if (win.length > best.length) best = win;
+      }
+    }
+    expect(best.length).toBeGreaterThan(20);
+    const q = new THREE.Quaternion();
+    const scale = new THREE.Vector3();
+    const up = new THREE.Vector3();
+    const c = new THREE.Color();
+    const kinds = new Set<string>();
+    const sizes = new Set<number>();
+    const tilts = new Set<number>();
+    for (const s of best) {
+      stones.getMatrixAt(s.i, m);
+      m.decompose(new THREE.Vector3(), q, scale);
+      up.set(0, 1, 0).applyQuaternion(q);
+      stones.getColorAt(s.i, c);
+      const size = Math.floor(scale.y * 40);
+      const tone = Math.floor(c.getHSL({ h: 0, s: 0, l: 0 }, THREE.SRGBColorSpace).l * 40);
+      const tilt = Math.floor((Math.acos(Math.min(1, Math.max(-1, up.y))) * 180) / Math.PI / 10);
+      kinds.add(`${size}/${tone}/${tilt}`);
+      sizes.add(size);
+      tilts.add(tilt);
+    }
+    expect(kinds.size).toBeGreaterThan(best.length * 0.8);
+    expect(sizes.size).toBeGreaterThanOrEqual(8);
+    expect(tilts.size).toBeGreaterThanOrEqual(5);
+    view.dispose();
+  });
+
   it('ends a blade in one tip, at the height and the bow the callers hang things on', () => {
     // The blade is not only grass: the crops in `fx.ts` build their leaves,
     // sprouts and stalks out of it, and a headed plant hangs a cluster of grain
@@ -667,7 +1082,7 @@ describe('the scatter keeping up with the colony', () => {
     view.sync(world, 100);
 
     const { tufts } = meshes(view);
-    expect(tufts.count).toBe(before - 5);
+    expect(tufts.count).toBe(before - 7);
     expect(occupiedCells(tufts).some((c) => c.x === 30 && c.y === 30)).toBe(false);
     view.dispose();
   });

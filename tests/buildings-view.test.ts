@@ -12,9 +12,11 @@ import * as THREE from 'three';
 import { describe, expect, it } from 'vitest';
 
 import { BuildingsView } from '../src/client/render/buildings';
+import { AO_FLOOR } from '../src/client/render/occlusion';
 import { BUILDING_COLOR, RESOURCE_COLOR } from '../src/client/render/palette';
 import { groundLiftAt } from '../src/client/render/terrain';
 import { BUILD_MENU, defOf } from '../src/sim/buildings';
+import { defaultCamera } from '../src/sim/save';
 import { addBuilding, addItem, removeBuilding } from '../src/sim/world';
 import { createWorld } from '../src/sim/worldgen';
 import type { BuildingKind, ResourceKind, World } from '../src/sim/types';
@@ -362,6 +364,47 @@ function crossings(g: THREE.BufferGeometry, from: THREE.Vector3, dir: THREE.Vect
   const n = new THREE.Raycaster(from, dir, 0, 4).intersectObject(mesh).length;
   mat.dispose();
   return n;
+}
+
+/**
+ * Every triangle of a part within `depth` metres of the ground, as the area it
+ * covers, the outward normal it turns, and how far above the horizontal that
+ * normal stands. Optionally through an instance matrix, because the thing the
+ * player sees is the prototype after the view has scaled and leaned it, and a
+ * non-uniform scale tilts a face rather than carrying it: the normals are taken
+ * from the transformed corners for that reason, not transformed themselves.
+ */
+function footFaces(
+  g: THREE.BufferGeometry,
+  depth: number,
+  m?: THREE.Matrix4,
+): { area: number; elev: number; normal: THREE.Vector3 }[] {
+  const pos = g.attributes.position;
+  const idx = g.index;
+  const n = idx ? idx.count : pos.count;
+  const out: { area: number; elev: number; normal: THREE.Vector3 }[] = [];
+  const a = new THREE.Vector3();
+  const b = new THREE.Vector3();
+  const c = new THREE.Vector3();
+  for (let i = 0; i < n; i += 3) {
+    const k = [0, 1, 2].map((j) => (idx ? idx.getX(i + j) : i + j));
+    a.fromBufferAttribute(pos, k[0]!);
+    b.fromBufferAttribute(pos, k[1]!);
+    c.fromBufferAttribute(pos, k[2]!);
+    if (m) {
+      a.applyMatrix4(m);
+      b.applyMatrix4(m);
+      c.applyMatrix4(m);
+    }
+    // The cell's ground, which a tree stands on at y = 0 in either space.
+    if (Math.max(a.y, b.y, c.y) > depth) continue;
+    const normal = new THREE.Vector3().crossVectors(b.clone().sub(a), c.clone().sub(a));
+    const area = normal.length() / 2;
+    if (area === 0) continue;
+    normal.divideScalar(area * 2);
+    out.push({ area, elev: (Math.asin(Math.abs(normal.y)) * 180) / Math.PI, normal });
+  }
+  return out;
 }
 
 /** Every live instance matrix in one pool. */
@@ -775,6 +818,159 @@ describe('a wood', () => {
       if (pos.getY(k) > trunk.boundingBox!.max.y - 0.01) tip = Math.max(tip, r);
     }
     expect(tip, 'the trunk is a post, not a taper').toBeLessThan(root * 0.4);
+    view.dispose();
+  });
+
+  it('meets the turf with faces that stand up rather than with a saucer that lies down', () => {
+    // Round 10's frames had a bright red-brown ellipse lying on the grass under
+    // every tree, reading as a terracotta pot the tree had been stood in, and it
+    // was the trunk's own root flare: a frustum from 0.44 m at the ground to
+    // 0.30 at 0.18, lying 37.5 degrees back from the vertical on the flat
+    // triangles the lathe draws and 37.9 on the normals it shades them with.
+    // Every one of the 0.5255 m² the trunk carried below a quarter of a metre
+    // was over thirty degrees from vertical, and averaged over camera yaw that
+    // band presented 0.2547 m² — 48.5 % of its own area, against a ceiling of
+    // 50 % for any solid of revolution. There was no angle from which it was not
+    // showing the manager its full face, and none from which the crown could
+    // shade it either: the lowest boughs hang at 1.7 m and reach 0.86 m out, so
+    // at any sun high enough to be called day their shadow clears a foot 0.44 m
+    // in radius.
+    //
+    // So the line is drawn at what the camera can do rather than at a number
+    // that looked right. `MIN_PITCH` is 0.42 radians — 24.1 degrees — the
+    // shallowest the manager camera tilts, and a face whose normal stands lower
+    // than that is one no camera the player is allowed to have can look square
+    // down. Everything at the foot must be under it, so the tree's foot is a
+    // thing the player sees edge-on however they move.
+    const view = new BuildingsView();
+    const trunk = partGeometry(view, 'tree.trunk');
+    let band = 0;
+    let lying = 0;
+    let worst = 0;
+    for (const face of footFaces(trunk, 0.25)) {
+      band += face.area;
+      if (face.elev <= 25) continue;
+      lying += face.area;
+      worst = Math.max(worst, face.elev);
+    }
+    expect(band, 'the trunk has no foot below a quarter of a metre at all').toBeGreaterThan(0.2);
+    expect(lying, `${lying.toFixed(4)} m² of the foot lies back as far as ${worst.toFixed(1)}°`).toBe(0);
+    view.dispose();
+  });
+
+  it('carries the foot on roots, so the ring at the turf is not a circle turned on a lathe', () => {
+    // The flare that read as a saucer was not only shallow, it was a solid of
+    // revolution: a perfect bright circle 0.88 m across against the grass, which
+    // is the shape of a thing that was turned rather than grown. Pulling it in
+    // is only half the answer, because the girth it was carrying is what stops
+    // the trunk being a stick — and a trunk that ends in a hard cylindrical edge
+    // on the grass is the bug the flare was added to fix in the first place.
+    //
+    // So the girth comes back as buttresses. Both halves are pinned here because
+    // either alone is the old bug: a ring that is wide and round is the saucer,
+    // and a ring that is lobed but no wider than the shaft is the cut-off pipe.
+    // Five roots off two waves a little out of step give a ring that crosses its
+    // own mean ten times and runs 0.300 to 0.450, and the widest of them stands
+    // 2.14 times the 0.210 shaft a metre up.
+    const view = new BuildingsView();
+    const pos = partGeometry(view, 'tree.trunk').attributes.position;
+    const ring: number[] = [];
+    let shaft = 0;
+    for (let k = 0; k < pos.count; k++) {
+      const r = Math.hypot(pos.getX(k), pos.getZ(k));
+      if (pos.getY(k) < 0.001) ring.push(r);
+      if (Math.abs(pos.getY(k) - 1) < 0.001) shaft = Math.max(shaft, r);
+    }
+    // The lathe keeps two copies of its first meridian, and counting the wrap
+    // from the last back to the first would count that duplicate as a crossing.
+    ring.pop();
+    const mean = ring.reduce((s, v) => s + v, 0) / ring.length;
+    let crossings = 0;
+    for (let i = 0; i < ring.length; i++) {
+      if (ring[i]! - mean <= 0 !== ring[(i + 1) % ring.length]! - mean <= 0) crossings++;
+    }
+    const widest = Math.max(...ring);
+    expect(crossings, `the ring at the turf runs in and out of its own girth only ${crossings} times`).toBeGreaterThanOrEqual(8);
+    expect(widest / Math.min(...ring), 'the roots are all the same length, which is a rim').toBeGreaterThan(1.35);
+    expect(widest / shaft, `the foot reaches ${widest.toFixed(3)} against a ${shaft.toFixed(3)} shaft, which is a pipe cut off at the grass`).toBeGreaterThan(1.8);
+    view.dispose();
+  });
+
+  it('lets the contact bake reach its floor where the trunk enters the ground', () => {
+    // The other half of why the flare read as a pot is that nothing could darken
+    // it. The bake casts a hemisphere at every vertex and puts the ground in as a
+    // blocker, and what a face loses to the ground is (1 − cos θ) / 2 for a
+    // normal θ off the vertical — so the old flare's 37.9-degree face gave up a
+    // fifth of its sky and came out between 0.875 and 0.9375, brighter than the
+    // shaded trunk above it. A face that stands up loses half its sky instead,
+    // which is past `AO_FLOOR` and lands on it.
+    //
+    // This is a consequence of the geometry rather than a second knob, and that
+    // is exactly why it is worth pinning: it is the cheapest possible check that
+    // the foot really is vertical where it touches, measured through the bake
+    // rather than through the profile it was built from.
+    const view = new BuildingsView();
+    view.bakeOcclusion();
+    const trunk = partGeometry(view, 'tree.trunk');
+    const pos = trunk.attributes.position;
+    const col = trunk.attributes.color;
+    let darkest = 1;
+    let brightest = 0;
+    for (let k = 0; k < pos.count; k++) {
+      if (pos.getY(k) >= 0.001) continue;
+      darkest = Math.min(darkest, col.getX(k));
+      brightest = Math.max(brightest, col.getX(k));
+    }
+    expect(darkest, 'not one vertex at the turf is shaded down to the floor').toBeCloseTo(AO_FLOOR, 5);
+    expect(brightest, `the brightest vertex at the turf sits at ${brightest.toFixed(4)}`).toBeLessThan(0.9);
+    view.dispose();
+  });
+
+  it('shows the manager camera no saucer at the foot of any tree in the wood', () => {
+    // The prototype is not what the player sees. Girth is hashed per tree and
+    // goes on x and z only, so a squat wide tree is the same profile stretched
+    // sideways — which tilts every face at the foot *flatter*, not steeper — and
+    // the lean adds up to four degrees more on the downhill side. Measured
+    // against the whole wood the old flare's 37.5-degree prototype face came out
+    // at 44.7 on the squattest tree in it, and 0.1773 m² of that tree's foot
+    // faced the default manager camera within twenty-five degrees of square-on.
+    // A probe that only ever looked at the prototype would have been blind to
+    // both, and would have reported the flare a few degrees better than it was.
+    //
+    // So this is the same question asked of every tree worldgen actually put on
+    // the ground, through the matrix the view actually pushes, against the
+    // camera the player actually starts with: at the foot of a tree, is there
+    // any surface turned to face the manager square on. Nowhere in the wood may
+    // there be one, because that surface is the saucer.
+    const world = createWorld(SEED);
+    const view = new BuildingsView();
+    view.sync(world);
+    const trunk = partGeometry(view, 'tree.trunk');
+    const cam = defaultCamera(world);
+    // Where the camera stands, seen from the ground: `ManagerCamera.apply` puts
+    // it at this offset from its target, and a face presents square on when its
+    // normal points along it.
+    const toCam = new THREE.Vector3(
+      Math.cos(cam.yaw) * Math.cos(cam.pitch),
+      Math.sin(cam.pitch),
+      Math.sin(cam.yaw) * Math.cos(cam.pitch),
+    ).normalize();
+    const square = Math.cos((25 * Math.PI) / 180);
+    const trees = matricesOf(view, 'tree.trunk');
+    expect(trees.length, 'no wood to look at').toBeGreaterThan(20);
+    let worst = 0;
+    let facing = 0;
+    for (const m of trees) {
+      let towards = 0;
+      for (const face of footFaces(trunk, 0.25, m)) {
+        if (Math.abs(face.normal.dot(toCam)) > square) towards += face.area;
+      }
+      if (towards > facing) {
+        facing = towards;
+        worst = m.elements[12]!;
+      }
+    }
+    expect(facing, `the tree at x=${worst} turns ${facing.toFixed(4)} m² of its foot flat at the camera`).toBe(0);
     view.dispose();
   });
 

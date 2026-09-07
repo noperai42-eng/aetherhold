@@ -115,6 +115,38 @@ const SLEEVE = 0.53;
 const WRIST_Y = -0.575;
 
 /**
+ * How far out from straight down an arm hangs, in radians, applied as a roll at
+ * the shoulder and left there through every pose.
+ *
+ * The arms were plumb, and a plumb arm on this body is pressed against the
+ * cloth: the shoulder sits at 0.27 across, the sleeve is 0.065 round, and the
+ * torso lathe is 0.20 across at the waist — five millimetres of daylight
+ * between the two, which at the zoom the colony is played at is less than a
+ * pixel. From above, and above is where the game is watched from, the sleeve
+ * and the shirt were one blue outline with no notch in it.
+ *
+ * Seven degrees is what a slack arm does anyway, and it opens that gap to
+ * forty-eight millimetres at the waist — about the width of the settler's own
+ * hand on screen, and enough that the ground shows between the arm and the
+ * body. It also carries the hand outboard of the thigh, so the sleeve stops
+ * hanging across the trouser it has to be told apart from.
+ *
+ * Seven is also as far as it can go, and the thumb is what stops it. A hand is
+ * cut with its thumb reaching seventy-three millimetres in across the palm so
+ * that it points at the midline, and hung from a shoulder `WRIST_Y` above it a
+ * roll past about 0.127 sends that tip out past the shoulder's own line: the
+ * hand stops reading as held at the side and starts reading as held away from
+ * the body. Ten degrees would buy another twenty millimetres of daylight and
+ * cost the hand, which is the more expensive of the two.
+ *
+ * The rifle rides the right arm and so cants seven degrees with it. That is not
+ * a cost worth undoing: the weapon is already held a quarter of a metre off the
+ * midline, and a barrel that leans out of the shoulder it is fired from is
+ * nearer the truth than one that stays parallel to the spine.
+ */
+const ARM_SPLAY = 0.12;
+
+/**
  * Hair, black through silver. Read off `colorSeed` like the skin and the cloth
  * are, from bits neither of those looks at, so a colony is not six people in
  * the same dark brown and the hair does not follow the coat. Nothing here is a
@@ -142,6 +174,51 @@ export const HAIR_TONES = [0x1d1714, 0x2b2119, 0xa67546, 0xc26545, 0x9e7a2c, 0xe
  */
 const TROUSER_TONES = [0x5b4d3f, 0x46474b, 0x585b3c, 0x6b5747];
 
+/**
+ * How far below the shirt the sleeves are dyed, in L* — the scale on which a
+ * step is a step.
+ *
+ * The arms and the torso wore one material, and from the camera the colony is
+ * managed at that is half the settler in a single value. Measured off the
+ * frame: a colonist at a bench had a torso reading L* 33 and an arm held out of
+ * it reading 28 at the shoulder and rising smoothly to 49 at the wrist — a
+ * gradient with no edge anywhere along it, so the eye joined the two into one
+ * slab and read the arm as a signpost bolted to a torso. A walking colonist
+ * fared better only by accident: its arm hung, so the cylinder turned its side
+ * to the sun and the shading dug a valley the dye had not.
+ *
+ * Shading cannot be relied on for this, and from directly overhead it cannot
+ * help at all — the crown of a raised sleeve and the top of a shoulder face the
+ * same way and take the same light, so whatever separates them has to be in the
+ * cloth. Ten L* is the step. It turns the five-point shading valley at that
+ * settler's shoulder into fifteen, which is an edge; it is above the seven the
+ * hair and the skin are held apart by, which this file already calls three
+ * times a just-noticeable step; and it leaves the darkest sleeve any faction
+ * and any seed can produce at 0.033 of linear luminance, a third clear of the
+ * 0.025 floor below which a surface stops having a shape in it.
+ *
+ * It is deliberately not more. The other boundary the sleeve has to hold is the
+ * one against the trousers, where a hanging arm crosses a thigh — measured at
+ * fifteen points of L* on the same frame, so ten is most of what there is to
+ * spend. What is left there is five points and the dark seam the arm's own
+ * shadow lays down the leg, and the splay above pulls the sleeve outboard of
+ * the thigh so that boundary has less of the arm to carry.
+ */
+const SLEEVE_STEP = 10;
+
+/**
+ * The shirt's own colour taken `SLEEVE_STEP` down: one garment in two tones,
+ * not two garments. Hue and saturation are untouched, so the faction still
+ * reads off the arms as well as off the chest, and the arithmetic is the herds'
+ * — `deepen` shares out a colour's room above the floor in L*, and a fixed drop
+ * is that share worked backwards from the room this particular cloth has. A
+ * shirt already at the floor has none to give and keeps its sleeves.
+ */
+export function sleeveOf(cloth: THREE.Color): THREE.Color {
+  const room = lstar(luminance(cloth)) - lstar(SILHOUETTE);
+  return deepen(cloth, room > 0 ? Math.min(1, SLEEVE_STEP / room) : 1);
+}
+
 /** One settler's body. Parts are plain meshes so limbs can swing independently. */
 class PawnRig implements Rig {
   readonly group = new THREE.Group();
@@ -165,6 +242,9 @@ class PawnRig implements Rig {
     const hairCol = new THREE.Color(HAIR_TONES[(pawn.colorSeed >> 8) % HAIR_TONES.length]!);
 
     const clothMat = new THREE.MeshStandardMaterial({ color: cloth, roughness: 0.78 });
+    // The same cloth, a measured step darker, so the arms are not the chest
+    // (see `SLEEVE_STEP`). Same roughness: it is the same bolt of shirt.
+    const sleeveMat = new THREE.MeshStandardMaterial({ color: sleeveOf(cloth), roughness: 0.78 });
     const trouserMat = new THREE.MeshStandardMaterial({
       color: TROUSER_TONES[(pawn.colorSeed >> 14) % TROUSER_TONES.length]!,
       roughness: 0.82,
@@ -178,7 +258,7 @@ class PawnRig implements Rig {
     const leatherMat = new THREE.MeshStandardMaterial({ color: 0x4a3323, roughness: 0.62 });
     const bootMat = new THREE.MeshStandardMaterial({ color: 0x2c221c, roughness: 0.55 });
     const eyeMat = new THREE.MeshStandardMaterial({ color: 0x14100e, roughness: 0.35 });
-    this.mats.push(clothMat, trouserMat, skinMat, hairMat, gearMat, leatherMat, bootMat, eyeMat);
+    this.mats.push(clothMat, sleeveMat, trouserMat, skinMat, hairMat, gearMat, leatherMat, bootMat, eyeMat);
 
     this.torso = new THREE.Mesh(shared.torso, clothMat);
     this.head = new THREE.Mesh(shared.head, skinMat);
@@ -195,8 +275,8 @@ class PawnRig implements Rig {
     this.legR = new THREE.Mesh(shared.leg, trouserMat);
     this.legL.name = 'leg';
     this.legR.name = 'leg';
-    this.armL = new THREE.Mesh(shared.arm, clothMat);
-    this.armR = new THREE.Mesh(shared.arm, clothMat);
+    this.armL = new THREE.Mesh(shared.arm, sleeveMat);
+    this.armR = new THREE.Mesh(shared.arm, sleeveMat);
     this.armL.name = 'arm';
     this.armR.name = 'arm';
 
@@ -211,6 +291,13 @@ class PawnRig implements Rig {
     this.legR.position.set(0.11, SETTLER_LEG, 0);
     this.armL.position.set(-0.27, SHOULDER_Y, 0);
     this.armR.position.set(0.27, SHOULDER_Y, 0);
+    // The roll is set once and never written again: `setPose` only ever touches
+    // `rotation.x`, so the splay survives the walk, the nod and lying down. Euler
+    // order is XYZ, which applies the roll in the arm's own frame first and then
+    // swings the splayed arm forward from the shoulder — the joint the gait was
+    // tuned against, unmoved.
+    this.armL.rotation.z = -ARM_SPLAY;
+    this.armR.rotation.z = ARM_SPLAY;
 
     // Hair and eyes ride the head, so `head.rotation.x` is the whole nod. The
     // hair used to be a second mesh rotated to match by hand, which worked only
@@ -471,7 +558,9 @@ const lstar = (y: number): number => 116 * Math.cbrt(y) - 16;
 
 /**
  * The coat taken a fixed share of the way down from itself to the floor, in the
- * scale on which a step is a step.
+ * scale on which a step is a step. Nothing about it is a hide — `sleeveOf`
+ * dyes a settler's sleeves with it too — but the hides are what it was sized
+ * against and the arithmetic below is theirs.
  *
  * A fixed offset cannot do this job. The four species are two and a half stops
  * apart before the seed touches them, and a pale hare has forty-six points of

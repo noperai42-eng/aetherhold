@@ -4,6 +4,132 @@ One round, one measured gap, one fix. Newest first.
 
 ---
 
+## 2026-09-06 — Round eleven, and the colour a stone is not
+
+**Track: the rendered game.** Three lanes, briefed straight off round ten's *still wrong* list
+with no interpretation needed: the tree's root flare, the scatter stones and the grass at manager
+zoom, and the settler silhouette at the zoom `3-colony` is taken at. The frames judged are `r10b`
+against `r11b` — `r11b` and not the round's own `r11`, because `r11` is the set that caught the
+regression below, and a fix has to be photographed before the round can close.
+
+### Better
+
+**The tree stands in the ground instead of on it.** `roots()` in `buildings.ts` takes the trunk
+lathe and pushes its lowest rings out along a five-lobed and a three-lobed wave a little out of
+step, dying out as `1 − (y / ROOT_RISE)²`, so the girth at the foot is carried by four or five
+root swells rather than by the flat disc the old profile flared into. Round ten called that disc
+a plant pot and it was the right word. No face of the new foot at ground level is more than
+thirty degrees off vertical, which is the measurement that separates a bole from a saucer, and it
+is pinned by a test rather than by the picture.
+
+**The stones broke off something.** The scatter dropped from a once-subdivided icosahedron to the
+bare twenty-sided one and the displacement rose from nine hundredths of the radius to three
+tenths, so no two faces are the same size and every lump has twenty flat sides and hard edges. On
+top of that: a per-face tone bake, free rotation, a size range widened from three-to-one to
+four-to-one weighted toward the chip, and twelve independent hashes where three had been doing
+all the work — so a big stone is no longer always turned the same way and always the same shade.
+In `2b-closeup` the pebbles two metres from the rock outcrop used to read as eggs beside it; they
+now read as pieces of the same rock. It is also a quarter of the triangles, and the stones are
+the one thing in `decor.ts` that casts a shadow, so the saving is taken twice.
+
+**The grass covers the ground at both zooms.** Seven tufts a cell instead of five, placed on a
+per-cell phase of the R2 low-discrepancy set rather than on independent hashes — which is what
+actually closed the holes; more tufts scattered independently is more scatter, not more cover. In
+`4-firstperson` the field went from marks printed on the turf to a sward you are standing in, and
+at the manager zoom of `3-colony` it stopped flattening back into chevrons, which was round ten's
+specific complaint. The thinning over worn ground is unchanged in effect: seven tufts at 0.075
+each on top of the flat 0.3 is the same 0.75 ceiling that five at 0.11 and three at 0.22 were.
+
+**A settler has arms.** `ARM_SPLAY` rolls each shoulder out by 0.12 radians and the sleeves take
+their own material off `sleeveOf(cloth)`. From directly overhead — which is exactly how
+`1-settlers` and `3-colony` see a person — the arms used to merge into the torso and the figure
+was a blue lozenge with a head on it. The gap between arm and body reads at both zooms now.
+
+The frame is heavier by the grass and lighter by the stones, and the grass wins: **123 draw calls
+/ 8,357,792 triangles**, against round ten's 123 / 8,000,822. Same binds, 4.5 % more work for the
+card.
+
+### The regression this round shipped, photographed, and fixed
+
+**The stones came out pink.** The lane that gave the stones their facets also widened the
+per-instance tone to match — hue from a sixteenth of a turn either way to a twelfth, saturation
+from a twentieth to a quarter. That is what a *smooth* lump wants: a smooth lump has one
+highlight sliding over it and needs colour to tell it from its neighbour. A faceted one does not.
+Twenty flat sides at twenty angles is already the whole of the variety, and the tone spent on top
+of it went somewhere the eye reads as a material rather than as a stone. `STONE_COLOR` is a
+mid-grey carrying a tenth of a saturation at hue 33°; a sixth of a turn down the wheel lands at
+11°, and a quarter of added saturation on top of that is a pink.
+
+Measured off the frames rather than argued: six chips in `2b-closeup` span 18.0° to 41.2° of hue
+in `r11` and 28.9° to 36.5° in `r11b` — a spread of 23° cut to 8°, with the low end, which is the
+end that reads as pink, moved 11° back up the wheel. In `5-dusk`, where the low sun pushes what
+is already warm further, the worst chip sat at hue 4.3° and now sits at 13.3°; the dusk scatter
+as a whole is no more saturated than round ten's eggs were at the same hour, and is a great deal
+better shaped.
+
+Hue is back inside a tenth of a turn, saturation to the tenth it was photographed at for ten
+rounds, lightness untouched. What survives is the part that was right: three properties on three
+independent hashes, so the field is still not one stamp — it is a field of grey stones that
+differ, rather than a field of stones that differ in colour.
+
+Nothing in the suite could see it, and that is the more useful half. The existing stone test
+checks a *lightness* band, and a pink of the right lightness is a pink; the variety test beside
+it is actively **satisfied** by the defect, because a pink stone is certainly not the same colour
+as its neighbour. `keeps every stone a grey, never a colour` writes down the two numbers a grey
+actually is — saturation under a fifth, hue inside the brown wedge — read in sRGB rather than in
+the linear working space, because the question is what the frame looked like and not what the
+buffer held.
+
+The grass gained the same kind of pin. `WEAR_COST_PER_TUFT` came down from 0.11 to 0.075 to keep
+the ceiling where two more tufts a cell would have pushed it, and that compensation was arithmetic
+in a comment and nothing else: raise the tufts-per-cell count again without lowering the step and
+the last tuft's y scale goes through zero into negative, which is a clump drawn upside down
+through the turf it stands on. The yard-versus-open-ground test could not have caught it — it
+compares averages, and a negative height makes an average *smaller*, so it would have gone green
+while the grass grew into the ground.
+
+### Still wrong
+
+- **The tree foot still catches red at dusk.** Smaller and less disc-like than round ten's saucer
+  and no longer the worst thing in `5-dusk`, but the roots take the low sun's warm light on
+  `BARK` and come out orange-red against green turf. The disc was the bug and the disc is fixed;
+  the colour under a low sun is a separate question nobody has asked yet.
+- **The minimap panel is still a 300-pixel box holding a 90-pixel picture.** Carried from round
+  ten unchanged, and `6-hud-colony` shows it is still the largest empty thing in the left column.
+- **The message log sits on top of the third crew card.** At the desk viewport the log panel's top
+  edge cuts through Pell Emberly's MOOD row in `6-hud-colony`. Both panels are draggable, so this
+  is a default-position defect and not a layout impossibility.
+
+### The harness
+
+`r11` came back 13/16 — `Page.captureScreenshot` timed out on `8-phone-details`, the frame taken
+immediately after tapping a roster row, and the `catch` took `8-phone-events` and `8-phone-more`
+with it. `r11b` took all sixteen from the same code on the same seed, so this is the contention
+timeout this project has seen before and not a slow frame in the game. The protocol timeout is
+already fifteen minutes; nothing is worth changing until it reproduces.
+
+### Verified
+
+- `npx tsc --noEmit -p .` — clean.
+- `npx vitest run` — the whole suite: **2319 passed, 13 skipped**, 116 files, 1520 s.
+- Two new tests written against the values that break them: reverting the stone tone widths turns
+  `keeps every stone a grey, never a colour` red, and raising `TUFTS_PER_CELL` without lowering
+  the step turns `leaves the last tuft on the barest cell standing` red. A test nobody has watched
+  fail is a test nobody has checked.
+- `r11b: 0 console errors, 26 showcase buildings stood, 17 ms/frame, colony frame 123 draw calls /
+  8357792 triangles / 0 points / 0 lines, 192 geometries, 2 textures, 15 of 151 instanced meshes
+  empty (13 of those hidden), 16/16 frames (all)`.
+- Sixteen frames opened one at a time against `r10b`.
+
+### Next target
+
+- The tree foot's colour under a low sun.
+- The two HUD defects above — both are position, not paint.
+- The stones and the grass are done. The buildings' interiors are the least-photographed surface
+  left in the set.
+
+---
+
 ## 2026-09-06 — Round ten, and the instrument that lost two frames without saying so
 
 **Track: the rendered game.** Eight lanes — pawns, buildings, decor, landmarks, sky and weather,
