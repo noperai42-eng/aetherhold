@@ -4,6 +4,112 @@ One round, one measured gap, one fix. Newest first.
 
 ---
 
+## 2026-09-07 — Look round twelve, what a settler does with their head and their hands
+
+**Track: the rendered game.** One lane, `pawns.ts`, and the brief came out of the code rather
+than out of round eleven's *still wrong* list. Two findings set it: `carryingItemId` has been on
+the pawn since there were pawns and nothing in the renderer had ever read it, so a colonist
+crossing the map with forty wood was pixel-identical to one walking home empty; and
+`head.rotation.y` was untouched everywhere, while the file's own comment says the head is most of
+what the manager camera sees.
+
+The standard six frames could not judge either one. They pin seed 4242 at the first tick past
+1800 so that two rounds photograph the same colony, and whether the settler under the close camera
+happens to be hauling, or has a job two cells off his shoulder, at that tick is luck. So the round
+added a seventh instrument, `scripts/look/crew.mjs` (`npm run look:crew`): seven settlers cloned
+onto clear ground in one line — idle, two looking at jobs, working, hauling, carrying a person,
+down — all facing the same way, so the only thing that varies along the row is the thing being
+judged. Frames `r12b-before` against `r12c-after`.
+
+### Better
+
+**A settler with their hands full looks like one.** Both arms come up to `-1.3` and a sack rides
+the chest at `(0, 1.16, 0.4)`, drawn from `carryingItemId` and hidden when the hands are empty.
+Built for every rig and hidden rather than made when the hands fill, so nothing allocates on the
+frame a colonist picks something up. The legs keep their own pose underneath — the update was
+split into a legs layer and an arms layer for exactly this, so a hauler walks and carries at the
+same time instead of choosing. Twelve triangles a settler, which is why the pose could be spent
+without an argument about budget.
+
+**The head attends to the work.** `head-aim.ts` is the whole of it and imports no `three`: two
+angles in the body's frame, a neck that reaches about seventy degrees each way and further down
+than up, and an exponential approach so the turn takes the same wall time at 30 fps and at 144.
+An aim the neck cannot reach is dropped rather than clamped, which is the difference between a
+settler who has not noticed something behind them and a settler staring at the limit of their own
+collar. In `r12c-after-D2-crew-close` the two settlers with jobs off their shoulder have visibly
+tipped their heads down at the ground they are working, and the pitch carries more of that read
+than the yaw does.
+
+### Worse, and fixed inside the round
+
+**The rifle became a flagpole.** A weapon rides the right hand — `this.armR.add(this.weapon)` —
+so raising both arms to a crate raised the rifle with them, and the first frames showed a settler
+walking with a crate at their chest and a shotgun standing vertically out of their fist. Worse
+than the empty hands it replaced. Hands that are full are full of one thing: the weapon now hides
+while a load is drawn, and comes back when the hands come free or the body goes down.
+
+**A rescuer had both arms up around nothing.** The first version keyed the carry pose on
+`carryingItemId || carryingPawnId`, on the reasoning that a rescuer holds a body the same way. The
+frames refused it. With no body mesh to hand the arms, a colonist crossing the map with both arms
+raised around empty air reads as surrender, and that is a worse thing for a frame to say than the
+ordinary walk it replaced. The pose is keyed on a drawn load alone now; a rescue joins it the day
+the carried settler is drawn in the carrier's arms.
+
+### Still wrong
+
+**The head turn does not survive the manager camera.** At the zoom `D2-crew-close` is taken at it
+is unmistakable; in `D-crew`, which is the zoom the game is actually played at, it is a handful of
+pixels. The cause is the model, not the aim: the head is a near-featureless dark sphere under a
+hair cap, and rotating a sphere changes almost no silhouette. Giving the head something
+directional that reads from above — an asymmetric hair mass, a fringe, a face light enough to
+catch the sun — is the next brief for this lane, and it would pay for the aim already built.
+
+**The load is a generic crate.** It is the shared crate geometry in one brown, so forty wood, ten
+steel and a stack of hides are the same box. The item kind is in hand at the call site
+(`carryingItemId` names an item that knows what it is), so a tint or a swapped profile per kind is
+cheap; it was left out because it is a second change and this round had a regression to photograph.
+
+**The zoom LOD was briefed, measured, and dropped.** The lane was to cut eyes, hands and hair when
+the camera pulls back, on the theory that it would pay for the two lanes above. The census says it
+would not: a settler rig is 18 meshes and 2812 triangles, and a fresh colony is 81 pawns of which
+**three** are settlers — 54 meshes against the animals' 1951, and 8.4 k triangles against their
+184 k. Dropping the fine parts on three rigs saves about fifteen draw calls out of two thousand.
+The measurement is the finding: if a LOD lane is ever worth building it belongs to `AnimalRig`,
+which is 96 per cent of the pawn budget, and not to the settlers this round was about.
+
+### Shipped
+
+`src/client/render/head-aim.ts` (new, pure angles), `pawns.ts` (the two pose layers, the load, the
+weapon hide, the head drive), and the `dt` that had to be threaded to reach it —
+`world-view.ts`, `app.ts`, `models.ts`. Heads ease on frame time and not on ticks, because nothing
+in the simulation depends on where a head is pointed and a head that stepped at 20 Hz while the
+feet ran at 144 would show it. `models.ts` passes zero, so an exported `.glb` has every head
+straight: an exported model is a body, not a moment.
+
+Tests: `tests/head-aim.test.ts` (12) and `tests/pawn-rig.test.ts` (16, the first tests `pawns.ts`
+has ever had), plus six call sites updated in `tests/lighting.test.ts` with their behaviour
+preserved. Both new files were verified red-first by mutation rather than by inspection — fifteen
+targeted mutations across the two source files, each caught, each file restored byte-identical
+afterwards. `tests/pawn-rig.test.ts` goes through `PawnsView` and not the private rig, because a
+test that reached past the view could pass while the view never built the body at all.
+
+The carry state is not a feature that exists only in its own tests: `tests/repath.test.ts` already
+runs a real colony until a hauler's `carryingItemId` fills, so the state the renderer now draws is
+one the simulation is independently shown to reach.
+
+### Next
+
+The head's silhouette, above. Then the load by kind. Then the carried settler drawn in the
+carrier's arms, which closes the rescue pose properly instead of declining it.
+
+### Cost
+
+Four captures at about ten minutes each — a before, an after, then a reframed pair after the first
+framing ran the crew diagonally off the corner and never photographed two of the seven. Zero
+console errors in all four. About two hours wall clock, most of it the harness.
+
+---
+
 ## 2026-09-06 — Round eleven, and the colour a stone is not
 
 **Track: the rendered game.** Three lanes, briefed straight off round ten's *still wrong* list

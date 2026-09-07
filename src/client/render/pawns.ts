@@ -24,6 +24,14 @@ import { SETTLER_LEG, SETTLER_PHASE, SETTLER_SWING, phaseScale } from '../gait';
 import { ANIMALS } from '../../sim/wildlife';
 import { isRipe } from '../../sim/husbandry';
 import { maturity } from '../../sim/livestock';
+import {
+  aimFromWorld,
+  approachAim,
+  HEAD_NEUTRAL,
+  headAimReaches,
+  SETTLER_NECK,
+  type HeadAim,
+} from './head-aim';
 import { LAYER_ALL, LAYER_MANAGER } from './renderer';
 import { standHeight } from '../../sim/grid';
 import type { AnimalKind, Pawn, World } from '../../sim/types';
@@ -86,7 +94,7 @@ const MARK_CLEARANCE = 0.16;
 interface Rig {
   readonly group: THREE.Group;
   setLayer(layer: number): void;
-  update(world: World, pawn: Pawn, x: number, z: number, facing: number): void;
+  update(world: World, pawn: Pawn, x: number, z: number, facing: number, dt: number): void;
   dispose(): void;
 }
 
@@ -111,6 +119,27 @@ const HEAD_Y = 1.51;
  * ends in skin, in silhouette as well as in colour, and the hand is deeper
  * front to back than the sleeve so it also breaks the outline.
  */
+/**
+ * The carrying pose, and where the load rides in it.
+ *
+ * Both arms come forward to the SAME angle. Asymmetric arms read as reaching
+ * for a thing rather than as holding one, which is the difference between a
+ * settler walking to the woodpile and a settler walking back from it. The box
+ * then sits where those two hands end up, which is why these three numbers are
+ * written together: move one and the load is in mid-air or inside the chest.
+ */
+const CARRY_ARM = -1.3;
+const CARRY_Y = 1.16;
+const CARRY_Z = 0.4;
+
+/**
+ * How high off the ground a settler's hands do their work, and so how far down
+ * a settler looks at a job. Waist height on a body of this size: a colonist
+ * sowing a row is not looking at the soil between their boots, they are looking
+ * at the drill in their hands.
+ */
+const WORK_HEIGHT = 0.55;
+
 const SLEEVE = 0.53;
 const WRIST_Y = -0.575;
 
@@ -233,8 +262,15 @@ class PawnRig implements Rig {
   private weapon: THREE.Group | null = null;
   /** The caravan's freight, on the ground. Null for everybody who is not a trader. */
   private freight: THREE.Group | null = null;
+  /** What a hauler is carrying, hidden on everybody whose hands are empty. */
+  private readonly load: THREE.Mesh;
   private readonly mats: THREE.Material[] = [];
   private layer = LAYER_ALL;
+  /** Where the head is turned to now, eased toward where it wants to be. */
+  private aim: HeadAim = HEAD_NEUTRAL;
+  /** The tick `look` was found on, so the search runs at the sim's rate and not the display's. */
+  private lookTick = -1;
+  private look: { x: number; y: number; z: number } | null = null;
 
   constructor(pawn: Pawn, shared: SharedGeometry) {
     const cloth = pawnTint(FACTION_COLOR[pawn.faction], pawn.colorSeed);
@@ -361,6 +397,28 @@ class PawnRig implements Rig {
       this.armR.add(this.weapon); // rides the hand, so it swings with the arm
     }
 
+    // What a hauler is carrying. `carryingItemId` has been on the pawn since
+    // there were pawns and nothing here had ever read it, so a colonist crossing
+    // the map with forty wood was pixel-identical to one walking home empty —
+    // the single largest thing a settler's silhouette was failing to say.
+    //
+    // Built for everyone and hidden, rather than made when the hands fill:
+    // carrying starts and stops dozens of times in a life, and a mesh allocated
+    // on the frame it starts is an allocation inside the draw. Twelve triangles
+    // and one material, both of which the detail level drops when zoomed out.
+    //
+    // One crate stands for every kind of load. WHICH resource it is, is what the
+    // click panel is for; THAT they are carrying is what only the body can say.
+    const sackMat = new THREE.MeshStandardMaterial({ color: 0x7d6647, roughness: 0.9 });
+    this.mats.push(sackMat);
+    this.load = new THREE.Mesh(shared.crate, sackMat);
+    this.load.name = 'load';
+    this.load.scale.setScalar(0.85);
+    this.load.position.set(0, CARRY_Y, CARRY_Z);
+    this.load.castShadow = true;
+    this.load.visible = false;
+    this.group.add(this.load);
+
     // The caravan. Everything else the player learns about a pawn comes from its
     // silhouette, and until now a trader was a settler in a different shade of
     // cloth — a distinction you have to be told about rather than one you see.
@@ -402,7 +460,22 @@ class PawnRig implements Rig {
     this.group.traverse((o) => o.layers.set(layer));
   }
 
-  update(world: World, pawn: Pawn, x: number, z: number, facing: number): void {
+  /**
+   * The body, in two layers that are asked two different questions.
+   *
+   * It used to be one: a single switch on `activity` wrote all four limbs at
+   * once, so exactly one thing about a settler could be true at a time. That is
+   * wrong about the commonest sight in the game. Hauling is not an activity —
+   * the simulation files it under `walking` — so a colonist carrying a crate got
+   * the walk's arm swing and both hands stayed empty. The legs answer to
+   * locomotion and the arms answer to what the hands are doing, and because
+   * those are separate questions, walking-while-carrying can now be one pose
+   * instead of two that cannot both win.
+   *
+   * Every pose below is the number it was before the split. The only new
+   * composition is the carry, which is the one that was missing.
+   */
+  update(world: World, pawn: Pawn, x: number, z: number, facing: number, dt: number): void {
     const g = this.group;
     const prone = pawn.dead || pawn.downed || pawn.activity === 'sleeping';
     const floor = standHeight(world, Math.round(x), Math.round(z));
@@ -414,71 +487,208 @@ class PawnRig implements Rig {
     // half the crates in the ground and stand the rest on end.
     if (this.freight) this.freight.visible = !prone;
 
+    // Hands full is a state of the hands, not of the body, which is the whole
+    // reason it can be drawn now.
+    //
+    // An item and not `carryingPawnId`, though a rescuer holds a body the same
+    // way, because there is no body to put in their arms yet: the frames that
+    // tried it showed a colonist walking the map with both arms raised around
+    // nothing, reading as surrender rather than as a rescue. Empty raised arms
+    // are a worse lie than the pose they replaced. When a carried settler is
+    // drawn in the carrier's arms, a rescue joins this condition.
+    //
+    // Upright, too. Somebody who goes down puts their arms back at their sides,
+    // and whatever was in them belongs there again.
+    const handsFull = pawn.carryingItemId !== null && !prone;
+    this.load.visible = handsFull;
+    // A weapon rides the right hand, so raising both arms to a crate raised the
+    // rifle with them. The first frames of this showed a settler walking the map
+    // with a crate at their chest and a shotgun standing straight up out of
+    // their fist, which is worse than the empty hands it replaced. Hands that
+    // are full are full of one thing.
+    if (this.weapon) this.weapon.visible = !handsFull;
+
     if (prone) {
       // Lying down: tip the whole body over and drop it onto whatever it lies on.
       g.rotation.x = -Math.PI / 2;
       g.position.y = floor + 0.16;
-      this.setPose(0, 0, 0.15, -0.15);
-      this.head.rotation.x = 0;
+      this.setLegs(0, 0);
+      this.setArms(0.15, -0.15);
+      this.head.rotation.set(0, 0, 0);
+      this.aim = HEAD_NEUTRAL;
       return;
     }
 
     const ph = pawn.animPhase;
+
+    // The legs, which answer only to where the body is going. `swing` carries
+    // out of here because the arms of anyone NOT carrying counter it.
+    let swing = 0;
     switch (pawn.activity) {
       case 'walking': {
         // `ph` is distance travelled, not time elapsed, so the stride reads off
         // the ground rather than off the clock and the foot stays where it was
         // put. The bob rides the same phase: two rises per cycle, one per step.
         const w = ph * SETTLER_PHASE;
-        const s = Math.sin(w) * SETTLER_SWING;
-        this.setPose(s, -s, -s * 0.75, s * 0.75);
+        swing = Math.sin(w) * SETTLER_SWING;
+        this.setLegs(swing, -swing);
         g.position.y = floor + Math.abs(Math.sin(w * 2)) * 0.035;
         break;
       }
-      case 'working': {
-        const s = Math.sin(ph * 0.8) * 0.3;
-        this.setPose(0.05, -0.05, -1.15 + s, -1.05 - s);
+      case 'working':
+        this.setLegs(0.05, -0.05);
         break;
-      }
-      case 'fighting': {
-        const recoil = Math.min(0.35, pawn.attackCooldown * 0.02);
-        this.setPose(0.12, -0.12, -1.42 + recoil, -1.42 + recoil);
+      case 'fighting':
+        this.setLegs(0.12, -0.12);
         break;
-      }
-      case 'eating': {
-        const s = Math.sin(ph * 0.5) * 0.2;
-        this.setPose(0.35, -0.35, -1.5 + s, -0.6);
+      case 'eating':
+        this.setLegs(0.35, -0.35);
         break;
-      }
       case 'relaxing':
-        this.setPose(0.3, -0.3, -0.5, -0.5);
+        this.setLegs(0.3, -0.3);
         break;
-      // Arms hanging, a slow trudge. Readable from the isometric camera at a
-      // glance, which is the only place the player will notice it.
-      case 'breaking': {
-        const drag = Math.sin(ph * 0.14) * 0.16;
-        this.setPose(drag, -drag, 0.42 + drag * 0.3, 0.42 - drag * 0.3);
+      // A slow trudge. Readable from the isometric camera at a glance, which is
+      // the only place the player will notice it.
+      case 'breaking':
+        swing = Math.sin(ph * 0.14) * 0.16;
+        this.setLegs(swing, -swing);
         break;
-      }
-      default: {
-        const idle = Math.sin(ph * 0.25) * 0.06;
-        this.setPose(idle, -idle, 0.08 + idle, 0.08 - idle);
+      default:
+        swing = Math.sin(ph * 0.25) * 0.06;
+        this.setLegs(swing, -swing);
         break;
+    }
+
+    // The arms, which answer to what the hands hold. Carrying outranks the
+    // activity because it outranks it in life: you do not swing an arm you have
+    // put a crate in, whatever else you are doing with your legs.
+    if (handsFull) {
+      this.setArms(CARRY_ARM, CARRY_ARM);
+    } else {
+      switch (pawn.activity) {
+        case 'walking':
+          this.setArms(-swing * 0.75, swing * 0.75);
+          break;
+        case 'working': {
+          const s = Math.sin(ph * 0.8) * 0.3;
+          this.setArms(-1.15 + s, -1.05 - s);
+          break;
+        }
+        case 'fighting': {
+          const recoil = Math.min(0.35, pawn.attackCooldown * 0.02);
+          this.setArms(-1.42 + recoil, -1.42 + recoil);
+          break;
+        }
+        case 'eating': {
+          const s = Math.sin(ph * 0.5) * 0.2;
+          this.setArms(-1.5 + s, -0.6);
+          break;
+        }
+        case 'relaxing':
+          this.setArms(-0.5, -0.5);
+          break;
+        case 'breaking':
+          this.setArms(0.42 + swing * 0.3, 0.42 - swing * 0.3);
+          break;
+        default:
+          this.setArms(0.08 + swing, 0.08 - swing);
+          break;
       }
     }
-    this.head.rotation.x = pawn.activity === 'working' ? 0.3 : 0;
+
+    this.driveHead(world, pawn, x, z, floor, facing, dt);
   }
 
-  private setPose(legL: number, legR: number, armL: number, armR: number): void {
-    this.legL.rotation.x = legL;
-    this.legR.rotation.x = legR;
-    this.armL.rotation.x = armL;
-    this.armR.rotation.x = armR;
+  /**
+   * Turns the head toward whatever this settler is attending to.
+   *
+   * The target is refreshed on the TICK and the turn toward it happens on the
+   * FRAME. That split is the whole design: what a colonist is attending to is
+   * simulation state that changes twenty times a second, and the only part of
+   * this that costs a search; how far round their neck has got by now is
+   * presentation, and has to be smooth at whatever the display is running at.
+   */
+  private driveHead(
+    world: World,
+    pawn: Pawn,
+    x: number,
+    z: number,
+    floor: number,
+    facing: number,
+    dt: number,
+  ): void {
+    if (world.tick !== this.lookTick) {
+      this.lookTick = world.tick;
+      this.look = lookTarget(world, pawn);
+    }
+
+    let wanted: HeadAim | null = null;
+    if (this.look) {
+      const at = aimFromWorld(this.look.x - x, this.look.y - (floor + HEAD_Y), this.look.z - z, facing);
+      // A target the neck cannot reach is dropped rather than clamped to the
+      // limit and held there. A settler cannot look behind themselves, and one
+      // who tries reads as a body with its head on backwards; one who has given
+      // up and faced front reads as a person who has stopped attending to it.
+      if (at && headAimReaches(at, SETTLER_NECK)) wanted = at;
+    }
+    this.aim = approachAim(this.aim, wanted, SETTLER_NECK, dt);
+
+    // The stoop over a bench belongs to the pose and the turn belongs to the
+    // aim, and they add. Three swings a child's +Z toward -Y for a POSITIVE
+    // `rotation.x`, so down is positive here while up is positive in the aim —
+    // which is why the pitch arrives negated. `head-aim.ts` says why it is not
+    // written upside down at the source instead.
+    const stoop = pawn.activity === 'working' ? 0.3 : 0;
+    this.head.rotation.set(stoop - this.aim.pitch, this.aim.yaw, 0);
+  }
+
+  private setLegs(left: number, right: number): void {
+    this.legL.rotation.x = left;
+    this.legR.rotation.x = right;
+  }
+
+  private setArms(left: number, right: number): void {
+    this.armL.rotation.x = left;
+    this.armR.rotation.x = right;
   }
 
   dispose(): void {
     for (const m of this.mats) m.dispose();
   }
+}
+
+/**
+ * What a settler is attending to, in world space, or null when it is nothing.
+ *
+ * Two things earn a look and they are ranked the way a person ranks them. Some-
+ * body you are fighting comes first — a colonist who keeps eyes on the raider
+ * while backing off is reading the room, one who studies the floor is not. Then
+ * the job, at the cell its current stage is aimed at, which during `goto` is
+ * where they are walking and during `work` is the thing under their hands. Both
+ * are already on the pawn; neither had ever been asked for by anything drawn.
+ *
+ * A dead or buried foe stops being somewhere to look, which matters more than it
+ * sounds: `targetPawnId` outlives the fight, and without this a settler would
+ * stand over a corpse staring at it until the simulation cleared the field.
+ */
+function lookTarget(world: World, pawn: Pawn): { x: number; y: number; z: number } | null {
+  if (pawn.targetPawnId !== null) {
+    const foe = world.pawns.find((q) => q.id === pawn.targetPawnId);
+    if (foe && !foe.dead && !foe.buried) {
+      return {
+        x: foe.x,
+        y: standHeight(world, Math.round(foe.x), Math.round(foe.y)) + HEAD_Y,
+        z: foe.y,
+      };
+    }
+  }
+  if (pawn.jobId !== null) {
+    const job = world.jobs.find((j) => j.id === pawn.jobId);
+    if (job) {
+      return { x: job.tx, y: standHeight(world, job.tx, job.ty) + WORK_HEIGHT, z: job.ty };
+    }
+  }
+  return null;
 }
 
 /**
@@ -2065,8 +2275,14 @@ export class PawnsView {
     }
   }
 
-  /** `alpha` is the fraction of the way into the next sim tick. */
-  sync(world: World, alpha: number, hiddenPawnId: number | null): void {
+  /**
+    * `alpha` is the fraction of the way into the next sim tick; `dt` is the
+    * wall time this frame took. Both are here because the rigs need both: the
+    * body is interpolated between two simulation states, while the head eases
+    * toward its target in real seconds and would step visibly if it were driven
+    * off the tick like everything else.
+    */
+  sync(world: World, alpha: number, hiddenPawnId: number | null, dt: number): void {
     const live = new Set<number>();
     for (const p of world.pawns) {
       // Buried people stay in the world so their grave can name them, but they
@@ -2087,7 +2303,7 @@ export class PawnsView {
       const y = pr.y + (c.y - pr.y) * alpha;
       const f = pr.f + shortestAngle(pr.f, c.f) * alpha;
       rig.setLayer(p.id === hiddenPawnId ? LAYER_MANAGER : LAYER_ALL);
-      rig.update(world, p, x, y, f);
+      rig.update(world, p, x, y, f, dt);
     }
     for (const [id, rig] of this.rigs) {
       if (live.has(id)) continue;

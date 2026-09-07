@@ -192,7 +192,7 @@ export class App {
     // First frame is drawn from a real sync so prewarm compiles the shaders that
     // will actually be used, not an empty scene's.
     this.view.onTick(this.world);
-    this.view.sync(this.world, 0, this.cam.target, null);
+    this.view.sync(this.world, 0, this.cam.target, null, 0);
     this.viewport.prewarm([this.cam.camera, this.fps.camera]);
 
     this.autosaveExists = hasSave('auto');
@@ -269,7 +269,7 @@ export class App {
     // hits space to think about a raid should still have the raid card there.
     this.hud.tickCards(this.speed > 0 ? dt : 0, this.mode);
     this.driveAmbience(dt, pawn);
-    this.render(alpha);
+    this.render(alpha, dt);
     this.input.endFrame();
   }
 
@@ -333,7 +333,7 @@ export class App {
     return Math.min(1, n / 5);
   }
 
-  private render(alpha: number): void {
+  private render(alpha: number, dt: number): void {
     const player = this.mode === 'fps' ? this.playerPawn() : null;
     const focus = player
       ? { x: player.x, y: player.y }
@@ -342,7 +342,7 @@ export class App {
     if (this.mode === 'manager') this.syncManagerOverlays(alpha);
     else this.view.fx.setSelection(null);
 
-    this.view.sync(this.world, alpha, focus, player ? player.id : null);
+    this.view.sync(this.world, alpha, focus, player ? player.id : null, dt);
 
     if (player) {
       const at = this.view.pawns.interpolated(player.id, alpha) ?? { x: player.x, y: player.y };

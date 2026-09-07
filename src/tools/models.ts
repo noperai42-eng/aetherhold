@@ -350,7 +350,10 @@ export async function exportModels(dir: string): Promise<Manifest> {
 
   const pawns = new PawnsView();
   pawns.onTick(world);
-  pawns.sync(world, 1, null);
+  // No frame time, so every head is left looking straight ahead. An exported
+  // model is a body, not a moment: a settler frozen mid-glance is a settler
+  // whose head is on crooked in whatever imports it.
+  pawns.sync(world, 1, null, 0);
 
   const all = [...assemble(buildings.group), ...pawnAssemblies(world, pawns)];
   const models: Manifest['models'] = {};

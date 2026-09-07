@@ -99,12 +99,13 @@ export class WorldView {
     alpha: number,
     focus: { x: number; y: number },
     hiddenPawnId: number | null,
+    dt: number,
   ): void {
     this.terrain.sync(world);
     this.decor.sync(world, world.tick + alpha);
     this.buildings.sync(world);
     this.landmarks.sync(world, world.tick + alpha);
-    this.pawns.sync(world, alpha, hiddenPawnId);
+    this.pawns.sync(world, alpha, hiddenPawnId, dt);
     this.pickies.sync(world, alpha);
     this.sky.sync(world, focus.x, focus.y);
     this.fx.sync(world, world.tick + alpha, alpha);

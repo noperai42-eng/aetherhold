@@ -751,7 +751,7 @@ describe('what a body is made of', () => {
     const world = createWorld(SEED);
     const view = new PawnsView();
     view.onTick(world);
-    view.sync(world, 0, null);
+    view.sync(world, 0, null, 0);
     const rigs = new Map<number, THREE.Group>();
     for (const g of view.group.children) rigs.set(g.id, g as THREE.Group);
     return { view, world, rigs };
@@ -1607,7 +1607,7 @@ describe('what a body is made of', () => {
     });
     const view = new PawnsView();
     view.onTick(world);
-    view.sync(world, 0, null);
+    view.sync(world, 0, null, 0);
     const v = new THREE.Vector3();
     const crops = new Set<THREE.BufferGeometry>();
     for (const rig of view.group.children) {
@@ -1770,7 +1770,7 @@ describe('what a body is made of', () => {
     }
     const view = new PawnsView();
     view.onTick(world);
-    view.sync(world, 0, null);
+    view.sync(world, 0, null, 0);
     view.group.updateMatrixWorld(true);
 
     const q = new THREE.Quaternion();
@@ -1941,7 +1941,7 @@ describe('what a body is made of', () => {
 
     const view = new PawnsView();
     view.onTick(world);
-    view.sync(world, 0, null);
+    view.sync(world, 0, null, 0);
     // Rigs are added in pawn order on the first sync, which is how a cloned pawn
     // is found again without giving it a position on the map to stand at.
     const live = world.pawns.filter((p) => !p.buried);
@@ -2000,7 +2000,7 @@ describe('what a body is made of', () => {
 
     const view = new PawnsView();
     view.onTick(world);
-    view.sync(world, 0, null);
+    view.sync(world, 0, null, 0);
     const live = world.pawns.filter((p) => !p.buried);
     expect(view.group.children.length, 'a rig for every pawn').toBe(live.length);
 
@@ -2067,7 +2067,7 @@ describe('what a body is made of', () => {
     }
     const view = new PawnsView();
     view.onTick(world);
-    view.sync(world, 0, null);
+    view.sync(world, 0, null, 0);
     const live = world.pawns.filter((p) => !p.buried);
     const gaps: number[] = [];
     const kinds = new Set<string>();
