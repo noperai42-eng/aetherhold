@@ -58,12 +58,24 @@ cloned mid-stride and would otherwise land a few millimetres out depending on
 which frame of the walk they were caught on. Drop a model at a position and it
 stands on the floor.
 
-**Every mesh is named after the part it is.** A stove arrives as `stove.feet`,
+**Every part is named after the part it is.** A stove arrives as `stove.feet`,
 `stove.body`, `stove.door`, `stove.vents`, `stove.flue`, `stove.plate`; a settler
 as `torso`, `neck`, `belt`, `head`, `hair`, `eye`, `eye`, `leg`, `boot`, `leg`,
 `boot`, `arm`, `hand`, `arm`, `hand`, plus the `stock` and `action` of the rifle
 they are carrying. The parts keep their own local transforms, so a pawn is a
 usable rig: rotate the node called `arm` and the arm swings.
+
+The name is on the **node**, not on the mesh or the material — `meshes[].name` and
+`materials[].name` are null throughout, which is what `GLTFExporter` writes. Every
+loader that maps a glTF node onto a scene object carries the name across, so in
+three.js `root.getObjectByName('arm')` finds it and in Blender it is the object
+name in the outliner; only code reading the glTF JSON by hand has to know to look
+at `nodes[]`. Buildings, piles and trees are named right through. The things that
+move are not quite: a settler carries two unnamed nodes and an animal nine, which
+are the rig's own pivots — the group a rifle hangs from, the joint a leg swings
+about — plus the wrapper the exporter puts under each root so the model's own
+translation survives the trip. They are unnamed because they are not parts. Walk
+past them; the parts hang underneath.
 
 **Materials are metallic-roughness with no textures at all.** Colour, roughness
 and metalness are the whole surface. That means no image files to lose, no atlas
