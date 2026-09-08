@@ -38,11 +38,12 @@ const HUD = Object.values(
 const BANNER = 'the phone layout';
 
 /**
- * The two selectors in the phone section that are allowed to stand unscoped,
- * because they name elements that exist only for the phone bar and are hidden
- * by default. Anything else unscoped would reach a desk.
+ * The selectors in the phone section that are allowed to stand unscoped, because
+ * they name elements that exist only for the phone bar and are hidden by default
+ * — `#tabbar` is `display: none` everywhere else, and the other two are its
+ * children. Anything else unscoped would reach a desk.
  */
-const NOT_SCOPED = ['#tabbar', '.sheetbtn'];
+const NOT_SCOPED = ['#tabbar', '.sheetbtn', '.tabcount'];
 
 function phoneSection(): string {
   const at = CSS.indexOf(BANNER);
@@ -113,9 +114,41 @@ describe('the phone layout cannot reach a desk', () => {
     expect(loose, 'these phone rules would apply to a desktop browser').toEqual([]);
   });
 
-  it('keeps the two bar-only selectors hidden by default', () => {
+  it('keeps the bar-only selectors hidden by default', () => {
     // They are unscoped, so the desk sees them too — and must see nothing.
     expect(CSS).toMatch(/#tabbar\s*\{\s*display:\s*none;\s*\}/);
+  });
+});
+
+/**
+ * The desk keeps the alert strip on screen for the whole game. The phone keeps
+ * it behind the Events tab, which means the screen a phone player actually plays
+ * on is the one screen the strip is not on — and until the count below existed,
+ * a colony on fire with four settlers down and eleven standing problems drew the
+ * same five words along the bottom edge as a colony with nothing wrong at all.
+ *
+ * A screenshot cannot catch this one coming back: an absent badge and a badge
+ * that is simply empty look identical, and both look like a tidy bar.
+ */
+describe('the bar says how much is waiting behind it', () => {
+  it('puts a count on the Events tab and nowhere else', () => {
+    expect(HUD).toContain("if (key === 'events')");
+    expect(HUD).toContain("this.sheetCount = el('i', 'tabcount')");
+  });
+
+  it('counts the standing problems, not the rows that fit', () => {
+    // `alertRows` caps the strip and appends its own "+N more"; a count taken
+    // from the rows would top out at that cap and tell a phone player that a
+    // colony with eleven problems has ten. It is the list that is counted.
+    expect(HUD).toContain('const standing = alerts(world);');
+    expect(HUD).toContain('String(standing.length)');
+  });
+
+  it('writes an empty string for a colony that is fine, and hides it', () => {
+    // Rather than a zero, which would leave a permanent mark on the bar; the
+    // stylesheet takes `:empty` from here and folds the badge away.
+    expect(HUD).toContain("standing.length === 0 ? '' : String(standing.length)");
+    expect(CSS).toMatch(/\.tabcount:empty\s*\{\s*display:\s*none;\s*\}/);
   });
 });
 
@@ -134,6 +167,16 @@ describe('every destination on the bar raises something', () => {
       expect(phoneSection()).toContain(`[data-sheet='${key}']`);
     });
   }
+
+  it('writes each destination’s key onto its button', () => {
+    // The bar is the one row of destinations whose names live nowhere in the
+    // DOM — the map that holds them is private — so anything outside the HUD
+    // that wants a particular sheet is reduced to matching the label. A capture
+    // script doing exactly that broke the round a count was appended to one of
+    // these buttons: its match failed, the click landed on nothing, and the
+    // frame it took was of the previous sheet under the new sheet's name.
+    expect(HUD).toContain("el('button', 'sheetbtn', { 'data-key': key }, label)");
+  });
 
   it('leaves no manager panel unreachable', () => {
     // Every panel the desk layout puts on screen at once has to be behind one

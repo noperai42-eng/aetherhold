@@ -636,6 +636,11 @@ export class Hud {
   /** The top bar's button row — the More drawer on a phone, see the constructor. */
   private readonly sysbtns: HTMLElement;
   private readonly sheetBtns = new Map<string, HTMLButtonElement>();
+  /**
+   * The count on the Events tab, which is the only thing on a phone that says the
+   * alert strip has anything in it. Built with the bar, so it is null on a desk.
+   */
+  private sheetCount: HTMLElement | null = null;
   /** Which sheet is up, or '' for none — the world with nothing over it. */
   private sheet = '';
   /** What `syncInspector` last saw selected, so the sheet only opens on a change. */
@@ -942,6 +947,58 @@ export class Hud {
     publishBuildHeight();
     new ResizeObserver(publishBuildHeight).observe(this.buildbar);
 
+    // And a third, for the one panel on the right that the other two on the right
+    // have never known about. `#goals` and `#inspector` hang from the top bar,
+    // `#alerts` stands on the build bar, and all three claim `right: 8px` — so
+    // the moment the colony has enough standing problems to fill the strip, the
+    // panel above it is drawn straight over it. Height rather than presence,
+    // because the strip is `display: none` whenever the colony is fine and a
+    // hidden element measures zero, which is exactly the ceiling the panels above
+    // should get back when there is no strip to avoid.
+    const publishAlertsHeight = () => {
+      this.root.style.setProperty('--alerts-h', `${Math.round(this.alertPanel.getBoundingClientRect().height)}px`);
+    };
+    publishAlertsHeight();
+    new ResizeObserver(publishAlertsHeight).observe(this.alertPanel);
+
+    // A ceiling is only half an answer. A panel that stops at one and says
+    // nothing stops mid-sentence, and a sentence cut through the middle of its
+    // glyphs reads as a broken layout rather than as a panel there is more of.
+    // The phone half of the stylesheet has faded its clipped panels for several
+    // rounds; the desk half never did, which cost nothing until the two panels
+    // above gained ceilings and began doing the cutting.
+    //
+    // On a class rather than straight on the selector, because these two panels
+    // shrink to their contents: a settler card short enough to fit has nothing
+    // below its fold, and fading its last line would be the same lie pointed the
+    // other way. Scroll position is in the sum for the same reason — a panel
+    // read to the end has no more to promise.
+    //
+    // Nine panels rather than the two that were photographed, because the test
+    // that guards this sweeps the stylesheet for anything that caps and scrolls
+    // rather than reading a list, and an exemption is a thing somebody has to
+    // argue again every time a panel is added. The log fits its lines to its own
+    // height and so should never turn the class on; that it does not is now a
+    // checkable claim rather than a thing somebody knows.
+    for (const p of [
+      this.goalPanel,
+      this.inspector,
+      this.colonists,
+      this.log,
+      this.boardtab,
+      this.researchtab,
+      this.tradetab,
+      this.roadtab,
+      this.chronicletab,
+    ]) {
+      const mark = () => {
+        p.classList.toggle('clipped', p.scrollHeight - p.clientHeight - p.scrollTop > 1);
+      };
+      mark();
+      new ResizeObserver(mark).observe(p);
+      p.addEventListener('scroll', mark, { passive: true });
+    }
+
     // ---- first person furniture ----
     this.crosshair = el('div', '', { id: 'crosshair' });
     this.prompt = el('div', 'panel', { id: 'prompt' });
@@ -1067,9 +1124,23 @@ export class Hud {
   private buildTabBar(): HTMLElement {
     const bar = el('div', 'panel', { id: 'tabbar' });
     for (const [key, label] of SHEETS) {
-      const b = el('button', 'sheetbtn', {}, label) as HTMLButtonElement;
+      // The key is on the button as well as in the map, because the map is
+      // private and the bar is the one row of destinations on the phone whose
+      // names exist nowhere in the DOM. A capture script reduced to matching
+      // the label found its match broken by the count added below, clicked
+      // nothing, and photographed the previous sheet under the new sheet's
+      // name — a wrong frame that looks exactly like a right one.
+      const b = el('button', 'sheetbtn', { 'data-key': key }, label) as HTMLButtonElement;
       b.onclick = () => this.setSheet(this.sheet === key ? '' : key);
       this.sheetBtns.set(key, b);
+      // The alert strip is a sheet on a phone, which means that on the screen a
+      // player is actually looking at it is not on the screen at all. A colony
+      // with fifteen standing problems and one with none were the same five
+      // words along the bottom edge until this number existed.
+      if (key === 'events') {
+        this.sheetCount = el('i', 'tabcount');
+        b.append(this.sheetCount);
+      }
       bar.append(b);
     }
     return bar;
@@ -2653,7 +2724,13 @@ export class Hud {
    * would eat a click that landed between two frames.
    */
   private syncAlerts(world: World): void {
-    const rows = alertRows(alerts(world));
+    const standing = alerts(world);
+    const rows = alertRows(standing);
+    if (this.sheetCount) {
+      // The whole list, not the rows: the rows are what fits, and what a player
+      // needs from the bottom edge of a phone is how much there is.
+      this.sheetCount.textContent = standing.length === 0 ? '' : String(standing.length);
+    }
     // Every row, including the count, so that the eleventh alert arriving repaints
     // a panel whose first ten did not change. Keyed off the count row's own text
     // rather than the raw total, because that text is the only part of it that can
@@ -2667,7 +2744,11 @@ export class Hud {
     this.alertPanel.innerHTML = '';
     for (const r of rows) {
       const a = r.alert;
-      const row = el('div', a ? `alert ${a.level}` : 'alert');
+      // The count row is named, because it is the one row the stylesheet has to
+      // be able to stick to the floor of the panel. Left as an ordinary last
+      // child it was the first thing the panel's own ceiling cut, so the line
+      // that reports the overflow was drawn inside the overflow it reports.
+      const row = el('div', a ? `alert ${a.level}` : 'alert more');
       // The count row gets the small dim line and not the bold one, because it is
       // not a problem — it is the panel admitting it ran out of room, and it
       // should read as the quietest thing on the strip.

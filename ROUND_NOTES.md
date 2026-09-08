@@ -4,6 +4,457 @@ One round, one measured gap, one fix. Newest first.
 
 ---
 
+## 2026-09-07 — Look round sixteen, the ceilings learn to show themselves
+
+**Track: the interface.** Round fifteen gave the right-hand column measured ceilings and
+the numbers came back clean — no overlaps, the count row in view. Then the frames were
+looked at, which is the only reason this round exists.
+
+### A ceiling is half an answer
+
+`NEXT STEPS` stopped at its new band by slicing a line through the middle of its glyphs:
+"Defence tab → Sandbag. Half the" and then a second line cut horizontally in two. The
+inspector did the same across its `doing` row. Both panels scroll — the content is
+reachable — but nothing on the screen said so, and a sentence guillotined mid-letter reads
+as a broken layout rather than as a panel there is more of. The measurements could not see
+this; they reported panels inside their bands, which was true.
+
+The desk was left out of the phone's fade rules on the argument that a desk announces
+overflow twice, with a scrollbar and a resize grip. The scrollbar half of that is wrong on
+the machine these frames are taken on: macOS draws overlay scrollbars, which appear while
+you scroll and are invisible until then. The cue that would tell a player to scroll only
+arrives once they already have.
+
+So the desk gets the phone's twenty pixels. On a class rather than on the selector, because
+these panels shrink to their contents and a settler card short enough to fit would have its
+last line faded for nothing — the same lie pointed the other way. `hud.ts` decides the class
+from three numbers together, `scrollHeight - clientHeight - scrollTop`, and re-asks from a
+`ResizeObserver` and a passive scroll listener: the content changes when another settler is
+selected, the band changes when the strip grows underneath, and the scroll position changes
+when the panel is read to its end, at which point there is nothing left to promise.
+
+### The sweep found six more than the eye did
+
+The guard was written to sweep the stylesheet for anything that caps and scrolls rather
+than to list the two panels that were caught, and it came back with the roster, the log and
+five overlay tabs as well. All of them can cut a line; none of them said so. They are fixed
+by the same mechanism rather than exempted, because an exemption is a thing somebody has to
+argue again every time a panel is added. The log is the interesting one: it fits its line
+count to its own height and so should never turn the class on at all, which has gone from
+something somebody knows to something the frames can be checked against.
+
+Two panels do answer differently, and are now **forbidden** the mask rather than merely
+excused from it. `#alerts` has its sticky `+N more` row and `.card` its sticky footer of
+buttons, and each says *what* is below the fold rather than that something is. Each
+exemption names the rule that earns it, and the test makes that rule prove it is still
+sticky.
+
+### The count row was being buried by the other cue
+
+The phone had both. `#hud.phone #alerts` was in the blanket fade list, so the mask fell
+across the sticky row added last round and left `+5 more` dimmer than the five rows it was
+counting, on a background the map showed through — the least legible thing on the panel,
+which is the exact inversion of its purpose. Photographed, fixed by taking the strip off the
+list, photographed again: the row is now the brightest thing at the foot of the panel and
+the row above fades under it.
+
+### A frame that lied about which screen it was
+
+The Events tab count is a child of the Events button, so the button's `textContent` became
+`Events15` — and both capture harnesses select tab buttons by matching that text. The match
+failed, `b?.click()` swallowed it, and `T3-phone-events` was a photograph of the details
+sheet filed under the events name. A wrong frame that looks exactly like a right one is
+worse than a missing one, and this round nearly judged the phone strip from it.
+
+The buttons now carry `data-key`, the harnesses select on that, and — the part that matters
+— they check that the sheet they asked for actually came up and throw if it did not. The
+same silent `?.click()` shape is still on the Play button in five scripts; it is not
+implicated in anything yet and is left alone rather than fixed on suspicion.
+
+`trouble.mjs` also gained a stopwatch on stderr. Two runs earlier had died inside a
+`page.evaluate` that never returned, which from outside is one protocol timeout and no clue
+which of a dozen steps was holding the page; twice more this round I read a buffered tail
+and called ordinary slowness a hang. The step lines are what settle that.
+
+### Measured, and looked at
+
+| | round fifteen | round sixteen |
+|---|---|---|
+| `#goals` foot | line cut through the glyphs | fades out over 20px |
+| `#inspector` foot | `doing` row cut in half | fades out over 20px |
+| phone `+5 more` | greyed, map showing through | opaque, brightest row on the panel |
+| `T3-phone-events` | the details sheet, misfiled | the events sheet |
+| overlaps, both states | `log`/`colonists` 208×188 | unchanged, still unfixed |
+| console errors | 0 | 0 |
+
+Eight new assertions, and eleven mutations run against them — a dropped fade, a dropped tab
+group, an unstuck count row, a removed ceiling, a cue that ignores scroll position, a
+missing observer, a missing listener, a stripped `data-key`, a mask put back over the strip,
+a mask put over the news cards. Every one caught; sources restored byte-identical after each.
+
+### Next
+
+The left column is still over-subscribed and still needs a design decision rather than a
+variable: 647px between the bars, minimap 224, log 320, eight settler cards 359. `#worktab`
+has no ceiling at all, so the sweep does not see it — it is the next panel that will join
+this list the moment somebody gives it one.
+
+---
+
+## 2026-09-07 — Look round fifteen, three panels on one edge, told about each other
+
+**Track: the interface.** Round fourteen built the instrument and found the faults; this is
+the round that fixes them. Everything below was measured on the staged colony
+`trouble.mjs` produces — fifteen alerts, two settlers on the floor, two fires, a raid, no
+food — at 1280 by 800, before and after.
+
+### The row that reported the cut, inside the cut
+
+`alertRows` caps the strip at ten and appends a row counting what it dropped, and
+`alert-panel.test.ts` has held the panel to the right property since round ten: *a panel is
+allowed to run out of room, and is not allowed to hide that it did.* That file reads the row
+list rather than the DOM, on purpose and for good reasons, which is precisely why it could
+not see what the DOM did with it. `#alerts` has a ceiling of its own — `min(46vh, …)`, 368px
+here — and the count row is the last child, so with eleven rows the panel showed seven and
+the eleventh, the one whose whole job is to say the other four exist, was one of the four.
+
+The fix is not a new idea; it is `.card .acts`, which solved the same problem on the help
+card two rounds ago. The row is opaque, `position: sticky` to the floor of its own
+scrollport, with a gradient standing on top of it so the rows sliding under fade instead of
+stopping at a hard line. The offset is `-6px` against the panel's own `6px` of bottom
+padding, paid back as the row's own padding, which is the same arithmetic `.card .acts` does
+at `-20px`.
+
+Measured after: the strip draws six alert rows and the count, and the count sits at the foot
+where the fourth clipped row used to be.
+
+### One column, three panels, no mutual knowledge
+
+`#goals`, `#inspector` and `#alerts` all hang off `right: 8px`. The first two drop from the
+top bar; the third stands up from the build bar. Nothing tied them together, so the column
+was three independent claims on the same 800 pixels and the tallest won.
+
+- `#goals` had **no ceiling and no overflow of any kind** on the desk. The phone rule for the
+  same panel has had `max-height: 19vh; overflow-y: auto` all along — the answer already
+  existed one media context over, and the desk was the half that never got it. With nothing
+  selected it covered the strip until three of eleven rows were left.
+- `#inspector` had a ceiling that cleared the top bar and nothing else. Measured, the card
+  ran to y784 through a build bar standing at y703, and the strip covered its bottom 368px —
+  so its Possess button was unreachable in exactly the way that ceiling was added to prevent,
+  one obstacle over. The original comment names the bug it fixed; it simply did not know
+  there were two more things below the window edge.
+
+Both now take the same band, and the band is measured rather than guessed: a third
+`ResizeObserver` in `hud.ts` publishes the strip's real height as `--alerts-h`, which is the
+same trick already played twice on that page for `--topbar-h` and `--buildbar-h`. A hidden
+element measures zero, so on a colony with nothing wrong the panels above get the whole
+column back without a special case.
+
+| | before | after |
+|---|---|---|
+| `#goals` height / ceiling | grows to fit, none | 239px, content 481px, scrolls |
+| `#inspector` bottom edge | y784, behind the build bar at y703 | inside the band |
+| `goals`/`alerts` overlap | covers all but 3 of 11 rows | none |
+| `alerts`/`inspector` overlap | 234×368 | none |
+| count row | cut | at the foot |
+
+One honest note on that table: the inspector's two rows were written from the arithmetic
+rather than from a reading, because the probe that produced the other numbers ran before
+the inspector's ceiling was in. The capture in round sixteen measured them and they hold —
+no overlap in either state — but they were a prediction sitting in a column of
+measurements for as long as it took to take the picture.
+
+### The count on a phone's Events tab
+
+The desk keeps the strip on screen the whole game. A phone keeps it behind a tab, so the
+screen a phone player actually plays on is the one screen the strip is not on: a burning,
+raided colony with four settlers down drew the same five words along the bottom edge as a
+colony with nothing wrong. The tab now carries the number, and it is the length of the whole
+alert list rather than of the rows that fit — a count taken from the rows would top out at
+the cap and tell a phone player that a colony with fifteen problems has ten. It writes the
+empty string rather than a zero, and `:empty` folds it away, so a quiet colony gets its word
+back.
+
+### What was fixed by a variable, and what cannot be
+
+The left column has the same disease and does **not** have the same cure. `#log` covers
+`#colonists` by 208×188, and the arithmetic says why: 647px between the bars, of which the
+minimap takes 224, the log wants 320 and eight settler cards want 359. Subtracting the log's
+height from the roster the way the strip's height was subtracted from the goals panel leaves
+159px — two cards of eight, which is a worse failure than the overlap and a quieter one.
+That column is over-subscribed, and the answer is a decision about what belongs on it: move
+the log, shrink the map, or turn the roster sideways. Logged, not guessed at.
+
+### The instrument
+
+`trouble.mjs` grew a second report line rather than a second script. It already stages the
+colony; measuring the panels off the same staged colony in the same run means a frame and
+the geometry behind it can never disagree, which a separate probe with its own copy of the
+staging could not promise. It prints, for both desk arrangements, how many alert rows are in
+view, whether the count row is one of them, and every pairwise panel overlap. Round fourteen
+read those numbers out of the stylesheet by hand and got the mechanism wrong twice before
+the source corrected it; they are measured now.
+
+### Tests
+
+`tests/panel-column.test.ts` is new, and it guards the *column* rather than the two panels
+that were caught: it finds every rule that pins to `right: 8px` and hangs from the top bar,
+and requires each to have a ceiling, to subtract `--alerts-h`, to clear the build bar, and to
+scroll rather than trim. A fourth panel that joins the column inherits the rule instead of
+reintroducing the bug six rounds later. It also pins the publisher in `hud.ts`, because
+`var(--alerts-h, 0px)` fails open by design — right for a missing variable, wrong for a
+deleted publisher, which would silently restore both bugs and photograph as a tidy screen.
+
+Four more in `scroll-cues.test.ts`, which already owned the property and already had the
+sticky-footer pattern under `.card .acts`; three in `phone-layout.test.ts` for the tab count.
+Nine mutations run against the new guards — the count row losing its class, the row losing
+its stickiness, the fade turning the wrong way, the offset drifting off the padding, the
+publisher deleted, the observer removed, the badge on every tab, the badge counting rows
+instead of alerts, the badge printing a zero — all nine caught, sources restored
+byte-identical.
+
+### Next
+
+The left column's design decision, above, is the open one. Below it: `#alerts` and `#log`
+are both bottom-anchored and both `resize: both`, so a player who drags one taller has no
+guard at all — the ceilings here are on the panels that grow by themselves, not on the ones
+a hand can grow. Whether that matters is a question for a frame, not for the stylesheet.
+
+---
+
+## 2026-09-07 — Look round fourteen, the panels that carry bad news, carrying some
+
+**Track: the interface.** No fix this round, and that is the finding. Round ten built the
+panels that tell a player the colony is in trouble, and then judged them on the standard
+frames, which pause seed 4242 at the first tick past 1800 — a summer noon on which nothing
+has gone wrong. Nobody is down, the pantry is full, the woodpile is full, and the alert
+strip holds nothing or close to it. Every panel built to carry bad news has been
+photographed carrying none, and the collisions round ten found it found by reading CSS,
+because no instrument in the project could take a picture of the state they happen in.
+
+`scripts/look/trouble.mjs` (`npm run look:trouble`) is that instrument. The fire, the raid,
+the solar flare and the flu go through `aether.*`, which is the same `forceThreat`,
+`igniteFire` and `afflict` the storyteller calls, so the alerts, the log lines and the
+models are the ones a real event produces. The rest is staged and the header says so: the
+stores emptied, two of the three settlers put on the floor, moods dropped, weapons taken
+away, and the raiders walked in from the map edge. Seven frames, two at the desk and five on
+the phone, zero console errors. The colony it produces has **fifteen alerts**, which the
+panel draws as ten rows and a `+5 more`.
+
+### The method, before the findings, because it changed three of them
+
+Eleven faults came off the frames on the first read. Then the stylesheet was read, and
+**three of the eleven were not faults at all**: the phone's clipped top bar, the phone's
+clipped alert strip, and the stack of event cards. Each is a decision somebody already made,
+wrote a paragraph about, and built an affordance for — a horizontal scroll under a
+twenty-six pixel fade mask, a bottom fade mask on every clipped phone panel, a
+`MAX_TOASTS = 3`. A frame shows you that something is cut. It cannot tell you whether the
+cut is a bug or a design, and the difference is the whole worth of the brief that comes out
+of it. Photograph first, then read the rule that produced what you photographed, and only
+then write the finding down. What follows is what survived that.
+
+### What is actually wrong
+
+**The `+N more` row is inside the overflow it exists to announce.** Eleven rows are in the
+DOM at 1280×800 and about seven are on the glass. Both halves of this were designed on
+purpose and they cancel each other out. `MAX_ALERTS` was raised from six to ten with the
+reasoning written above it — "`#alerts` is `overflow: auto` in the stylesheet and the extra
+four cost a scroll rather than a screen" — and the `+N more` row was added underneath
+because "whatever the ceiling is, the player has to be able to see that it was reached."
+But `#alerts` is capped at `min(46vh, …)`, which is 368 px at an 800-point window and holds
+about seven rows. So rows eight, nine and ten cost a scroll exactly as intended, and the
+eleventh row — the one whose entire job is to say that a list was cut — costs the same
+scroll. It is the last child of the box it is reporting on, and at rest the only thing
+saying so is an overlay scrollbar macOS does not paint until you touch it. A colony can be
+out of wood, out of medicine, sleeping rough, with a body in the yard and a flare overhead,
+and the screen says none of it.
+
+**The right-hand column is three panels that share an edge and know nothing about each
+other.** All three are `position: absolute; right: 8px`, and each was given a sensible rule
+on its own: `#goals` hangs from `top: topbar + 18px` with **no ceiling and no overflow at
+all** — the phone rule for the same panel gives it `max-height: 19vh; overflow-y: auto`, so
+the answer already exists one media context over and the desk was never given it —
+`#inspector` hangs from the same top with `max-height: 100vh - topbar - 24px`, and
+`#alerts` stands on `bottom: buildbar + 12px` with its 46vh cap. At 1280×800 that puts the
+alert panel at y 308–676 and the inspector anywhere from 52 to 794, so the alert panel lies
+entirely inside the inspector's span, is eighteen pixels wider, and covers it. That is
+`r14-T2-desk-downed`: the inspector runs from the name down to `doing · downed`, the alert
+strip starts on top of it, and the same inspector resumes underneath with the job list and
+the `Draft (T)` / `Take over` / `Possess (G)` buttons — `Possess (G)` clipped by the window.
+`r14-T1-desk` is the other order of the same fault: with nothing selected, the goals panel
+grows down over the alert strip and three rows of eleven survive.
+
+**The left-hand column has the same disease.** `#colonists` runs y 268–664 and `#log` runs
+356–676, both `left: 8px`, and the log wins. In the frame Oda Emberly's card is drawn down
+as far as her HEALTH bar and the log starts across the rest of it. Three settlers is the
+smallest colony the game ships, so the roster does not survive its own smallest case.
+
+**Nothing on a phone says fifteen alerts exist.** The strip lives in the Events sheet, and
+the map screen — where a phone player spends the game — shows no sign of it. `sheetbtn` is
+built as `el('button', 'sheetbtn', {}, label)`: there is no badge, no count, no dot, and
+nowhere to put one. This is the one phone finding the stylesheet did not take away, because
+it is not a clipped panel with an affordance; it is a piece of the interface that was never
+built.
+
+**On the Events sheet the same two sentences are on screen twice.** The event cards stack
+over the top of the map and the log directly beneath them prints the same two lines, word
+for word. Three cards is the cap and the cap is fine; the duplication is not, and it costs
+the sheet a quarter of its height on the screen where the news is supposed to live.
+
+**On the Crew sheet the most urgent word has the least weight.** It is the best screen in
+the set — three cards, the two downed settlers outlined in red, bars legible, a `flu —
+untended` chip. And `downed` is set in the same small grey as `walking to the fence — to
+carry materials over`. The outline does the work the word should be doing.
+
+### Instrument caveats, said before they mislead somebody
+
+The phone half needs a reload — `layout-mode.ts` asks its two questions once, in the HUD
+constructor — and the reloaded page came back at **Quality: medium** while the desk half ran
+at **high**. The two halves of this harness are therefore not photographs of the same
+renderer. It touches none of the findings above, all of which are layout, but no judgment
+about light or grain may be made across that seam.
+
+The raiders are teleported to where the camera can see them and then the colony frame is
+taken at zoom 3, at which they are outside it anyway. `2 hostiles on the map` is a sentence
+these frames cannot check. Worth a tighter zoom next time, or the alert's own `Look` button.
+
+### Shipped
+
+`scripts/look/trouble.mjs`, the `look:trouble` script, and three rows added to the instrument
+table in `LOOK.md` — `crew.mjs` and `heads.mjs` from rounds twelve and thirteen were never
+listed there either. No test, matching the convention every other harness in `scripts/look/`
+already follows: they are instruments run by hand and judged by eye, and the thing that
+checks them is whether the frames come back.
+
+Two rows of that table are still wrong and were left alone as out of scope: `hollow.mjs` and
+`stress.mjs` are not listed, and `shot.mjs` is described as "the five standard frames" when
+it has taken sixteen since round ten.
+
+### Next
+
+An interface round, worst first. Make the `+N more` row `position: sticky` at the foot of
+its own panel, so the one row that reports the cut cannot be the row that is cut. Then give
+the right-hand column a single rule instead of three independent ones — `#goals` has no
+ceiling at all, which is where both desk collisions start. Then a count on the phone's
+Events tab. Everything in that list is now a frame somebody can look at rather than a line
+of CSS somebody has to reason about, which is why this round shipped an instrument and a
+list instead of a fix.
+
+### Cost
+
+One capture, about eight minutes, seven frames, zero console errors, all seven on disk. The
+harness found eleven faults on its first run and the stylesheet took three of them back,
+which is the ratio worth remembering the next time a frame looks damning on its own.
+
+---
+
+## 2026-09-07 — Look round thirteen, a head shaped like a head
+
+**Track: the rendered game.** One lane, and the brief is round twelve's *still wrong* list read
+back verbatim: the head turn does not survive the manager camera, "the head is a near-featureless
+dark sphere under a hair cap, and rotating a sphere changes almost no silhouette." That was half
+the diagnosis. The round found the other half by measuring it, and the other half is the one that
+mattered.
+
+Two instruments were built to ask, because the standard frames could not. `scripts/look/crew.mjs`
+pins every settler to one facing on purpose — that is what makes it a good instrument for a pose —
+so every head ever photographed in this project has been the back of a head at one angle.
+`scripts/look/heads.mjs` (`npm run look:heads`) stands eight settlers in a row at eight facings, a
+quarter-turn apart, on the isometric diagonal that renders as a straight line, so the only thing
+varying along the row is the thing being judged. `tests/head-read.test.ts` asks the same question
+in numbers instead of pixels: it raycasts a grid at the head from the manager camera's own yaw and
+pitch, collects the hits in the screen plane, and takes the covariance of that point cloud. That
+gives an outline aspect ratio and a long-axis angle, which is the closest a number can get to what
+an eye does when it looks at a silhouette.
+
+### Better
+
+**A settler's head now tells you which way they are facing.** The outline aspect went from
+1.006–1.059 — a circle, within measurement noise, at all eight facings — to 1.150–1.338, and the
+angle between the outline's long axis and the body's forward direction went from an error of up to
+62.4 degrees, which is another way of saying the axis was meaningless, to 4.9 degrees or better at
+every one of the eight, for both hair shapes. In `r13-after-D3-heads-far` the four heads in frame
+are four eggs pointing four different ways, and you can read the row without looking at the feet.
+Compare `r13-before-D3-heads-far`, where they are four identical discs.
+
+**The fix is a correction, not a feature.** The head was a sphere. A skull is not: it is about
+1.28 times longer front-to-back than it is wide, which is a cephalic index around 78 and the middle
+of the human range. The change is three numbers — the skull scaled to `1, 1.06, 1.28`, the hair
+shell to `0.148, 0.158, 0.19`, and the eye moved forward from `z 0.115` to `0.147` so it still sits
+in a face that is now further out. No new mesh, no new material, no triangles added. The round
+twelve head aim, which was built and then could not be seen, is what this pays for.
+
+### Worse, and fixed inside the round
+
+**The harness was lying about what varied along its row.** The two hair shapes are chosen by bit 12
+of `colorSeed`, so the first version forced that bit to put four cropped heads next to four long
+ones, and its own comment claimed "any difference between the two halves of the row is that bit and
+not the facing." It was not. The hair *tone* is `(colorSeed >> 8) % HAIR_TONES.length`, and setting
+bit 12 shifts that index by 16, which is 4 in a list of six: the first four settlers came back
+ginger and the last four brunette. A row built to isolate one variable had quietly changed two.
+All eight now keep the template's seed and the hair shape moved to a `LOOK_HAIR` environment axis,
+photographed as two runs. The first shoot is kept at `.look/shots/r13-v1-mixedhair` as the record
+of what the mistake looked like.
+
+**The derivation was wrong and the instrument said so.** Before measuring, the geometry argued that
+a settler facing the camera should show a band of face below the hair hem — the hem sits at about
+94 degrees and the light terminator at 127. The raycast disagreed flatly: skin is 0 to 4.5 per cent
+of the head's projected area, and exactly zero at three of the eight facings, because at the manager
+camera's 52.7-degree elevation that band is very nearly tangent to the view. This is the real
+finding and it is sharper than round twelve's guess. It is not that the head is a sphere with
+nothing to rotate; it is that **96 to 100 per cent of the head the camera can see is one material**,
+so there was no feature on it to rotate in the first place. That is why the fix had to be the
+outline and could not have been a face.
+
+### Still wrong
+
+**At the distance the game is played at, the egg is legible but quiet.** In `r13-after-D-heads` the
+heads are ovals and their axes do vary, but at roughly thirty pixels you have to know to look. The
+whole read is carried by outline alone. A head that is one colour cannot do better than its own
+edge, and the next thing that would pay here is a value break on the hair itself — a lighter crown
+or a darker nape — so the head has an interior gradient that turns with it rather than only a
+boundary.
+
+**The skull elongation does not carry the read; the hair does.** The mutation sweep is explicit
+about this. Reverting the skull to a sphere and leaving the hair shell an egg fails only the eye
+test — the outline and the direction both still pass, because the hair is essentially all of the
+visible head. The skull change is honest work for the eye's seating and for the exported `.glb`,
+where a consumer gets a model rather than a silhouette, but it is not what a player sees. Saying so
+here is cheaper than a later round rediscovering it.
+
+### Shipped
+
+`src/client/render/pawns.ts`, three numbers. `scripts/look/heads.mjs` and the `look:heads` script.
+`tests/head-read.test.ts`, five tests, which measure what the camera sees rather than what the
+geometry says: that the head is not a circle from any eighth of the compass, that its long axis
+lies along the way the body is facing, that the hair stays outside the skin at every vertex, and
+that the eye stays set in the face at the twenty millimetres proud the file has always stood it at.
+
+The fifth test is a guard on the other four. It builds a bare sphere and requires the same
+instrument to measure it under 1.05, because an aspect ratio computed from a raycast grid is a
+number that can be wrong in a direction that looks like success, and a test that cannot fail when
+the thing it measures is a circle is not measuring anything.
+
+Verified red-first by mutation, five mutations, each caught, the file restored byte-identical
+afterwards. The decisive one is the last: **a head made wider instead of longer fails the direction
+test and passes the aspect test.** That is the proof the two assertions are not the same assertion
+written twice, which is the usual way a pair of geometry tests goes wrong.
+
+### Next
+
+The value break on the hair, above — the cheapest remaining thing that would make the head read at
+manager zoom. Then the load tinted by kind, and the carried settler drawn in the carrier's arms,
+both still carried over from round twelve.
+
+### Cost
+
+Two captures at about ten minutes each plus one discarded to the harness bug, three frames apiece,
+zero console errors in all three runs. The numeric instrument runs in four seconds, which is what
+made the round cheap: the geometry was iterated against the number and photographed once at the end
+rather than the other way round.
+
+---
+
 ## 2026-09-07 — Look round twelve, what a settler does with their head and their hands
 
 **Track: the rendered game.** One lane, `pawns.ts`, and the brief came out of the code rather

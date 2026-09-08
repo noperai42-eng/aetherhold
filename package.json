@@ -16,6 +16,8 @@
     "look": "node scripts/look/shot.mjs",
     "look:zoo": "node scripts/look/zoo.mjs",
     "look:crew": "node scripts/look/crew.mjs",
+    "look:heads": "node scripts/look/heads.mjs",
+    "look:trouble": "node scripts/look/trouble.mjs",
     "look:setup": "cd scripts/look && npm install && npx @puppeteer/browsers install chrome@stable --path \"$HOME/.cache/puppeteer\"",
     "typecheck": "tsc --noEmit",
     "icons": "node scripts/make-icons.mjs",

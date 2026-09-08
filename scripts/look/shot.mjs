@@ -262,7 +262,19 @@ if (!(await page.evaluate(() => document.getElementById('hud')?.classList.contai
       await page.evaluate(() => document.querySelector('#colonists .colonist')?.click());
       await shot('8-phone-details');
     }
-    await page.evaluate((l) => { const b = [...document.querySelectorAll('#tabbar .sheetbtn')].find((x) => x.textContent === l); b?.click(); }, name);
+    await page.evaluate((l) => {
+      // By key, and then checked. Matching the label broke silently the round a
+      // count was appended to one of these buttons, and a click that lands on
+      // nothing photographs the sheet that was already up under the name of the
+      // one that was asked for.
+      const k = l.toLowerCase();
+      const b = document.querySelector(`#tabbar .sheetbtn[data-key='${k}']`);
+      if (!b) throw new Error(`no tab button carries data-key='${k}'`);
+      b.click();
+      if (document.getElementById('hud')?.dataset.sheet !== k) {
+        throw new Error(`clicking ${l} did not raise the ${k} sheet`);
+      }
+    }, name);
     await shot(`8-phone-${name.toLowerCase()}`);
   }
 }

@@ -346,7 +346,7 @@ class PawnRig implements Rig {
     for (const side of [-1, 1] as const) {
       const eye = new THREE.Mesh(shared.eye, eyeMat);
       eye.name = 'eye';
-      eye.position.set(side * 0.05, -0.05, 0.115);
+      eye.position.set(side * 0.05, -0.05, 0.147);
       this.head.add(eye);
     }
 
@@ -1373,7 +1373,7 @@ function makeHair(long: boolean): THREE.BufferGeometry {
       ]);
   // The skull is 0.13 round and 6% taller; the shell is that plus a finger's
   // width, so every vertex is outside the skin and the crown has some volume.
-  const g = skullPatch(hem, 24, 7).scale(0.148, 0.158, 0.148);
+  const g = skullPatch(hem, 24, 7).scale(0.148, 0.158, 0.19);
   g.computeVertexNormals();
   const n = g.attributes.normal!;
   for (let j = 0; j <= 24; j++) n.setXYZ(j, 0, 1, 0);
@@ -2164,7 +2164,7 @@ function makeShared(): SharedGeometry {
     // hair covers, and the underside of the jaw, which nothing looks at from a
     // camera eleven cells up. Eighty triangles for a curve no player is ever in
     // a position to see, on the part of the rig that already spent the most.
-    head: new THREE.SphereGeometry(0.13, 20, 10).scale(1, 1.06, 1),
+    head: new THREE.SphereGeometry(0.13, 20, 10).scale(1, 1.06, 1.28),
     hair: makeHair(false),
     hairLong: makeHair(true),
     // The one bead on a settler's face, and it was standing off it. At 0.022 of

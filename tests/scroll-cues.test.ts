@@ -91,6 +91,25 @@ function fades(body: string): ReadonlyArray<'x' | 'y'> {
   return axes;
 }
 
+/**
+ * The panels allowed to answer this differently, each paired with the rule that
+ * earns it the exemption. Both have a sticky footer that says *what* is below the
+ * fold — `+N more` on the strip, the row of buttons on a card — which is strictly
+ * more than a fade says. A mask over either would fade out the one line on the
+ * panel whose whole job is to be read, and on the phone it did exactly that: the
+ * strip's count row came out dimmer than the rows it was counting. Neither
+ * exemption is taken on trust; a test below makes each prove its footer is there.
+ */
+const ANSWERS_DIFFERENTLY: ReadonlyArray<readonly [string, string]> = [
+  ['#alerts', '.alert.more'],
+  ['.card', '.card .acts'],
+];
+
+/** Whether a selector names one of the panels that answers differently. */
+function answersDifferently(sel: string): boolean {
+  return ANSWERS_DIFFERENTLY.some(([p]) => sel === p || sel.endsWith(` ${p}`));
+}
+
 describe('the phone tells you when it has cut something off', () => {
   /**
    * A selector can be written more than once — the top bar sets its overflow in
@@ -127,6 +146,7 @@ describe('the phone tells you when it has cut something off', () => {
   it('fades every phone panel that scrolls, in the axis it scrolls', () => {
     const silent: string[] = [];
     for (const [sel, axes] of scrollAxes) {
+      if (answersDifferently(sel)) continue;
       const fade = fadeAxes.get(sel) ?? new Set<string>();
       for (const axis of axes) if (!fade.has(axis)) silent.push(`${sel} (${axis})`);
     }
@@ -146,6 +166,115 @@ describe('the phone tells you when it has cut something off', () => {
     expect(across).not.toBeNull();
     expect(down).not.toBeNull();
     expect(Number(across![1])).toBeGreaterThan(Number(down![1]));
+  });
+});
+
+/**
+ * The desk was supposed to be exempt from all of this, and is not.
+ *
+ * The argument at the top of this file is that the phone needs a fade because it
+ * has no scrollbar and no resize grip. The desk has both, so the desk was left
+ * alone — and then round fifteen gave `#goals` and `#inspector` measured
+ * ceilings, they began landing on the middle of a line, and the frames showed a
+ * sentence sliced through its glyphs with nothing whatsoever to say why.
+ *
+ * The reason the scrollbar did not save it: on macOS these are overlay
+ * scrollbars, drawn while you scroll and invisible until then. The cue that
+ * would tell a player to scroll only appears once they already have. So the
+ * desk needs the same twenty pixels the phone has had for rounds.
+ *
+ * The class matters as much as the fade. These panels shrink to their contents,
+ * so a settler card short enough to fit would have its last line faded for no
+ * reason — the same lie pointed the other way, promising more where there is
+ * none. `hud.ts` puts the class on from three numbers and takes it off again.
+ */
+describe('the desk tells you too, now that it has ceilings to hit', () => {
+  /**
+   * Every desk panel that has been given a ceiling and told to scroll under it —
+   * which is to say, every panel on the desk that is able to cut a line in half.
+   * Swept rather than listed, so the next panel to get a ceiling inherits the
+   * obligation instead of quietly reintroducing the bug.
+   */
+  const CAPPED = [...new Set(RULES.flatMap((r) => r.selectors))].filter(
+    (sel) =>
+      !sel.includes('.phone') &&
+      !sel.includes('.clipped') &&
+      // Per selector across the whole sheet rather than per rule: `#alerts` caps
+      // itself in one rule and takes its overflow from the rule that gives it a
+      // resize grip, and a per-rule sweep sees neither half and walks past it.
+      RULES.some((r) => r.selectors.includes(sel) && /max-height:/.test(r.body)) &&
+      RULES.some((r) => r.selectors.includes(sel) && scrolls(r.body).includes('y')),
+  );
+
+  /** Which selectors have a downward fade hung on the clipped class. */
+  const faded = new Set(
+    RULES.filter((r) => fades(r.body).includes('y'))
+      .flatMap((r) => r.selectors)
+      .filter((s) => s.endsWith('.clipped'))
+      .map((s) => s.slice(0, -'.clipped'.length)),
+  );
+
+  it('finds the desk panels that can cut a line, so this is not guarding an empty set', () => {
+    expect(CAPPED).toContain('#goals');
+    expect(CAPPED).toContain('#inspector');
+    expect(CAPPED).toContain('#alerts');
+  });
+
+  it('fades the foot of every one of them', () => {
+    const silent = CAPPED.filter((s) => !faded.has(s) && !answersDifferently(s));
+    // Named rather than counted: the useful failure is which panel went quiet.
+    expect(silent, 'these desk panels would cut a line with nothing to say so').toEqual([]);
+  });
+
+  it('makes each exemption earn itself', () => {
+    // These two skip the mask because they have something better. If either
+    // footer stops being sticky the exemption above becomes a silent hole, and
+    // this is the line that notices rather than a screenshot six rounds later.
+    for (const [panel, footer] of ANSWERS_DIFFERENTLY) {
+      const rule = RULES.find((r) => r.selectors.includes(footer));
+      expect(rule, `${panel} is exempt on the strength of ${footer}, which is gone`).toBeDefined();
+      expect(rule!.body, footer).toMatch(/position:\s*sticky/);
+      expect(rule!.body, footer).toMatch(/bottom:/);
+    }
+  });
+
+  it('keeps the fade off the two panels that answer differently', () => {
+    // For these the mask is not merely unnecessary, it is actively wrong, and
+    // the exemption above only says they may skip it. This says they must. On
+    // the phone the strip carried both for a round: the mask fell across the
+    // count row and left `+5 more` dimmer than the five rows it was counting,
+    // on a background the map showed through.
+    for (const [panel] of ANSWERS_DIFFERENTLY) {
+      const masked = RULES.filter((r) => fades(r.body).length > 0)
+        .flatMap((r) => r.selectors)
+        .filter((sel) => sel === panel || sel.endsWith(` ${panel}`));
+      expect(masked, `${panel} says what it cut; a fade over that row buries it`).toEqual([]);
+    }
+  });
+
+  it('hangs the fade on a class, so a panel that fits is not made to promise more', () => {
+    // Straight on `#inspector` this would fade the last line of every short
+    // card — an animal, a rock, a settler with three skills — none of which
+    // have anything below the fold at all.
+    for (const sel of ['#goals', '#inspector']) expect(faded.has(sel)).toBe(true);
+    expect(CSS).not.toMatch(/^#goals\s*\{[^}]*mask-image/m);
+  });
+
+  it('decides the class from the content, the band and the scroll position together', () => {
+    // All three move independently: the content changes when another settler is
+    // selected, the band changes when the alert strip grows under it, and the
+    // scroll position changes when the player reads to the end — at which point
+    // there is nothing left to promise and the fade has to go.
+    expect(HUD).toContain(
+      "p.classList.toggle('clipped', p.scrollHeight - p.clientHeight - p.scrollTop > 1)",
+    );
+  });
+
+  it('re-asks whenever any of the three can have changed', () => {
+    // A one-shot read at construction is measured once, on an empty colony, and
+    // is wrong for the rest of the game.
+    expect(HUD).toMatch(/new ResizeObserver\(mark\)\.observe\(p\)/);
+    expect(HUD).toMatch(/p\.addEventListener\('scroll', mark, \{ passive: true \}\)/);
   });
 });
 
@@ -171,6 +300,60 @@ describe('the desk card, whose footer is stuck to its floor', () => {
     expect(acts).toBeDefined();
     expect(acts!.body).toMatch(/position:\s*sticky/);
     expect(acts!.body).toMatch(/background:\s*var\(--panel-solid\)/);
+  });
+});
+
+describe('the alert strip, which has to be able to say it ran out of room', () => {
+  /**
+   * The third panel with the same defect, and the worst of the three, because
+   * here the row that gets cut is the row whose entire job is to report the cut.
+   *
+   * `alertRows` caps the strip at `MAX_ALERTS` and appends a row counting what
+   * it dropped; `alert-panel.test.ts` holds that list to the property that a
+   * panel is allowed to run out of room and is not allowed to hide that it did.
+   * That file reads the row list rather than the DOM, on purpose, so it could
+   * not see what the DOM then did with it: `#alerts` has a viewport-relative
+   * ceiling of its own, which at 1280 by 800 shows about seven rows, and the
+   * count row is the last child. A colony carrying fifteen standing problems
+   * photographed as a colony carrying seven, with nothing on screen saying
+   * otherwise — the exact failure the row was added to prevent, one layer down.
+   *
+   * So this asks the two halves separately: that the panel still emits a row it
+   * can be told apart by, and that the stylesheet still sticks that row to the
+   * floor. Either one alone goes quietly green while the bug is back.
+   */
+  it('gives the count row a name the stylesheet can reach', () => {
+    // Read out of the source rather than out of a rendered panel, like the help
+    // card's keys below: there is no jsdom here, and the class name is the whole
+    // of the contract between these two files.
+    expect(HUD).toContain("`alert ${a.level}` : 'alert more'");
+  });
+
+  it('sticks the count row to the floor of the panel it is counting for', () => {
+    const more = RULES.find((r) => r.selectors.includes('.alert.more'));
+    expect(more).toBeDefined();
+    expect(more!.body).toMatch(/position:\s*sticky/);
+    expect(more!.body).toMatch(/background:\s*var\(--panel-solid\)/);
+  });
+
+  it('fades the alerts sliding under it, so the cut edge is not a hard line', () => {
+    const fade = RULES.find((r) => r.selectors.includes('.alert.more::before'));
+    expect(fade).toBeDefined();
+    expect(fade!.body).toMatch(/bottom:\s*100%/);
+    expect(fade!.body).toMatch(/linear-gradient\(to top, var\(--panel-solid\), transparent\)/);
+    expect(fade!.body).toMatch(/pointer-events:\s*none/);
+  });
+
+  it('cancels the panel’s own bottom padding, so no row shows through underneath', () => {
+    // The sticky row is offset by exactly the padding it has to cover and pays
+    // it back as its own, which is the same arithmetic `.card .acts` does at
+    // -20px. A mismatch leaves a translucent strip below the row with the
+    // scrolled alerts still legible through it.
+    const panel = RULES.find((r) => r.selectors.includes('#alerts'))!;
+    const more = RULES.find((r) => r.selectors.includes('.alert.more'))!;
+    const below = Number(panel.body.match(/padding:\s*\d+px\s+\d+px\s+(\d+)px/)![1]);
+    expect(more.body).toMatch(new RegExp(`bottom:\\s*-${below}px`));
+    expect(more.body).toMatch(new RegExp(`padding:[^;]*\\s${below}px\\s`));
   });
 });
 

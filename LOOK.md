@@ -59,6 +59,9 @@ owns `:5063`, say), every command below takes `URL=http://localhost:<port>/`.
 |---|---|---|
 | `scripts/look/shot.mjs` | The five standard frames of one colony | `npm run look -- .look/shots/r5 r5` |
 | `scripts/look/zoo.mjs` | Staged scenes: every animal, crop stage and loose item, laid out on clear ground | `npm run look:zoo -- .look/shots/r5-zoo r5` |
+| `scripts/look/crew.mjs` | Seven settlers in a row, one per state of hands and attention | `npm run look:crew -- .look/shots/r12-crew r12` |
+| `scripts/look/heads.mjs` | Eight settlers at eight facings, for judging what a head's outline says | `LOOK_HAIR=long npm run look:heads -- .look/shots/r13 r13` |
+| `scripts/look/trouble.mjs` | The colony on a bad day, interface up: the panels that carry bad news, carrying some — and, on its second report line, where those panels actually are, because a panel drawn over another panel photographs as a correct panel. Steps go to stderr with a stopwatch on them, so a run that dies names the step it died in | `npm run look:trouble -- .look/shots/r16 r16` |
 | `scripts/look/grain.mjs` | Whether a change reached the frame at all | `node scripts/look/grain.mjs .look/shots/r5/r5-3-colony.png .look/shots/r6/r6-3-colony.png` |
 | `scripts/look/diag-hang.mjs` | The stopwatch for when a capture stalls | `node scripts/look/diag-hang.mjs .look/hang` |
 | `.claude/workflows/look-round.js` | One whole round, steps 2–5, as a workflow | see below |

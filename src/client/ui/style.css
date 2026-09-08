@@ -382,8 +382,19 @@ body {
      lines of life. Measured at 741px for a long-lived one, against a 757px
      window with a topbar on it — which is a card whose Draft button is off the
      bottom of the screen and unreachable. Scroll the panel rather than trim what
-     is on it: the overflow only appears for the settlers who have earned it. */
-  max-height: calc(100vh - var(--topbar-h, 44px) - 24px);
+     is on it: the overflow only appears for the settlers who have earned it.
+
+     That first ceiling cleared the top bar and nothing else, which put the same
+     button back out of reach twice over: measured at 1280 by 800 the card ran to
+     y784 through a build bar standing at y703, and the alert strip — which owns
+     this column from the bottom up — covered its last 368px outright. So the band
+     is what is left between the top bar and whichever of those two is nearer,
+     with `--alerts-h` measured and published by `hud.ts` and zero whenever the
+     colony has nothing to complain about. `#goals` above takes the same band from
+     the same variable; it is one column, and it has to be described once. */
+  max-height: calc(
+    100vh - var(--topbar-h, 44px) - var(--buildbar-h, 112px) - var(--alerts-h, 0px) - 30px
+  );
   overflow-y: auto;
   overscroll-behavior: contain;
 }
@@ -949,6 +960,48 @@ body {
   background: rgba(214, 168, 92, 0.09);
 }
 
+/*
+ * The row that says how many alerts did not fit, kept where it can be read.
+ *
+ * `alertRows` caps the strip at ten and adds an eleventh row counting what it
+ * dropped, and `alert-panel.test.ts` holds the whole panel to the property that
+ * a panel is allowed to run out of room and is not allowed to hide that it did.
+ * The panel then hid it anyway: at 1280 by 800 the ceiling above shows about
+ * seven rows of eleven, and the count is the last child, so the one line that
+ * admits the list was cut was itself cut. A colony with fifteen standing
+ * problems photographed exactly like a colony with seven.
+ *
+ * Same defect and same answer as `.card .acts` — opaque, stuck to the floor of
+ * its own scrollport, with a gradient over the rows sliding under it. The
+ * negative offset and the matching padding cancel the panel's own bottom
+ * padding so the row sits flush on the edge rather than floating above a strip
+ * the rows can still be seen through. When every alert fits there is no count
+ * row at all, so none of this costs anything in the case where the panel has
+ * nothing to confess.
+ */
+.alert.more {
+  position: sticky;
+  bottom: -6px;
+  padding: 2px 0 6px 7px;
+  background: var(--panel-solid);
+  /* The warn bar belongs to rows that are problems. This one is the panel
+     talking about itself, and it was always meant to be the quietest thing on
+     the strip — which an opaque row on a translucent panel is not, unless the
+     bar goes quiet too. */
+  border-left-color: var(--edge);
+}
+
+.alert.more::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 100%;
+  height: 18px;
+  pointer-events: none;
+  background: linear-gradient(to top, var(--panel-solid), transparent);
+}
+
 /* ---------- goals ---------- */
 
 /*
@@ -968,6 +1021,65 @@ body {
   flex-direction: column;
   gap: 7px;
   pointer-events: auto;
+  /* This panel had no ceiling of any kind, which is how it came to be drawn over
+     the alert strip: both hang off `right: 8px`, this one hangs down from the top
+     bar and the strip stands up from the build bar, and neither had any way to
+     know the other was there. On a colony with eleven standing problems, three
+     rows of the strip survived. So the band this panel owns is what is left
+     between the top bar and whatever the strip is currently using — measured and
+     published as `--alerts-h` by `hud.ts`, and zero whenever the colony is fine
+     and the strip is not on screen at all. The phone rule below already had a
+     ceiling; the desk was the half that never got one. */
+  max-height: calc(
+    100vh - var(--topbar-h, 44px) - var(--buildbar-h, 112px) - var(--alerts-h, 0px) - 40px
+  );
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+/* The other half of a ceiling: the panel has to look like one.
+
+   Both panels above stop at a measured band now, and a band with nothing to mark
+   it cuts the line it lands on through the middle of the glyphs — "Half the
+   bullets aimed at somebody behind one" ends there, in a frame, with nothing on
+   screen to say the rest exists. The desk was supposed to be the half that did
+   not need this, on the grounds that a scrollbar appears when a panel overflows;
+   on the machine these frames are taken on it does not. Overlay scrollbars are
+   drawn while you scroll and are invisible until then, so the first thing a
+   player sees is the cut, and the cue that would tell them to scroll only
+   arrives once they already have. The phone rules at the foot of this file have
+   masked their clipped panels for rounds; this is the same idea and the same
+   twenty pixels, which is about a line and a half of the type these panels use.
+
+   A mask rather than an overlay, for the reason given down there: it lives in the
+   element's own box, so it stays at the edge while the content runs under it, and
+   the panel's background dissolves with it. `hud.ts` hangs the class on and off
+   as the content, the band and the scroll position change, so a panel that fits —
+   or one read to its end — is not made to promise more.
+
+   Only the first two were caught by eye; the rest are here because the test that
+   guards this sweeps the stylesheet for panels that cap and scroll, and every one
+   of them can cut a line. The roster halves a settler card once there are enough
+   settlers, and the five overlay tabs are long lists in short windows. The log
+   fits its lines to its own height and so should never turn the class on at all,
+   which this makes a checkable claim rather than a thing somebody knows.
+
+   Two panels are deliberately not in the list, and both answer the same question
+   with a better answer: `#alerts` has a sticky `+N more` row and `.card` a sticky
+   footer of buttons, each of which says *what* is below the fold rather than
+   merely that something is. A mask over either would fade out the one line on the
+   panel whose whole job is to be read. */
+#goals.clipped,
+#inspector.clipped,
+#colonists.clipped,
+#log.clipped,
+#boardtab.clipped,
+#researchtab.clipped,
+#tradetab.clipped,
+#roadtab.clipped,
+#chronicletab.clipped {
+  -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 20px), transparent);
+  mask-image: linear-gradient(to bottom, #000 calc(100% - 20px), transparent);
 }
 
 .goalhead {
@@ -2746,6 +2858,13 @@ body {
  * bar that dissolves at its edge is a bar with more beyond the edge. Twenty-six
  * pixels sideways, where a cut glyph has to be unmistakable, and twenty down,
  * which is about a line and a half of the twelve-pixel type these sheets use.
+ *
+ * `#alerts` was in this list and has been taken out of it. It gained a sticky
+ * `+N more` row, which says how many rows were cut rather than merely that some
+ * were — and the mask then fell across that row and made it the dimmest thing on
+ * the panel, greyed onto a background the grass showed through. A fade and a
+ * count are not two cues; the count is the better one, and the fade was eating
+ * it. The desk rule above carries the same exemption for the same reason.
  */
 #hud.phone #topbar,
 #hud.phone #buildbar .bartabs {
@@ -2758,7 +2877,6 @@ body {
 #hud.phone #inspector,
 #hud.phone #buildbar,
 #hud.phone #log,
-#hud.phone #alerts,
 #hud.phone[data-sheet='more'] #sysbtns,
 #hud.phone #worktab,
 #hud.phone #boardtab,
@@ -3048,6 +3166,42 @@ body {
   font-size: 11px;
   letter-spacing: 0.08em;
   text-transform: uppercase;
+  /* Holds the count on the Events tab. */
+  position: relative;
+}
+
+/*
+ * How many standing problems there are, on the tab that opens them.
+ *
+ * The desk has the alert strip on screen the whole time; a phone keeps it behind
+ * a tab, so the one screen where the strip cannot be seen is the screen a player
+ * spends the game on. A burning, raided colony with four settlers on the floor
+ * read as the same five words along the bottom edge as a colony with nothing
+ * wrong. `hud.ts` writes the empty string rather than a zero when the colony is
+ * fine, so the tab goes back to being a word.
+ */
+.tabcount {
+  position: absolute;
+  /* Above the label and inboard of the tab's own edge, so a two-digit count on a
+     390-wide screen still sits inside the button it belongs to. */
+  top: 7px;
+  left: 50%;
+  margin-left: 10px;
+  min-width: 15px;
+  padding: 0 3px;
+  border-radius: 7px;
+  background: var(--warn);
+  color: #17120a;
+  font-size: 9.5px;
+  font-style: normal;
+  font-weight: 700;
+  letter-spacing: 0;
+  line-height: 15px;
+  font-variant-numeric: tabular-nums;
+}
+
+.tabcount:empty {
+  display: none;
 }
 
 .sheetbtn.on {
