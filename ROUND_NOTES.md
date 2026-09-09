@@ -4,6 +4,105 @@ One round, one measured gap, one fix. Newest first.
 
 ---
 
+## 2026-09-09 — An address for a shape, and a sheet that admits how little it covers
+
+**Track: the forge.** Stages 3 and 4 of [FORGING.md](FORGING.md). Nothing in `src/client/`
+or `src/sim/` was touched at all; the whole round is `src/forge/`, one new look script and
+its row in [LOOK.md](LOOK.md).
+
+### The gap
+
+The bench built in the last round is a viewer. You can move eleven sliders until a tree
+looks right, and then the afternoon ends and the only thing that survives it is a memory of
+a shape. There is no way to tell somebody which tree you meant, no way for a round note to
+link the thing it is arguing about, and no way to get a shape you found back into
+`decor.ts` except by reading eleven numbers off the screen and retyping them.
+
+And there is no census. Two models are on the bench and forty are not, and nothing said so
+out loud — which is exactly the failure FORGING.md's own risks section names: *a bench
+covering eight models that says it covers the game*.
+
+### The fix
+
+**`src/forge/address.ts`** — the two small things that turn browsing into refining.
+
+- **The address.** Every field round-trips through the query string on `change`, so a frame
+  has a URL. Every field, including the ones sitting at their default: a shorter URL that
+  omitted them would quietly change meaning the afternoon somebody moves a constant in
+  `decor.ts`, and a link in a round note that shows a different rock than it did when it was
+  written is worse than no link. Written on `change` and not on `input`, because a drag
+  fires `input` per frame and Safari throws after a hundred `replaceState` calls in thirty
+  seconds.
+- **The paste.** The whole recipe — the lathe profiles included, which are on no slider — in
+  a `<details>` with a Copy button. It is real JSON with quoted keys, and that is not
+  pedantry: it is what lets a test parse the printed block back and run the done-criterion
+  instead of an eye judging it. A profile pair stays on its own line, because
+  `JSON.stringify(r, null, 2)` turns the tree's forty radius-and-height pairs into a hundred
+  and sixty lines of column.
+
+**`scripts/look/forge.mjs`** and `npm run look:forge` — the sweep, built the way `review.mjs`
+is built. It reads `.index a` off the bench itself rather than carrying a list, so a recipe
+added to `recipes.ts` is photographed on the next run without anyone coming here; an empty
+index throws by name rather than writing a cheerful sheet of nothing. Two frames per model —
+the bench and its `Generate 12` — plus one contact sheet.
+
+`render-art-review.mjs`, which FORGING.md cites for stamping frames, is Evergrow's script
+and not this repo's, so the stamp is made differently: the shot is of the whole `.bench`
+rather than of the canvas, which puts every slider in the picture, and the exact URL of each
+frame goes into `<label>-frames.json` beside it. A harness that doctors the page before
+shooting it produces frames that are not quite the page.
+
+### The sheet that said two of two
+
+The first contact sheet's header read `2 of 2 models`, which is true and reads as complete.
+The census now comes from `models/manifest.json` — the forty-two assemblies `npm run
+export:models` writes — so the header reads **`2 of 2 shot, 2 of 42 assemblies on the
+bench`**, and a box that has never run the export is told the census is unknown rather than
+quietly given a smaller denominator. That number is the whole point of stage 4 and it should
+be uncomfortable to look at for another few rounds.
+
+### Before / after
+
+Four frames plus the sheet, `1280×800 @1.5×`, in `.look/shots/r18-forge/`.
+
+- **`r18-sheet.png`** — the four bench frames with the full recipe URL printed under each,
+  which is the artefact this round exists to make: a picture whose caption is the thing that
+  produced it.
+- **`r18-stone.png`** / **`r18-tree.png`** — the bench with the recipe block open. Every
+  number that made the shape is in the frame twice over, on the sliders and in the paste.
+
+One thing was changed because of the frames rather than because of the code: the eleven
+sliders were the browser's default blue, and blue was the one thing in a bench picture that
+was not this game. They are `accent-color: var(--edge-strong)` now — the colony's amber. A
+bench frame is meant to differ from a game frame by the camera and the ground and nothing
+else, and that is a difference the code could not have told anybody about.
+
+The pebble's cast shadow still peter-pans, for the reason last round gave: the bench
+inherits the map-sized shadow frustum from `sky.ts`, and a bench with a kinder shadow map
+would be a bench that lies about the map. Left alone, deliberately, for the second round
+running.
+
+### Verified
+
+- **The done-criterion is run rather than looked at.** Three experience tests parse the
+  printed JSON block back and build from it: a rock's golden digest, a tree's trunk and all
+  four skirt digests, and a tree rebuilt from its own query string. If the paste ever stops
+  being the shape on screen, those go red.
+- **The new pins were watched fail.** Three tempting shortcuts were applied to `address.ts`
+  at once — falling back to the default on an unreadable value, omitting default fields from
+  the URL, and plain `JSON.stringify` — and exactly the four intended tests went red
+  (`4 failed | 37 passed`). A pin nobody has seen fail is not a pin.
+- **The sweep's loud-failure path was exercised.** `forge.html` moved aside gives
+  `Error: the bench index listed no models — is the dev server on forge.html?` and a non-zero
+  exit, rather than an empty sheet.
+- `npx vitest run tests/forge-recipes.test.ts` — **41 passed**, eleven more than last round:
+  eight on the address and the printed block, three on the round trip.
+- `npx tsc --noEmit` — clean.
+- `npm run look:forge -- .look/shots/r18-forge r18` — `2/2 models: stone, tree`, nothing
+  missed, and **no console errors**.
+
+---
+
 ## 2026-09-09 — A bench for one model at a time, and the rule that was wrong about trees
 
 **Track: the forge.** Stages 0, 1 and 2 of [FORGING.md](FORGING.md). No player-facing

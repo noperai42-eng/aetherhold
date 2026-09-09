@@ -76,8 +76,13 @@ body {
   grid-column: 1 / -1;
 }
 
+/* The colony's own amber rather than the browser's blue. Read off the frames
+   from the first sweep, where eleven default-blue handles were the one thing in
+   a bench picture that was not this game — and a bench frame is meant to differ
+   from a game frame by the camera and the ground and nothing else. */
 .field input[type='range'] {
   width: 100%;
+  accent-color: var(--edge-strong);
 }
 
 /* Tabular figures, so a slider being dragged does not make the column jitter. */
@@ -154,4 +159,57 @@ body {
 
 .index a {
   color: var(--edge-strong);
+}
+
+/* The paste block, and the reason it is a `details` rather than a panel: a
+   tree's recipe is sixty lines of profile and the sliders are what the page is
+   for, so it is closed until somebody has something worth carrying away. */
+.recipe {
+  margin: 14px 0;
+}
+
+.recipe summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  color: var(--dim);
+  cursor: pointer;
+}
+
+.recipe summary button {
+  font: inherit;
+  font-size: 10px;
+  letter-spacing: 0.4px;
+  color: var(--ink);
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--edge);
+  border-radius: 3px;
+  padding: 2px 6px;
+  cursor: pointer;
+}
+
+.recipe summary button:hover {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+/* Monospaced and unwrapped, because it is source and a profile pair that wraps
+   reads as three numbers. Capped and scrolled rather than allowed to push the
+   history strip off the bottom of the column. */
+.recipe pre {
+  max-height: 260px;
+  overflow: auto;
+  margin: 8px 0 0;
+  padding: 8px;
+  font-family: var(--mono);
+  font-size: 11px;
+  line-height: 1.45;
+  white-space: pre;
+  color: var(--ink);
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid var(--edge);
+  border-radius: 3px;
 }

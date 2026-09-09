@@ -329,6 +329,22 @@ afternoon of comparison ends in a diff.
 **Done when:** a recipe found on the bench reaches the game by copy and paste, and
 the frame after the paste matches the frame on the bench.
 
+**Built** — 2026-09-09. `src/forge/address.ts`. Every field rides in the query string,
+including the ones sitting at their default: a shorter URL that omitted them would
+quietly change meaning on the afternoon somebody moves a constant in `decor.ts`, and a
+link in a round note that shows a different rock than it did when it was written is
+worse than no link at all. A field the URL spells badly — `lump=x`, or `lump=` with
+nothing after it — becomes `NaN` and reaches the bench's own complaint, rather than
+falling back to the default and showing you a rock you did not ask for; `Number('')` is
+zero, and that is the trap. The paste block is real JSON with quoted keys, which is what
+makes the done-criterion checkable by something other than an eye: three tests parse the
+printed block back, hand it to `stoneGeometry` and `treeTrunkGeometry`, and compare
+golden digests against what the sliders built. Two things a paste carries and cannot
+avoid, said here rather than found out: `TREE_DEFAULT` writes some of its fields as named
+constants (`rootReach: ROOT_REACH`) and a wholesale paste replaces those names with their
+values, and the lathe profiles come out as bare numbers, so the reasons for them stay in
+the comments above the table they came from.
+
 ## Stage 4 — the sweep
 
 `scripts/look/forge.mjs`, built the way `review.mjs` is built: read the bench's own
@@ -347,6 +363,24 @@ compared to the next one.
 **Done when:** `npm run look:forge` writes a frame per model into `.look/shots/`,
 names any it could not shoot, and reports console errors — same contract as
 `look:review`.
+
+**Built** — 2026-09-09. `scripts/look/forge.mjs`, `npm run look:forge`, listed in
+[LOOK.md](LOOK.md)'s table of instruments. It reads `.index a` off the bench itself, so a
+recipe added to `src/forge/recipes.ts` is photographed on the next run without anyone
+coming here; an empty index throws by name rather than writing a cheerful sheet of
+nothing. `render-art-review.mjs` is Evergrow's script and not this repo's, so the frames
+are stamped a different way: the shot is of the whole `.bench` rather than of the canvas,
+which puts every slider in the picture, and the exact URL of each frame is written into
+`<label>-frames.json` beside it — a harness that doctors the page before shooting it
+produces frames that are not quite the page. The first sheet said `2 of 2 models`, which
+is exactly the failure the risks above name, so the census is now read from
+`models/manifest.json` and the sheet says `2 of 42 assemblies on the bench`. Two findings
+came out of reading the frames back rather than out of the code: the sliders were the
+browser's default blue, the one thing in a bench picture that was not this game, and are
+now `accent-color: var(--edge-strong)`; and the stone's cast shadow peter-pans at bench
+magnification, because the bench inherits the colony's own map-sized shadow frustum from
+`sky.ts` — which is left alone, since a bench lit differently from the game is a bench
+that lies about the game.
 
 ## Stage 5 — the other thirty-eight
 

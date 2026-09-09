@@ -83,6 +83,14 @@ export interface Bench {
   readonly seedStep: number;
   /** Everything wrong with this set of values, in words. Empty is buildable. */
   problems(k: Knobs): string[];
+  /**
+   * The whole recipe these knobs describe, in the shape the render file's
+   * default table is written in — the lathe profiles and all, not just the
+   * numbers that happened to be draggable. This is what the paste block under
+   * the sliders prints, so what it offers is a recipe you can put back rather
+   * than a list of the eleven fields the page knows how to show you.
+   */
+  recipe(k: Knobs): StoneRecipe | TreeRecipe;
   /** The model, standing on y = 0 and facing the way the game draws it. */
   build(k: Knobs, protos: Prototypes): THREE.Group;
 }
@@ -143,6 +151,10 @@ const STONE_FIELDS: readonly Field[] = [
   { key: 'sink', label: 'sink', min: 0, max: 0.6, step: 0.01 },
 ];
 
+function stoneRecipe(k: Knobs): StoneRecipe {
+  return { seed: k.seed!, detail: k.detail!, lump: k.lump!, faceSpread: k.faceSpread!, sink: k.sink! };
+}
+
 const STONE: Bench = {
   name: 'stone',
   title: 'Loose stone',
@@ -160,14 +172,9 @@ const STONE: Bench = {
     // "what does validation catch" rather than a symmetry for its own sake.
     return boundsProblems(STONE_FIELDS, k);
   },
+  recipe: stoneRecipe,
   build(k, _protos) {
-    const r: StoneRecipe = {
-      seed: k.seed!,
-      detail: k.detail!,
-      lump: k.lump!,
-      faceSpread: k.faceSpread!,
-      sink: k.sink!,
-    };
+    const r = stoneRecipe(k);
     const geo = stoneGeometry(r);
     // The view's material is a white multiplied by a per-instance tint that
     // wanders in hue, saturation and lightness about `STONE_COLOR`. At the
@@ -262,6 +269,7 @@ const TREE: Bench = {
     }
     return out;
   },
+  recipe: treeRecipe,
   build(k, protos) {
     const r = treeRecipe(k);
     const trunk = treeTrunkGeometry(r);

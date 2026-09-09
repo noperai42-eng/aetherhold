@@ -22,6 +22,7 @@ import '../client/ui/style.css';
 import './forge.css';
 
 import { BuildingsView } from '../client/render/buildings';
+import { knobsFromSearch, recipeText, searchOf } from './address';
 import { benchWorld, forge, forgeSeeds, prototypes } from './forge';
 import { BENCHES, benchByName, type Bench, type Knobs } from './recipes';
 import { Stage } from './stage';
@@ -56,7 +57,7 @@ function chipLabel(bench: Bench, k: Knobs): string {
   return moved ? `${seed}*` : seed;
 }
 
-function start(bench: Bench): void {
+function start(bench: Bench, params: URLSearchParams): void {
   if (!app) return;
   document.title = `${bench.title} — Aetherhold forge`;
 
@@ -72,6 +73,10 @@ function start(bench: Bench): void {
           <button id="reset">Reset</button>
         </div>
         <div class="problems" id="problems"></div>
+        <details class="recipe">
+          <summary>Recipe <button id="copy">Copy</button></summary>
+          <pre id="paste"></pre>
+        </details>
         <div class="history"><h2>Last ${HISTORY}</h2><div id="strip"></div></div>
       </div>
     </div>`;
@@ -82,11 +87,15 @@ function start(bench: Bench): void {
   const protos = prototypes(world, view);
   const stage = new Stage(canvas, world);
 
-  let knobs: Knobs = { ...bench.defaults };
+  // What the address bar asked for, over what the colony builds from. A bench
+  // opened with no query beyond `?model=` is the colony's own recipe, which is
+  // the same thing the Reset button goes back to.
+  let knobs: Knobs = knobsFromSearch(bench, params);
   const past: Knobs[] = [];
 
   const fields = document.getElementById('fields')!;
   const problems = document.getElementById('problems')!;
+  const paste = document.getElementById('paste')!;
   const strip = document.getElementById('strip')!;
 
   const inputs = new Map<string, { range: HTMLInputElement; box: HTMLInputElement }>();
@@ -149,14 +158,29 @@ function start(bench: Bench): void {
     }
   }
 
-  /** One model on the bench. `keep` writes what is on it into the strip. */
+  /**
+   * One model on the bench. `keep` writes what is on it into the strip and into
+   * the address bar.
+   *
+   * Both on `keep` and neither on a bare redraw, which is the same rule for the
+   * same reason: a drag of one slider fires `input` on every frame of the
+   * gesture, and a `replaceState` per frame is both sixteen history chips for
+   * one movement and, in Safari, a hundred calls in thirty seconds and an
+   * exception. The address is written when the hand comes off.
+   *
+   * The paste block is not on that rule. It is a readout of what is being drawn
+   * right now, so it follows the model rather than the gesture.
+   */
   function draw(keep: boolean): void {
     showKnobs();
     const made = forge(bench, knobs, protos);
     report(made.problems);
+    paste.textContent = recipeText(bench, knobs);
     stage.show(made.group ? [made.group] : []);
     stage.render();
-    if (keep && made.group) remember();
+    if (!keep) return;
+    history.replaceState(null, '', searchOf(bench, knobs));
+    if (made.group) remember();
   }
 
   /**
@@ -186,6 +210,19 @@ function start(bench: Bench): void {
     draw(true);
   });
   document.getElementById('grid')!.addEventListener('click', drawGrid);
+  // `details` opens on a click anywhere in its summary, including on this
+  // button, so the button has to say the click was for it.
+  document.getElementById('copy')!.addEventListener('click', (e) => {
+    e.preventDefault();
+    const button = e.currentTarget as HTMLButtonElement;
+    // No fallback if the clipboard refuses: the text is on the page, selectable,
+    // and a bench that swallowed the failure would leave somebody pasting the
+    // recipe they copied twenty minutes ago.
+    void navigator.clipboard.writeText(paste.textContent ?? '').then(
+      () => (button.textContent = 'Copied'),
+      (err: unknown) => (button.textContent = `Copy failed: ${String(err)}`),
+    );
+  });
   document.getElementById('reset')!.addEventListener('click', () => {
     knobs = { ...bench.defaults };
     draw(true);
@@ -202,8 +239,9 @@ function start(bench: Bench): void {
 }
 
 if (app) {
-  const want = new URLSearchParams(location.search).get('model') ?? '';
+  const params = new URLSearchParams(location.search);
+  const want = params.get('model') ?? '';
   const bench = want ? benchByName(want) : null;
   if (!bench) app.innerHTML = index(want);
-  else start(bench);
+  else start(bench, params);
 }

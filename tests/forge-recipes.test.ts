@@ -35,12 +35,14 @@ import { beforeAll, describe, expect, it } from 'vitest';
 import {
   TREE_DEFAULT,
   TREE_SKIRTS,
+  type TreeRecipe,
   treeCrown,
   treeSkirtGeometries,
   treeTrunkGeometry,
   BuildingsView,
 } from '../src/client/render/buildings';
-import { STONE_DEFAULT, stoneGeometry } from '../src/client/render/decor';
+import { STONE_DEFAULT, stoneGeometry, type StoneRecipe } from '../src/client/render/decor';
+import { knobsFromSearch, recipeText, searchOf } from '../src/forge/address';
 import { benchWorld, forge, forgeSeeds, prototypes } from '../src/forge/forge';
 import { BENCHES, benchByName, type Bench, type Knobs, type Prototypes } from '../src/forge/recipes';
 
@@ -303,6 +305,110 @@ describe('the bench builds what the page asks it for', () => {
  * a surprise. `forge.html` being absent from the build input keeps the page out;
  * this keeps the direction of the arrow out too.
  */
+describe('a recipe survives being written down', () => {
+  const stone = benchByName('stone')!;
+  const tree = benchByName('tree')!;
+
+  it('takes what the query names and leaves the rest as the colony has it', () => {
+    const k = knobsFromSearch(stone, new URLSearchParams('model=stone&lump=0.6'));
+    expect(k.lump).toBe(0.6);
+    expect(k.detail).toBe(STONE_DEFAULT.detail);
+    expect(k.sink).toBe(STONE_DEFAULT.sink);
+  });
+
+  it('carries a value it cannot read through to a complaint, rather than swapping it', () => {
+    // The failure this exists to prevent is silent: a bench that quietly shows
+    // the default rock when the link asked for a particular one is a bench that
+    // will lose somebody an afternoon of comparing a thing to itself.
+    const k = knobsFromSearch(stone, new URLSearchParams('lump=elephant'));
+    expect(k.lump).toBeNaN();
+    expect(stone.problems(k)).toContain('lump is not a number');
+  });
+
+  it('does not read an empty value as zero, which is what Number would do', () => {
+    expect(Number('')).toBe(0);
+    const k = knobsFromSearch(stone, new URLSearchParams('lump='));
+    expect(k.lump).toBeNaN();
+  });
+
+  it('ignores a parameter that is not a field of this bench', () => {
+    const k = knobsFromSearch(stone, new URLSearchParams('model=stone&scene=corpse&lump=0.4'));
+    expect(Object.keys(k).sort()).toEqual(stone.fields.map((f) => f.key).sort());
+  });
+
+  it('writes every field, including the ones still sitting on the default', () => {
+    const q = new URLSearchParams(searchOf(tree, tree.defaults));
+    expect(q.get('model')).toBe('tree');
+    // Not an economy of characters: a URL that omits a default is a URL whose
+    // meaning changes on the day somebody moves that default, and a link in a
+    // round note that shows a different tree than it did when it was written is
+    // worse than no link at all.
+    for (const f of tree.fields) expect(q.get(f.key)).toBe(String(tree.defaults[f.key]));
+  });
+
+  it('round-trips a fiddly number exactly, to the last digit', () => {
+    const k: Knobs = { ...tree.defaults, lean: 0.1234567890123, size: 1.0000001, twist: 0 };
+    const back = knobsFromSearch(tree, new URLSearchParams(searchOf(tree, k)));
+    for (const f of tree.fields) expect(back[f.key]).toBe(k[f.key]);
+  });
+
+  it('prints a block that is really JSON, so a machine can check the paste', () => {
+    const text = recipeText(tree, tree.defaults);
+    const parsed = JSON.parse(text) as TreeRecipe;
+    expect(parsed.trunkSeg).toBe(TREE_DEFAULT.trunkSeg);
+    // The profiles are the point. They are on no slider, so a paste block that
+    // printed only the draggable numbers would hand back an incomplete recipe.
+    expect(parsed.trunk).toEqual(TREE_DEFAULT.trunk);
+    expect(parsed.skirts).toHaveLength(TREE_SKIRTS.length);
+  });
+
+  it('keeps a profile pair on the line it belongs to', () => {
+    const text = recipeText(tree, tree.defaults);
+    expect(text).toContain('[0.3, 0]');
+    // Plain stringify puts each of the forty pairs' two numbers on lines of
+    // their own, which is a hundred and sixty lines of column for a thing whose
+    // whole purpose is to be read and pasted.
+    const plain = JSON.stringify(tree.recipe(tree.defaults), null, 2);
+    expect(text.split('\n').length).toBeLessThan(plain.split('\n').length / 2);
+  });
+});
+
+describe('a recipe found on the bench reaches the game', () => {
+  const stone = benchByName('stone')!;
+  const tree = benchByName('tree')!;
+
+  /**
+   * The done-criterion of stage 3, run rather than looked at: take the block the
+   * page offers, paste it into the game's own builder, and check that what comes
+   * out is the geometry that was on the bench when it was copied. Everything
+   * else here is about the two halves of the round trip; this is about whether
+   * the loop actually closes.
+   */
+  it('builds the same rock from the pasted block as from the sliders', () => {
+    const k = { ...stone.defaults, lump: 0.6, faceSpread: 0.4, seed: 12.5 };
+    const pasted = JSON.parse(recipeText(stone, k)) as StoneRecipe;
+    expect(digest(stoneGeometry(pasted))).toBe(digest(stoneGeometry(stone.recipe(k) as StoneRecipe)));
+  });
+
+  it('builds the same tree from the pasted block, skirts and all', () => {
+    const k = { ...tree.defaults, crownSeed: 7, lobe: 0.42, girth: 1.3 };
+    const pasted = JSON.parse(recipeText(tree, k)) as TreeRecipe;
+    const mine = tree.recipe(k) as TreeRecipe;
+    expect(digest(treeTrunkGeometry(pasted))).toBe(digest(treeTrunkGeometry(mine)));
+    const theirs = treeSkirtGeometries(pasted).map(digest);
+    expect(theirs).toEqual(treeSkirtGeometries(mine).map(digest));
+    expect(theirs).toHaveLength(TREE_SKIRTS.length);
+  });
+
+  it('builds the same tree from its own address, so a link is the frame', () => {
+    const k = { ...tree.defaults, crownSeed: 244, lean: 0.085, twist: 1.1 };
+    const back = knobsFromSearch(tree, new URLSearchParams(searchOf(tree, k)));
+    expect(digest(treeTrunkGeometry(tree.recipe(back) as TreeRecipe))).toBe(
+      digest(treeTrunkGeometry(tree.recipe(k) as TreeRecipe)),
+    );
+  });
+});
+
 describe('nothing the game ships imports the bench', () => {
   it('keeps the dependency running one way, out of the game and into the bench', () => {
     // src/forge/ may read the game. Nothing in the game may read src/forge/, or
