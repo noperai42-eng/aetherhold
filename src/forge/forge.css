@@ -40,7 +40,7 @@ body {
 }
 
 .knobs {
-  width: 272px;
+  width: 320px;
   flex: none;
   overflow-y: auto;
   padding: 16px;
@@ -62,18 +62,25 @@ body {
   color: var(--dim);
 }
 
+/* Label, slider and box on one line rather than the label on a line of its own.
+   Read off the first frames of the grass bench, whose eighteen knobs ran off the
+   bottom of an 800-pixel panel — and a knob that is not in the frame breaks the
+   one thing a bench frame is stamped with, which is every number that made the
+   model standing in it. */
 .field {
   display: grid;
-  grid-template-columns: 1fr 72px;
+  grid-template-columns: 84px 1fr 58px;
   align-items: center;
-  gap: 4px 8px;
-  margin-bottom: 8px;
-  font-size: 11.5px;
+  gap: 0 8px;
+  margin-bottom: 6px;
+  font-size: 11px;
   color: var(--dim);
 }
 
 .field span {
-  grid-column: 1 / -1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* The colony's own amber rather than the browser's blue. Read off the frames

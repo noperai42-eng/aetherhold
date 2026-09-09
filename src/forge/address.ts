@@ -67,19 +67,45 @@ export function searchOf(bench: Bench, k: Knobs): string {
 }
 
 /**
- * JSON, except that a pair of numbers stays on the line it belongs to.
+ * A row of a table, on one line, or null if it is not one.
+ *
+ * Two things count as a row: a list of nothing but numbers, which is how a
+ * point on a lathe profile is written in `buildings.ts`, and an object of
+ * nothing but numbers, which is how a blade of a tuft is written in `decor.ts`.
+ * Both are a line in a table somebody laid out by hand and both are unreadable
+ * broken up.
+ */
+function row(v: unknown): string | null {
+  if (Array.isArray(v)) {
+    return v.every((e) => typeof e === 'number') ? `[${v.map((e) => JSON.stringify(e)).join(', ')}]` : null;
+  }
+  if (!v || typeof v !== 'object') return null;
+  const entries = Object.entries(v);
+  if (!entries.length || !entries.every(([, val]) => typeof val === 'number')) return null;
+  return `{ ${entries.map(([key, val]) => `${JSON.stringify(key)}: ${JSON.stringify(val)}`).join(', ')} }`;
+}
+
+/**
+ * JSON, except that a row of a table stays on the line it belongs to.
  *
  * `JSON.stringify(r, null, 2)` puts every number of every profile on a line of
  * its own, which turns the tree's forty radius-and-height pairs into a hundred
- * and sixty lines of column. The recipe is a thing to read and paste, so a
- * point on a profile is printed the way it is written in `buildings.ts` — one
- * line, two numbers — and everything else is stringified the ordinary way.
+ * and sixty lines of column, and the tuft's five blades into forty. The recipe
+ * is a thing to read and paste, so anything standing in a list that is a row of
+ * a table is printed the way it is written in the render file, and everything
+ * else is stringified the ordinary way.
+ *
+ * Only inside a list, which is the whole rule and is deliberately narrow: a
+ * `StoneRecipe` is an object of nothing but numbers too, and collapsing *it*
+ * would hand back a recipe on one line with no room to see which field is
+ * which.
  */
 function print(v: unknown, indent: string): string {
   if (Array.isArray(v)) {
-    if (v.every((e) => typeof e === 'number')) return `[${v.map((e) => JSON.stringify(e)).join(', ')}]`;
+    const flat = row(v);
+    if (flat !== null) return flat;
     const inner = `${indent}  `;
-    return `[\n${v.map((e) => inner + print(e, inner)).join(',\n')}\n${indent}]`;
+    return `[\n${v.map((e) => inner + (row(e) ?? print(e, inner))).join(',\n')}\n${indent}]`;
   }
   if (v && typeof v === 'object') {
     const inner = `${indent}  `;

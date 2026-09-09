@@ -4,6 +4,92 @@ One round, one measured gap, one fix. Newest first.
 
 ---
 
+## 2026-09-09 — The grass gets a dial, and the bench gets caught measuring in metres
+
+**Track: the forge.** Stage 5 of [FORGING.md](FORGING.md), first family. `decor.ts` for the
+tuft's recipe, `src/forge/` for the bench entry and two faults the frames found in the bench
+itself.
+
+### Why grass, and not the table
+
+FORGING.md guesses an order and says out loud that the photographs overrule it. They did.
+The sweep's frames are stills, and grass is the one model in the game whose defining property
+is that it moves — it is also the only one that cannot be exported to `.glb`, so the bench is
+the only place its shader sway can ever be looked at on its own. That is a stronger argument
+for going first than "every cell has them", which is what the table offered.
+
+### The fix
+
+`TuftRecipe`/`TUFT_DEFAULT` and `SwayRecipe`/`SWAY_DEFAULT` in `decor.ts`; `GRASS` in
+`recipes.ts` with eighteen fields. `time` and `wind` are the last two and are deliberately
+outside `recipe()`: they are the weather, not the tuft, and the printed block is a thing you
+paste back into `decor.ts`, where the weather does not live. The bench opens at `time = 1`
+because at `t = 0` both sines are zero and a dead-straight tuft is easy to mistake for a
+broken shader.
+
+Three things had to be true before a tuft would stand on the bench at all. The sway lives
+inside `#ifdef USE_INSTANCING` and reads `instanceMatrix[3].xyz`, so a plain `Mesh` compiles
+without the branch and stands perfectly still — the bench builds an `InstancedMesh` of count
+one. Height and girth are drawn from `hash`, now exported, because a bench that drew its own
+spread would show a spread the map does not have. And `${1}` spliced into GLSL is an int, so
+`uTime * 1` fails the whole compile: every injected number goes through a one-line `glsl()`
+that guarantees a decimal point.
+
+### What the frames said about the bench
+
+Both faults are the bench's, not the grass's, and only a small model could have found either.
+
+- **Eighteen knobs did not fit the panel.** The single-tuft frame and the twelve-grid frame
+  captured different slices of it, which breaks the one thing stage 4 stamps a frame with —
+  every number that made the model standing in it. The panel is 320px now, with label, slider
+  and box on one line.
+- **The grid's gap was 0.45 metres flat.** That is a fifth of a tree and five times a tuft, so
+  twelve tufts came back as specks in an acre of turf while twelve stones filled the frame.
+  The gap is a fraction of the widest model now. A bench holding forty-two models between a
+  pebble and a longhouse cannot space them in metres.
+
+### What the frames said about the grass
+
+Scrubbed across `t = 0, 0.5, 1, 1.5` the tuft is dead vertical, leans right, leans further,
+and eases back, with the bases pinned — the sway works and is now judgeable. It is also only a
+lean. The phase is a function of where a tuft stands, so every blade in one tuft shares it and
+a tuft tilts as a rigid fan rather than rustling. In a field that reads fine, because
+neighbours stand elsewhere. Alone it is the honest limit of the shader, and a per-blade phase
+would mean a new geometry attribute and a change to how the game's grass looks. That is the
+next brief, not this round.
+
+### A pin that was not there
+
+The drill found this, not the code. `tipReach` was mutated 0.45 → 0.46 and all fifty-two tests
+stayed green: the golden digests are positions only — correctly, since occlusion writes vertex
+colours — and `tipReach` writes nothing but colour. A knob had been exposed with nothing
+holding it, which is the one risk FORGING.md names for this whole plan. The tuft's root-to-tip
+ramp is now written out as five exact numbers, one per blade, rather than as bounds; the first
+draft used bounds and the same mutation walked through them too.
+
+### Verified
+
+- `npx vitest run tests/forge-recipes.test.ts` — 54 passed, up from 41.
+- Mutation drill, five pins, each failing exactly one named test: a blade's bend (tuft golden),
+  `glsl()` dropping its decimal point, the empty-blade-table rule, a constant height draw, and
+  `tipReach` against the new ramp table.
+- `npx tsc --noEmit` clean; full suite green.
+- `npm run look:forge` — `3/3 models: stone, grass, tree`, `3 of 42 assemblies on the bench`,
+  no console errors. Frames in `.look/shots/r21-forge/`, sway sheet in `.look/shots/r20-sway/`.
+  Every frame on the sheet carries its whole URL, the eighteen grass fields included, and the
+  panel fits inside all six.
+
+### A scar
+
+Mid-round, `git checkout -- src/client/render/decor.ts src/forge/recipes.ts` was used to undo a
+mutation. It restores from the index, and the index was the commit that had just been made — so
+it took the round's uncommitted work with it. Recovered by replaying the edits out of the
+session transcript and confirmed by the golden digest matching byte for byte, but the lesson is
+cheap to write down: undo a deliberate mutation by copying a file back, never by asking git,
+unless the work is committed first.
+
+---
+
 ## 2026-09-09 — An address for a shape, and a sheet that admits how little it covers
 
 **Track: the forge.** Stages 3 and 4 of [FORGING.md](FORGING.md). Nothing in `src/client/`

@@ -401,6 +401,53 @@ is the *only* place its shader sway can ever be judged in isolation. That makes 
 better early candidate than its position in the table suggests, and the frames from
 stage 4 will say.
 
+**Built — grass, 2026-09-09.** The frames said grass, and for the reason the paragraph
+above guessed: the bench is a still camera, and grass is the one model in the game whose
+defining property is that it moves. `TuftRecipe`/`TUFT_DEFAULT` and `SwayRecipe`/
+`SWAY_DEFAULT` in `decor.ts`; `GRASS` in `recipes.ts` with eighteen fields, the last two
+of which are `time` and `wind`. Those two are deliberately outside `recipe()`, because
+they are the weather and not the tuft — the printed block is a thing you paste back into
+`decor.ts`, and the weather is not in that file. Scrubbing `time` is what makes the sway
+judgeable at all, and at `t = 0` both sines are zero, so the bench opens at `time = 1`
+rather than on a dead-straight tuft it would be easy to mistake for a broken shader.
+
+Three things had to be true before a tuft would stand on the bench at all. The sway lives
+inside `#ifdef USE_INSTANCING` and reads `instanceMatrix[3].xyz`, so a plain `Mesh`
+compiles without the branch and stands perfectly still — the bench builds an
+`InstancedMesh` of count 1. The height and girth of a tuft are drawn from `hash`, which is
+now exported, because a bench that drew its own random spread would show a spread the map
+does not have. And a number spliced into GLSL as `${1}` is an int, so `uTime * 1` fails
+the whole compile: every injected number goes through a one-line `glsl()` that guarantees
+a decimal point, and a test reads `sin(uTime * 2.0 + phase)` out of the compiled source to
+hold it.
+
+Reading the frames back found two faults in the bench rather than in the grass, both of
+which only a small model could have exposed. Eighteen knobs overflowed the panel, so the
+single-tuft frame and the twelve-grid frame captured different slices of it — and a knob
+that is not in the frame breaks the one thing stage 4 stamps a frame with, which is every
+number that made the model standing in it. The panel is now 320px with label, slider and
+box on one line. And the grid's gap was a flat 0.45 m, which is a fifth of a tree and five
+times a tuft, so twelve tufts came back as twelve specks in an acre of turf while twelve
+stones filled the frame; the gap is now a fraction of the widest model. A bench that has to
+hold forty-two models between a pebble and a longhouse cannot space them in metres.
+
+The drill found one thing the code did not, and it is the lesson for the other thirty-seven
+families. `tipReach` was mutated 0.45 to 0.46 and every test stayed green: the golden digests
+are positions only — correctly, because occlusion writes vertex colours — and `tipReach` writes
+nothing but colour. A knob had been exposed with nothing holding it, which is exactly the risk
+stated below in one line. So the rule for every family after this one is that the golden is the
+floor and not the ceiling: whatever a recipe changes that is *not* a vertex position needs its
+own pin, written before the knob is exposed. The tuft's root-to-tip ramp is now five exact
+numbers, one per blade, and the gust is read back out of the compiled shader. Bounds were tried
+first for the ramp and the same mutation walked straight through them.
+
+What the sway frames say about the grass itself, for a later round rather than this one:
+the phase is a function of where a tuft stands, so every blade in one tuft shares it and a
+tuft tilts as a rigid fan rather than rustling. At distance in a field that reads fine,
+because neighbouring tufts stand in different places. Alone on the bench it is the honest
+limit of what the shader does, and giving a blade its own phase would mean a new geometry
+attribute and a change to how the game's grass looks — which is a brief, not a bug.
+
 ## The order of work
 
 Stages 0, 1 and 2 are one piece of work and should be done together; a recipe with

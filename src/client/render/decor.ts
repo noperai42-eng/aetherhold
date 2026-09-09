@@ -118,13 +118,13 @@ const R2_Z = 0.5698402909;
  * its length, which costs no triangles at all. The root is untwisted (see
  * `tuftGeometry`) so it stays flat on the ground when the blade is leaned.
  */
-const TUFT_BLADES = [
+const TUFT_BLADES: readonly TuftBlade[] = [
   { width: 0.2, len: 1, lean: 0, bend: 0.24, turn: 0.85, twist: 0.5, rx: 0.0451, rz: 0.0396 },
   { width: 0.18, len: 0.88, lean: 0.2, bend: 0.3, turn: 1.35, twist: -0.6, rx: 0.1366, rz: 0.0307 },
   { width: 0.21, len: 0.74, lean: 0.34, bend: 0.36, turn: 0.25, twist: 0.7, rx: 0.0322, rz: 0.126 },
   { width: 0.19, len: 0.63, lean: 0.44, bend: 0.4, turn: 2.85, twist: -0.45, rx: 0.0316, rz: -0.1054 },
   { width: 0.23, len: 0.52, lean: 0.52, bend: 0.42, turn: 4.2, twist: 0.6, rx: -0.0784, rz: -0.0441 },
-] as const;
+];
 /** Height rows in a blade: root, waist, tip. Three triangles, and five of those in a tuft. */
 const BLADE_SEGMENTS = 2;
 /** Fraction of bare cells that get a stone. Sparse on purpose — scatter, not gravel. */
@@ -137,6 +137,83 @@ const STONE_CHANCE = 0.16;
  */
 const TUFT_HEIGHT = 0.3;
 const TUFT_HEIGHT_SPREAD = 0.1;
+
+/** One leaf of a tuft, written at its own full length. See `TUFT_BLADES`. */
+export interface TuftBlade {
+  /** Across at the roots, before the quadratic taper. */
+  readonly width: number;
+  /** Length as a fraction of the tallest blade's, which is the tuft's own height. */
+  readonly len: number;
+  /** Tipped off the vertical about its root, in radians. */
+  readonly lean: number;
+  /** How far the tip bows forward, in the blade's own units. */
+  readonly bend: number;
+  /** Which way round the clump it comes up and leans, in radians. */
+  readonly turn: number;
+  /** How far the leaf is wrung about its own length, in radians at the tip. */
+  readonly twist: number;
+  /** Where its root sits, off the middle of the clump. */
+  readonly rx: number;
+  readonly rz: number;
+}
+
+/**
+ * Every number a tuft is made of, in one place a bench can hand back.
+ *
+ * The table above is the shape and the four numbers under it are the spread — a
+ * field of tufts is a field because no two of them are the same height or the
+ * same width, and those are the numbers that decide by how much. Stage 5 of
+ * [FORGING.md](../../../FORGING.md), which is where the argument for lifting
+ * them out of the middle of a render file is written down.
+ *
+ * What is deliberately *not* here is anything about the field rather than the
+ * clump: how many tufts a cell gets, what wear costs them, where on the cell
+ * they stand. The bench shows one model, and a number that only means something
+ * across a thousand of them cannot be judged on it.
+ */
+export interface TuftRecipe {
+  readonly blades: readonly TuftBlade[];
+  /** Height rows in a blade. Two is root, waist, tip. */
+  readonly segments: number;
+  /**
+   * How much of the root-to-tip gradient a full-length blade travels.
+   *
+   * Written as `0.55 + 0.45 * len` before it was a field, and the base is now
+   * `1 - tipReach` rather than a number of its own — which is not a tightening
+   * of the recipe but a statement of what the pair already meant. The comment
+   * over `tuftGeometry` says it: an outer blade tops out a little short of the
+   * upright one's colour, the way the outer leaves of a clump sit in the shade
+   * of the middle. A full-length blade landing exactly on the tip colour is the
+   * fixed point that sentence is measured from.
+   */
+  readonly tipReach: number;
+  /**
+   * How much of a blade's true normal survives being tipped towards the sky.
+   *
+   * Zero is a leaf lit exactly like the turf under it; one is halfway back to
+   * the horizontal normal a strip really has, which under a high sun is a dark
+   * chevron on a bright field.
+   */
+  readonly skyward: number;
+  /** The tallest tuft on the map, and how far either side of it the rest fall. */
+  readonly height: number;
+  readonly heightSpread: number;
+  /** Girth as a proportion of height: never past `girthBase + girthSpread`. */
+  readonly girthBase: number;
+  readonly girthSpread: number;
+}
+
+/** The tuft the colony's turf is covered in. */
+export const TUFT_DEFAULT: TuftRecipe = {
+  blades: TUFT_BLADES,
+  segments: BLADE_SEGMENTS,
+  tipReach: 0.45,
+  skyward: 0.5,
+  height: TUFT_HEIGHT,
+  heightSpread: TUFT_HEIGHT_SPREAD,
+  girthBase: 0.55,
+  girthSpread: 0.35,
+};
 /**
  * How much of a tuft is left where the turf runs out.
  *
@@ -177,8 +254,8 @@ const WEAR_COST_PER_TUFT = 0.075;
  * baked into the geometry as vertex colours (see `tuftGeometry`); the instance
  * colour only tints the whole tuft a little either way.
  */
-const GRASS_ROOT = new THREE.Color(0x4c8a3a);
-const GRASS_TIP = new THREE.Color(0x7fb050);
+export const GRASS_ROOT = new THREE.Color(0x4c8a3a);
+export const GRASS_TIP = new THREE.Color(0x7fb050);
 
 /**
  * A loose stone's colour. Not `TERRAIN_COLOR.rock`, deliberately: that navy grey
@@ -448,7 +525,7 @@ export class DecorView {
             // Where the ground around the cell has gone bare, the clump goes with
             // it: shorter, thinner, and the later tufts nearly gone.
             const left = 1 - wear * (WEAR_COST + n * WEAR_COST_PER_TUFT);
-            const h = (TUFT_HEIGHT + (d - 0.5) * 2 * TUFT_HEIGHT_SPREAD) * left;
+            const h = (TUFT_DEFAULT.height + (d - 0.5) * 2 * TUFT_DEFAULT.heightSpread) * left;
             // Girth as a proportion of height, not a number of its own.
             //
             // These were two independent hashes, and the worst of the pairings
@@ -462,7 +539,7 @@ export class DecorView {
             // to the height the ratio can never pass 0.9, so nothing reaches
             // further than 1.49 times its own height, and a tall tuft is a wide
             // one — which is also what a clump of grass does.
-            const girth = (0.55 + a * 0.35) * h;
+            const girth = (TUFT_DEFAULT.girthBase + a * TUFT_DEFAULT.girthSpread) * h;
             s.set(girth, h, girth);
             m.compose(v, q, s);
             this.tufts.setMatrixAt(tuft, m);
@@ -637,15 +714,71 @@ export function scatterChecksum(world: World): number {
 }
 
 /**
+ * Every number in the gust, in one place a bench can hand back.
+ *
+ * These eight lived inside the shader string, which is the one place in this
+ * repo where a constant could not be seen, could not be typed and could not be
+ * changed without a reload — and they describe motion, which no still frame of
+ * the game shows at all. [FORGING.md](../../../FORGING.md) names grass as the
+ * special case for exactly this reason: a tuft cannot be exported to `.glb`, so
+ * the bench is the only place its sway will ever be judged in isolation.
+ *
+ * Two sines rather than one. A single sine is a metronome and the eye finds it
+ * within a second; a slower, shallower one beating against it is what makes the
+ * field look like weather instead of like a loop.
+ */
+export interface SwayRecipe {
+  /** How far the gust carries a blade at full height, in the tuft's own units. */
+  readonly gust: number;
+  /** How fast that gust beats. */
+  readonly gustRate: number;
+  /** The slower second sine, which is what stops the first reading as a metronome. */
+  readonly ripple: number;
+  readonly rippleRate: number;
+  /** How much harder the second sine is phased across the field than the first. */
+  readonly rippleSkew: number;
+  /** How the phase is read off where a tuft stands, so a gust crosses the field. */
+  readonly phaseX: number;
+  readonly phaseZ: number;
+  /** How much of the gust goes sideways as well as along it. */
+  readonly lateral: number;
+}
+
+/** The wind the colony's grass has been leaning in for eleven rounds of frames. */
+export const SWAY_DEFAULT: SwayRecipe = {
+  gust: 0.22,
+  gustRate: 1.5,
+  ripple: 0.12,
+  rippleRate: 0.7,
+  rippleSkew: 1.9,
+  phaseX: 0.6,
+  phaseZ: 0.85,
+  lateral: 0.55,
+};
+
+/**
+ * A number as GLSL will read it.
+ *
+ * `${1}` in a shader string is an int, and `uTime * 1` is a type error that
+ * fails the whole compile with a message about operands — so every number
+ * spliced into the source below has to arrive with a decimal point on it. This
+ * is the one landmine in making the gust a recipe rather than a literal.
+ */
+function glsl(n: number): string {
+  return Number.isInteger(n) ? n.toFixed(1) : String(n);
+}
+
+/**
  * Lambert, plus a sway that grows with distance from the roots.
  *
  * Wind belongs in the vertex shader rather than in the instance matrices: it has
  * to move every blade every frame, and rewriting a few thousand matrices on the
  * CPU each frame to do it would cost more than the grass is worth.
  */
-function grassMaterial(
+export function grassMaterial(
   time: { value: number },
   wind: { value: number },
+  sway: SwayRecipe = SWAY_DEFAULT,
 ): THREE.MeshLambertMaterial {
   // Two-sided because a blade is a strip with no thickness: a possessed colonist
   // walking round a tuft would otherwise see it wink out for half the turn.
@@ -683,11 +816,12 @@ function grassMaterial(
           // Phase by where the blade stands, so the gust crosses the field
           // instead of every tuft twitching in unison.
           vec3 tuftPos = instanceMatrix[3].xyz;
-          float phase = tuftPos.x * 0.6 + tuftPos.z * 0.85;
-          float gust = (sin(uTime * 1.5 + phase) * 0.22 + sin(uTime * 0.7 + phase * 1.9) * 0.12) * uWind;
+          float phase = tuftPos.x * ${glsl(sway.phaseX)} + tuftPos.z * ${glsl(sway.phaseZ)};
+          float gust = (sin(uTime * ${glsl(sway.gustRate)} + phase) * ${glsl(sway.gust)}
+            + sin(uTime * ${glsl(sway.rippleRate)} + phase * ${glsl(sway.rippleSkew)}) * ${glsl(sway.ripple)}) * uWind;
           float bend = max(transformed.y, 0.0);
           transformed.x += gust * bend;
-          transformed.z += gust * 0.55 * bend;
+          transformed.z += gust * ${glsl(sway.lateral)} * bend;
         #endif
         `,
       );
@@ -849,18 +983,22 @@ function twistBlade(geo: THREE.BufferGeometry, twist: number): void {
  * blades are wrung, keeping the top of one leaf from shading like its own root,
  * which is the whole reason the twist is there.
  */
-function tuftGeometry(root: THREE.Color, tip: THREE.Color): THREE.BufferGeometry {
+export function tuftGeometry(
+  root: THREE.Color,
+  tip: THREE.Color,
+  r: TuftRecipe = TUFT_DEFAULT,
+): THREE.BufferGeometry {
   const parts: THREE.BufferGeometry[] = [];
   const c = new THREE.Color();
-  for (const shape of TUFT_BLADES) {
-    const blade = bladeGeometry(shape.width, BLADE_SEGMENTS, shape.bend);
+  for (const shape of r.blades) {
+    const blade = bladeGeometry(shape.width, r.segments, shape.bend);
     twistBlade(blade, shape.twist);
     // Painted while the blade is still upright and one unit long, which is the
     // only moment its own y *is* how far along it a vertex sits.
     const bp = blade.getAttribute('position') as THREE.BufferAttribute;
     const bc = new Float32Array(bp.count * 3);
     for (let i = 0; i < bp.count; i++) {
-      c.copy(root).lerp(tip, Math.sqrt(bp.getY(i)) * (0.55 + 0.45 * shape.len));
+      c.copy(root).lerp(tip, Math.sqrt(bp.getY(i)) * (1 - r.tipReach + r.tipReach * shape.len));
       bc[i * 3] = c.r;
       bc[i * 3 + 1] = c.g;
       bc[i * 3 + 2] = c.b;
@@ -886,7 +1024,7 @@ function tuftGeometry(root: THREE.Color, tip: THREE.Color): THREE.BufferGeometry
   const nrm = geo.getAttribute('normal') as THREE.BufferAttribute;
   const n = new THREE.Vector3();
   for (let i = 0; i < nrm.count; i++) {
-    n.fromBufferAttribute(nrm, i).multiplyScalar(0.5);
+    n.fromBufferAttribute(nrm, i).multiplyScalar(r.skyward);
     n.y += 1;
     n.normalize();
     nrm.setXYZ(i, n.x, n.y, n.z);
@@ -974,7 +1112,15 @@ export function lumpyGeometry(base: THREE.BufferGeometry, amount: number, seed: 
   return geo;
 }
 
-function hash(x: number, y: number, salt: number): number {
+/**
+ * The scatter's own value noise: the same cell and the same salt give the same
+ * number on every machine and in every session, which is what makes placement a
+ * pure function of the cell rather than of when the view was built.
+ *
+ * Exported because the bench seeds a tuft with it. A bench that drew its own
+ * random heights would show you a spread the map does not have.
+ */
+export function hash(x: number, y: number, salt: number): number {
   const n = Math.sin(x * 127.1 + y * 311.7 + salt * 74.7) * 43758.5453;
   return n - Math.floor(n);
 }

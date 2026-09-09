@@ -9,12 +9,12 @@
  * them the way the renderer does. A bench that built its own trees would be a
  * bench that agrees with the game right up until somebody changed one of them.
  *
- * Only numbers are knobs here. A recipe also carries lathe profiles — lists of
- * radius-and-height pairs — and those are not draggable on a slider; they are
- * what the JSON paste in stage 3 of [FORGING.md](../../FORGING.md) is for. They
- * are still validated, because a profile that runs downhill is the one way to
- * hand `lathe` something it cannot turn, and validating a field nobody can yet
- * edit is cheaper than finding out later that nobody ever checked it.
+ * Only numbers are knobs here. A recipe also carries tables — the tree's lathe
+ * profiles, the tuft's five blades — and a table is not draggable on a slider;
+ * it is what the JSON paste in stage 3 of [FORGING.md](../../FORGING.md) is for.
+ * They are still validated, because a profile that runs downhill is the one way
+ * to hand `lathe` something it cannot turn, and validating a field nobody can
+ * yet edit is cheaper than finding out later that nobody ever checked it.
  */
 
 import * as THREE from 'three';
@@ -28,11 +28,20 @@ import {
   type TreeRecipe,
 } from '../client/render/buildings';
 import {
+  GRASS_ROOT,
+  GRASS_TIP,
   STONE_COLOR,
   STONE_DEFAULT,
   STONE_ROUGHNESS,
+  SWAY_DEFAULT,
+  TUFT_DEFAULT,
+  grassMaterial,
+  hash,
   stoneGeometry,
+  tuftGeometry,
   type StoneRecipe,
+  type SwayRecipe,
+  type TuftRecipe,
 } from '../client/render/decor';
 import { colorOf, occludeParts } from '../client/render/occlusion';
 
@@ -55,7 +64,9 @@ export type Knobs = Readonly<Record<string, number>>;
  *
  * A bench entry takes its material from here rather than making one, so a bench
  * tree is the colour, the roughness and the shadow flags of the tree in the
- * valley. `forge.ts` gathers it; the two entries below are the only readers.
+ * valley. `forge.ts` gathers it off a `BuildingsView`, which is why the grass
+ * entry below is handed an empty-looking map and makes its own: a tuft belongs
+ * to `DecorView` and was never in these pools.
  */
 export type Prototypes = ReadonlyMap<string, THREE.Mesh>;
 
@@ -90,7 +101,7 @@ export interface Bench {
    * the sliders prints, so what it offers is a recipe you can put back rather
    * than a list of the eleven fields the page knows how to show you.
    */
-  recipe(k: Knobs): StoneRecipe | TreeRecipe;
+  recipe(k: Knobs): StoneRecipe | TreeRecipe | GrassRecipe;
   /** The model, standing on y = 0 and facing the way the game draws it. */
   build(k: Knobs, protos: Prototypes): THREE.Group;
 }
@@ -311,7 +322,175 @@ const TREE: Bench = {
   },
 };
 
-export const BENCHES: readonly Bench[] = [STONE, TREE];
+/**
+ * Grass is two recipes, and that is why this is a pair rather than one object.
+ *
+ * A tuft's shape is geometry and its sway is a material, and the two live in
+ * `decor.ts` as two default tables — `TUFT_DEFAULT` and `SWAY_DEFAULT` — because
+ * the colony builds one once and compiles the other once. The paste block prints
+ * both under the names they go back to.
+ */
+export interface GrassRecipe {
+  readonly tuft: TuftRecipe;
+  readonly sway: SwayRecipe;
+}
+
+/**
+ * Eighteen numbers, of which two are not the recipe at all.
+ *
+ * `time` and `wind` are the weather rather than the tuft, and they are on the
+ * page for the reason [FORGING.md](../../FORGING.md) singles grass out for: a
+ * blade of grass cannot be exported to `.glb` and does not sit still, so the
+ * eight numbers in the gust have never been visible anywhere. A slider that
+ * scrubs time is the only way to look at them. They stay out of `recipe()`,
+ * because what you paste back into `decor.ts` is a tuft and a wind, not an
+ * afternoon.
+ *
+ * The blade table is not here either, for the same reason the tree's profiles
+ * are not: five rows of eight numbers is a table, not a slider. It rides in the
+ * paste.
+ */
+const GRASS_FIELDS: readonly Field[] = [
+  { key: 'seed', label: 'seed', min: 0, max: 999, step: 1, whole: true },
+  { key: 'segments', label: 'blade row', min: 1, max: 6, step: 1, whole: true },
+  { key: 'tipReach', label: 'tip reach', min: 0, max: 1, step: 0.01 },
+  { key: 'skyward', label: 'skyward normal', min: 0, max: 2, step: 0.01 },
+  { key: 'height', label: 'height', min: 0.05, max: 1.2, step: 0.01 },
+  { key: 'heightSpread', label: 'height spread', min: 0, max: 0.6, step: 0.005 },
+  { key: 'girthBase', label: 'girth', min: 0.05, max: 1.5, step: 0.01 },
+  { key: 'girthSpread', label: 'girth spread', min: 0, max: 1, step: 0.01 },
+  { key: 'gust', label: 'gust', min: 0, max: 1, step: 0.005 },
+  { key: 'gustRate', label: 'gust rate', min: 0, max: 6, step: 0.01 },
+  { key: 'ripple', label: 'ripple', min: 0, max: 1, step: 0.005 },
+  { key: 'rippleRate', label: 'ripple rate', min: 0, max: 6, step: 0.01 },
+  { key: 'rippleSkew', label: 'ripple skew', min: 0, max: 4, step: 0.01 },
+  { key: 'phaseX', label: 'phase east', min: 0, max: 3, step: 0.01 },
+  { key: 'phaseZ', label: 'phase south', min: 0, max: 3, step: 0.01 },
+  { key: 'lateral', label: 'lateral', min: 0, max: 2, step: 0.01 },
+  { key: 'time', label: 'time', min: 0, max: 12, step: 0.05 },
+  { key: 'wind', label: 'wind', min: 0, max: 3, step: 0.01 },
+];
+
+function grassRecipe(k: Knobs): GrassRecipe {
+  return {
+    tuft: {
+      ...TUFT_DEFAULT,
+      segments: k.segments!,
+      tipReach: k.tipReach!,
+      skyward: k.skyward!,
+      height: k.height!,
+      heightSpread: k.heightSpread!,
+      girthBase: k.girthBase!,
+      girthSpread: k.girthSpread!,
+    },
+    sway: {
+      gust: k.gust!,
+      gustRate: k.gustRate!,
+      ripple: k.ripple!,
+      rippleRate: k.rippleRate!,
+      rippleSkew: k.rippleSkew!,
+      phaseX: k.phaseX!,
+      phaseZ: k.phaseZ!,
+      lateral: k.lateral!,
+    },
+  };
+}
+
+const GRASS: Bench = {
+  name: 'grass',
+  title: 'Grass tuft',
+  note: 'Five leaves of five lengths on five bearings, wrung about their own length. Scrub time to see the gust; every tuft in a grid takes the same one, because the phase is a function of where a tuft stands and nothing stands anywhere here.',
+  fields: GRASS_FIELDS,
+  defaults: {
+    seed: 0,
+    segments: TUFT_DEFAULT.segments,
+    tipReach: TUFT_DEFAULT.tipReach,
+    skyward: TUFT_DEFAULT.skyward,
+    height: TUFT_DEFAULT.height,
+    heightSpread: TUFT_DEFAULT.heightSpread,
+    girthBase: TUFT_DEFAULT.girthBase,
+    girthSpread: TUFT_DEFAULT.girthSpread,
+    ...SWAY_DEFAULT,
+    // One second in, which is near the top of the first gust. Zero is the
+    // obvious default and it is the wrong one: at t = 0 both sines are zero, so
+    // the bench would open on a dead-straight tuft and the eight numbers under
+    // it would look like they did nothing.
+    time: 1,
+    // The still day `DecorView` starts its uniform on.
+    wind: 1,
+  },
+  seedKey: 'seed',
+  // A whole cell along. The seed is fed to the scatter's own hash as an x, and
+  // two neighbouring cells are already two unrelated draws.
+  seedStep: 1,
+  problems(k) {
+    const out = boundsProblems(GRASS_FIELDS, k);
+    const blades = grassRecipe(k).tuft.blades;
+    // The one structural rule, and it is the geometry's: `mergeGeometries` of
+    // nothing is null, and a blade with no length or no width is a row of
+    // vertices on top of each other that `computeVertexNormals` cannot give a
+    // direction to. Nothing here rules on taste — a blade leaning past forty-
+    // five degrees is lying down, which the comments in `decor.ts` argue about
+    // at length and which is exactly the kind of judgement the bench exists to
+    // let somebody make with their eyes.
+    if (!blades.length) out.push('a tuft with no blades in it is bare ground');
+    blades.forEach((b, i) => {
+      if (b.len <= 0) out.push(`blade ${i + 1} is ${b.len} long`);
+      if (b.width <= 0) out.push(`blade ${i + 1} is ${b.width} across`);
+    });
+    return out;
+  },
+  recipe: grassRecipe,
+  build(k, _protos) {
+    const r = grassRecipe(k);
+    // The one bench entry that makes its own material instead of reading one off
+    // the renderer's pools, and the reason is the pools: `prototypes()` walks a
+    // `BuildingsView`, and grass belongs to `DecorView`. `grassMaterial` *is* the
+    // renderer's own factory, and it is the thing being shaped here anyway — the
+    // eight numbers of the gust are compiled into the shader it returns.
+    const mesh = new THREE.InstancedMesh(
+      tuftGeometry(GRASS_ROOT, GRASS_TIP, r.tuft),
+      grassMaterial({ value: k.time! }, { value: k.wind! }, r.sway),
+      1,
+    );
+    mesh.name = 'decor.tuft';
+    // Instanced with a count of one, and not a plain `Mesh`, because the sway is
+    // inside `#ifdef USE_INSTANCING` — it reads which tuft it is off the instance
+    // matrix. A plain mesh compiles without the branch and stands perfectly
+    // still, which would have been a bench that quietly answered the one question
+    // it was built to answer with "there is no wind".
+    mesh.castShadow = false;
+    mesh.receiveShadow = false;
+
+    // The height and girth the field would deal this seed, by the field's own
+    // arithmetic and the field's own hash, on open turf where wear takes nothing.
+    // The instance's hashed yaw and tip are left off for the reason the stone's
+    // are: a shape that arrives at a different angle every time cannot be
+    // compared with the one before it. So is the per-instance tint, which leaves
+    // the median tuft — the root-to-tip gradient the geometry carries, and no
+    // season over it.
+    const girthDraw = hash(k.seed!, 0, 1.7);
+    const heightDraw = hash(k.seed!, 0, 9.7);
+    const h = r.tuft.height + (heightDraw - 0.5) * 2 * r.tuft.heightSpread;
+    const girth = (r.tuft.girthBase + girthDraw * r.tuft.girthSpread) * h;
+    mesh.setMatrixAt(
+      0,
+      new THREE.Matrix4().compose(
+        new THREE.Vector3(),
+        new THREE.Quaternion(),
+        new THREE.Vector3(girth, h, girth),
+      ),
+    );
+    mesh.instanceMatrix.needsUpdate = true;
+
+    const group = new THREE.Group();
+    group.name = 'grass';
+    group.add(mesh);
+    return group;
+  },
+};
+
+export const BENCHES: readonly Bench[] = [STONE, GRASS, TREE];
 
 export function benchByName(name: string): Bench | null {
   return BENCHES.find((b) => b.name === name) ?? null;

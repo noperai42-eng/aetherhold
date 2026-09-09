@@ -41,10 +41,27 @@ import {
   treeTrunkGeometry,
   BuildingsView,
 } from '../src/client/render/buildings';
-import { STONE_DEFAULT, stoneGeometry, type StoneRecipe } from '../src/client/render/decor';
+import {
+  GRASS_ROOT,
+  GRASS_TIP,
+  STONE_DEFAULT,
+  SWAY_DEFAULT,
+  TUFT_DEFAULT,
+  stoneGeometry,
+  tuftGeometry,
+  type StoneRecipe,
+  type TuftBlade,
+} from '../src/client/render/decor';
 import { knobsFromSearch, recipeText, searchOf } from '../src/forge/address';
 import { benchWorld, forge, forgeSeeds, prototypes } from '../src/forge/forge';
-import { BENCHES, benchByName, type Bench, type Knobs, type Prototypes } from '../src/forge/recipes';
+import {
+  BENCHES,
+  benchByName,
+  type Bench,
+  type GrassRecipe,
+  type Knobs,
+  type Prototypes,
+} from '../src/forge/recipes';
 
 /**
  * What a geometry is, in one line that changes when the shape does.
@@ -85,6 +102,7 @@ function digest(g: THREE.BufferGeometry): string {
  */
 const GOLDEN: Readonly<Record<string, string>> = {
   'decor.stone': 'verts=60 idx=0 hash=eb8923cb box=[-0.4718,-0.5338,-0.5519..0.4624,0.3738,0.4505]',
+  'decor.tuft': 'verts=25 idx=45 hash=f8d35193 box=[-0.5004,0,-0.5275..0.4829,1,0.5088]',
   'tree.trunk': 'verts=168 idx=840 hash=3a1a8a56 box=[-0.3875,0,-0.3664..0.4099,3.9,0.4377]',
   'tree.lower': 'verts=200 idx=1008 hash=3fd94ea9 box=[-0.9539,1.6055,-0.855..0.9271,2.82,1.034]',
   'tree.mid': 'verts=200 idx=1008 hash=d91c6621 box=[-0.8096,2.4255,-0.8127..0.8066,3.48,0.7581]',
@@ -100,6 +118,7 @@ const GOLDEN: Readonly<Record<string, string>> = {
 function fromDefaults(): Map<string, THREE.BufferGeometry> {
   const out = new Map<string, THREE.BufferGeometry>();
   out.set('decor.stone', stoneGeometry(STONE_DEFAULT));
+  out.set('decor.tuft', tuftGeometry(GRASS_ROOT, GRASS_TIP, TUFT_DEFAULT));
   out.set('tree.trunk', treeTrunkGeometry(TREE_DEFAULT));
   for (const [variant, suffix] of [
     [0, ''],
@@ -127,11 +146,61 @@ describe('the default recipes build the model the colony already had', () => {
     const again = fromDefaults();
     for (const key of Object.keys(GOLDEN)) expect(digest(again.get(key)!)).toBe(digest(built.get(key)!));
   });
+
+  /**
+   * How far along the root-to-tip ramp each blade of a tuft actually gets.
+   *
+   * The digest is positions only, deliberately — occlusion writes vertex colours
+   * elsewhere in `decor.ts`, and a retuned shadow must not read as a moved
+   * model. That leaves one thing about a tuft no golden above can see, which is
+   * its colour, and `tipReach` is a knob the bench now turns with nothing
+   * holding it. That is the risk FORGING.md states in a line: parameterising a
+   * constant is a chance to change it by accident. Found by mutating the default
+   * and watching all fifty-two tests stay green.
+   *
+   * The ramp is `root.lerp(tip, a)`, so `a` comes back out of whichever channel
+   * the two colours differ in most, and for grass that is green.
+   */
+  function tipward(geo: THREE.BufferGeometry, blades: number): number[] {
+    const col = geo.getAttribute('color') as THREE.BufferAttribute;
+    expect(col.count % blades).toBe(0);
+    const per = col.count / blades;
+    const span = GRASS_TIP.g - GRASS_ROOT.g;
+    return Array.from({ length: blades }, (_, b) => {
+      let most = 0;
+      for (let i = b * per; i < (b + 1) * per; i++) {
+        most = Math.max(most, (col.getY(i) - GRASS_ROOT.g) / span);
+      }
+      return most;
+    });
+  }
+
+  it('runs the tuft colour ramp out with the length of the blade it is on', () => {
+    const reach = tipward(tuftGeometry(GRASS_ROOT, GRASS_TIP, TUFT_DEFAULT), TUFT_DEFAULT.blades.length);
+    // Five numbers rather than five bounds, and for the same reason the
+    // positions above are a hash and not a bounding box: a loose assertion is
+    // one a wrong default walks straight through. Written out, this is a
+    // golden of the ramp — the leader reaches the tip colour outright and each
+    // shorter leaf stops further back, so a tuft has a dark middle rather than
+    // reading as one flat fan of green. It goes red for a changed `tipReach`
+    // and for a changed blade length alike, which is correct: both of them are
+    // the same statement about a tuft.
+    expect(reach.map((a) => Math.round(a * 1e4) / 1e4)).toEqual([1, 0.946, 0.883, 0.8335, 0.784]);
+  });
+
+  it('paints every blade of a tuft to the same tip when tip reach is turned off', () => {
+    const flat = tipward(
+      tuftGeometry(GRASS_ROOT, GRASS_TIP, { ...TUFT_DEFAULT, tipReach: 0 }),
+      TUFT_DEFAULT.blades.length,
+    );
+    for (const a of flat) expect(a).toBeCloseTo(1, 3);
+  });
 });
 
 describe('a recipe is checked before it is built', () => {
   const stone = benchByName('stone')!;
   const tree = benchByName('tree')!;
+  const grass = benchByName('grass')!;
 
   it('passes the defaults of every bench', () => {
     for (const b of BENCHES) expect(b.problems(b.defaults)).toEqual([]);
@@ -204,6 +273,42 @@ describe('a recipe is checked before it is built', () => {
   it('leaves the wood as it found it after bending it', () => {
     expect(tree.problems(tree.defaults)).toEqual([]);
     expect(TREE_DEFAULT.skirts).toHaveLength(TREE_SKIRTS.length);
+  });
+
+  /** The tuft's blade table, reached the same way and put back the same way. */
+  function askWithBlades(blades: readonly TuftBlade[]): string[] {
+    const held = TUFT_DEFAULT.blades;
+    (TUFT_DEFAULT as { blades: readonly TuftBlade[] }).blades = blades;
+    try {
+      return grass.problems(grass.defaults);
+    } finally {
+      (TUFT_DEFAULT as { blades: readonly TuftBlade[] }).blades = held;
+    }
+  }
+
+  it('catches a tuft with no blades in it, which merges to nothing', () => {
+    expect(askWithBlades([])).toContain('a tuft with no blades in it is bare ground');
+  });
+
+  it('catches a blade with no length and one with no width, which have no normal', () => {
+    const first = TUFT_DEFAULT.blades[0]!;
+    const said = askWithBlades([
+      { ...first, len: 0 },
+      { ...first, width: 0 },
+    ]);
+    expect(said).toContain('blade 1 is 0 long');
+    expect(said).toContain('blade 2 is 0 across');
+  });
+
+  it('leaves the turf as it found it after pulling a blade off it', () => {
+    expect(grass.problems(grass.defaults)).toEqual([]);
+    expect(TUFT_DEFAULT.blades).toHaveLength(5);
+  });
+
+  it('refuses a fraction of a blade row, which bladeGeometry would index past', () => {
+    expect(grass.problems({ ...grass.defaults, segments: 1.5 })).toContain(
+      'segments is 1.5, and half a blade row is nothing',
+    );
   });
 });
 
@@ -288,6 +393,67 @@ describe('the bench builds what the page asks it for', () => {
     expect(grid[0]!.group).toBeNull();
   });
 
+  /**
+   * A stand-in for the shader three.js would hand `onBeforeCompile`, carrying
+   * only the three anchors the grass material splices into.
+   *
+   * The gust is eight numbers inside a string, which is the one place in this
+   * repo a constant is invisible to the compiler and to every test. This is how
+   * a test gets to look at it: run the splice by hand and read what came out.
+   */
+  function spliced(mat: THREE.Material): string {
+    const shader = {
+      uniforms: {},
+      vertexShader: 'void main() {\n#include <begin_vertex>\n}',
+      fragmentShader: 'void main() {\n#include <normal_fragment_begin>\n}',
+    };
+    (mat.onBeforeCompile as unknown as (s: typeof shader) => void)(shader);
+    return shader.vertexShader;
+  }
+
+  it('draws a tuft instanced, because the sway lives inside USE_INSTANCING', () => {
+    const grass = benchByName('grass')!;
+    // A plain mesh compiles without the branch and stands perfectly still, which
+    // is a bench that answers "what does the wind do" with "there is no wind".
+    const mesh = grass.build(grass.defaults, protos).children[0] as THREE.InstancedMesh;
+    expect(mesh.isInstancedMesh).toBe(true);
+    expect(mesh.count).toBe(1);
+  });
+
+  it('needs no prototype from the renderer, because grass was never in those pools', () => {
+    const grass = benchByName('grass')!;
+    // `prototypes()` walks a `BuildingsView` and a tuft belongs to `DecorView`.
+    // The empty map is the honest statement of that, and it has to build anyway.
+    expect(() => grass.build(grass.defaults, new Map())).not.toThrow();
+  });
+
+  it('compiles the gust into the shader with the decimal point GLSL needs', () => {
+    const grass = benchByName('grass')!;
+    // `uTime * 2` is an int times a float and fails the whole compile with a
+    // message about operands, so a whole number has to arrive as `2.0`.
+    const mesh = grass.build({ ...grass.defaults, gustRate: 2, lateral: 0.4 }, protos)
+      .children[0] as THREE.InstancedMesh;
+    const src = spliced(mesh.material as THREE.Material);
+    expect(src).toContain('sin(uTime * 2.0 + phase)');
+    expect(src).toContain('gust * 0.4 * bend');
+  });
+
+  it('deals twelve seeds twelve tufts of twelve heights', () => {
+    const grass = benchByName('grass')!;
+    const seeds = Array.from({ length: 12 }, (_, i) => i * grass.seedStep);
+    const heights = forgeSeeds(grass, grass.defaults, seeds, protos).map((m) => {
+      const mesh = m.group!.children[0] as THREE.InstancedMesh;
+      const mat = new THREE.Matrix4();
+      mesh.getMatrixAt(0, mat);
+      const scale = new THREE.Vector3();
+      mat.decompose(new THREE.Vector3(), new THREE.Quaternion(), scale);
+      // Rounded to a tenth of a millimetre: two tufts that differ by less than
+      // that are the same tuft as far as any frame is concerned.
+      return Math.round(scale.y * 1e4);
+    });
+    expect(new Set(heights).size).toBe(12);
+  });
+
   it('steps the wood’s seeds far enough apart to be different crowns', () => {
     // A crown seeds its four skirts at `i + 1 + crownSeed`, so a step of one
     // would give two neighbours in the grid three of the same four outlines.
@@ -362,6 +528,15 @@ describe('a recipe survives being written down', () => {
     expect(parsed.skirts).toHaveLength(TREE_SKIRTS.length);
   });
 
+  it('keeps a blade of a tuft on the line it belongs to', () => {
+    const grass = benchByName('grass')!;
+    const text = recipeText(grass, grass.defaults);
+    // A blade is a row of a hand-laid table in `decor.ts` and reads as one row.
+    expect(text).toContain('{ "width": 0.2, "len": 1, "lean": 0');
+    const plain = JSON.stringify(grass.recipe(grass.defaults), null, 2);
+    expect(text.split('\n').length).toBeLessThan(plain.split('\n').length / 2);
+  });
+
   it('keeps a profile pair on the line it belongs to', () => {
     const text = recipeText(tree, tree.defaults);
     expect(text).toContain('[0.3, 0]');
@@ -398,6 +573,20 @@ describe('a recipe found on the bench reaches the game', () => {
     const theirs = treeSkirtGeometries(pasted).map(digest);
     expect(theirs).toEqual(treeSkirtGeometries(mine).map(digest));
     expect(theirs).toHaveLength(TREE_SKIRTS.length);
+  });
+
+  it('builds the same tuft from the pasted block, blade table and all', () => {
+    const grass = benchByName('grass')!;
+    const k = { ...grass.defaults, tipReach: 0.7, skyward: 1.2, segments: 3 };
+    const pasted = JSON.parse(recipeText(grass, k)) as GrassRecipe;
+    const mine = grass.recipe(k) as GrassRecipe;
+    expect(digest(tuftGeometry(GRASS_ROOT, GRASS_TIP, pasted.tuft))).toBe(
+      digest(tuftGeometry(GRASS_ROOT, GRASS_TIP, mine.tuft)),
+    );
+    // The wind comes back too, and untouched: the sliders that moved were the
+    // tuft's, and a paste that quietly renormalised the gust would be a paste
+    // that changed a thing nobody asked it to.
+    expect(pasted.sway).toEqual(SWAY_DEFAULT);
   });
 
   it('builds the same tree from its own address, so a link is the frame', () => {

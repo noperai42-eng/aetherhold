@@ -21,7 +21,16 @@ import { QUALITY, Viewport } from '../client/render/renderer';
 import { SkyView } from '../client/render/sky';
 import type { World } from '../sim/types';
 
-/** How far apart two models in a grid stand, past the width of the wider one. */
+/**
+ * How far apart two models in a grid stand, as a fraction of the wider one.
+ *
+ * A fraction and not a distance, and the first small model on the bench is what
+ * settled it. Written as a flat 0.45 m, the gap was half a stone and a fifth of
+ * a tree — and then five times a grass tuft, so a grid of twelve tufts came back
+ * as twelve specks in an acre of empty turf while the same grid of twelve stones
+ * filled the frame. A bench that has to hold forty-two models between a pebble
+ * and a longhouse cannot space them in metres.
+ */
 const GAP = 0.45;
 /** At most four to a row: past that a grid of twelve is a strip of stamps. */
 const COLUMNS = 4;
@@ -81,7 +90,7 @@ export class Stage {
       box.getSize(size);
       pitch = Math.max(pitch, size.x, size.z);
     }
-    pitch += GAP;
+    pitch *= 1 + GAP;
 
     const cols = Math.min(COLUMNS, models.length);
     const rows = Math.ceil(models.length / cols);
