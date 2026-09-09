@@ -33,9 +33,14 @@ import * as THREE from 'three';
 import { beforeAll, describe, expect, it } from 'vitest';
 
 import {
+  PILE_DEFAULT,
   TREE_DEFAULT,
   TREE_SKIRTS,
+  type PileRecipe,
   type TreeRecipe,
+  stackGeometries,
+  stackLift,
+  stackSize,
   treeCrown,
   treeSkirtGeometries,
   treeTrunkGeometry,
@@ -52,6 +57,7 @@ import {
   type StoneRecipe,
   type TuftBlade,
 } from '../src/client/render/decor';
+import { RESOURCE_KINDS } from '../src/sim/types';
 import { knobsFromSearch, recipeText, searchOf } from '../src/forge/address';
 import { benchWorld, forge, forgeSeeds, prototypes } from '../src/forge/forge';
 import {
@@ -92,8 +98,15 @@ function digest(g: THREE.BufferGeometry): string {
 
 /**
  * The colony's geometry as it stood the day the recipes were written, measured
- * off the pools the renderer had built. Ten shapes: the loose stone, the bole,
- * and the four skirts of each of the wood's two crowns.
+ * off the pools the renderer had built. Nineteen shapes: the loose stone, the
+ * grass tuft, the bole, the four skirts of each of the wood's two crowns, and
+ * one stack of each of the eight things a settler can carry.
+ *
+ * The eight stacks are here for a different reason from the rest. No slider on
+ * the bench moves a vertex of them — a pile's recipe is where its stacks are
+ * put, not what they are made of — so these lines are not guarding a refactor
+ * that lifted their literals into a table. They are the first thing that has
+ * ever measured `logs()` and `pelt()` at all.
  *
  * A line here changes when the model changes. That is the whole contract — if a
  * change to a builder is meant to change the shape, the new digest is what the
@@ -112,6 +125,14 @@ const GOLDEN: Readonly<Record<string, string>> = {
   'tree.mid.b': 'verts=200 idx=1008 hash=769b49ef box=[-0.8954,2.4255,-0.8572..0.7466,3.48,0.7847]',
   'tree.upper.b': 'verts=200 idx=1008 hash=300664b0 box=[-0.5763,3.0455,-0.6499..0.6655,3.98,0.6312]',
   'tree.top.b': 'verts=200 idx=1008 hash=2cb2ab5 box=[-0.287,3.6549,-0.4649..0.5025,4.5,0.2854]',
+  'stack.wood': 'verts=720 idx=0 hash=625fbd59 box=[-0.2725,0,-0.2904..0.2725,0.337,0.2922]',
+  'stack.steel': 'verts=1944 idx=0 hash=2752e575 box=[-0.2639,0,-0.2719..0.2639,0.3,0.2719]',
+  'stack.rawfood': 'verts=1776 idx=0 hash=9fe9380d box=[-0.3,0,-0.3..0.3,0.26,0.3]',
+  'stack.meal': 'verts=1368 idx=0 hash=2c1ed881 box=[-0.3275,0,-0.3..0.3275,0.3225,0.3]',
+  'stack.medicine': 'verts=1476 idx=0 hash=f4443501 box=[-0.28,0,-0.21..0.28,0.3175,0.215]',
+  'stack.hide': 'verts=1284 idx=0 hash=b4381014 box=[-0.3,0,-0.2642..0.2922,0.344,0.2248]',
+  'stack.components': 'verts=1428 idx=0 hash=cd1787f5 box=[-0.29,0,-0.29..0.29,0.29,0.29]',
+  'stack.assemblies': 'verts=432 idx=0 hash=ea4016ed box=[-0.29,0,-0.255..0.29,0.31,0.255]',
 };
 
 /** Every geometry the defaults build, keyed the way the renderer keys its pools. */
@@ -126,6 +147,7 @@ function fromDefaults(): Map<string, THREE.BufferGeometry> {
   ] as const) {
     treeSkirtGeometries(treeCrown(variant)).forEach((g, i) => out.set(`${TREE_SKIRTS[i]}${suffix}`, g));
   }
+  for (const g of stackGeometries().values()) out.set(g.name, g);
   return out;
 }
 
@@ -194,6 +216,97 @@ describe('the default recipes build the model the colony already had', () => {
       TUFT_DEFAULT.blades.length,
     );
     for (const a of flat) expect(a).toBeCloseTo(1, 3);
+  });
+});
+
+/**
+ * The one promise this family makes, and the first thing to check whether it is
+ * kept.
+ *
+ * `STACK_SHAPE` says every one of the eight "is built to top out at about
+ * `PILE_DEFAULT.step`, so a pile of mixed kinds still steps up by the same
+ * amount", and `sync` takes it at its word: it climbs a cell by `step × size ×
+ * lift` whatever is standing there. So the promise is load-bearing — where a
+ * shape is taller than the step, the next stack up sinks into it, and where it
+ * is shorter, the next one floats.
+ *
+ * These are the measurements, not the intention. Eight of them are written out
+ * because that is what makes a drift in `pelt()` land here rather than in a
+ * frame six rounds later, and the band under them is the promise itself, stated
+ * as the number "about" turns out to mean today.
+ */
+describe('the eight stacks keep the height the pile steps by', () => {
+  const tops = new Map<string, number>();
+  for (const [kind, g] of stackGeometries()) {
+    g.computeBoundingBox();
+    tops.set(kind, Math.round(g.boundingBox!.max.y * 1e4) / 1e4);
+  }
+
+  it('stands each of the eight exactly as tall as it stands today', () => {
+    expect(Object.fromEntries(tops)).toEqual({
+      wood: 0.337,
+      steel: 0.3,
+      rawfood: 0.26,
+      meal: 0.3225,
+      medicine: 0.3175,
+      hide: 0.344,
+      components: 0.29,
+      assemblies: 0.31,
+    });
+  });
+
+  it('sits every one of them within a seam’s width of the step', () => {
+    // Fifteen hundredths, because that is where the eight actually sit: hides
+    // are 14.7 per cent over the step and raw food 13.3 per cent under it, and
+    // a band drawn any tighter would be red on the day it was written. It is
+    // not a comfortable number — a stack of hides overlaps the one above it by
+    // an eighth of its height — and the round note that added this says so. The
+    // band is here so that the next shape somebody draws cannot be worse than
+    // the worst one already is without saying so.
+    for (const [kind, top] of tops) {
+      const off = Math.abs(top - PILE_DEFAULT.step) / PILE_DEFAULT.step;
+      expect(off, `${kind} tops out at ${top} against a step of ${PILE_DEFAULT.step}`).toBeLessThanOrEqual(0.15);
+    }
+  });
+
+  it('starts every one of them on the ground, because the pile puts them there', () => {
+    // A stack is placed at the top of the one under it, so a shape whose box
+    // started below zero would be buried by exactly that much on every stack of
+    // the pile but the first.
+    for (const [kind, g] of stackGeometries()) {
+      g.computeBoundingBox();
+      expect(g.boundingBox!.min.y, kind).toBeCloseTo(0, 6);
+    }
+  });
+});
+
+describe('how much is in a stack decides how it is drawn', () => {
+  it('draws a handful small, a full load full, and ramps between the two', () => {
+    // The ramp written out rather than bounded: `small` at five and under, one
+    // at ten and over, and a straight line across the five in between. A
+    // denominator taken from the wrong end of that gap still passes a
+    // monotonic check and fails here.
+    const sizes = [1, 5, 6, 7, 8, 9, 10, 40].map((n) => Math.round(stackSize(n) * 1e4) / 1e4);
+    expect(sizes).toEqual([0.7, 0.7, 0.76, 0.82, 0.88, 0.94, 1, 1]);
+  });
+
+  it('lifts a stack by whole loads and stops lifting at the cap', () => {
+    // The lift is the alternative to a pile that never stops climbing: past a
+    // couple of loads a stack is drawn taller rather than the heap growing. Two
+    // loads is where that stops, so a hundred and a fifty are drawn alike.
+    const lifts = [0, 24, 25, 49, 50, 75, 100].map((n) => Math.round(stackLift(n) * 1e4) / 1e4);
+    expect(lifts).toEqual([1, 1, 1.18, 1.18, 1.36, 1.36, 1.36]);
+  });
+
+  it('reads both off the recipe rather than off a literal', () => {
+    // The whole point of lifting the eight numbers out of `sync`: a bench that
+    // turns a knob has to be able to change what the game would draw. A recipe
+    // that ramped from a tenth over a single unit is a different colony, and
+    // both functions have to say so.
+    const r: PileRecipe = { ...PILE_DEFAULT, small: 0.1, smallTo: 1, fullFrom: 2, liftEvery: 10, liftMax: 1 };
+    expect(stackSize(1, r)).toBeCloseTo(0.1, 6);
+    expect(stackSize(2, r)).toBeCloseTo(1, 6);
+    expect(stackLift(30, r)).toBeCloseTo(1 + PILE_DEFAULT.liftStep, 6);
   });
 });
 
@@ -454,6 +567,71 @@ describe('the bench builds what the page asks it for', () => {
     expect(new Set(heights).size).toBe(12);
   });
 
+  it('stands the eight kinds of stack side by side, and no ninth', () => {
+    const stack = benchByName('stack')!;
+    // The grid is the frame this family is judged in: eight piles in a row is
+    // the only picture in which one of them being taller than the rest is a
+    // thing you can see rather than a number you have to look up.
+    expect(stack.grid).toBe(RESOURCE_KINDS.length);
+    const seeds = Array.from({ length: stack.grid! }, (_, i) => i * stack.seedStep);
+    const grid = forgeSeeds(stack, stack.defaults, seeds, protos);
+    const names = grid.map((m) => (m.group!.children[0] as THREE.Mesh).name);
+    expect(names).toEqual(RESOURCE_KINDS.map((k) => `stack.${k}`));
+  });
+
+  it('gives a bench stack the pool’s own colour and the pile’s own step', () => {
+    const stack = benchByName('stack')!;
+    const made = forge(stack, stack.defaults, protos);
+    expect(made.problems).toEqual([]);
+    const parts = made.group!.children as THREE.Mesh[];
+    expect(parts).toHaveLength(stack.defaults.stacks!);
+    for (const part of parts) {
+      const mat = part.material as THREE.MeshStandardMaterial;
+      // Untinted pools, so the material's colour is the kind's palette entry
+      // outright — and not white, which is what a bench that made its own would
+      // have drawn the logs in.
+      expect(mat.color.getHex()).not.toBe(0xffffff);
+      expect(mat.vertexColors).toBe(true);
+    }
+    // Ten in a stack is full size and no lift, so the step is the step: three
+    // stacks at nought, one and two of it.
+    const ys = parts.map((part) => part.position.y);
+    expect(ys[0]).toBeCloseTo(0, 6);
+    expect(ys[1]).toBeCloseTo(PILE_DEFAULT.step, 6);
+    expect(ys[2]).toBeCloseTo(PILE_DEFAULT.step * 2, 6);
+  });
+
+  it('stops a tall pile at the cap instead of building a tower', () => {
+    const stack = benchByName('stack')!;
+    const made = forge(stack, { ...stack.defaults, stacks: 8 }, protos);
+    const ys = (made.group!.children as THREE.Mesh[]).map((part) => part.position.y);
+    // Three steps of 0.3 reach 0.9, which the cap of 0.75 refuses; from there
+    // every further stack shares the top one's spot rather than the heap
+    // growing past what a settler hauling to it could reach over.
+    expect(ys.slice(0, 3).map((y) => Math.round(y * 1e4) / 1e4)).toEqual([0, 0.3, 0.6]);
+    for (const y of ys.slice(3)) expect(y).toBeCloseTo(PILE_DEFAULT.cap, 6);
+  });
+
+  it('scales a handful of a big load the way the yard would', () => {
+    const stack = benchByName('stack')!;
+    // Fifty is two full loads, so the stack is drawn full width and better than
+    // a third again as tall — the one place the pile arithmetic touches a shape
+    // rather than a position, and the bench has to show it or the knob is
+    // invisible.
+    const made = forge(stack, { ...stack.defaults, amount: 50 }, protos);
+    const one = made.group!.children[0] as THREE.Mesh;
+    expect(one.scale.x).toBeCloseTo(1, 6);
+    expect(one.scale.y).toBeCloseTo(stackLift(50), 6);
+    expect(made.group!.children[1]!.position.y).toBeCloseTo(PILE_DEFAULT.step * stackLift(50), 6);
+  });
+
+  it('refuses a ramp with no width in it, which would scale a stack to nothing finite', () => {
+    const stack = benchByName('stack')!;
+    const made = forge(stack, { ...stack.defaults, smallTo: 10, fullFrom: 10 }, protos);
+    expect(made.group).toBeNull();
+    expect(made.problems.join(' ')).toContain('has no width');
+  });
+
   it('steps the wood’s seeds far enough apart to be different crowns', () => {
     // A crown seeds its four skirts at `i + 1 + crownSeed`, so a step of one
     // would give two neighbours in the grid three of the same four outlines.
@@ -587,6 +765,17 @@ describe('a recipe found on the bench reaches the game', () => {
     // tuft's, and a paste that quietly renormalised the gust would be a paste
     // that changed a thing nobody asked it to.
     expect(pasted.sway).toEqual(SWAY_DEFAULT);
+  });
+
+  it('builds the same pile from the pasted block, cap and all', () => {
+    const stack = benchByName('stack')!;
+    const k = { ...stack.defaults, step: 0.24, cap: 1.1, small: 0.5, smallTo: 3 };
+    const pasted = JSON.parse(recipeText(stack, k)) as PileRecipe;
+    // The load is not in the paste and must not be: `kind`, `amount` and
+    // `stacks` are what was standing on the bench, and what goes back into
+    // `buildings.ts` is a pile's arithmetic, not somebody's afternoon of it.
+    expect(pasted).toEqual(stack.recipe(k));
+    expect(Object.keys(pasted).sort()).toEqual(Object.keys(PILE_DEFAULT).sort());
   });
 
   it('builds the same tree from its own address, so a link is the frame', () => {

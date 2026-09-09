@@ -26,7 +26,7 @@ import { buildingAt, dist } from '../../sim/grid';
 import { BATTERY_CAPACITY, conducts, isElectrical } from '../../sim/power';
 import { hostiles } from '../../sim/world';
 import { yearPhase } from '../../sim/seasons';
-import { terrainAt } from '../../sim/types';
+import { RESOURCE_KINDS, terrainAt } from '../../sim/types';
 import type { Building, BuildingKind, ResourceKind, World } from '../../sim/types';
 
 const TURRET_RANGE = 14;
@@ -1238,9 +1238,9 @@ function bundle(): THREE.BufferGeometry {
  * The shape and finish of a stack of each kind. One geometry per kind's pool,
  * because five of the six used to be the same bevelled cube in different
  * colours, and a yard of cubes is a yard the player has to click to read. Each
- * is built to top out at about `STACK_H`, so a pile of mixed kinds still steps
- * up by the same amount. Steel is the only cold thing here and the only thing
- * with a metalness worth the name; medicine is the one smooth case.
+ * is built to top out at about `PILE_DEFAULT.step`, so a pile of mixed kinds
+ * still steps up by the same amount. Steel is the only cold thing here and the
+ * only thing with a metalness worth the name; medicine is the one smooth case.
  */
 const STACK_SHAPE: Record<ResourceKind, { build: () => THREE.BufferGeometry; rough: number; metal: number }> = {
   wood: { build: logs, rough: 0.9, metal: 0.02 },
@@ -1253,12 +1253,65 @@ const STACK_SHAPE: Record<ResourceKind, { build: () => THREE.BufferGeometry; rou
   assemblies: { build: bundle, rough: 0.6, metal: 0.2 },
 };
 
-/** A stack's own height — the step from one stack in a pile to the next. */
-const STACK_H = 0.3;
-/** How far a pile may climb before further stacks just share the top stack's spot. */
-const PILE_MAX = 0.75;
-/** How big a handful is drawn, against a full load. */
-const STACK_SMALL = 0.7;
+/**
+ * One geometry per kind, named the way the view keys its pools.
+ *
+ * The naming belongs here rather than at the pool because it is the only handle
+ * these eight shapes have. A stone has `stoneGeometry` and a bole has
+ * `treeTrunkGeometry`; a stack of hides had nothing but a private closure in the
+ * middle of a view constructor, which is why the eight were the last family in
+ * the render files that no golden digest covered.
+ */
+export function stackGeometries(): Map<ResourceKind, THREE.BufferGeometry> {
+  const out = new Map<ResourceKind, THREE.BufferGeometry>();
+  for (const k of RESOURCE_KINDS) {
+    const geo = STACK_SHAPE[k].build();
+    geo.name = `stack.${k}`;
+    out.set(k, geo);
+  }
+  return out;
+}
+
+/**
+ * Everything about a loose pile that is a number rather than a shape.
+ *
+ * The eight builders above are this family's shapes and this is its arithmetic:
+ * how big a stack is drawn for how much is in it, how far the next one up
+ * stands, and how high a heap may climb before it stops climbing. It is one
+ * table rather than three constants and two literals buried in `sync` because
+ * the step and the shapes have to agree and nothing here ever checked that they
+ * did — a disagreement between them is invisible in any one shape and obvious
+ * in a photograph of a pile, which is what the bench in `src/forge/` is for.
+ */
+export interface PileRecipe {
+  /** A stack's own height — the step from one stack in a pile to the next. */
+  readonly step: number;
+  /** How far a pile may climb before further stacks just share the top one's spot. */
+  readonly cap: number;
+  /** How big a handful is drawn, against a full load. */
+  readonly small: number;
+  /** At or under this much in a stack, it is a handful and drawn at `small`. */
+  readonly smallTo: number;
+  /** At or over this much, a stack is drawn full size and grows no further. */
+  readonly fullFrom: number;
+  /** How much taller a stack is drawn for each full load in it. */
+  readonly liftStep: number;
+  /** How much counts as a full load, for that lift. */
+  readonly liftEvery: number;
+  /** How many loads of lift one stack may take before the pile has to rise instead. */
+  readonly liftMax: number;
+}
+
+export const PILE_DEFAULT: PileRecipe = {
+  step: 0.3,
+  cap: 0.75,
+  small: 0.7,
+  smallTo: 5,
+  fullFrom: 10,
+  liftStep: 0.18,
+  liftEvery: 25,
+  liftMax: 2,
+};
 
 /**
  * How big a stack is drawn for how much is in it: a handful at seven tenths,
@@ -1266,10 +1319,33 @@ const STACK_SMALL = 0.7;
  * instead (see `sync`) — the lift only started at twenty-five, which left a
  * single log and ten of them the same object on the ground.
  */
-function stackSize(amount: number): number {
-  if (amount <= 5) return STACK_SMALL;
-  if (amount >= 10) return 1;
-  return STACK_SMALL + (1 - STACK_SMALL) * ((amount - 5) / 5);
+export function stackSize(amount: number, r: PileRecipe = PILE_DEFAULT): number {
+  if (amount <= r.smallTo) return r.small;
+  if (amount >= r.fullFrom) return 1;
+  return r.small + (1 - r.small) * ((amount - r.smallTo) / (r.fullFrom - r.smallTo));
+}
+
+/**
+ * How much taller than its own size a stack is drawn for the loads in it.
+ *
+ * Only the height, and only in whole loads. A stack of a hundred logs is the
+ * same footprint as a stack of ten and half again as tall, because a stack that
+ * grew in all three directions with what was in it would be a stack that
+ * outgrew the cell it is standing on.
+ */
+export function stackLift(amount: number, r: PileRecipe = PILE_DEFAULT): number {
+  return 1 + Math.min(r.liftMax, Math.floor(amount / r.liftEvery)) * r.liftStep;
+}
+
+/**
+ * How far above this stack the next one up the pile stands.
+ *
+ * One expression for it, called by the view when it piles a cell and by the
+ * bench when it stands a pile up on its own. Two copies of `step × size ×
+ * lift` in two files is two copies that agree until somebody edits one.
+ */
+export function stackRise(amount: number, r: PileRecipe = PILE_DEFAULT): number {
+  return r.step * stackSize(amount, r) * stackLift(amount, r);
 }
 
 /**
@@ -2768,10 +2844,8 @@ export class BuildingsView {
     // colour and the second colour of each shape rides in its vertices. Named
     // like the building parts so a test can find a kind's shape without the
     // map being public.
-    for (const k of Object.keys(STACK_SHAPE) as ResourceKind[]) {
-      const { build, rough, metal } = STACK_SHAPE[k];
-      const geo = build();
-      geo.name = `stack.${k}`;
+    for (const [k, geo] of stackGeometries()) {
+      const { rough, metal } = STACK_SHAPE[k];
       this.stacks.set(
         k,
         new InstancedPool(
@@ -3018,11 +3092,11 @@ export class BuildingsView {
       const pool = this.stacks.get(it.kind);
       if (!pool) continue;
       const size = stackSize(it.amount);
-      const lift = 1 + Math.min(2, Math.floor(it.amount / 25)) * 0.18;
+      const lift = stackLift(it.amount);
       const cell = Math.round(it.y) * world.width + Math.round(it.x);
       const rest = itemRest(world, it.x, it.y);
       const base = this.pile.get(cell) ?? rest;
-      this.pile.set(cell, Math.min(rest + PILE_MAX, base + STACK_H * size * lift));
+      this.pile.set(cell, Math.min(rest + PILE_DEFAULT.cap, base + stackRise(it.amount)));
       this.v.set(it.x, base, it.y);
       this.s.set(size, size * lift, size);
       this.q.identity();

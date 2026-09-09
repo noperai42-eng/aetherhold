@@ -4,6 +4,94 @@ One round, one measured gap, one fix. Newest first.
 
 ---
 
+## 2026-09-09 — The colony promises eight stacks are the same height, and eight of them are not
+
+**Track: the forge.** Stage 5 of [FORGING.md](FORGING.md), second family. `buildings.ts` for
+the pile's arithmetic, `src/forge/` for the bench entry, and a promise in a doc comment that
+nothing had ever checked.
+
+### Why the piles, and what is different about them
+
+The frames from the sweep say piles: eight objects sharing a prefix, on screen constantly,
+each small enough to judge whole. But they are the first family whose recipe moves no vertex
+at all. A stone has five numbers that shift its vertices and a tuft has seven; a stack of steel
+has a hundred and thirty literals inside `ingots()` and not one of them belongs on a slider,
+because the recipe of a pile is *where its stacks are put*.
+
+So the recipe treatment landed somewhere else. `PileRecipe`/`PILE_DEFAULT` in `buildings.ts`
+are the eight numbers that were three module constants and two literals buried in the middle of
+`sync` — the step, the cap, the handful and the two ends of its ramp, and the three that decide
+how much taller a big load is drawn. `stackSize`, `stackLift` and `stackRise` read them. The
+view and the bench both call `stackRise` rather than each writing out `step × size × lift`,
+which is two copies that agree until somebody edits one.
+
+The eight shapes still got golden digests, and for the opposite reason from every family before
+them: nothing on this page can change them, so nothing on this page would ever have caught them
+changing. `logs()` and `pelt()` had never been measured by anything at all.
+
+### The measured gap
+
+`STACK_SHAPE` promises, in its own doc comment, that each of the eight "is built to top out at
+about `STACK_H`, so a pile of mixed kinds still steps up by the same amount". `sync` takes it
+at its word: it climbs a cell by `step × size × lift` whatever is standing there. Measured:
+
+| | height | against a 0.3 m step |
+| --- | --- | --- |
+| hide | 0.344 | 15% over |
+| wood | 0.337 | 12% over |
+| meal | 0.3225 | 7% over |
+| medicine | 0.3175 | 6% over |
+| assemblies | 0.31 | 3% over |
+| steel | 0.3 | exact |
+| components | 0.29 | 3% under |
+| rawfood | 0.26 | 13% under |
+
+A 32 per cent spread between the shortest and the tallest, and the frames say what it costs.
+A pile of hides sinks into itself at every seam — the tie ring of one roll cuts through the
+body of the roll beneath it. A pile of raw food floats: four mounds with a band of daylight
+under each, the tubers on one hanging in the gap above the next.
+
+### What was fixed, and what was not
+
+Not the eight shapes. Retuning them to the step is a look-loop round with frames in it, and
+[CLAUDE.md](CLAUDE.md) is right that a silent edit to eight models in the middle of a round
+about the bench is the wrong shape of change. What is fixed is that it is now written down:
+eight exact heights in `tests/forge-recipes.test.ts`, and the spread held inside ±15 per cent
+— which is where the eight already sit. A band that admits the gap rather than one that would
+be red on the day it was written.
+
+Two real fixes did land. `Generate 12` is `Generate 8` on this bench: `Bench.grid` is a new
+optional field and the stacks are the only entry that sets it, because a family with a seed in
+it has no last value and twelve draws is a sample, while the stacks are eight hand-built shapes
+with no ninth. And that turned up a fault in `Random seed` — it dealt
+`min + floor(random × span) × step` with `span` computed exclusively, so the top of any range
+was never dealt. Over a seed field a thousand wide that is invisible. Over a field eight wide
+it means the button could not reach the assemblies.
+
+### What the frames said about the bench
+
+The grid's pitch is a function of footprint only, so a family taller than it is wide hides its
+own back row: four piles a metre tall stand in front of four more, and the twelve trees do the
+same thing. It is not cheaply fixable. At the bench's 27° elevation a model of height *h*
+occludes about 2*h* of ground behind it, so spacing the rows honestly would put a tree grid
+over nine metres deep and shrink every tree in it to a stamp. Raising the camera and splitting
+row pitch from column pitch are both changes to every frame the loop has taken so far. A brief,
+not a bug — and the reason the two frames this note leans on are single piles rather than the
+grid.
+
+### Verified
+
+`npx tsc --noEmit` clean. Full suite `125 passed | 2 skipped`, `2524 passed | 13 skipped` —
+exactly twenty more than the round before, matching the twenty new pins. `npm run look:forge`
+r22: `4/4 models`, `4 of 42 assemblies`, no console errors. Eight mutations run against the new
+pins and all eight caught: a 5 mm change to the pelt's roll radius, a step of 0.31, the size
+ramp divided by the wrong end of its gap, the lift capped with `max` instead of `min`, the rise
+with its lift dropped, the bench pile ignoring the cap, the bench pile forgetting the lift in
+its scale, and a grid of twelve kinds. Restores were done by copying a pristine file back, not
+by asking git — the scar from the round before this one.
+
+---
+
 ## 2026-09-09 — The grass gets a dial, and the bench gets caught measuring in metres
 
 **Track: the forge.** Stage 5 of [FORGING.md](FORGING.md), first family. `decor.ts` for the

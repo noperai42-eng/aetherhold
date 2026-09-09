@@ -29,7 +29,13 @@ import { Stage } from './stage';
 
 /** How many of the recipes you have looked at the strip along the bottom keeps. */
 const HISTORY = 16;
-/** How many seeds `Generate 12` lays out. The button is named after it. */
+/**
+ * How many seeds a grid lays out, for a bench that has not said otherwise.
+ *
+ * The button is named after the number, so a bench with its own `grid` renames
+ * it — which is the honest thing for a family of eight, where a twelfth frame
+ * would be the fourth one again.
+ */
 const GRID = 12;
 
 const app = document.getElementById('app');
@@ -69,7 +75,7 @@ function start(bench: Bench, params: URLSearchParams): void {
         <div class="fields" id="fields"></div>
         <div class="buttons">
           <button id="seed">Random seed</button>
-          <button id="grid">Generate ${GRID}</button>
+          <button id="grid">Generate ${bench.grid ?? GRID}</button>
           <button id="reset">Reset</button>
         </div>
         <div class="problems" id="problems"></div>
@@ -192,7 +198,7 @@ function start(bench: Bench, params: URLSearchParams): void {
    */
   function drawGrid(): void {
     const first = knobs[bench.seedKey] ?? 0;
-    const seeds = Array.from({ length: GRID }, (_, i) => first + i * bench.seedStep);
+    const seeds = Array.from({ length: bench.grid ?? GRID }, (_, i) => first + i * bench.seedStep);
     const made = forgeSeeds(bench, knobs, seeds, protos);
     report(made.flatMap((m) => m.problems));
     stage.show(made.map((m) => m.group).filter((g): g is NonNullable<typeof g> => g !== null));
@@ -205,7 +211,10 @@ function start(bench: Bench, params: URLSearchParams): void {
 
   document.getElementById('seed')!.addEventListener('click', () => {
     const f = bench.fields.find((q) => q.key === bench.seedKey)!;
-    const span = Math.floor((f.max - f.min) / bench.seedStep);
+    // Inclusive of the top, and the stacks are what caught it: over a seed field
+    // a thousand wide, never dealing the last value is invisible, and over a
+    // field eight wide it means the button cannot reach the assemblies.
+    const span = Math.floor((f.max - f.min) / bench.seedStep) + 1;
     knobs = { ...knobs, [bench.seedKey]: f.min + Math.floor(Math.random() * span) * bench.seedStep };
     draw(true);
   });

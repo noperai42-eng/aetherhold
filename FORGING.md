@@ -448,6 +448,49 @@ because neighbouring tufts stand in different places. Alone on the bench it is t
 limit of what the shader does, and giving a blade its own phase would mean a new geometry
 attribute and a change to how the game's grass looks — which is a brief, not a bug.
 
+**Built — piles, 2026-09-09.** The eight `stack.*` shapes, and the first family whose recipe
+moves no vertex at all. A stone has five numbers that shift its vertices and a tuft has seven;
+a stack of steel has a hundred and thirty literals inside `ingots()` and not one of them is a
+slider, because the recipe of a pile is *where its stacks are put*. So `PileRecipe` and
+`PILE_DEFAULT` in `buildings.ts` are the eight numbers that were three constants and two
+literals buried in the middle of `sync` — the step, the cap, the handful and the two ends of
+its ramp, and the three that decide how much taller a big load is drawn. `stackSize`,
+`stackLift` and `stackRise` read them, and the view and the bench both call `stackRise` rather
+than each writing out `step × size × lift`, which is two copies that agree until one is edited.
+
+The eight shapes still got golden digests, and for the opposite reason from every family
+before them: nothing on this page can change them, so nothing on this page would ever have
+caught them changing. `logs()` and `pelt()` had never been measured by anything.
+
+`Generate 12` is `Generate 8` here — `Bench.grid` is a new optional field and this is the only
+entry that sets it. A family with a seed in it has no last value and twelve draws is a sample;
+the stacks are eight hand-built shapes and there is no ninth, so a grid of twelve would
+photograph three of them twice and say the family is larger and less even than it is. Fixing
+that turned up a real fault in `Random seed`: it dealt `min + floor(random × span) × step` with
+`span` computed exclusively, so the top of a range was never dealt. Over a seed field a
+thousand wide that is invisible. Over a field eight wide it means the button cannot reach the
+assemblies.
+
+And the measurement the family was worth doing for. `STACK_SHAPE` promises each of the eight
+"is built to top out at about `PILE_DEFAULT.step`, so a pile of mixed kinds still steps up by
+the same amount", and `sync` takes it at its word. Measured, they run from 0.26 m to 0.344 m
+against a step of 0.3 — raw food 13 per cent under and hide 15 per cent over, a 32 per cent
+spread between the shortest and the tallest. Nothing had ever checked it, and the frames show
+what it costs: a pile of hides sinks into itself by an eighth of a stack at every seam and a
+pile of raw food floats 4 cm above its own base. Eight heights are now written out exactly and
+the spread is held inside ±15 per cent, which is where they already sit — a band that admits
+the gap rather than one that would be red the day it was written. Retuning eight shapes to the
+step is a look-loop round with frames in it, not a silent edit, so it is a brief.
+
+Reading the grid frames found one more thing, and it belongs to the bench rather than to the
+piles: the grid's pitch is a function of footprint only, so a family taller than it is wide
+hides its own back row. Four piles a metre tall stand in front of four more, and the same is
+true of the twelve trees. It is not cheaply fixable — at the bench's 27° elevation a model of
+height *h* occludes about 2*h* of ground behind it, so spacing the rows honestly would put a
+tree grid over nine metres deep and shrink every tree in it to a stamp. Raising the camera or
+splitting row pitch from column pitch are both design changes to every frame the loop has
+taken so far, which makes this a brief too.
+
 ## The order of work
 
 Stages 0, 1 and 2 are one piece of work and should be done together; a recipe with

@@ -20,10 +20,15 @@
 import * as THREE from 'three';
 
 import {
+  PILE_DEFAULT,
   TREE_DEFAULT,
   TREE_SKIRTS,
+  stackLift,
+  stackRise,
+  stackSize,
   treeSkirtGeometries,
   treeTrunkGeometry,
+  type PileRecipe,
   type Profile,
   type TreeRecipe,
 } from '../client/render/buildings';
@@ -44,6 +49,7 @@ import {
   type TuftRecipe,
 } from '../client/render/decor';
 import { colorOf, occludeParts } from '../client/render/occlusion';
+import { RESOURCE_KINDS } from '../sim/types';
 
 /** One draggable number, with the range outside which it stops being that shape. */
 export interface Field {
@@ -92,6 +98,16 @@ export interface Bench {
    * has less variety in it than it has.
    */
   readonly seedStep: number;
+  /**
+   * How many the grid lays out, when twelve is the wrong number for this family.
+   *
+   * Left off by everything that has a seed in it, because a seed has no last
+   * value and twelve draws from it is a sample. The stacks are the exception:
+   * there are eight of them and there is no ninth, so a grid of twelve would
+   * photograph three of the eight twice and say the family is bigger and less
+   * even than it is.
+   */
+  readonly grid?: number;
   /** Everything wrong with this set of values, in words. Empty is buildable. */
   problems(k: Knobs): string[];
   /**
@@ -101,7 +117,7 @@ export interface Bench {
    * the sliders prints, so what it offers is a recipe you can put back rather
    * than a list of the eleven fields the page knows how to show you.
    */
-  recipe(k: Knobs): StoneRecipe | TreeRecipe | GrassRecipe;
+  recipe(k: Knobs): StoneRecipe | TreeRecipe | GrassRecipe | PileRecipe;
   /** The model, standing on y = 0 and facing the way the game draws it. */
   build(k: Knobs, protos: Prototypes): THREE.Group;
 }
@@ -490,7 +506,120 @@ const GRASS: Bench = {
   },
 };
 
-export const BENCHES: readonly Bench[] = [STONE, GRASS, TREE];
+/**
+ * Eleven numbers, of which three are what is standing on the bench rather than
+ * the recipe.
+ *
+ * `kind`, `amount` and `stacks` are the load — which of the eight it is, how
+ * much is in one of them, and how many landed on the same cell — and they are
+ * on the page because the eight numbers under them do nothing visible without
+ * one. A step of 0.3 m is a number; a step of 0.3 m under a stack of hides
+ * that is 0.344 m tall is a seam you can see, and you can only see it with
+ * something standing on something.
+ *
+ * The shapes are not here at all, and that is the one thing this family is
+ * different about. A stone has five numbers that move its vertices and a tuft
+ * has seven; a stack of steel has a hundred and thirty literals inside
+ * `ingots()` and none of them is a slider — the recipe of a pile is where its
+ * stacks are put, not what they are made of. Which is exactly why the eight
+ * shapes needed the golden digests this round added: nothing on this page can
+ * change them, so nothing on this page would have caught them changing.
+ */
+const STACK_FIELDS: readonly Field[] = [
+  { key: 'kind', label: 'kind', min: 0, max: RESOURCE_KINDS.length - 1, step: 1, whole: true },
+  { key: 'amount', label: 'amount', min: 1, max: 99, step: 1, whole: true },
+  { key: 'stacks', label: 'stacks', min: 1, max: 8, step: 1, whole: true },
+  { key: 'step', label: 'step', min: 0.02, max: 1, step: 0.005 },
+  { key: 'cap', label: 'pile cap', min: 0, max: 3, step: 0.01 },
+  { key: 'small', label: 'handful', min: 0.1, max: 1, step: 0.01 },
+  { key: 'smallTo', label: 'handful to', min: 0, max: 40, step: 1, whole: true },
+  { key: 'fullFrom', label: 'full from', min: 1, max: 60, step: 1, whole: true },
+  { key: 'liftStep', label: 'load lift', min: 0, max: 0.6, step: 0.005 },
+  { key: 'liftEvery', label: 'load size', min: 1, max: 99, step: 1, whole: true },
+  { key: 'liftMax', label: 'load cap', min: 0, max: 6, step: 1, whole: true },
+];
+
+function pileRecipe(k: Knobs): PileRecipe {
+  return {
+    step: k.step!,
+    cap: k.cap!,
+    small: k.small!,
+    smallTo: k.smallTo!,
+    fullFrom: k.fullFrom!,
+    liftStep: k.liftStep!,
+    liftEvery: k.liftEvery!,
+    liftMax: k.liftMax!,
+  };
+}
+
+const STACK: Bench = {
+  name: 'stack',
+  title: 'Loose stack',
+  note: 'A kind of thing dropped on the ground, and the pile the next of them lands on. Generate 8 stands the whole family side by side, which is the only way to see whether the eight agree about how tall a stack is.',
+  fields: STACK_FIELDS,
+  defaults: {
+    // Wood, ten of it, three deep. Ten because that is where `stackSize` tops
+    // out, so the stack on the bench is the full-size one the digests measure
+    // rather than a handful of it; three because the fault this bench was built
+    // to show is a seam between two stacks, and one stack has no seam.
+    kind: 0,
+    amount: 10,
+    stacks: 3,
+    ...PILE_DEFAULT,
+  },
+  seedKey: 'kind',
+  // One kind along. There is nothing hashed here to spread out — the eight are
+  // eight hand-built shapes in a list, and the next one is the next one.
+  seedStep: 1,
+  grid: RESOURCE_KINDS.length,
+  problems(k) {
+    const out = boundsProblems(STACK_FIELDS, k);
+    // The one cross-field rule, and it is a division: `stackSize` ramps from
+    // `small` to full across the gap between the two, so a gap of nothing is a
+    // zero denominator and a size of Infinity, which scales a stack to a shape
+    // with no bounding box that the camera then tries to frame.
+    if (k.fullFrom !== undefined && k.smallTo !== undefined && k.fullFrom <= k.smallTo) {
+      out.push(`full from ${k.fullFrom} is not above handful to ${k.smallTo}, and the ramp between them has no width`);
+    }
+    return out;
+  },
+  recipe: pileRecipe,
+  build(k, protos) {
+    const r = pileRecipe(k);
+    const kind = RESOURCE_KINDS[k.kind!]!;
+    const key = `stack.${kind}`;
+    const proto = protos.get(key);
+    if (!proto) throw new Error(`no ${key} prototype in the renderer's pools — nothing stood in it to be read`);
+
+    // The view's own arithmetic, called rather than copied. What a bench is for
+    // is finding out that the step and the shapes disagree, and a bench that
+    // worked out the step for itself could only ever find out that it disagreed
+    // with itself.
+    const size = stackSize(k.amount!, r);
+    const lift = stackLift(k.amount!, r);
+    const rise = stackRise(k.amount!, r);
+
+    const group = new THREE.Group();
+    group.name = 'stack';
+    // Resting on the bench floor rather than on `itemRest`, which on the map is
+    // the top of whatever furniture the cell holds. There is no furniture here
+    // and no snowpack, so the ground is the plane and the cap counts from it.
+    let base = 0;
+    for (let i = 0; i < k.stacks!; i++) {
+      const mesh = new THREE.Mesh(proto.geometry, proto.material);
+      mesh.name = key;
+      mesh.castShadow = proto.castShadow;
+      mesh.receiveShadow = proto.receiveShadow;
+      mesh.position.y = base;
+      mesh.scale.set(size, size * lift, size);
+      group.add(mesh);
+      base = Math.min(r.cap, base + rise);
+    }
+    return group;
+  },
+};
+
+export const BENCHES: readonly Bench[] = [STONE, GRASS, TREE, STACK];
 
 export function benchByName(name: string): Bench | null {
   return BENCHES.find((b) => b.name === name) ?? null;
