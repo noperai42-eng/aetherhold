@@ -74,7 +74,10 @@ function sourceOfMedicine(world: World): string {
 const MOOD_REMEDY: Record<string, string> = {
   hungry: 'Hungry. Cook a meal, and check the pantry is stocked and reachable.',
   tired: 'Worn out. Build a bed, or clear the way to the one they have.',
-  'nothing to do': 'Nothing but work. A table and chairs to sit at, near where they live.',
+  // Two keys off one need, because they are two different jobs for the player:
+  // one colony has no seat to offer and the other has no hour to spare.
+  'nothing fun to do': 'Nowhere they can reach to sit. A table and chairs, near where they live.',
+  'tired of working': 'Nothing but work. Build somewhere to sit, and leave them the hours to use it.',
   'badly hurt': 'Badly hurt. Get them tended — a doctor, medicine, and a bed to do it in.',
   down: 'Down where they fell. Somebody has to carry them to a bed.',
   cold: 'Freezing. A campfire or a stove where they work and where they sleep.',

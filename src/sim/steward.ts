@@ -182,9 +182,112 @@ export function boardClear(world: World): boolean {
   return true;
 }
 
-/** Can the colony spend this without dipping into the float? */
+/**
+ * The board, minus the colony's own hands.
+ *
+ * `boardClear` above asks whether *anything* is outstanding, and for most of
+ * this module's life that was also the rule for whether the Steward could start:
+ * one mark anywhere on the map and it kept its hands in its pockets. Most of
+ * that rule is right and load-bearing — the player's plan comes first, always,
+ * and a colony that races them for wood is a colony fighting its owner; and a
+ * colony that starts a second thing before it finishes the first is a colony
+ * whose settlers never put anything away, which the gate in `tickSteward` has
+ * the measurements for.
+ *
+ * The part that was an accident is the paint. A chop order the Steward laid
+ * itself is not a plan anybody is waiting on — it is the Steward's own last
+ * answer, still lying in the yard — and it shut the same gate on the Steward.
+ * Measured over thirty-four days on three seeds: the board was never once
+ * completely clear on forty-three of the hundred and two days, and the ambitions
+ * below `yard` — the cellar, the sickbay, the cells, a room of somebody's own —
+ * fired exactly zero times between them.
+ *
+ * So the gate splits in two, and this is the half that asks whose work it is.
+ * Anything the player queued, frame or painted cell, and the colony stands down.
+ * What it marked itself does not count here; `stewardLoad` counts the frames
+ * separately, one line below in `tickSteward`, and both halves must be quiet
+ * before an ambition speaks.
+ */
+export function playerClear(world: World): boolean {
+  for (const b of world.buildings) if (!b.built && !b.bySteward) return false;
+  const mine = new Set(world.stewardDesig ?? []);
+  for (let i = 0; i < world.cellDesig.length; i++) {
+    if (world.cellDesig[i] === DESIG_NONE) continue;
+    if (!mine.has(i)) return false;
+  }
+  return true;
+}
+
+/** How many frames of its own the colony has open and unfinished. */
+export function stewardLoad(world: World): number {
+  let n = 0;
+  for (const b of world.buildings) if (!b.built && b.bySteward) n++;
+  return n;
+}
+
+/**
+ * Everything unbuilt is the Steward's, because everything else already was.
+ *
+ * Called immediately after an ambition marks, and only down a path that has
+ * already established `playerClear` — so every blueprint that was standing
+ * before the mark carries the stamp, and anything without one is what the mark
+ * just made. That is what keeps the stamping out of `planBlueprint`, which has
+ * thirty call sites and no business knowing who is asking.
+ */
+function claimBlueprints(world: World): void {
+  for (const b of world.buildings) if (!b.built) b.bySteward = true;
+}
+
+/**
+ * Every painted cell on the map is the colony's own.
+ *
+ * A flat claim, and it wants its licence stated because it is only true where it
+ * is called from. Both call sites have just been past a guard that says so: on
+ * the ordinary path `playerClear` returned true one line earlier, which is the
+ * assertion that every cell already painted is one of ours; on the starved path
+ * `boardStarved` returned true, and that is false the instant *anything* is
+ * painted, so there is nothing there to take. Move this call above either guard
+ * and it quietly annexes the player's floor plan, and the colony then walks
+ * through its own gate for as long as that paint is down.
+ *
+ * Rebuilt rather than appended, so a cell that has since been cut or dug falls
+ * off. This goes in the save, and the list wants to be the length of the
+ * outstanding work rather than the length of the game.
+ */
+function claimDesignations(world: World): void {
+  const mine: number[] = [];
+  for (let i = 0; i < world.cellDesig.length; i++) {
+    if (world.cellDesig[i] !== DESIG_NONE) mine.push(i);
+  }
+  world.stewardDesig = mine;
+}
+
+/**
+ * What the colony has already promised and not yet delivered.
+ *
+ * The other half of the bill `plannedCount` came from. `affords` asked whether
+ * the stock covers *this* cost, and stopped there — so the same forty planks
+ * answer yes for every frame put to them in turn, and a pass that marks two
+ * things marks the second with wood the first has already spoken for.
+ * `growQuarters` is the one that showed it: a bunk and then a lamp to read by,
+ * both charged against a shed that only ever had the one.
+ *
+ * `needs` less `have`, not `needs`: what is already stacked inside a frame has
+ * been paid for and has left the stock too, so charging for it on both sides
+ * bills the colony twice for the same plank and it stops building at all.
+ */
+function owed(world: World, kind: ResourceKind): number {
+  let n = 0;
+  for (const b of world.buildings) {
+    if (b.built) continue;
+    n += Math.max(0, (b.needs[kind] ?? 0) - (b.have[kind] ?? 0));
+  }
+  return n;
+}
+
+/** Can the colony spend this without dipping into the float, or into a promise? */
 function affords(world: World, kind: ResourceKind, amount: number): boolean {
-  return countResource(world, kind) - amount >= RESERVE[kind];
+  return countResource(world, kind) - owed(world, kind) - amount >= RESERVE[kind];
 }
 
 /** Can the colony afford one of these buildings and still keep its float? */
@@ -199,6 +302,32 @@ function affordsBuilding(world: World, kind: Building['kind']): boolean {
 function builtCount(world: World, kind: Building['kind']): number {
   let n = 0;
   for (const b of world.buildings) if (b.built && b.kind === kind) n++;
+  return n;
+}
+
+/**
+ * How many of these the colony will have once the dust settles — standing plus
+ * marked.
+ *
+ * The difference between this and `builtCount` is nothing at all while the gate
+ * holds, and several ambitions said so in their own comments: nothing is marked
+ * while anything of ours stands unbuilt, so a cap that counted only what stood
+ * could never double up, because there was never a second thing marked to double
+ * up with. That is true again, and it is still the wrong thing to lean on. Take
+ * the gate off for one run — twenty-four frames at a time, which is what the
+ * ceiling that used to sit here allowed — and the colony builds nineteen turrets
+ * against a want of four: the gun is marked, `builtCount` reads one, the next
+ * turn round the list marks another.
+ *
+ * So a cap on how many the colony ends up owning counts both, and says so. A
+ * test of what the colony can actually *do* right now — watts on the grid, a bed
+ * somebody can sleep in tonight, a gun already on the wall — still counts only
+ * what stands, because a blueprint does none of those things. The two are
+ * different questions and the answers are only accidentally the same.
+ */
+function plannedCount(world: World, kind: Building['kind']): number {
+  let n = 0;
+  for (const b of world.buildings) if (b.kind === kind) n++;
   return n;
 }
 
@@ -898,7 +1027,7 @@ export const AMBITIONS: Ambition[] = [
     says: 'The colony marks out another bed — nobody should be sleeping on the floor.',
     mark(world) {
       const people = livingColonists(world).length;
-      const beds = builtCount(world, 'bed') + builtCount(world, 'medbed');
+      const beds = plannedCount(world, 'bed') + plannedCount(world, 'medbed');
       if (beds >= people) return 0;
       if (!affordsBuilding(world, 'bed')) return 0;
       const room = heart(world);
@@ -922,7 +1051,7 @@ export const AMBITIONS: Ambition[] = [
       // the flu — see `tickGroundSleep`. Everything below this on the list is
       // something a colony with everybody under a roof can afford to want.
       const people = livingColonists(world).length;
-      if (builtCount(world, 'bed') + builtCount(world, 'medbed') >= people) return 0;
+      if (plannedCount(world, 'bed') + plannedCount(world, 'medbed') >= people) return 0;
       return growQuarters(world);
     },
   },
@@ -1110,6 +1239,8 @@ export const AMBITIONS: Ambition[] = [
       }
       if (demand === 0) return 0;
 
+      // Built, because the panel and the bank are sized against watts that
+      // actually arrive. The *cap* below is planned — see `plannedCount`.
       const gens = builtCount(world, 'generator');
       // Only generators count towards carrying it. A panel is dark at night and a
       // mill is dead under ice, so a grid sized on either is a grid that fails on
@@ -1119,8 +1250,8 @@ export const AMBITIONS: Ambition[] = [
       const want = Math.min(MAX_GENERATORS, Math.ceil((demand + GRID_HEADROOM) / GENERATOR_OUTPUT));
 
       let kind: BuildingKind | null = null;
-      if (gens < want) kind = 'generator';
-      else if (buildingUnlocked(world, 'solar') && builtCount(world, 'solar') < Math.min(MAX_PANELS, gens)) {
+      if (plannedCount(world, 'generator') < want) kind = 'generator';
+      else if (buildingUnlocked(world, 'solar') && plannedCount(world, 'solar') < Math.min(MAX_PANELS, gens)) {
         kind = 'solar';
       } else if (
         // A bank is not capacity, it is a bridge — the twenty minutes between the
@@ -1129,7 +1260,7 @@ export const AMBITIONS: Ambition[] = [
         // Before there is a cooler or a heater, the worst a gap costs is a dark
         // room, and twenty-five steel is a turret.
         world.buildings.some((b) => b.built && (b.kind === 'cooler' || b.kind === 'heater')) &&
-        builtCount(world, 'battery') < Math.min(MAX_BANKS, gens)
+        plannedCount(world, 'battery') < Math.min(MAX_BANKS, gens)
       ) {
         kind = 'battery';
       }
@@ -1153,7 +1284,7 @@ export const AMBITIONS: Ambition[] = [
       // guns it has nobody to stand behind, and a colony of nine is not defended
       // by the same single emplacement it built on day four.
       const want = Math.min(4, 1 + Math.floor(livingColonists(world).length / 3));
-      if (builtCount(world, 'turret') >= want) return 0;
+      if (plannedCount(world, 'turret') >= want) return 0;
 
       const b = boundsOf(world, room);
       const cx = (b.x0 + b.x1) / 2;
@@ -1314,10 +1445,11 @@ export const AMBITIONS: Ambition[] = [
       // twenty wood and twelve steel standing empty for the ninety per cent of
       // the time nobody is ill, and this colony has walls to pay for.
       const want = Math.min(2, Math.ceil(people / 4));
-      // Counting only what stands is safe here for the reason it is safe in
-      // `beds`: `boardClear` stops the whole list while any blueprint is up, so
-      // there is never an unbuilt medbed for this to double up on.
-      if (builtCount(world, 'medbed') >= want) return 0;
+      // Planned, not standing. This read `builtCount` and said so in a comment —
+      // that `boardClear` stopped the list while any blueprint was up, so there
+      // was never an unbuilt medbed to double up on. That is no longer true of
+      // this module and the ward was one of the caps it was holding up.
+      if (plannedCount(world, 'medbed') >= want) return 0;
       if (!affordsBuilding(world, 'medbed')) return 0;
       const room = heart(world);
       if (!room) return 0;
@@ -1364,7 +1496,7 @@ export const AMBITIONS: Ambition[] = [
       // in has no business starting a second one indoors.
       if (builtCount(world, 'turret') === 0) return 0;
       if (livingColonists(world).length - unhoused(world).length < 1) return 0;
-      if (builtCount(world, 'prisonbed') >= 1) return 0;
+      if (plannedCount(world, 'prisonbed') >= 1) return 0;
 
       // A room with a door, not a bunk in the corner of the hall. The isolation
       // is the point — it is the same reason the sick and the well sleep apart —
@@ -1474,7 +1606,7 @@ export const AMBITIONS: Ambition[] = [
       // changes nothing, and this is the difference between a colony that gets
       // better at things and one that does not.
       const want: Building['kind'] | null =
-        builtCount(world, 'bench') === 0 ? 'bench' : builtCount(world, 'lab') === 0 ? 'lab' : null;
+        plannedCount(world, 'bench') === 0 ? 'bench' : plannedCount(world, 'lab') === 0 ? 'lab' : null;
       if (!want) return 0;
       if (!affordsBuilding(world, want)) return 0;
       // Reversed, so the bench goes against the back wall rather than into the
@@ -1518,7 +1650,8 @@ export const AMBITIONS: Ambition[] = [
       // rule was three pieces of furniture full stop, and the starter cabin ships
       // with two tables — so every colony ever built exactly one game table and
       // then declared the evenings solved, for nine people, on two seats and a
-      // bench. `nothing to do` was the second-largest drag on morale on every day
+      // bench. The recreation drag — `tired of working`, as the card reads it on a
+      // colony with a full work board — was the second-largest on morale every day
       // of every seed I measured. One seat each plus a spare is the bar.
       const seats = world.buildings.reduce(
         (n, b) => n + (b.built ? (REC_SPOTS[b.kind]?.seats ?? 0) : 0),
@@ -1538,7 +1671,7 @@ export const AMBITIONS: Ambition[] = [
     mark(world) {
       const room = heart(world);
       if (!room) return 0;
-      if (builtCount(world, 'statue') >= 2) return 0;
+      if (plannedCount(world, 'statue') >= 2) return 0;
       // Steel-priced, so this is the last thing a colony does with a surplus.
       if (!affords(world, 'steel', (defOf('statue').cost.steel ?? 0) + 60)) return 0;
       for (const cell of freeCells(world, room).reverse()) {
@@ -1993,20 +2126,57 @@ export function tickSteward(world: World): void {
   // Everything below this line spends materials and competes with the player's
   // own queue. Choosing what to study does neither.
   pickProject(world);
-  if (!boardClear(world)) {
-    // Stuck, and stuck on something the colony does not have. Send people out
-    // for it — and nothing else, because everything below this line would be
-    // starting a second thing while the first is still standing half-built.
-    if (!boardStarved(world)) return;
+  // Stuck, and stuck on something the colony does not have. Send people out for
+  // it before anything else — including before the player gate, and for the same
+  // reason `pickProject` sits above it: an axe in a tree spends nothing and
+  // competes with nobody's queue. It is also the one hand that can open a board
+  // jammed on a frame nobody can supply, the player's frames included.
+  if (boardStarved(world)) {
     const n = STORES.mark(world);
     if (n > 0) {
       if (world.stewardLast !== STORES.id) msg(world, STORES.says, 'info');
       world.stewardLast = STORES.id;
+      claimDesignations(world);
     }
     return;
   }
+  if (!playerClear(world)) return;
+  // And it still finishes what it starts.
+  //
+  // This half of the old `boardClear` was right, and taking it out cost more than
+  // the freeze did. `haulToBlueprint` is a `construct` job and `construct`
+  // outranks `haul`, so one open frame anywhere on the map outranks every sack on
+  // the ground — see the priority walk at the foot of `jobs.ts`. Let the colony
+  // keep two dozen frames open and there is never a moment when nobody has a
+  // frame to walk to, and nothing is ever put away again. Measured on seed
+  // 20260729, pawn-ticks a day spent carrying something to a stockpile: 51 on the
+  // first day and then 6, 0, 0, 0, 0. That is the state `spoilage.ts` was written
+  // against — a colony with a cold store it never uses, food rotting in the cabin
+  // while every new harvest is routed correctly past it.
+  //
+  // It is also what the ambition list is for. The order below says what matters
+  // most, and it can only say it if the crew finishes near the top before the
+  // colony starts near the bottom: `construct` takes frames nearest-first, so
+  // with two dozen up the order stops meaning anything and the fire the settlers
+  // need tonight is raised after the fence.
+  //
+  // None of which costs the colony the building it was frozen out of, because the
+  // freeze was never about how many irons. Seed 7 at the old gate stopped dead —
+  // nothing raised from day eight to day fourteen, settlers idle nine tenths of
+  // the day. With the gate split and the list read round-robin it builds straight
+  // through that fortnight and hauls all the way.
+  if (stewardLoad(world) > 0) return;
 
-  for (const ambition of AMBITIONS) {
+  // From one past whatever fired last, wrapping. Reading the list from the top
+  // every pass is what let `yard` hold the queue for twenty days at a stretch:
+  // it is seventh of twenty-six and wants another fence post nearly always, so
+  // nothing under it was ever asked. The order still says what matters most —
+  // within one turn round the list, beds are still reached before statues — but
+  // no ambition gets to answer twice before the rest have answered once.
+  const start = world.stewardCursor ?? 0;
+  for (let k = 0; k < AMBITIONS.length; k++) {
+    const i = (start + k) % AMBITIONS.length;
+    const ambition = AMBITIONS[i]!;
     const n = ambition.mark(world);
     if (n > 0) {
       // Once per ambition, not once per batch. A fence goes up eight posts at a
@@ -2016,6 +2186,9 @@ export function tickSteward(world: World): void {
       // colony starts something new, which is the only part that is news.
       if (world.stewardLast !== ambition.id) msg(world, ambition.says, 'info');
       world.stewardLast = ambition.id;
+      world.stewardCursor = (i + 1) % AMBITIONS.length;
+      claimBlueprints(world);
+      claimDesignations(world);
       return;
     }
   }

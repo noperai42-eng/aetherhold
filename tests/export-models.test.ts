@@ -22,14 +22,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import * as THREE from 'three';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import {
-  assemblyOf,
-  exportModels,
-  installFileReader,
-  poolsOf,
-  triangles,
-  type Manifest,
-} from '../src/tools/models';
+import { assemblyOf, poolsOf, triangles } from '../src/tools/assemble';
+import { exportModels, installFileReader, type Manifest } from '../src/tools/models';
 import { BUILD_MENU } from '../src/sim/buildings';
 import { RESOURCE_KINDS } from '../src/sim/types';
 

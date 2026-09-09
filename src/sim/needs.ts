@@ -540,7 +540,20 @@ export function moodBreakdown(pawn: Pawn): MoodFactor[] {
 
   put('hungry', -hungerMood(n.food));
   put('tired', -(1 - n.rest) * 0.24);
-  put('nothing to do', -(1 - n.recreation) * 0.24);
+  // One number, two complaints, and the difference between them is the whole
+  // hint. The idle pass sends anybody below `IDLE_REC` to the best seat they can
+  // reach, so a settler holding no job and *still* short of recreation is one
+  // `takeABreak` has already failed for: there was nowhere to sit. A settler
+  // holding a job is the opposite case — the board is full and the table is the
+  // thing they never get to. The single old label said the first of those to
+  // both of them, and to a player watching a settler haul stone all day
+  // `nothing to do` reads as the game plainly lying. The amount is the same
+  // either way, which is why `computeMood` needs no branch: it carries the
+  // number and never the words.
+  put(
+    pawn.jobId === null ? 'nothing fun to do' : 'tired of working',
+    -(1 - n.recreation) * 0.24,
+  );
   // The flat penalties for a need that has actually bottomed out. Separate rows
   // rather than folded into the three above, because they are separate to the
   // player too: "hungry" is a thing to get round to and "starving" is a thing to

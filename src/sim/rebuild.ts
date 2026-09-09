@@ -10,9 +10,12 @@
  *
  * So: anything the colony finished building and then lost to damage leaves an
  * intent behind — a plan to put it back. The plan becomes an ordinary blueprint
- * the moment it is safe to stand there, and from that point on it is exactly the
- * same object as one the player placed by hand: it needs the same materials, it
- * is picked up by the same construct work type, and `Backspace` cancels it.
+ * the moment it is safe to stand there, and from that point on it is the same
+ * object as one the player placed by hand in every way that costs anything: it
+ * needs the same materials, it is picked up by the same construct work type, and
+ * `Backspace` cancels it. It differs in one word — `bySteward`, which records
+ * whose idea a frame was — and `tickRebuild` says why the answer here is never
+ * the player's.
  *
  * Two reasons a plan waits rather than materialising at once, and both are bugs
  * that the waiting fixes:
@@ -115,6 +118,17 @@ export function tickRebuild(world: World): void {
     if (threats.some((p) => dist(p.x, p.y, plan.x, plan.y) < DANGER_RADIUS)) continue;
     // `built: false` — the colony pays for it again in materials and in work.
     // Losing a generator should cost something; this is where it costs.
-    if (addBuilding(world, plan.kind, plan.x, plan.y, false)) plans.splice(i, 1);
+    const put = addBuilding(world, plan.kind, plan.x, plan.y, false);
+    if (!put) continue;
+    // And it is the colony's own frame, whoever laid the original. Nobody
+    // ordered this one: the wall stood, something took it out, and putting it
+    // back is the colony deciding for itself — which is exactly what `bySteward`
+    // means everywhere else it is set. An unstamped frame reads as a plan the
+    // player queued by hand, and the Steward stands down for those and does not
+    // get up: measured on seed 4242, a raid on day thirty-one left forty
+    // unstamped frames on the board, and to the end of the run the Steward
+    // marked nothing but firewood while forty of its own walls lay flat.
+    put.bySteward = true;
+    plans.splice(i, 1);
   }
 }

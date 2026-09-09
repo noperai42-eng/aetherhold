@@ -4,6 +4,257 @@ One round, one measured gap, one fix. Newest first.
 
 ---
 
+## 2026-09-09 — A bench for one model at a time, and the rule that was wrong about trees
+
+**Track: the forge.** Stages 0, 1 and 2 of [FORGING.md](FORGING.md). No player-facing
+behaviour changed; one line of `buildings.ts` was exported and nothing else in `src/client/`
+or `src/sim/` was touched.
+
+### The gap
+
+There are forty-one procedural models in `src/client/render/` and no way to look at one.
+Shaping a rock means editing a constant in `decor.ts`, restarting vite, walking a colony
+until a rock is in frame, and comparing it against a memory of the last one. The numbers that
+make it — `STONE_LUMP`, `STONE_SINK`, the trunk profile, the four skirt profiles — are
+module-private constants with no name a person can turn, and the only rock you ever see is
+whichever one the seed happened to hand you. Evergrow's asset engine is the contrast that
+made this legible: it generates and then *refines*, one item at a time, on a bench that is
+not the game. This repo generates and then ships.
+
+The second half of the gap is that the constants have never been pinned. Nothing in the suite
+would have noticed if a refactor moved a vertex, which makes every change to that code a
+change made on faith.
+
+### The fix
+
+**New `src/forge/`** — the bench, and a sibling of `src/review/` rather than a mode inside
+it, protected the same way by the same mechanism: `forge.html` is served by vite in dev and
+deliberately absent from `vite.config.ts`'s `build.rollupOptions.input`, so it cannot reach
+the players' bundle, while staying inside `tsconfig` so `npm run build` typechecks it and it
+cannot rot silently. `tests/forge-recipes.test.ts` guards the one-way rule directly: nothing
+under `src/client/` or `src/sim/` may import from `src/forge/`.
+
+- **`recipes.ts`** — a `Bench` per shapeable model: its fields with bounds, its defaults, its
+  `problems()` and its `build()`. Two of them so far, stone and tree. The defaults are the
+  constants that are already in the game, imported rather than retyped, so the bench's
+  starting picture is the colony's picture by construction.
+- **`stage.ts`** — the room the model stands in: an empty ground plane in `TERRAIN_COLOR.grass`,
+  a fixed three-quarter camera that frames whatever it is handed, and the colony's own
+  `SkyView` read out of `sky.ts` and `palette.ts` rather than a light rig invented for the
+  bench. A model that looks right here looks right on the map, which is the whole point of
+  not inventing one.
+- **`forge.ts`** — the back half. `benchWorld()` freezes a clear noon; `prototypes()` syncs a
+  real `BuildingsView`, bakes its occlusion and reads the pools through `assemble()`, so the
+  bench tree wears the renderer's own material and the renderer's own baked contact shadow.
+  Validation lives here and not in the builders, which are called forty times a frame.
+- **`main.ts`** — a slider and a number box per field, live redraw on `input`, a seed field, a
+  Random seed button, a **Generate 12** button that lays a deterministic grid of twelve seeds
+  under the current recipe, and a history strip of the last sixteen recipes looked at. No
+  parameter shows an index in the same `.index a` markup the review page uses, so stage 4's
+  sweep can read the page's own list.
+
+**`src/tools/assemble.ts`** was split out of `models.ts` for this. `models.ts` writes `.glb`
+and so imports `node:fs`, which a browser bundle cannot resolve; the gathering logic the
+bench needs is now in a file that touches no filesystem, and the export script imports it
+back. One line of `buildings.ts` changed: `TREE_SKIRTS` is exported, so the crown rule can
+check the recipe against the number of skirt pools the view actually draws rather than
+against a four written twice.
+
+### The rule that was wrong
+
+FORGING.md's stage-1 plan said a lathe profile must be monotonic in height. The test written
+against that sentence went red on the tree the colony already grows — twelve messages of the
+form *skirt 1 runs downhill at point 1: 2 then 1.9*. The sentence was a wrong reading of the
+recipe, not a bug in the wood: a bole climbs, but a skirt of boughs is a closed bowl that
+runs out and *down* under the branches and back up over the top, and all four of the wood's
+skirts double back. The rule is kept where it is true, FORGING.md is corrected in place with
+the mistake left visible, and the test now guards the exemption as well as the rule. This is
+the argument for writing the goldens before exposing the knobs, arriving on the first day it
+could.
+
+### Before / after
+
+Four frames, `1280×800 @1.5×`, in the scratchpad rather than committed — they are a
+before-and-after of a bench, not of the game.
+
+- **`tree.png`** — one Aetherhold tree on grass under the colony's own sun: the right green,
+  the bark brown from `buildings.ts`, a baked contact shadow and a cast one, and eleven knobs
+  reading their defaults beside it.
+- **`stone-lump-060.png`** vs. the default — `lump` moved from 0.3 to 0.6 in the number box
+  is a plainly different rock, with no rebuild and no restart, and the history strip behind it
+  reads `3.7*` then `3.7`. That is stage 1's done-criterion met on screen.
+- **`tree-12.png`** and **`stone-12.png`** — twelve visibly different crowns and twelve
+  visibly different stones in a 4×3 grid, which is stage 2's: a round note can now carry a
+  single before-and-after pair of twelve-rock grids instead of an anecdote about one rock.
+
+One artefact seen and deliberately left: the pebble's cast shadow peter-pans. The bench
+inherits the game's map-sized shadow frustum and bias from `sky.ts`, which is exactly what
+stage 0 asks for — a bench with its own kinder shadow map would be a bench that lies about
+the map.
+
+### Verified
+
+- **The ten golden digests are byte-identical across the refactor.** `tests/forge-recipes.test.ts`
+  hashes positions rounded to a micrometre plus vertex, index and bounding-box counts for
+  `decor.stone` and all nine tree pools, captured before the recipe structs existed and
+  unchanged after. Positions only, and on purpose: occlusion writes vertex colours, so
+  retuning a contact shadow must not read as a moved model.
+- **The golden test was watched fail.** `STONE_LUMP` nudged 0.3 → 0.31 produced
+  `× decor.stone is unchanged` — `1 failed | 9 passed`. `decor.ts` was then restored and the
+  constant reconfirmed. A pin nobody has seen fail is not a pin.
+- `npx vitest run tests/forge-recipes.test.ts` — **30 passed**, the ten goldens, nine
+  validation rules including the skirt exemption, ten experience tests driven through a real
+  `BuildingsView`, and the dependency guard.
+- `npx tsc --noEmit` — clean.
+- Browser run of `/forge.html`: index reads `stone, tree`, history reads `3.7* 3.7`, and
+  **no console errors**.
+- `npx vitest run` — the whole suite, green: **125 of 127 files, 2,480 passed**, 13
+  skipped, 1,249 s. Thirty of those are this round's and the rest are the reason the
+  refactor can be believed — `decor.ts` and `buildings.ts` are load-bearing for the map,
+  the export script and the look harness, and all three read the same builders the
+  recipes now go through.
+- `npm run build` — exit 0, `dist/index.html` alone. `benchByName`, `forgeSeeds` and
+  `Generate 12` appear zero times in the bundle; the only `forge` in it is the game's own
+  word. Typechecked and not shipped, which is the pair of promises the harness pattern is.
+
+### Next target
+
+- **Stage 3, the address** — the recipe in the URL and a JSON box to paste one into, so a
+  round note can carry the exact rock rather than a picture of it.
+- **Stage 4, the sweep** — `scripts/look/forge.mjs`, so the look loop photographs every bench
+  the way `review.mjs` photographs every panel.
+- **Stage 5, the other thirty-nine.** Stone and tree were chosen because they are the two ends
+  of the range: one geometry with three numbers, and nine pools with two profile families.
+
+---
+
+## 2026-09-09 — What the kit is doing, and the body nobody could ask
+
+**Track: the interface.** One complaint, and two things found underneath it that had the
+same shape: the game knew a number and never said it.
+
+### The gap
+
+*"Should also be able to click on dead bodies and see what they are doing and strip the
+bodies of clothes and items they are wearing."* Half of that is a simulation change and is
+not in this round. The other half was two defects rather than one. The manager's click
+resolved to the living only — `pawnAt` skipped a corpse before asking anything of it — so a
+body was the one thing on the map you could point at and get silence from. And behind that,
+if the click had landed, was the living settler's card: mood, rest, recreation, an errand
+line, and Draft, Take over and Possess on somebody who is dead.
+
+The second gap was found while looking for the first. The settler card printed what somebody
+had on as two bare names, `fur parka` and `toolbelt`, and said nothing about what either
+does. `gear.ts` has known the numbers all along — a parka is +0.85 warmth and five per cent
+armour; plate is forty per cent armour bought at ninety-two per cent work and *minus* fifteen
+hundredths of warmth — and none of it had ever reached a player. This is the same complaint
+as the corpse card in a different coat: the trade is the interesting part, and the panel was
+printing the label.
+
+The third is a harness gap, and it is why the first two survived so long. Neither panel is
+one the game holds still in. A corpse card is only ever read in the ten seconds after a raid
+with half the colony downed, and a good gear comparison wants a rifleman in a jerkin standing
+in reach of a steel plate in a cold snap. Waiting for a colony to arrive at either is why
+neither had ever actually been looked at.
+
+### The fix
+
+**New `src/review/`** — the mirror. `review.html` served by vite in dev and deliberately
+absent from `vite.config.ts`, so it is never in the players' bundle; `scenes.ts`, a registry
+of ten scenes, each a seed, a world built from it, and one exported panel function called
+against that world; `main.ts`, which reads `?scene=` and renders the index when there is
+none. It never steps the simulation, never touches a save, and draws with the game's own
+functions rather than a copy of them. One panel a page, which the stylesheet decided rather
+than anybody's preference: forty-five rules hang off `#inspector`, and an id appears once in
+a document. `scripts/look/review.mjs` reads the scene list off that index, so a scene added
+in `scenes.ts` is photographed on the next run without anybody remembering to come here.
+
+**New `src/client/ui/kit.ts`** — facts only, on `cell.ts`'s seam, with the words in
+`hud.ts`. `kitFacts` shallow-clones the settler, calls the simulation's own `equip`, and
+reads the simulation's own accessors for each axis; it never does the arithmetic itself. A
+presentation layer that computes what a jerkin is worth is a second implementation of the
+rules, and the day the two disagree it is the player who is lied to.
+
+**`hud.ts`** gains three things. `kitRows`, which puts what each worn piece is doing under
+its name on the settler card, one axis a line so it cannot wrap. `kitPanel`, the comparison
+card, which is built, tested and photographed and has *no in-game hover target yet* — the
+player never chooses gear in this game, settlers craft for themselves, and `equip` is never
+called from `src/client/`. It is written down here rather than quietly shipped into a menu
+nobody can reach. And `corpsePanel`.
+
+The corpse card is short on purpose, and short in a particular way: it is not the settler
+card with the numbers greyed out. A body has no mood, no rest and nothing it would like to be
+doing, and printing those at zero says something false about somebody the player cared about.
+What is left is what is still true — who they were, what is still on them and what it is
+worth, where they are lying, how long before there is nothing left of any of it, and their
+story, which is the one thing dying does not take away. The rot clock is the row that makes
+the card a decision rather than an obituary: four days, in days while there are days and in
+hours once there are not, because a body with two hours left is not "1 day" and that is the
+side of it where being wrong costs somebody.
+
+**`manager/controller.ts`** — `pawnAt` no longer skips the dead. It ranks the living ahead of
+them on a tie, because a body on the floor of the ward must not take the click meant for the
+doctor kneeling over it.
+
+### Before / after
+
+- **`.look/shots/review/r0-corpse-with-kit.png`** and **`r0-corpse-stripped.png`** (new frames).
+  The staged case reads: *fur parka, 5% armour, +0.85 warmth · toolbelt, 115% work · club ·
+  lies at 93, 98 · rots away in 4 days*, and then two lines of their life. The empty case
+  reads *carrying nothing* and still has a name, a place and a clock on it. The first shoot
+  of the second frame said *weapon: rifle* under a caption reading "died with nothing on" —
+  the founding settler comes armed, and the scene now disarms them, because a frame captioned
+  one thing and photographing another is worse than no frame.
+- **First shoot of the rot row** read *about 96 hours*. True, and not a unit anybody decides
+  in. `colonyTime` stops at hours, which is right everywhere else it is used, so `rotWords`
+  branches locally rather than changing a helper four other panels share.
+- **`tests/corpse-card.test.ts`** (new, 22 tests) — that a click reaches a body, that it does
+  *not* reach one at the cost of a living settler standing in the same place, what the card
+  says, and what it refuses to say: no mood, rest, recreation, hunger, skills or bonds row,
+  and none of the three buttons only a living settler could obey.
+- **`tests/kit-card.test.ts`** (new, 21 tests) — every number the kit card prints re-derived
+  by putting the piece on a real settler with the game's own `equip`, plus the one-way
+  dependency: nothing in `src/client` or `src/sim` imports `src/review/`.
+
+### Verified
+
+- `npx tsc --noEmit -p .` — clean, with `src/review/` inside the project even though
+  `vite.config.ts` never bundles it. That is the shape wanted: a harness that cannot rot
+  silently and cannot ship by accident.
+- `npx vitest run` — the whole suite: **2450 passed, 13 skipped**, 124 files (2 skipped),
+  1178 s.
+- `npm run look:review` — **10/10 scenes photographed, 0 console errors.** The scene list came
+  off the review page's own index rather than out of the script, which is the property that
+  matters: the two corpse scenes were shot on the run after they were written, without
+  anybody editing the harness.
+- The two new suites were watched fail before they were watched pass. Reverting `pawnAt`'s
+  ranking turns `a dead colonist can be clicked` red; dropping the `p.dead` branch out of
+  `syncInspector` turns all eight of `what a body no longer has` red at once. A test nobody
+  has watched fail is a test nobody has checked.
+- `expect(scene.render()).toBe(scene.render())` on every registered scene, because the whole
+  before-and-after discipline rests on a frame being the same frame twice.
+
+### Next target
+
+- **Stripping the body**, which is the rest of the complaint and is blocked on a decision
+  rather than on code. The five `EquipKind`s are worn state on a pawn, not items — there is
+  no `rawfood`-shaped stack for a parka — so stripping needs either a new item kind per
+  equippable or a direct body-to-settler transfer that skips the ground. The first keeps one
+  rule for how things move and is more code; the second is less code and adds a second way
+  for gear to travel. [DECIDING.md](DECIDING.md) stage 2 argues for the first and marks the
+  choice as not the author's to make. Until it lands, the rot clock is a countdown with no
+  lever on the end of it.
+- **What killed them.** The one row the corpse card obviously wants and cannot honestly
+  print: `damagePawn` is handed a `source`, spends it on the death message and keeps nothing.
+  That is a change to what a pawn stores, which is stage 3.
+- **`kitPanel` has no hover target.** It is built, tested and photographed, and the game
+  gives a player nowhere to summon it from, because settlers craft their own gear and the
+  player never chooses any. Stage 2's strip surface is the first place one exists.
+- **The rest of the panels have never been photographed either.** Ten scenes is what this
+  round needed; the review page costs nothing per scene after the first, and the settler
+  card, the grave, the bench and the trade stall are all panels the game will not hold still
+  in.
+
 ## 2026-09-07 — Look round sixteen, the ceilings learn to show themselves
 
 **Track: the interface.** Round fifteen gave the right-hand column measured ceilings and

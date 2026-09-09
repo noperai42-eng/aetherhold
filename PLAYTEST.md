@@ -1791,6 +1791,35 @@ loops.
 
 Pinned by `tests/repath.test.ts`.
 
+## 9uu. Ask a body what it has on (~4 minutes)
+
+Two things to look at, and the first one is free: open any settler and read the two gear rows.
+**Expect each to say what it is doing** — *fur parka, 5% armour, +0.85 warmth* — rather than
+just naming the thing. Put somebody in plate if the colony has any and check the row that costs
+them something: plate is forty per cent armour bought at ninety-two per cent work and *minus*
+warmth, and the card is only worth having if it says the second half as loudly as the first.
+
+Then the part that needs a raid. Wait for one, or start one from the console, and let somebody
+die — either side; a raider works. **Click the body.**
+
+**Expect a short card**: their name, *dead*, what is still on them and what it is worth, where
+they are lying, how long before there is nothing left, and their story. **Expect it not to be
+the settler card** — no mood, no rest, no recreation bar, no errand line, and no Draft, Take
+over or Possess. Before this, a corpse was the one thing on the map you could point at and get
+silence from: the click resolved to the living only.
+
+**Then click a body somebody is standing over.** A doctor kneeling on the same square as a
+corpse must still get the click; the body is the thing you can no longer give an order to, so
+it loses the tie.
+
+The judgement is whether *rots away in 4 days* reads as a clock worth acting on — whether it
+sends a player out to fetch the parka — or as trivia on a card about somebody they just lost.
+Stripping the body is not built yet, so today the clock is information without a lever, and
+whether that reads as a promise or as a tease is the thing to write down.
+
+Pinned by `tests/corpse-card.test.ts` and `tests/kit-card.test.ts`. The two cards can be looked
+at without a raid: `npm run dev`, then `npm run look:review`.
+
 ## 10. Save it, break it, load it
 
 Press **Save** in the top bar. Now do something destructive and obvious — pause, mash a few
@@ -1808,7 +1837,10 @@ load — the save lives in localStorage.
 - Settlers will sleep on the ground if there is no free bed. That's intended; build beds.
 - A sick settler in a bed will stay there past the point of being rested. Also intended —
   bed rest is how they win. They get up for raids and for an empty stomach.
-- A settler with nothing to do wanders and their Recreation drops. Build a table.
+- Recreation drops for every settler who is awake, at work or not — the card row reads
+  `tired of working` for one holding a job and `nothing fun to do` for one who looked for
+  a seat and found none. They only break off for a seat when the work board is empty or
+  when they are properly bored, so build seats: one each plus a spare.
 - Fires spread. Firefight priority matters more than it looks like it should.
 - Quality preset (top bar) drops shadows and effects on slower machines. Try `low` if the
   frame rate is bad before assuming the sim is slow — the sim runs at a fixed 20 Hz either way.

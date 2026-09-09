@@ -25,6 +25,8 @@ import { Rng } from '../src/sim/rng';
 import { isSleepHours } from '../src/sim/clock';
 import { foodDays } from '../src/sim/alerts';
 import { freeGraves, unburiedDead } from '../src/sim/graves';
+import { damageBuilding } from '../src/sim/combat';
+import { tickRebuild } from '../src/sim/rebuild';
 import { DRAW, GENERATOR_OUTPUT, conducts, isElectrical, isSource, powerNetworks } from '../src/sim/power';
 import { REC_SPOTS } from '../src/sim/recreation';
 import { RESEARCH_ORDER, available, setProject } from '../src/sim/research';
@@ -32,6 +34,7 @@ import {
   DESIG_HARVEST,
   DESIG_NONE,
   DESIG_FLOOR_PLANK,
+  TICKS_PER_DAY,
   markBuildingsChanged,
   packCell,
   unpackX,
@@ -46,6 +49,8 @@ import {
   STEWARD_INTERVAL,
   YARD_MARGIN,
   boardClear,
+  playerClear,
+  stewardLoad,
   HARVEST_RADIUS,
   STEEL_FLOOR,
   WOOD_FLOOR,
@@ -344,19 +349,34 @@ describe('what the colony decides to do next', () => {
     expect(pass(rich).ambition).toBeDefined();
   });
 
-  it('is one thing at a time: a second pass on the same tick adds nothing', () => {
+  it('is one thing at a time, and the next thing on the pass after', () => {
     const world = createWorld(15);
     world.tick = NOON;
     wellStocked(world);
 
     const first = pass(world);
     expect(first.ambition).toBeDefined();
-    const marked = first.blueprints + first.designations;
 
-    // The board is no longer clear, which is the same guard that keeps it out of
-    // the player's way — so the colony works on what it just marked.
+    // Done, and off the board. The colony does not start a second thing while
+    // its own first is still standing, so a pass with that frame still up marks
+    // nothing and there is no second rung to look at. Which rung it picks up on
+    // is the question here, not whether it picks one up at all.
+    for (const b of [...world.buildings]) if (!b.built) removeBuilding(world, b);
+
+    // A pass stops at the first ambition that answers and comes back for the
+    // rest sixty ticks later, so the list is read a rung at a time and never top
+    // to bottom in one go. What used to decide where the reading resumed was the
+    // top of the list, every time, so `yard` answered and answered and nothing
+    // below it was ever asked. The cursor decides it now: the second pass names
+    // a *different* ambition.
     const second = pass(world);
-    expect(second.blueprints + second.designations).toBe(marked);
+    expect(second.ambition).toBeDefined();
+    expect(second.ambition).not.toBe(first.ambition);
+
+    // And the cursor is left one rung past whichever one answered, which is what
+    // makes the pass after this one the next rung down and not this one again.
+    const i = AMBITIONS.findIndex((a) => a.id === second.ambition);
+    expect(world.stewardCursor).toBe((i + 1) % AMBITIONS.length);
   });
 
   it('puts a bed under anyone sleeping on the floor before anything else', () => {
@@ -413,10 +433,14 @@ describe('what the colony decides to do next', () => {
     expect(pass(world).ambition).not.toBe('graves');
     expect(world.buildings.filter((x) => !x.built && x.kind === 'grave')).toHaveLength(0);
     // And it is the *free* graves that count, not the ones already occupied: fill
-    // this one and the next pass digs again.
+    // this one and the colony digs again. The cursor goes back to the top of the
+    // list first, because the pass above moved it on and the question here is
+    // whether `graves` speaks up at all — not which rung the round-robin happens
+    // to be standing on when it is asked.
     world.buildings.find((x) => x.kind === 'grave')!.occupant = dead.id;
     for (const x of world.buildings.filter((y) => !y.built)) removeBuilding(world, x);
     world.cellDesig.fill(DESIG_NONE);
+    world.stewardCursor = 0;
     expect(pass(world).ambition).toBe('graves');
   });
 
@@ -540,7 +564,18 @@ describe('what the colony decides to do next', () => {
 
     for (let i = 0; i < AMBITIONS.length * 2; i++) {
       tickSteward(world);
-      expect(world.buildings.some((b) => b.kind === 'door' && !b.built)).toBe(false);
+      // On the ring, and nowhere else. The claim here is about `gate` jumping the
+      // gun, and reading *every* unbuilt door as that failure was only ever right
+      // while nothing below `yard` could answer at all: a colony that now gets
+      // round the whole list in one pass has other reasons to want a door, and
+      // measured on this seed it is `cellar` hanging one on a cold store forty
+      // cells from the fence line, on the third pass. That is not a gate standing
+      // in a field, and calling it one tests the scan order rather than the gun.
+      expect(
+        world.buildings.some(
+          (b) => b.kind === 'door' && !b.built && ring.some((c) => c.x === b.x && c.y === b.y),
+        ),
+      ).toBe(false);
       for (const b of world.buildings.filter((x) => !x.built)) removeBuilding(world, b);
       world.cellDesig.fill(DESIG_NONE);
     }
@@ -1227,6 +1262,224 @@ describe('what the colony decides to do next', () => {
   });
 });
 
+/**
+ * The colony getting as far as the second thing on its list.
+ *
+ * `boardClear` was all-or-nothing: one mark anywhere on the map — a frame, or a
+ * tree the colony had marked for felling itself — and every ambition stopped,
+ * including the twenty-five below the one that had just answered. Measured over
+ * thirty-four days on three seeds: the board was never once completely clear on
+ * forty-three of the hundred and two days, `yard` answered fifty of those
+ * day-samples on its own, and `quarters`, `wiring`, `statue` and `fields`
+ * answered none at all. A colony that fenced a paddock for three weeks and never
+ * built a second room.
+ *
+ * Two things move it. The gate asks whose work it is, and the chop orders the
+ * colony painted itself are not the player's queue; and the list is read from
+ * one past whoever last answered rather than from the top, so `yard` cannot hold
+ * the front of it. What the gate still will not do is let the colony start a
+ * second thing while its own first is standing half-built. That was tried, at
+ * two dozen frames at once, and it stopped the settlers putting anything away
+ * anywhere for the rest of the run — `construct` outranks `haul`, so a frame
+ * open somewhere on the map is a pair of hands that never reaches a sack. The
+ * gate in `steward.ts` has the numbers.
+ */
+describe('a colony that gets past its own first idea', () => {
+  /** A built generator outside, so `defence` buys guns and not power. */
+  function powerOn(world: World): void {
+    for (let r = 4; r < 16; r++) {
+      for (let dx = -r; dx <= r; dx++) {
+        for (const dy of [-r, r]) {
+          const x = HOME_X + dx;
+          const y = HOME_Y + dy;
+          if (indoors(world, x, y)) continue;
+          if (!isWalkable(world, x, y) || buildingAt(world, x, y)) continue;
+          if (addBuilding(world, 'generator', x, y, true)) return;
+        }
+      }
+    }
+    throw new Error('nowhere to stand a generator');
+  }
+
+  it('stands down for the player and not for itself', () => {
+    const world = createWorld(43);
+    world.tick = NOON;
+    // Under the float, so the first thing the colony does is send people out for
+    // timber. That paints cells and raises nothing, which is the case the whole
+    // split turns on.
+    setStock(world, 'wood', WOOD_FLOOR - 1);
+    setStock(world, 'steel', 300);
+    expect(playerClear(world)).toBe(true);
+
+    const first = pass(world);
+    expect(first.ambition).toBe('stores');
+    expect(first.designations).toBeGreaterThan(0);
+
+    // Its own chop orders are standing, so `boardClear` is false and the old rule
+    // stopped the whole list right here — for a fortnight at a time, on the
+    // numbers above. Nothing is half-built, so there is nothing to finish.
+    expect(boardClear(world)).toBe(false);
+    expect(playerClear(world)).toBe(true);
+    expect(stewardLoad(world)).toBe(0);
+
+    // The player's plan is a different matter and always was: it must never
+    // compete with them for the wood.
+    clearPatch(world, HOME_X + 12, HOME_Y + 12, HOME_X + 14, HOME_Y + 14);
+    const theirs = addBuilding(world, 'wall', HOME_X + 13, HOME_Y + 13, false);
+    expect(theirs).toBeTruthy();
+    expect(playerClear(world)).toBe(false);
+    expect(pass(world).ambition).toBeUndefined();
+
+    // Their wall taken back, the colony's own chop orders still down and the
+    // shed restocked: it gets on with the next thing. That is the whole of the
+    // fix — the marks it made itself are not a queue it has to wait on.
+    removeBuilding(world, theirs!);
+    setStock(world, 'wood', 400);
+    expect(playerClear(world)).toBe(true);
+    expect(pass(world).blueprints).toBeGreaterThan(0);
+  });
+
+  it('never annexes the player floor plan, however long it plans around its own', () => {
+    const world = createWorld(47);
+    world.tick = NOON;
+    wellStocked(world);
+
+    // Telling the two apart means keeping a list, and the list is taken by
+    // sweeping the whole grid and calling everything on it the colony's. That is
+    // only true underneath the guard that has just said so, and a claim that
+    // slips above the guard is silent: the colony reads the player's floor back
+    // as its own, decides the board is clear, and starts spending their wood.
+    const spot = packCell(world, HOME_X + 11, HOME_Y + 11);
+    world.cellDesig[spot] = DESIG_FLOOR_PLANK;
+    expect(playerClear(world)).toBe(false);
+
+    for (let i = 0; i < 20; i++) tickSteward(world);
+    expect(playerClear(world)).toBe(false);
+    expect(world.stewardDesig ?? []).not.toContain(spot);
+  });
+
+  it('finishes what it starts before it starts anything else', () => {
+    const world = createWorld(45);
+    world.tick = NOON;
+    setStock(world, 'wood', 4000);
+    setStock(world, 'steel', 4000);
+
+    // Rich enough to want most of the list at once, which is the colony that
+    // marked out the whole valley on the first afternoon.
+    let passes = 0;
+    while (stewardLoad(world) === 0 && passes < 80) {
+      tickSteward(world);
+      passes++;
+    }
+    expect(stewardLoad(world)).toBeGreaterThan(0);
+
+    // Nothing built in between, so its own frame is still up — and while it is,
+    // the colony marks nothing further. Not out of tidiness: `construct` outranks
+    // `haul`, so every extra frame is a settler who will never reach a sack, and
+    // a colony that always has one is a colony that never puts its food away.
+    expect(playerClear(world)).toBe(true);
+    const before = blueprints(world) + designations(world);
+    for (let i = 0; i < 10; i++) tickSteward(world);
+    expect(blueprints(world) + designations(world)).toBe(before);
+  });
+
+  it('never marks a frame it has not got the materials for', () => {
+    const world = createWorld(49);
+    world.tick = NOON;
+    // Sixty spendable wood over the float, and a batch of fence is forty of it.
+    // Rich enough that the colony keeps wanting to mark and poor enough that two
+    // batches is already more than it owns, which is the window the bill has to
+    // be read in — `wellStocked` has four hundred and would let it mark the whole
+    // ceiling without ever being asked the question.
+    setStock(world, 'wood', RESERVE.wood + 60);
+    setStock(world, 'steel', RESERVE.steel + 40);
+
+    // Passes, not days: nothing is hauled and nothing is burned, so the sums are
+    // exact and the only thing moving the numbers is the colony marking. Over a
+    // running colony the same arithmetic drifts — a firebox eats the float
+    // whether or not anybody marked anything — and the promise is about what the
+    // Steward commits to, not about what the weather does to the woodpile after.
+    const owed = (k: ResourceKind): number => {
+      let n = 0;
+      for (const b of world.buildings) {
+        if (b.built) continue;
+        n += Math.max(0, (b.needs[k] ?? 0) - (b.have[k] ?? 0));
+      }
+      return n;
+    };
+
+    for (let i = 0; i < 60; i++) {
+      tickSteward(world);
+      for (const k of ['wood', 'steel'] as ResourceKind[]) {
+        const spare = countResource(world, k) - RESERVE[k] - owed(k);
+        expect({ i, k, affordable: spare >= 0 }).toEqual({ i, k, affordable: true });
+      }
+    }
+    // Not vacuous: it did commit to something out of that float.
+    expect(world.buildings.some((b) => !b.built && b.bySteward)).toBe(true);
+  });
+
+  it('counts the guns it has already marked, not only the ones standing', () => {
+    const world = createWorld(41);
+    world.tick = NOON;
+    wellStocked(world);
+    setStock(world, 'steel', 500);
+    powerOn(world);
+
+    // The first run after the ceiling went in built nineteen turrets against a
+    // want of two. Every cap in this module was written when only one frame could
+    // ever be outstanding, so counting what stood was the same as counting what
+    // was coming; the gun was marked, the count still read nothing, and the next
+    // turn round the list marked another. This is that, asked twenty times with
+    // nothing built in between — which is exactly the run the scheduler now makes.
+    const defence = AMBITIONS.find((a) => a.id === 'defence')!;
+    const want = Math.min(4, 1 + Math.floor(livingColonists(world).length / 3));
+    for (let i = 0; i < 20; i++) defence.mark(world);
+
+    const guns = world.buildings.filter((b) => b.kind === 'turret');
+    expect(guns.length).toBe(want);
+    expect(guns.some((g) => g.built)).toBe(false);
+    expect(defence.mark(world)).toBe(0);
+  });
+
+  it('is not stood down for good by the walls a raid knocks out', () => {
+    const world = createWorld(51);
+    world.tick = NOON;
+    wellStocked(world);
+    expect(pass(world).ambition).toBeDefined();
+
+    // The cabin the colony was founded in was never a blueprint anybody laid, so
+    // its walls carry no mark of whose work they are. Knock four of them out —
+    // a quiet afternoon, by raid standards — and `rebuild.ts` puts a frame back
+    // on every cell. Those frames are the colony's own work going back up, and
+    // an unstamped one reads as a plan the player queued: the Steward stands
+    // down for those, and there is nothing in the game that ever takes the frame
+    // away again. Measured on seed 4242 that was forty of them on day thirty-one
+    // and the rest of the run spent fetching firewood past its own flat walls.
+    const walls = world.buildings.filter((b) => b.built && b.kind === 'wall').slice(0, 4);
+    expect(walls).toHaveLength(4);
+    for (const w of walls) damageBuilding(world, w.id, w.maxHp * 10);
+    tickRebuild(world);
+    expect(world.buildings.filter((b) => !b.built && b.kind === 'wall').length).toBeGreaterThan(0);
+
+    // The stamp is the whole of it. Stripped, these read as a plan the player
+    // queued and the gate shuts; stamped, it stays open and the colony is only
+    // waiting for its own walls, the way it waits for anything of its own.
+    expect(playerClear(world)).toBe(true);
+    for (const b of world.buildings) if (!b.built) delete b.bySteward;
+    expect(playerClear(world)).toBe(false);
+    for (const b of world.buildings) if (!b.built) b.bySteward = true;
+
+    // And the walls back up, it gets on with the next thing — which is the part
+    // that never came on seed 4242, because nothing takes an unstamped frame off
+    // the board again.
+    for (const b of [...world.buildings]) if (!b.built) removeBuilding(world, b);
+    const before = blueprints(world) + designations(world);
+    for (let i = 0; i < 5; i++) tickSteward(world);
+    expect(blueprints(world) + designations(world)).toBeGreaterThan(before);
+  });
+});
+
 describe('two days in a colony nobody is watching', () => {
   it('stakes out a yard fence and raises it, without being asked', () => {
     const world = createWorld(21);
@@ -1350,9 +1603,27 @@ describe('two days in a colony nobody is watching', () => {
     const start = countResource(world, 'wood');
     expect(start).toBeLessThan(WOOD_FLOOR);
 
-    stepWorldN(world, makeStreams(world), 2400);
+    // Watched across two days rather than read off the end of one.
+    //
+    // This asked for a pile over the floor at a single instant, and that instant
+    // was four in the morning on the first night — measured here the colony holds
+    // 63 there, 84 by the next afternoon, 66 that evening, 53 the morning after
+    // and 146 by the third day. A colony that spends what it cuts *should*
+    // oscillate; the number at any one hour says which hour was picked. The claim
+    // in the title is a claim about the whole run, so the whole run is what is
+    // sampled: it got back over the floor, and it never burned down to nothing.
+    const streams = makeStreams(world);
+    let peak = start;
+    let trough = start;
+    for (let t = 0; t < TICKS_PER_DAY * 2; t += 240) {
+      stepWorldN(world, streams, 240);
+      const wood = countResource(world, 'wood');
+      peak = Math.max(peak, wood);
+      trough = Math.min(trough, wood);
+    }
 
-    expect(countResource(world, 'wood')).toBeGreaterThan(WOOD_FLOOR);
+    expect({ what: 'restocked', wood: peak > WOOD_FLOOR }).toEqual({ what: 'restocked', wood: true });
+    expect({ what: 'never ran dry', wood: trough > 0 }).toEqual({ what: 'never ran dry', wood: true });
     expect(world.messages.some((m) => /stores are down/i.test(m.text))).toBe(true);
     // And it went and got it: stumps in the yard, not a gift from the sky.
     expect(world.buildings.filter((b) => b.built && b.kind === 'tree').length).toBeLessThan(
@@ -1379,27 +1650,58 @@ describe('two days in a colony nobody is watching', () => {
 
   it('does not spend the colony into a corner', () => {
     const world = createWorld(22);
-    // A poor colony: enough to live on, nothing spare. Two days later it should
-    // still have its float, because every ambition checks before it marks.
+    // A poor colony: enough to live on, nothing spare.
     setStock(world, 'wood', RESERVE.wood + 10);
     setStock(world, 'steel', RESERVE.steel + 5);
 
-    stepWorldN(world, makeStreams(world), 2400);
+    // What the Steward is actually promising, and it is worth separating from two
+    // things it is not.
+    //
+    // It is not "the pile stays above the float". A firebox burns wood whether or
+    // not anybody marked anything, so a colony can be underneath its float having
+    // committed to nothing at all, and this fixture is under it by the second
+    // night. And it is not a reading taken at the end: measured over two days the
+    // margin here runs 13, 34, 56, 53 and 146, and which of those a single
+    // `stepWorldN` lands on is a fact about the length of the call.
+    //
+    // The promise is that the colony can always finish what it started. Every
+    // frame standing half-built is a bill still to pay — what it needs less what
+    // has already been carried into it — and the loose stock on the map has to
+    // cover the lot. An unstarted blueprint is fine, that is a queue; a blueprint
+    // the colony cannot afford to finish is a plank it should never have
+    // committed, and it stands in the yard as a ghost for the rest of the game.
+    // So it is checked the whole way along rather than once at the end.
+    const owed = (k: ResourceKind): number => {
+      let n = 0;
+      for (const b of world.buildings) {
+        if (b.built) continue;
+        n += Math.max(0, (b.needs[k] ?? 0) - (b.have[k] ?? 0));
+      }
+      return n;
+    };
 
-    // Chopping raises the number and building lowers it, so the stock on its own
-    // says nothing. What must hold is that everything the Steward has committed
-    // to is still payable *out of the spendable half* — stock above the float.
-    // An unstarted blueprint is fine, that is a queue; an unstarted blueprint the
-    // colony cannot afford to finish is a plank it should never have committed,
-    // and it sits in the yard as a ghost for the rest of the game.
-    const owed: Record<string, number> = { wood: 0, steel: 0 };
-    for (const b of world.buildings) {
-      if (b.built) continue;
-      for (const k of Object.keys(b.needs)) owed[k] = (owed[k] ?? 0) + (b.needs[k as ResourceKind] ?? 0);
+    const streams = makeStreams(world);
+    for (let t = 0; t < TICKS_PER_DAY * 2; t += 240) {
+      stepWorldN(world, streams, 240);
+      for (const k of ['wood', 'steel'] as ResourceKind[]) {
+        expect({ t, k, payable: countResource(world, k) - owed(k) >= 0 }).toEqual({ t, k, payable: true });
+      }
     }
-    for (const k of ['wood', 'steel'] as ResourceKind[]) {
-      expect({ k, spare: countResource(world, k) - RESERVE[k] - owed[k]! >= 0 }).toEqual({ k, spare: true });
-    }
+
+    // And it spent. Without this the test has a second way to pass, which is the
+    // way it used to: a colony that marks nothing owes nothing and is trivially
+    // solvent. Measured on the rule this replaced that is exactly what happened
+    // here — not one frame in the whole two days and two hundred and forty wood
+    // piled in the yard, because a single marked tree held the board and stopped
+    // every ambition under it. A Steward that cannot spend passes the solvency
+    // assertion perfectly, and is the bug it was written to catch the far side of.
+    //
+    // Counted as buildings the colony marked *and finished*, which is the only
+    // number that cannot be got by marking harder. Measured at twenty-five here;
+    // the rule that froze raised none at all, so the bar is set where it
+    // separates spending from not spending rather than where it pins a seed.
+    const raised = world.buildings.filter((b) => b.built && b.bySteward).length;
+    expect({ what: 'raised', enough: raised >= 10, raised }).toMatchObject({ what: 'raised', enough: true });
   });
 });
 

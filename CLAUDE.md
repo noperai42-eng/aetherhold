@@ -11,6 +11,11 @@ are the map, and this file only says which one to open.
   frame — is iterated with the look loop in [LOOK.md](LOOK.md):** photograph the same
   frames before and after, look at them yourself, write the next brief from what you
   saw, and log the round. Any model can drive it; the frames are the judge.
+- **Shaping a model rather than a screen** — the bench, served at `/forge.html` in dev:
+  one model a page, its numbers on sliders, and a Generate 12 button. The plan for the
+  recipe-and-bench loop over every procedural geometry in `src/client/render/`, which
+  stages of it are built, and what Evergrow's forge does that this repo does not:
+  [FORGING.md](FORGING.md).
 - **Taking the models out of the game** — one command that writes every building,
   settler, animal and pile to `.glb`, and what another project needs to know to use
   them: [ASSETS.md](ASSETS.md).

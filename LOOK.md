@@ -62,6 +62,7 @@ owns `:5063`, say), every command below takes `URL=http://localhost:<port>/`.
 | `scripts/look/crew.mjs` | Seven settlers in a row, one per state of hands and attention | `npm run look:crew -- .look/shots/r12-crew r12` |
 | `scripts/look/heads.mjs` | Eight settlers at eight facings, for judging what a head's outline says | `LOOK_HAIR=long npm run look:heads -- .look/shots/r13 r13` |
 | `scripts/look/trouble.mjs` | The colony on a bad day, interface up: the panels that carry bad news, carrying some — and, on its second report line, where those panels actually are, because a panel drawn over another panel photographs as a correct panel. Steps go to stderr with a stopwatch on them, so a run that dies names the step it died in | `npm run look:trouble -- .look/shots/r16 r16` |
+| `scripts/look/review.mjs` | Every panel in `src/review/scenes.ts`, one to a frame, staged from a seed rather than waited for. The list comes off the review page's own index, so a scene added there is photographed without editing the script. Needs `npm run dev` up | `npm run look:review -- .look/shots/r17-review r17` |
 | `scripts/look/grain.mjs` | Whether a change reached the frame at all | `node scripts/look/grain.mjs .look/shots/r5/r5-3-colony.png .look/shots/r6/r6-3-colony.png` |
 | `scripts/look/diag-hang.mjs` | The stopwatch for when a capture stalls | `node scripts/look/diag-hang.mjs .look/hang` |
 | `.claude/workflows/look-round.js` | One whole round, steps 2–5, as a workflow | see below |
@@ -302,6 +303,14 @@ look". To bring a new visual or UX feature under it:
   feature has a phone layout. The rubric changes with the subject — for a screen it is
   hierarchy, one primary action, tap targets, contrast, and whether a first-time player
   understands it in five seconds — but the loop does not.
+- **One panel, in a state the game will not hold still in**: register a scene in
+  `src/review/scenes.ts` and `npm run look:review` photographs it. A scene is a seed, a
+  world built from it, and one exported panel function called against that world — it never
+  steps the sim and never touches a save, so two loads of the same scene are the same
+  frame. This is the answer to a card that is only ever read in the ten seconds after a
+  raid: a corpse still wearing a parka, a settler in plate standing next to a better coat.
+  One panel a page, because forty-five stylesheet rules hang off `#inspector` and an id
+  appears once in a document — to compare two variants, load the scene twice.
 
 ## What will bite
 

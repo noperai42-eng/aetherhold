@@ -28,6 +28,7 @@
 import { defOf, isBed } from './buildings';
 import { NEIGHBOURS_4, NEIGHBOURS_8, adjacentStandCells, buildingAt, canStep } from './grid';
 import { regionAt, regionIndex } from './regions';
+import { roomIndex } from './rooms';
 import type { Building, Pawn, World } from './types';
 import { DESIG_DECONSTRUCT, DESIG_HARVEST, DESIG_NONE, inBounds, packCell, terrainAt } from './types';
 import { hostiles, livingColonists, msg } from './world';
@@ -58,17 +59,111 @@ function groupByRegion(world: World): Map<number, Pawn[]> {
   return groups;
 }
 
+/**
+ * The things the watchdog opens a path *to*, by category.
+ *
+ * Per category rather than per building, which is the rule `keepEssentialsReachable`
+ * is built on: one bed stranded in a half-finished wing is the player's business,
+ * every bed on the far side of a wall is an emergency.
+ */
+const ESSENTIALS: Array<{ label: string; has: (b: Building) => boolean }> = [
+  { label: 'The stove is', has: (b) => b.kind === 'stove' },
+  { label: 'The beds are', has: (b) => isBed(b.kind) },
+];
+
+/** Is this one of them, whatever the category? */
+function essential(b: Building): boolean {
+  return ESSENTIALS.some((e) => e.has(b));
+}
+
 /** Can a settler take this apart, and what do you call the order? */
 function removalDesig(world: World, x: number, y: number): number {
   const b = buildingAt(world, x, y);
   if (b && b.built) {
     if (!defOf(b.kind).solid) return DESIG_NONE;
+    // Never the kitchen, and never a bed. `openTheWay` marks whatever solid thing
+    // stands between the two halves, and a stove is a solid thing — so the pass
+    // sent to reach a walled-off stove could reach it by pulling it down, which
+    // is the one outcome nobody was asking for. Measured on seed 99001: the yard
+    // fence closed around the kitchen on day ten, the watchdog said "the stove is
+    // walled off from the colony — opening a way through" and marked the stove
+    // itself, a settler took it apart, and because a deconstruct leaves no
+    // rebuild plan — see the last paragraph of `rebuild.ts` — and nothing else in
+    // the game ever plans a stove, the colony cooked its last meal on day nine
+    // with two hundred and twenty-three units of raw food in the larder, ran the
+    // meal store to zero by day seventeen, and was wiped out on day twenty-seven.
+    //
+    // A wall comes down instead, and there is nearly always one: a pocket has to
+    // be sealed by something, and `openTheWay` digs through in layers anyway. If
+    // the essential really is the only thing in the gap then no way opens this
+    // pass and the colony is exactly where it was — which is a great deal better
+    // than where it is with no kitchen at all.
+    if (essential(b)) return DESIG_NONE;
     // Trees are chopped, not deconstructed — same result, different verb, and
     // `designate` refuses the wrong one.
     return b.kind === 'tree' ? DESIG_HARVEST : DESIG_DECONSTRUCT;
   }
   if (b) return DESIG_NONE;
   return terrainAt(world, x, y) === 'rock' ? DESIG_HARVEST : DESIG_NONE;
+}
+
+/**
+ * Every cell that forms the shell of a room a cooler is holding cold.
+ *
+ * A wall is a wall to `removalDesig`, which is how the third rule below came to
+ * pay for a way out with the colony's food. Measured on seed 4242: the settlers
+ * built themselves into a pocket smaller than half the map on day seven,
+ * `keepColonyOnTheMap` went looking for the boundary cell nearest to them, and
+ * the nearest one was the south wall of the pantry. A settler pulled it down, the
+ * cold store stopped being a room, the cooler had nothing left to chill, and the
+ * raw food that had sat at minus five for a week began to rot at yard
+ * temperature. The way out opened. The colony paid for it with the winter's meat.
+ *
+ * Unlike the stove this cannot be a refusal. A stove is one cell and there is
+ * nearly always another wall; a cold store is a ring of them, and a colony that
+ * sealed itself inside its own pantry would stay sealed for good. So it is a
+ * preference instead — see `openTheWay` — and the freezer's wall comes down only
+ * when nothing else will open the way at all.
+ *
+ * Layout and not wiring: an unpowered cooler is a cold store between power cuts,
+ * and the room is still the reason it was built. Null when the colony has no
+ * cooler standing, which is most colonies most of the time and saves the walk.
+ */
+function coldShell(world: World): Uint8Array | null {
+  const idx = roomIndex(world);
+  const w = world.width;
+  const cold = new Set<number>();
+  for (const b of world.buildings) {
+    if (!b.built || b.kind !== 'cooler') continue;
+    // A cooler is 1.3 m and so does not enclose: it stands *in* the room it holds
+    // rather than in the wall of it. This is the lookup `roomTargets` spends to
+    // decide what a device is heating, asked the other way round.
+    const id = idx.cellRoom[b.y * w + b.x];
+    if (id === undefined || id < 0) continue;
+    cold.add(id);
+  }
+  if (cold.size === 0) return null;
+
+  const shell = new Uint8Array(idx.cellRoom.length);
+  for (const id of cold) {
+    const room = idx.rooms.get(id);
+    if (!room) continue;
+    for (const i of room.cells) {
+      const x = i % w;
+      const y = (i - x) / w;
+      for (const [dx, dy] of NEIGHBOURS_4) {
+        const nx = x + dx;
+        const ny = y + dy;
+        if (!inBounds(world, nx, ny)) continue;
+        const j = ny * w + nx;
+        // Anything the room's floor touches that is not the room. The scan below
+        // only ever asks about cells it could remove, so marking the open ground
+        // outside a doorway along with the walls costs nothing and needs no test.
+        if (idx.cellRoom[j] !== id) shell[j] = 1;
+      }
+    }
+  }
+  return shell;
 }
 
 /**
@@ -81,12 +176,22 @@ function removalDesig(world: World, x: number, y: number): number {
  * the next one. It digs through in layers rather than solving it in one go, which
  * is both simpler than a weighted search and closer to what it looks like from
  * the outside: settlers working at a wall until it opens.
+ *
+ * Ahead of both sits one question about what the wall is doing for its living. A
+ * cold store is a ring of walls and the cheapest of them to reach is still the
+ * one holding a week of food at minus five, so candidates are ranked four ways —
+ * joins and warm, edge and warm, joins and cold, edge and cold. Joining still
+ * beats digging through in layers and a wall that is not keeping food still beats
+ * one that is, but the two are ranked and not weighed against each other: the
+ * colony will spend one more twenty-second pass to keep its freezer, and will not
+ * spend forever.
  */
 function openTheWay(world: World, stranded: number, main: number, toward: Pawn): boolean {
   const index = regionIndex(world);
   const w = world.width;
-  let bestJoin: { x: number; y: number; d: number } | null = null;
-  let bestEdge: { x: number; y: number; d: number } | null = null;
+  const shell = coldShell(world);
+  /** Best candidate in each rank, in the order the doc above sets out. */
+  const picks: Array<{ x: number; y: number; d: number } | null> = [null, null, null, null];
 
   for (let i = 0; i < index.cellRegion.length; i++) {
     if (index.cellRegion[i] !== stranded) continue;
@@ -107,15 +212,13 @@ function openTheWay(world: World, stranded: number, main: number, toward: Pawn):
         if (!inBounds(world, nx, ny)) continue;
         if (index.cellRegion[ny * w + nx] === main) joins = true;
       }
-      if (joins) {
-        if (!bestJoin || d < bestJoin.d) bestJoin = { x: bx, y: by, d };
-      } else if (!bestEdge || d < bestEdge.d) {
-        bestEdge = { x: bx, y: by, d };
-      }
+      const rank = (joins ? 0 : 1) + (shell && shell[by * w + bx] === 1 ? 2 : 0);
+      const best = picks[rank] ?? null;
+      if (!best || d < best.d) picks[rank] = { x: bx, y: by, d };
     }
   }
 
-  const pick = bestJoin ?? bestEdge;
+  const pick = picks[0] ?? picks[1] ?? picks[2] ?? picks[3];
   if (!pick) return false;
   world.cellDesig[packCell(world, pick.x, pick.y)] = removalDesig(world, pick.x, pick.y);
   return true;
@@ -147,11 +250,7 @@ function accessRegion(world: World, b: Building): number {
  * wall is an emergency, and so is every stove.
  */
 function keepEssentialsReachable(world: World, main: number, toward: Pawn): void {
-  const kinds: Array<{ label: string; has: (b: Building) => boolean }> = [
-    { label: 'The stove is', has: (b) => b.kind === 'stove' },
-    { label: 'The beds are', has: (b) => isBed(b.kind) },
-  ];
-  for (const { label, has } of kinds) {
+  for (const { label, has } of ESSENTIALS) {
     let stranded: Building | null = null;
     let strandedRegion = -1;
     let reachable = false;

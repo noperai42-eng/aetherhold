@@ -6,7 +6,7 @@
  */
 
 import { BUILD_GROUPS, defOf, isBed } from '../../sim/buildings';
-import { SKILL_NAMES, WORK_TYPES, type EndingRecord } from '../../sim/types';
+import { SKILL_NAMES, WORK_TYPES, type EndingRecord, type EquipKind } from '../../sim/types';
 import { clockString, dayNumber } from '../../sim/clock';
 import { DAYS_PER_SEASON, dayOfSeason, seasonLabel, seasonOf } from '../../sim/seasons';
 import {
@@ -59,6 +59,7 @@ import { isPhoneLayout } from './layout-mode';
 import { manifestSections } from '../manifest';
 import { buildQueue, plotStatus, shortfall, type QueueRow } from './board';
 import { cellFacts, type CellFacts } from './cell';
+import { kitEffect, type Axis, type AxisDelta, type AxisValue, type KitFacts } from './kit';
 import { courtedFor, partnerOf } from '../../sim/partners';
 import { bondLabel, bondsOf, FRIEND, RIVAL } from '../../sim/social';
 import { memoriesOf } from '../../sim/lifelog';
@@ -108,6 +109,7 @@ import { commissionDaysLeft, commissionOf, satisfies } from '../../sim/commissio
 import { CRAFT_DEFS, RECIPE_ORDER, bestCrafter, canCraft, craftBlocker, pawnQualified, unlockedBy } from '../../sim/crafting';
 import { PASSION_LABEL, SKILL_TITLE, passionOf } from '../../sim/skills';
 import { EQUIP, apparelOf, gearOf } from '../../sim/gear';
+import { ROT_TICKS } from '../../sim/graves';
 import {
   BATTERY_CAPACITY,
   DRAW,
@@ -1546,6 +1548,13 @@ export class Hud {
         this.inspector.append(acts);
         return;
       }
+      // And the dead, for the same reason as the deer and the opposite one from
+      // the settler: every row below this line is a question a corpse has
+      // stopped having an answer to.
+      if (p.dead) {
+        this.inspector.innerHTML = corpsePanel(p);
+        return;
+      }
       // Floored, not raw: a skill is a whole number to the player, and the
       // fractional part is the progress a settler has made toward the next one.
       // Printing it gives you "construction 5.359999999999999".
@@ -1578,20 +1587,10 @@ export class Hud {
             `<b>${Math.floor(p.skills[k])}${mark}</b></div>`
           );
         }).join('');
-      // What they have on. Only once there is something to say: a line reading
-      // "wearing — nothing" on every settler for the first ten days is ten days
-      // of teaching the player to skip this part of the card.
+      // What they have on, and what it is doing for them.
       const worn = apparelOf(p);
       const held = gearOf(p);
-      const kit =
-        worn || held
-          ? (worn
-              ? `<div class="kv"><span>wearing</span><b>${escapeHtml(EQUIP[worn].label)}</b></div>`
-              : '') +
-            (held
-              ? `<div class="kv"><span>carrying</span><b>${escapeHtml(EQUIP[held].label)}</b></div>`
-              : '')
-          : '';
+      const kit = kitRows(worn, held);
       // What this one can make that the colony would miss. A skill gate is a gate
       // on a person, so "the only herbalist here" is the most important thing on
       // this panel and it was previously spread across eight numbers for the
@@ -4291,6 +4290,20 @@ function recipeRows(world: World, b: Building): string {
  * whole job is to answer "is this animal old". Only ever used on grown animals,
  * which are three days old at the youngest, so whole days never round to zero.
  */
+/**
+ * How long is left, in the unit somebody would actually use for it.
+ *
+ * `colonyTime` stops at hours, which is right everywhere it is used — a pen
+ * yields in the afternoon, a settler is hungry in an hour — and wrong for this
+ * one row, where the full span is four days and reads as *about 96 hours*. But
+ * days are wrong at the other end: a body with two hours left is not "1 day",
+ * and that is the side of the decision where being wrong costs somebody. So it
+ * is days while there is more than one, and the existing wording under that.
+ */
+function rotWords(ticks: number): string {
+  return ticks >= TICKS_PER_DAY ? colonyAge(ticks) : colonyTime(ticks);
+}
+
 function colonyAge(ticks: number): string {
   const days = Math.max(1, Math.round(ticks / TICKS_PER_DAY));
   return `${days} day${days === 1 ? '' : 's'}`;
@@ -4329,6 +4342,198 @@ function manifestHtml(rec: EndingRecord): string {
         '</ul>',
     )
     .join('');
+}
+
+/**
+ * The words for one piece of kit, read for one settler.
+ *
+ * The numbers arrive already decided by `kit.ts`, which got them from the
+ * simulation; this only has to say them, and the way it says them is the whole
+ * of what the panel is for. Three blocks, in this order, because the third is
+ * the one nobody has ever been told.
+ *
+ * *On equip* is a before and an after rather than a specification. "Armour 40%"
+ * is a fact about a steel plate and the player does not need it; "15% → 40%" is
+ * a fact about the settler standing in front of them, which is the decision
+ * actually on the table. Every axis either piece touches gets a row, including
+ * the ones that get worse — a card that showed only the improvements would be a
+ * card taking a side, and the tradeoff is the entire content of this system.
+ *
+ * Warmth is the one axis with no colour on it, and that is deliberate rather
+ * than an oversight: insulation helps in a freeze and costs the same amount in a
+ * heatwave, so a green arrow on it would be a claim the simulation does not
+ * make. Armour, work and treatment are one-directional and are coloured.
+ *
+ * *Ranked by* is the confession. `isUpgrade` has always chosen one axis for each
+ * settler — armour for the one holding a rifle, warmth for everybody else — and
+ * ranked the whole apparel tree along it, which is what stops the crafting bench
+ * from looping. It has never been said out loud, so a player watching the bench
+ * refuse to make a coat for their rifleman had no way to learn why, and no way
+ * to disagree. The line is the *reason*, not a verdict: the bench's own answer
+ * sits beside it and the player is left to think the rest.
+ */
+export function kitPanel(f: KitFacts): string {
+  const def = EQUIP[f.kind];
+  const rows = f.axes.map((a) => axisRow(a)).join('');
+  const instead = f.replaces
+    ? `<div class="kv"><span>comes off</span><b>${escapeHtml(EQUIP[f.replaces].label)}</b></div>`
+    : `<div class="kv"><span>comes off</span><b>nothing — the slot is empty</b></div>`;
+  const line = `${f.line === 'armour' ? 'armour' : 'warmth'} — ${
+    f.armed ? 'carries a rifle' : 'no rifle'
+  }`;
+  return (
+    `<h3>${escapeHtml(def.label)}</h3>` +
+    `<div class="sub">${def.slot === 'apparel' ? 'worn' : 'carried'} · for ${escapeHtml(f.who)}</div>` +
+    `<div class="sect">On equip</div>` +
+    (rows || '<div class="kv"><span>changes</span><b>nothing they have not got</b></div>') +
+    `<div class="sect">Instead of</div>` +
+    instead +
+    `<div class="kv why"><span>ranked by</span><b>${escapeHtml(line)}</b></div>` +
+    `<div class="kv why"><span>the bench</span><b class="${f.upgrade ? 'good' : 'bad'}">${
+      f.upgrade ? 'calls this an upgrade' : 'will not make this'
+    }</b></div>`
+  );
+}
+
+/** The word for an axis, and the shape its numbers are printed in. */
+const AXIS_WORD: Record<Axis, string> = {
+  armour: 'armour',
+  insulation: 'warmth',
+  work: 'work',
+  treatment: 'treatment',
+};
+
+/**
+ * One before-and-after row.
+ *
+ * Armour and the two rates are percentages because that is how they are felt —
+ * a fifth off every hit, a fifteenth more colony. Warmth is left as the comfort
+ * points it is: it is not a proportion of anything, and printing it as one would
+ * invent a denominator the weather code does not have.
+ */
+function axisRow(a: AxisDelta): string {
+  const fmt = (v: number) =>
+    a.axis === 'insulation'
+      ? `${v >= 0 ? '+' : '\u2212'}${Math.abs(v).toFixed(2)}`
+      : `${Math.round(v * 100)}%`;
+  const better = a.next > a.now;
+  const tone = a.axis === 'insulation' ? '' : ` class="${better ? 'good' : 'bad'}"`;
+  return `<div class="kv"><span>${AXIS_WORD[a.axis]}</span><b${tone}>${fmt(a.now)} \u2192 ${fmt(a.next)}</b></div>`;
+}
+
+/**
+ * One line of what a settler has on, and one line of what it is doing for them.
+ *
+ * The name on its own is what this card printed for as long as apparel has
+ * existed, and a name is the one thing about a piece of kit the player can
+ * already guess. The interest is all in the second line: a steel plate is forty
+ * per cent off every hit, a third of a coat *worse* than bare skin in a freeze,
+ * and an eight per cent tax on everything that settler does for the rest of
+ * their life, and none of that had ever reached the screen.
+ *
+ * Second line rather than a wider first one because the card is narrow — 234px,
+ * and already 741px tall on a long-lived settler — so the alternative was
+ * abbreviations. Dimmed, because it is a caption on the name and not a second
+ * value competing with it.
+ *
+ * One axis per line rather than a run separated by dots, which is what this was
+ * first and what the photographs rejected. Steel plate is the only piece that
+ * touches three axes, and at 234px its run came to within a few pixels of the
+ * panel and wrapped — leaving the last word alone on a third line, which reads
+ * as a mistake rather than as a fact. A line each never wraps at any width, and
+ * the phone sheet is narrower than this.
+ */
+export function kitRows(worn: EquipKind | null, held: EquipKind | null): string {
+  // Nothing to say stays nothing said — see the note at the call site: a line
+  // reading "wearing — nothing" on every settler for the first ten days is ten
+  // days of teaching the player to skip this part of the card.
+  if (!worn && !held) return '';
+  return (worn ? kitRow('wearing', worn) : '') + (held ? kitRow('carrying', held) : '');
+}
+
+function kitRow(label: string, kind: EquipKind): string {
+  const words = kitEffect(kind)
+    .map((v) => `<i>${axisWords(v)}</i>`)
+    .join('');
+  return (
+    `<div class="kv"><span>${label}</span><b>${escapeHtml(EQUIP[kind].label)}</b></div>` +
+    `<div class="kiteffect">${words}</div>`
+  );
+}
+
+/**
+ * What one axis of a worn piece is worth, in the units it is felt in.
+ *
+ * Armour and the two rates are proportions and print as percentages. Warmth
+ * stays the comfort points it is — it is not a proportion of anything, and
+ * giving it a denominator the weather code does not have would be inventing a
+ * fact. A negative number keeps its sign in both cases, because plate making
+ * its wearer colder is the single most surprising thing in this table.
+ */
+function axisWords(v: AxisValue): string {
+  if (v.axis === 'insulation') {
+    return `${v.value >= 0 ? '+' : '\u2212'}${Math.abs(v.value).toFixed(2)} ${AXIS_WORD.insulation}`;
+  }
+  return `${Math.round(v.value * 100)}% ${AXIS_WORD[v.axis]}`;
+}
+
+/**
+ * The body on the ground.
+ *
+ * "Should also be able to click on dead bodies and see what they are doing" —
+ * and until now they could not, because the manager's click resolved to the
+ * living only and the dead were skipped before anything was asked of them. A
+ * colony could lose somebody in a raid and the only account of it was a grave
+ * and a grief spike; the person themselves went quiet the instant they stopped
+ * being a person.
+ *
+ * A short card on purpose, and short in a particular way: it is not the settler
+ * card with the numbers greyed out. A corpse has no mood, no rest, no errand and
+ * nothing it would like to be doing, so every one of those rows is a question
+ * that has stopped having an answer, and printing them at zero would say
+ * something false about somebody the player cared about. What is left is what is
+ * still true — who they were, what they were carrying when it happened, where
+ * they are lying and how long any of it will still be there — which is also, not
+ * by accident, exactly what a player needs in order to decide whether to send
+ * somebody out for it.
+ *
+ * What killed them is the one obvious row that is missing, and it is missing
+ * because the simulation never writes it down: `damagePawn` is handed a `source`,
+ * spends it on the death message, and keeps nothing on the pawn. Recovering it
+ * here would mean guessing, so the row is absent rather than wrong. Storing it is
+ * a change to what a pawn holds rather than to what this panel prints, which
+ * makes it a round of its own; this card is written with the space for it.
+ */
+export function corpsePanel(p: Pawn): string {
+  const who = p.faction === 'colony' ? 'Settler' : p.faction;
+  const kit = kitRows(apparelOf(p), gearOf(p));
+  // Everything the colony wrote down about them while they were alive. On the
+  // settler card this is the last thing you read, because the numbers above it
+  // are what you came for. Here there are no numbers and it is the only thing
+  // there is, which is the right way round: a body is not a state to be read,
+  // it is a person the colony is now short of.
+  const past = memoriesOf(p);
+  return (
+    `<h3>${escapeHtml(p.name)}</h3><div class="sub">${escapeHtml(who)} · dead</div>` +
+    // Still on them, and still worth something to a colony that has to decide
+    // whether anybody can be spared to go and get it.
+    (kit || '<div class="kv"><span>carrying</span><b>nothing</b></div>') +
+    (p.weapon !== 'none' ? `<div class="kv"><span>weapon</span><b>${escapeHtml(p.weapon)}</b></div>` : '') +
+    `<div class="kv"><span>lies at</span><b>${Math.round(p.x)}, ${Math.round(p.y)}</b></div>` +
+    // How long the player has to decide. Everything above this row is worth
+    // something to somebody, and in four days there will be nothing left of it
+    // or of them — which is the whole argument for sending a hauler out into a
+    // yard that is not safe yet. A buried settler is not on that clock at all.
+    (p.buried
+      ? '<div class="kv"><span>buried</span><b>yes</b></div>'
+      : `<div class="kv"><span>rots away in</span><b class="bad">${rotWords(
+          Math.max(0, ROT_TICKS - (p.rot ?? 0)),
+        )}</b></div>`) +
+    (past.length
+      ? '<div class="sect">their story</div>' +
+        past.map((m) => `<div class="mem"><b>day ${m.day}</b><span>${escapeHtml(m.text)}</span></div>`).join('')
+      : '')
+  );
 }
 
 function escapeHtml(s: string): string {

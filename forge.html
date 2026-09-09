@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Aetherhold forge</title>
+    <!-- The same icon the game uses, for the same reason review.html declares
+         one: a page with no icon has the browser ask for /favicon.ico and log
+         the 404 it gets back, and the look loop counts a console error as a
+         failed frame. -->
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png" />
+    <!--
+      Not the game, and not the review page either. This is the bench: one model
+      on an empty ground plane under the colony's own light rig, with the numbers
+      it is made of on a slider beside it. See FORGING.md for the loop it feeds
+      and src/forge/recipes.ts for what it can be asked to build.
+
+      Deliberately absent from vite.config.ts, exactly as review.html is. Vite's
+      dev server serves any .html at the root without being told to, which is all
+      this needs, and leaving it out of build.rollupOptions.input keeps it out of
+      what the players download. tsconfig still covers src/forge, so the code
+      here is typechecked by `npm run build` even though it is never bundled by
+      it — a harness that cannot rot silently and cannot ship by accident.
+    -->
+  </head>
+  <body>
+    <div id="app"></div>
+    <script type="module" src="/src/forge/main.ts"></script>
+  </body>
+</html>

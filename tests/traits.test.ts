@@ -333,9 +333,34 @@ describe('a colony that has traits in it', () => {
     // that noisy is a coin flip wearing an assertion's clothes, and the honest
     // fix is more sample rather than a looser threshold — loosening would have
     // bought the pass by giving up the ability to notice the trait going dark.
-    // Pooled over these three the numbers are 0.74 and 147 against 118, both with
-    // room, and the whole thing costs about ninety seconds.
-    const SEEDS = [20260729, 21, 7];
+    // Pooled over these three the numbers were 0.74 and 147 against 118, both
+    // with room, and the whole thing cost about ninety seconds.
+    //
+    // Three became six the day the Steward learned to keep building, and it went
+    // the way the move from one to three had gone. Nothing about the trait
+    // changed: pooled over the three it read 0.93 against the 0.9 alarm, and the
+    // whole of that is seed 21, where a raid lands in the slothful arm and not
+    // the keen one. The slothful crew is the arm this assertion needs to be the
+    // *larger* number — it is slower over the same board, so it logs more hours
+    // at the workface — and two thousand ticks spent fighting are two thousand
+    // ticks not logged there. The raid takes them off the big side of the
+    // comparison, the gap closes from the wrong end, and the trait reads as
+    // though it had stopped working when what actually happened was a fight.
+    //
+    // Walked over nine the per-run ratios are 0.60, 0.71, 0.72, 0.78, 0.78, 0.87,
+    // 0.89, 1.10, 1.24 — a median near 0.78 with a tail over 1 wherever a raid
+    // falls on one arm only. Pool four or more and it lands between 0.82 and 0.87
+    // and stays there; three is the only sample size a single seed can drag over
+    // the alarm. Six is the smallest pool that holds *both* tail seeds and still
+    // clears, which is the version worth pinning — it is the pessimistic half of
+    // the band rather than the flattering one, and seven, eight and nine all read
+    // lower. Pooled over these six the numbers are 0.86 and 237 against 198, and
+    // it cost 320 s measured with the rest of the suite running alongside it,
+    // against about ninety for the three. Twelve three-day runs is simply what a
+    // sample that survives one bad raid costs, and it is over the file's 300 s
+    // default, so the explicit timeout below is that bill rather than a symptom
+    // of anything hanging.
+    const SEEDS = [20260729, 21, 7, 1312, 424242, 99001];
     const run = (trait: TraitName): { working: number; built: number } => {
       let working = 0;
       let built = 0;
@@ -358,11 +383,11 @@ describe('a colony that has traits in it', () => {
     };
     const keen = run('hardworking');
     const idle = run('slothful');
-    // Measured at 0.74 across the three. The alarm is loose on purpose: it is
+    // Measured at 0.86 across the six. The alarm is loose on purpose: it is
     // here to catch the trait being unplugged, not to pin a number that every
     // balance change would have to come and update.
     expect(keen.working).toBeLessThan(idle.working * 0.9);
     // And they were not idling: the same board got built either way.
     expect(keen.built).toBeGreaterThan(idle.built * 0.8);
-  });
+  }, 900_000);
 });

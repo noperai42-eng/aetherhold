@@ -331,6 +331,18 @@ export interface Building {
    * come back mid-winter without announcing a freeze that happened in January.
    */
   iced?: boolean;
+  /**
+   * The Steward marked this one, rather than the player.
+   *
+   * Only ever set while it is a blueprint, and only by `steward.ts`, which
+   * stamps what it has just marked — see `claimBlueprints`. The whole point is
+   * `playerClear`: the colony must stand down for anything the *player* has
+   * queued and must not stand down for its own half-finished fence, and with no
+   * way to tell the two apart it did both. Absent on every building in every
+   * save written before this, which reads as the player's — the cautious way
+   * round, since it only ever makes the Steward wait.
+   */
+  bySteward?: boolean;
   /** cosmetic seed for procedural variation (trees) */
   seed?: number;
   /**
@@ -1936,6 +1948,28 @@ export interface World {
   steward?: boolean;
   /** The id of the last ambition the Steward committed to, for the HUD. */
   stewardLast?: string;
+  /**
+   * Where in `AMBITIONS` to start looking next pass.
+   *
+   * The list used to be walked from the top every time and the first ambition
+   * with something to say won, which sounds like a priority order and behaves
+   * like a monopoly: `yard` wants another fence post on almost every pass a
+   * colony ever runs, and measured over thirty-four days on three seeds it
+   * answered fifty of the hundred and two day-samples while nothing below it was
+   * reached at all. The scan starts one past whatever fired last and wraps, so
+   * the order still says what matters most while no single ambition can hold the
+   * queue.
+   */
+  stewardCursor?: number;
+  /**
+   * Packed cells the Steward designated, so `playerClear` can tell them from a
+   * floor the player painted. Only `stores` designates anything — it marks
+   * timber for the axe — and it is only ever reached over a board already known
+   * to hold no paint of the player's, so this is simply everything designated
+   * once it has run. See `claimDesignations` for which guard says so on which
+   * path.
+   */
+  stewardDesig?: number[];
   /** Whether the colony has already been told the air is bad, so it is said once. */
   fumesTold?: boolean;
   /**

@@ -24,6 +24,7 @@ import { makeStreams, stepWorld, stepWorldN } from '../src/sim/tick';
 import { Rng } from '../src/sim/rng';
 import { addBuilding, addItem, removeBuilding } from '../src/sim/world';
 import { buildingAt } from '../src/sim/grid';
+import { playerClear } from '../src/sim/steward';
 import { terrainAt, type Building, type World } from '../src/sim/types';
 import { createWorld, makePawn } from '../src/sim/worldgen';
 
@@ -276,10 +277,17 @@ describe('the colony actually gets its generator back', () => {
     destroy(world, gen!);
     expect(world.buildings.some((b) => b.kind === 'generator')).toBe(false);
 
+    // By the cell, not by the kind. The Steward reaches `power` on a colony
+    // this size and orders a second generator of its own — the grid at worldgen
+    // is under-provisioned and that is the whole point of the ambition — so
+    // "is there a generator standing" stopped being the same question as "did
+    // the colony put back the one it lost", and it is the second one that is
+    // being asked here.
     let rebuilt: Building | undefined;
     for (let i = 0; i < 4000 && !rebuilt; i++) {
       stepWorld(world, streams);
-      rebuilt = world.buildings.find((q) => q.kind === 'generator' && q.built);
+      const b = buildingAt(world, at.x, at.y);
+      rebuilt = b && b.built && b.kind === 'generator' ? b : undefined;
     }
     // Four thousand ticks is a little under a day. A colony that cannot put its
     // own generator back in a day is not rebuilding, it is idling.
@@ -308,5 +316,43 @@ describe('the colony actually gets its generator back', () => {
     // The colony's own firefighters put it out; nobody had to be told to.
     expect(patched, 'the hole in the wall was never planned back').toBe(true);
     expect(world.fires.some((f) => f.x === spot.x && f.y === spot.y)).toBe(false);
+  });
+});
+
+describe('the frame it puts back is the colony\'s own work', () => {
+  it('stamps a rebuilt frame as the colony\'s, not as something the player queued', () => {
+    const { world } = game();
+    const spot = clearing(world);
+    const wall = addBuilding(world, 'wall', spot.x, spot.y, true)!;
+    expect(playerClear(world)).toBe(true);
+
+    destroy(world, wall);
+    tickRebuild(world);
+
+    // Nobody ordered this frame. The wall stood, something took it out, and the
+    // colony decided by itself to put it back — which is the one thing the mark
+    // is for. Leave it off and the Steward reads the gap in its own wall as the
+    // player's floor plan and stands down: not for a day, but for as long as the
+    // frame is there, which is until somebody hauls the wood to it. A colony
+    // that has just been raided is exactly the colony that will not.
+    const frame = buildingAt(world, spot.x, spot.y);
+    expect(frame, 'the wall was never planned back').not.toBeNull();
+    expect(frame!.built).toBe(false);
+    expect(frame!.bySteward).toBe(true);
+    expect(playerClear(world)).toBe(true);
+  });
+
+  it('does not put the mark on a blueprint the player laid by hand', () => {
+    const { world } = game();
+    const spot = clearing(world);
+    // The same pass, over a board that has a plan of the player's on it. Nothing
+    // here was destroyed, so nothing here is the colony's to claim.
+    expect(placeBlueprint(world, 'wall', spot.x, spot.y)).toBeTruthy();
+    tickRebuild(world);
+
+    const frame = buildingAt(world, spot.x, spot.y)!;
+    expect(frame.built).toBe(false);
+    expect(frame.bySteward).toBeUndefined();
+    expect(playerClear(world)).toBe(false);
   });
 });

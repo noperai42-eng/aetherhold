@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Aetherhold review</title>
+    <!-- The same icon the game uses. Not decoration: the look loop treats a
+         console error as a failed frame, and a page with no icon declared has
+         the browser ask for /favicon.ico and log the 404 it gets back. -->
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png" />
+    <!--
+      Not the game. This page stages one panel against a fixture world so it can
+      be photographed on its own — see src/review/scenes.ts for why, and LOOK.md
+      for the loop it feeds. There is no canvas here on purpose.
+
+      Deliberately absent from vite.config.ts. Vite's dev server serves any .html
+      at the root without being told to, which is all this needs, and leaving it
+      out of build.rollupOptions.input keeps it out of what the players download.
+      tsconfig still covers src/review, so the code here is typechecked by
+      `npm run build` even though it is never bundled by it — which is the shape
+      wanted: a harness that cannot rot silently and cannot ship by accident.
+    -->
+  </head>
+  <body>
+    <div id="app"></div>
+    <script type="module" src="/src/review/main.ts"></script>
+  </body>
+</html>

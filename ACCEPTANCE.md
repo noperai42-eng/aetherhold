@@ -506,6 +506,9 @@ enforced twelve. It holds, with less room than it had.
 | Pause freezes the sim | held — automated, `tests/pace.test.ts` |
 | The eval steward never plays the real game | held — automated; `client/` may not import `eval/`. The two have converged since this rule was written — the in-game foreman now builds turrets and takes up research projects on its own — but the eval one still deals with visiting caravans and plans its own tech order by hand, so letting it into a real game would hand the player charters they never earned |
 | Winning does not switch the colony off | held — automated, `tests/victory.test.ts`. A founding sets `world.charter.won` and nothing else; `world.gameOver` still means only what `checkGameOver` means by it. Added after the two shared one flag: nine sim passes gate on `gameOver` and every one reads it as *everybody is dead*, so a founded colony stopped planning, trading, scouting and firing events while its generator burned the woodpile to zero |
+| The review page never reaches a player | held — automated, `tests/kit-card.test.ts`. `src/review/` is a mirror for the look loop: it imports `client/` and `sim/`, and a walk of both directories asserts nothing imports it back. `review.html` is served by vite in dev and is deliberately absent from `vite.config.ts`, so it is never in the bundle |
+| The forge bench never reaches a player | held — automated, `tests/forge-recipes.test.ts`. `src/forge/` is the shaping bench for the procedural models: it imports `client/` and `sim/`, and a walk of both directories asserts nothing imports it back. `forge.html` is served by vite in dev and is deliberately absent from `vite.config.ts`, so it is never in the bundle |
+| A recipe's defaults are the geometry the colony already has | held — automated, `tests/forge-recipes.test.ts`. Ten golden digests — `decor.stone` and all nine tree pools — hash vertex positions to a micrometre plus vertex, index and box counts, so a refactor of the builders that moves anything fails. Positions only: occlusion writes vertex colours, and retuning a contact shadow must not read as a moved model |
 | No feature that only exists in its own tests | held — `npm run live` runs a real colony to day ninety and names anything the game promises but never does. Added after a social-balance change made the pairing threshold unreachable: the rule stayed correct, twenty-nine tests stayed green, and the feature quietly stopped happening, because every one of those tests set the bond it asserted on |
 
 ## What still wants a human
@@ -1049,6 +1052,20 @@ rather than what it computes. Each is a numbered step in `PLAYTEST.md`:
   loads rather than refusing. The judgement left over is editorial: whether the panel reads
   as *what happened to us* or as a second, longer log. One line of small talk in it is the
   whole failure, and only a reader can see it.
+
+- **§9uu** — ask a body what it has on. `tests/kit-card.test.ts` pins that every number the
+  gear rows print is the simulation's own — each one re-derived by putting the piece on a real
+  settler with the game's own `equip` and asking the game's own accessors — and
+  `tests/corpse-card.test.ts` pins that a click reaches a corpse, that it does not reach one at
+  the cost of a living settler standing on the same square, and what the corpse card refuses to
+  say: no mood, rest, recreation, hunger, skills or bonds row, and none of the three buttons
+  only a living settler could obey. Two things are left for a human. The first is whether
+  *40% armour · 92% work · −0.15 warmth* under `steel plate` reads as a trade or as a spec
+  sheet — the numbers are right and that is not the same as legible. The second is the rot
+  clock: *rots away in 4 days* is meant to send a player out to fetch the parka, and stripping
+  a body is not built yet, so today it is information with no lever on the end of it. Whether
+  that reads as a promise or as a tease is the note this step exists to collect. Both cards can
+  be looked at without waiting for a raid — `npm run dev`, then `npm run look:review`.
 
 - **§9ii** — walk the map open, one ring at a time. `tests/rings.test.ts` pins the structure
   (twelve places, four per ring, distances that only grow outward), each of the three gates

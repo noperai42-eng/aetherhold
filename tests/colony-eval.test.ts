@@ -250,9 +250,28 @@ describe('colony survives its first week', () => {
   // this re-point buys margin on both axes. `probe-starve-pin` now prints the
   // clock alongside the columns, so the next person does not have to time it by
   // hand.
+  //
+  // And re-pointed off harsh/7 the day the Steward stopped being satisfied with
+  // one room — seventh in the line, and seventh in a row that went by the colony
+  // getting better rather than by anything breaking. A colony that clears ground
+  // and puts up a second and a third building is a colony with more floor, more
+  // stockpile and more hands moving, and harsh/7's fourth column went 5.0 h to
+  // 0.0: nobody on that seed now goes down hungry with hands free and no meal
+  // walking over. Its stranded column reads 0.8 as well. Two of the four are
+  // gone, so the pin cannot tell four causes apart on it any more.
+  //
+  // harsh/31 (1.8 / 19.2 / 3.5 / 1.8) takes it, out of the same twelve seeds
+  // walked again. It is not the widest row on the grid — harsh/8675309 reads
+  // 3.7 / 26.1 / 10.7 / 8.1 — but that is the seed this pin already backed out
+  // of once on the clock, and pinning it again would be walking into a known
+  // wall. What makes 31 the right one is the fourth column: 1.8 h against a
+  // stranded column of 3.5, so the gap the strict inequality rests on is 1.7 h
+  // rather than the 0.2 h that harsh/1312 offers at 1.5 against 1.7. The unfed
+  // column is the one that has collapsed under every re-point in this list, and
+  // the seed worth pinning is the one that has somewhere to fall.
   it('tells a walk home from a wait on the floor from a wait with hands free', () => {
     const r = runColony({
-      seed: 7,
+      seed: 31,
       days: 20,
       difficulty: 'harsh',
       playPastFounding: true,

@@ -497,6 +497,31 @@ body {
   font-weight: 400;
 }
 
+/* What a worn piece is doing, under its name.
+
+   A caption on the row above rather than a row of its own, and deliberately not
+   a `.kv`: a flex row with an empty label right-aligns its value by pushing it,
+   which stops working the moment the value wraps. Photographed at 1280x800, a
+   steel plate's three axes wrapped and left the last of them hanging at the
+   left margin under a right-aligned name. So each axis takes a line of its own,
+   right-aligned against the same edge as the name it explains, and nothing here
+   can wrap at any width the panel is ever given. */
+#inspector .kiteffect {
+  font-family: var(--mono);
+  font-size: 10px;
+  line-height: 1.45;
+  padding: 0 0 3px;
+  text-align: right;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+  opacity: 0.8;
+}
+
+#inspector .kiteffect i {
+  display: block;
+  font-style: normal;
+}
+
 #inspector .kv b.good {
   color: var(--good);
 }

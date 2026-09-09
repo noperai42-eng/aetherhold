@@ -247,6 +247,42 @@ const STONE_FACE_SPREAD = 0.14;
  */
 const STONE_SINK = 0.2;
 
+/**
+ * One loose stone, as a handful of numbers rather than as five constants nobody
+ * outside this file can reach.
+ *
+ * The constants above are still where the argument for each number lives, and
+ * they are still what the colony builds from — `STONE_DEFAULT` is made of them,
+ * `stoneGeometry()` called with no arguments uses it, and the call in the view
+ * below has not changed. What the struct buys is that the *same* builder can be
+ * asked for a different stone. Until the bench in `src/forge/` existed there was
+ * no way to see one: `stoneGeometry` took nothing, the seed was the literal 3.7,
+ * and every loose stone in the valley was that one mesh turned about. Deciding
+ * whether three tenths is the right displacement meant editing this line,
+ * rebuilding, starting a colony and walking to a rock.
+ */
+export interface StoneRecipe {
+  /** Which lump this is. Every vertex is moved by a hash against it. */
+  seed: number;
+  /** Subdivisions of the icosahedron it is knocked out of. Zero is twenty faces. */
+  detail: number;
+  /** The largest nudge, as a fraction of the radius. */
+  lump: number;
+  /** How far its faces differ in tone before any light reaches them. */
+  faceSpread: number;
+  /** How far it beds into the ground it lies on, as a fraction of its radius. */
+  sink: number;
+}
+
+/** The stone the colony is made of. Every field is the constant above it. */
+export const STONE_DEFAULT: StoneRecipe = {
+  seed: 3.7,
+  detail: STONE_DETAIL,
+  lump: STONE_LUMP,
+  faceSpread: STONE_FACE_SPREAD,
+  sink: STONE_SINK,
+};
+
 export class DecorView {
   readonly group = new THREE.Group();
   private readonly tufts: THREE.InstancedMesh;
@@ -881,8 +917,8 @@ function tuftGeometry(root: THREE.Color, tip: THREE.Color): THREE.BufferGeometry
  * the per-instance tint rather than replacing it, so the wander across a field
  * of stones and the wander across one stone's faces are both on screen.
  */
-function stoneGeometry(): THREE.BufferGeometry {
-  const welded = lumpyGeometry(new THREE.IcosahedronGeometry(0.5, STONE_DETAIL), STONE_LUMP, 3.7);
+export function stoneGeometry(r: StoneRecipe = STONE_DEFAULT): THREE.BufferGeometry {
+  const welded = lumpyGeometry(new THREE.IcosahedronGeometry(0.5, r.detail), r.lump, r.seed);
   const geo = welded.toNonIndexed();
   welded.dispose();
   geo.computeVertexNormals();
@@ -896,7 +932,7 @@ function stoneGeometry(): THREE.BufferGeometry {
     const cx = (p.getX(i) + p.getX(i + 1) + p.getX(i + 2)) / 3;
     const cy = (p.getY(i) + p.getY(i + 1) + p.getY(i + 2)) / 3;
     const cz = (p.getZ(i) + p.getZ(i + 1) + p.getZ(i + 2)) / 3;
-    const face = 1 + (hash(cx * 11.3, cy * 7.9 + cz * 5.1, 5.9) - 0.5) * 2 * STONE_FACE_SPREAD;
+    const face = 1 + (hash(cx * 11.3, cy * 7.9 + cz * 5.1, 5.9) - 0.5) * 2 * r.faceSpread;
     for (let k = 0; k < 3; k++) {
       col[(i + k) * 3] = face;
       col[(i + k) * 3 + 1] = face;

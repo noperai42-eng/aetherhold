@@ -458,6 +458,11 @@ describe('why that mood', () => {
     pawn.fumesMood = rng.range(-0.12, 0);
     pawn.moodOffset = rng.range(-MOOD_OFFSET_LIMIT, MOOD_OFFSET_LIMIT);
     pawn.traits = rng.chance(0.5) ? ['optimist'] : rng.chance(0.5) ? ['pessimist'] : [];
+    // The breakdown reads this to pick a word, so the probe has to vary it. A
+    // field held still is a field the fuzz is blind to, and this one decides a
+    // branch: pinned at one value it would agree with `computeMood` for four
+    // hundred rounds and never once enter the other.
+    pawn.jobId = rng.chance(0.5) ? null : 1;
   }
 
   it('adds up to the mood itself, whatever state the settler is in', () => {
@@ -472,6 +477,43 @@ describe('why that mood', () => {
       // stops explaining part of the number it is standing under.
       expect(Math.max(0, Math.min(1, MOOD_BASE + sum))).toBeCloseTo(computeMood(p), 10);
     }
+  });
+
+  /**
+   * A settler hauling stone from dawn to dusk was shown `nothing to do`, which
+   * reads as the game contradicting the thing on screen. The label is the
+   * recreation need's and always was — but the two settlers who can carry it
+   * want opposite moves from the player, so it now says which one this is.
+   *
+   * The idle pass sends anybody under `IDLE_REC` to the best seat they can reach
+   * before it gives up on them, so a settler with no job who is *still* short of
+   * recreation is one `takeABreak` already failed for: there was nowhere to sit.
+   * A settler holding a job is short for the opposite reason — the board is full
+   * and the table is the thing they never get to.
+   */
+  it('says whether the settler wants a seat or an hour off', () => {
+    const p = livingColonists(colony())[0]!;
+    content(p);
+    p.needs.recreation = 0.4;
+
+    // Any job at all. The breakdown asks only whether there is one, because that
+    // is the whole of what separates the two cases.
+    p.jobId = 1;
+    const working = moodBreakdown(p).find((f) => f.label === 'tired of working')!;
+    expect(working).toBeDefined();
+    expect(moodBreakdown(p).map((f) => f.label)).not.toContain('nothing fun to do');
+
+    p.jobId = null;
+    const idle = moodBreakdown(p).find((f) => f.label === 'nothing fun to do')!;
+    expect(idle).toBeDefined();
+    expect(moodBreakdown(p).map((f) => f.label)).not.toContain('tired of working');
+
+    // Words only, both ways. Picking up a job must not move a settler's mood, and
+    // `computeMood` carries no branch here — if this ever stops holding, the card
+    // has started explaining a number the sim is not computing.
+    expect(idle.amount).toBe(working.amount);
+    const sum = moodBreakdown(p).reduce((a, f) => a + f.amount, 0);
+    expect(Math.max(0, Math.min(1, MOOD_BASE + sum))).toBeCloseTo(computeMood(p), 10);
   });
 
   it('has nothing to say about a settler with nothing wrong with them', () => {
@@ -615,6 +657,34 @@ describe('the alert that says somebody is breaking', () => {
     expect(moodAlert(world, cold!).hint).toMatch(/freezing/i);
     expect(moodAlert(world, hungry!).hint).toMatch(/hungry|cook/i);
     expect(moodAlert(world, cold!).hint).not.toBe(moodAlert(world, hungry!).hint);
+  });
+
+  it('sends the player for a chair or for the work board, not both', () => {
+    const world = colony();
+    const [idle, working] = livingColonists(world);
+    for (const q of livingColonists(world)) content(q);
+
+    // The same need, emptied the same way, on two settlers who differ in one
+    // thing. The old advice — "a table and chairs" — was right for the first of
+    // them and useless for the second, whose colony has tables and no hours.
+    for (const p of [idle!, working!]) {
+      content(p);
+      p.traits = [];
+      p.comfort = 0;
+      p.socialMood = 0;
+      p.roomMood = 0;
+      p.fumesMood = 0;
+      p.moodOffset = 0;
+      p.needs.recreation = 0;
+      p.mood = BREAK_MOOD - 0.01;
+      p.breakTicks = 10;
+    }
+    idle!.jobId = null;
+    working!.jobId = 1;
+
+    expect(moodAlert(world, idle!).hint).toMatch(/nowhere.*sit/i);
+    expect(moodAlert(world, working!).hint).toMatch(/nothing but work/i);
+    expect(moodAlert(world, idle!).hint).not.toBe(moodAlert(world, working!).hint);
   });
 
   it('still has something to say for a settler nothing in particular is wrong with', () => {

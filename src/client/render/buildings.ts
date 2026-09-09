@@ -87,7 +87,7 @@ const SKIRT_SEG = 24;
 /** The axis a tree leans about, in its own frame; the hashed yaw turns it. */
 const LEAN_AXIS = new THREE.Vector3(1, 0, 0);
 /** The skirts of a crown, bottom to top. Pushed in this order; the twist stacks. */
-const TREE_SKIRTS = ['tree.lower', 'tree.mid', 'tree.upper', 'tree.top'] as const;
+export const TREE_SKIRTS = ['tree.lower', 'tree.mid', 'tree.upper', 'tree.top'] as const;
 /**
  * How many crowns the wood is built out of. Every skirt is turned twice, off a
  * different hash of lobes, and a tree takes one whole set or the other out of
@@ -534,6 +534,208 @@ function roots(g: THREE.LatheGeometry, reach: number, rise: number): THREE.Buffe
     nrm.setXYZ(b, x / len, y / len, z / len);
   }
   return g;
+}
+
+/**
+ * One tree, as numbers rather than as two hundred lines inside a constructor.
+ * A tree is a trunk that flares at the root and four skirts of boughs hung
+ * off it, each a lathe roughed up so the edge of the crown is lobed rather
+ * than turned.
+ *
+ * A skirt, not a tier. The tiers this replaces were bowls: each one's widest
+ * point sat *above* where it met the trunk, so its underside sloped up and
+ * out and the whole crown was three cones with their bases in the air. From
+ * the manager camera, which sees the crown from above and slightly to one
+ * side, that is a party hat, and three of them stacked is three party hats.
+ * A conifer's boughs come out of the trunk and hang: the widest point of a
+ * skirt is its rim, the rim is *below* the trunk joint, and the surface the
+ * player sees from underneath is the one that droops. Each profile below
+ * therefore runs out and down from the trunk to the rim, then back in and up
+ * over the top to the leader — a closed shell whose lower half faces down,
+ * which is what gives a stand of them the layered, shadowed edge a wood has
+ * and a pile of cones does not.
+ *
+ * Radius and droop both fall off with height — 0.86 wide and 0.3 of droop at
+ * the bottom, 0.36 and 0.18 at the leader — so the crown tapers by the shape
+ * of its boughs rather than by scaling one bough four times. Each skirt is
+ * rumpled with its own phase, and the draw turns each one a further hashed
+ * angle about the trunk, so the lobes never line up and the outline is never
+ * the circle a lathe wants to give.
+ *
+ * Written down as a struct for the reason the loose stone was: until the bench
+ * in `src/forge/` existed there was no way to ask for a *different* tree. The
+ * variation in the wood is real — size, girth, lean and twist are all hashed off
+ * the cell a tree stands on — and none of it is addressable. You cannot ask for
+ * tree number seven; you can only go and find a cell whose coordinates hash to
+ * it. And the profiles below were eight literal pairs typed into the middle of
+ * this file, so seeing what a ninth would look like meant editing, rebuilding,
+ * starting a colony and walking to a tree.
+ *
+ * `TREE_DEFAULT` is made of the constants at the top of this file, and the view
+ * builds from it, so the wood is the wood it always was.
+ */
+export interface TreeRecipe {
+  /** Seeds the four skirts. Two crowns are two seeds and nothing else. */
+  crownSeed: number;
+  // Better than a third of the tree is bare trunk, and the trunk is thick at
+  // the foot, because a bole with real girth on it is what makes this a tree
+  // rather than a cone with a stick under it when the camera is looking down at
+  // it: the widest root stands 0.450 against the 0.210 shaft a metre up. The
+  // taper runs the whole way, and the trunk continues up inside the crown so no
+  // skirt can show daylight under it.
+  //
+  // The girth at the foot is carried by roots and not by a flare. The flare it
+  // replaces ran from 0.44 m at the ground to 0.30 at 0.18, and a frustum that
+  // wide and that shallow is a saucer: see `roots` for the measurement that
+  // condemned it and for what a buttress does instead. What is left here is the
+  // bole those roots swell out of, and it is drawn to two rules. No face of it
+  // below the crown lies more than 15.0 degrees back from the vertical, ridge
+  // or valley, so nothing at the tree's foot turns to the manager camera the
+  // way that flare did. And the foot is 0.30 where the old profile had already
+  // pulled in to 0.24 by 0.45, so that taking the flare off does not leave the
+  // hard cylinder edge on the grass the flare was added in the first place to
+  // cover: even the valley between two roots runs into the turf on a slope,
+  // not as a pipe cut off at it.
+  trunk: Profile;
+  /** Meridians round the bole. */
+  trunkSeg: number;
+  /** How far a root buttress runs out past the bole, in metres. */
+  rootReach: number;
+  /** And how high up the trunk it has faded back into it. */
+  rootRise: number;
+  /** The four skirts of foliage, bottom to top. */
+  skirts: readonly Profile[];
+  /** Meridians round a skirt. */
+  skirtSeg: number;
+  /** How deep a skirt's lobes cut, as a fraction of its radius. */
+  lobe: number;
+  /**
+   * What the leader takes of that. It is small and droops least — a young shoot
+   * stands up — and it has not put out boughs long enough to be ragged yet.
+   */
+  topLobeScale: number;
+  /**
+   * And how far off the axis it hangs, in x and z. The one asymmetry a lathe
+   * cannot be talked into. Its top is `def.height` exactly, so the tree is as
+   * tall as the sim says.
+   */
+  topOffset: readonly [number, number];
+  /** How tall this tree stands against the base tree. */
+  size: number;
+  /** How heavy it is for that height. Goes on x and z only. */
+  girth: number;
+  /** Radians of lean, about the tree's own x axis. */
+  lean: number;
+  /** Radians each skirt is turned past the one below it. */
+  twist: number;
+}
+
+/** A radius and a height, from the ground up. */
+export type Profile = ReadonlyArray<readonly [number, number]>;
+
+/** The tree the colony grows. Every field is a constant at the top of this file. */
+export const TREE_DEFAULT: TreeRecipe = {
+  crownSeed: 0,
+  trunk: [
+    [0.3, 0],
+    [0.27, 0.12],
+    [0.25, 0.42],
+    [0.21, 1.0],
+    [0.17, 1.9],
+    [0.14, 2.7],
+    [0.1, 3.3],
+    [0.06, 3.9],
+  ],
+  trunkSeg: 20,
+  rootReach: ROOT_REACH,
+  rootRise: ROOT_RISE,
+  skirts: [
+    [
+      [0.17, 2.0],
+      [0.48, 1.9],
+      [0.75, 1.78],
+      [0.86, 1.7],
+      [0.78, 1.95],
+      [0.57, 2.28],
+      [0.3, 2.6],
+      [0, 2.82],
+    ],
+    [
+      [0.15, 2.78],
+      [0.42, 2.7],
+      [0.64, 2.6],
+      [0.74, 2.52],
+      [0.66, 2.75],
+      [0.48, 3.05],
+      [0.26, 3.3],
+      [0, 3.48],
+    ],
+    [
+      [0.12, 3.38],
+      [0.32, 3.32],
+      [0.47, 3.22],
+      [0.55, 3.14],
+      [0.48, 3.35],
+      [0.34, 3.6],
+      [0.18, 3.82],
+      [0, 3.98],
+    ],
+    [
+      [0.1, 3.92],
+      [0.22, 3.86],
+      [0.31, 3.79],
+      [0.36, 3.74],
+      [0.3, 3.95],
+      [0.2, 4.2],
+      [0.1, 4.38],
+      [0, 4.5],
+    ],
+  ],
+  skirtSeg: SKIRT_SEG,
+  lobe: TREE_LOBE,
+  topLobeScale: 0.9,
+  topOffset: [0.1, -0.06],
+  // The middle of each hashed range, so a bench tree is a typical tree of the
+  // wood rather than the smallest or the most crooked one in it.
+  size: (TREE_SIZE_MIN + TREE_SIZE_MAX) / 2,
+  girth: (TREE_GIRTH_MIN + TREE_GIRTH_MAX) / 2,
+  lean: TREE_LEAN_MAX / 2,
+  twist: (TREE_TWIST_MIN + TREE_TWIST_MAX) / 2,
+};
+
+/**
+ * Which of the wood's crowns this is.
+ *
+ * Each skirt is built once per crown variant, off a seed that no other skirt in
+ * the wood shares, so neither the four skirts of one tree nor the two trees
+ * standing next to each other can be turned from the same outline. Everything
+ * else about a skirt — its profile, its droop, where it meets the trunk — is the
+ * same in both variants, because those are what make it that skirt of that tree.
+ */
+export function treeCrown(variant: number): TreeRecipe {
+  return { ...TREE_DEFAULT, crownSeed: variant * 61 };
+}
+
+/** The bole, with its buttresses pushed out of the foot. */
+export function treeTrunkGeometry(r: TreeRecipe): THREE.BufferGeometry {
+  return roots(lathe(r.trunk, r.trunkSeg), r.rootReach, r.rootRise);
+}
+
+/**
+ * The four skirts of one crown, bottom to top, in the order `TREE_SKIRTS` names
+ * them. The leader is the exception at both ends of the list: it takes a little
+ * less lobe and it is the only one moved off the axis.
+ */
+export function treeSkirtGeometries(r: TreeRecipe): THREE.BufferGeometry[] {
+  return r.skirts.map((profile, i) => {
+    const last = i === r.skirts.length - 1;
+    const g = rumple(
+      lathe(profile, r.skirtSeg),
+      last ? r.lobe * r.topLobeScale : r.lobe,
+      i + 1 + r.crownSeed,
+    );
+    return last ? g.translate(r.topOffset[0], 0, r.topOffset[1]) : g;
+  });
 }
 
 /**
@@ -2521,170 +2723,15 @@ export class BuildingsView {
 
     // A tree is a trunk that flares at the root and four skirts of boughs hung
     // off it, each a lathe roughed up so the edge of the crown is lobed rather
-    // than turned.
-    //
-    // A skirt, not a tier. The tiers this replaces were bowls: each one's widest
-    // point sat *above* where it met the trunk, so its underside sloped up and
-    // out and the whole crown was three cones with their bases in the air. From
-    // the manager camera, which sees the crown from above and slightly to one
-    // side, that is a party hat, and three of them stacked is three party hats.
-    // A conifer's boughs come out of the trunk and hang: the widest point of a
-    // skirt is its rim, the rim is *below* the trunk joint, and the surface the
-    // player sees from underneath is the one that droops. Each profile below
-    // therefore runs out and down from the trunk to the rim, then back in and up
-    // over the top to the leader — a closed shell whose lower half faces down,
-    // which is what gives a stand of them the layered, shadowed edge a wood has
-    // and a pile of cones does not.
-    //
-    // Radius and droop both fall off with height — 0.86 wide and 0.3 of droop at
-    // the bottom, 0.36 and 0.18 at the leader — so the crown tapers by the shape
-    // of its boughs rather than by scaling one bough four times. Each skirt is
-    // rumpled with its own phase, and the draw turns each one a further hashed
-    // angle about the trunk, so the lobes never line up and the outline is never
-    // the circle a lathe wants to give.
-    //
-    // Better than a third of the tree is bare trunk, and the trunk is thick at
-    // the foot, because a bole with real girth on it is what makes this a tree
-    // rather than a cone with a stick under it when the camera is looking down at
-    // it: the widest root stands 0.450 against the 0.210 shaft a metre up. The
-    // taper runs the whole way, and the trunk continues up inside the crown so no
-    // skirt can show daylight under it.
-    //
-    // The girth at the foot is carried by roots and not by a flare. The flare it
-    // replaces ran from 0.44 m at the ground to 0.30 at 0.18, and a frustum that
-    // wide and that shallow is a saucer: see `roots` for the measurement that
-    // condemned it and for what a buttress does instead. What is left here is the
-    // bole those roots swell out of, and it is drawn to two rules. No face of it
-    // below the crown lies more than 15.0 degrees back from the vertical, ridge
-    // or valley, so nothing at the tree's foot turns to the manager camera the
-    // way that flare did. And the foot is 0.30 where the old profile had already
-    // pulled in to 0.24 by 0.45, so that taking the flare off does not leave the
-    // hard cylinder edge on the grass the flare was added in the first place to
-    // cover: even the valley between two roots runs into the turf on a slope,
-    // not as a pipe cut off at it.
-    this.pool(
-      'tree.trunk',
-      roots(
-        lathe(
-          [
-            [0.3, 0],
-            [0.27, 0.12],
-            [0.25, 0.42],
-            [0.21, 1.0],
-            [0.17, 1.9],
-            [0.14, 2.7],
-            [0.1, 3.3],
-            [0.06, 3.9],
-          ],
-          20,
-        ),
-        ROOT_REACH,
-        ROOT_RISE,
-      ),
-      solidMat(0.9),
-      256,
-    );
-    //
-    // Each skirt is built once per crown variant, off a seed that no other
-    // skirt in the wood shares, so neither the four skirts of one tree nor the
-    // two trees standing next to each other can be turned from the same
-    // outline. Everything else about a skirt — its profile, its droop, where it
-    // meets the trunk — is the same in both variants, because those are what
-    // make it that skirt of that tree.
+    // than turned. Both shapes and every number in them are `TREE_DEFAULT`, up
+    // beside the builders that read it; what is left here is which pool each
+    // one goes in and how many of it the wood may hold.
+    this.pool('tree.trunk', treeTrunkGeometry(TREE_DEFAULT), solidMat(0.9), 256);
     for (let v = 0; v < TREE_VARIANTS.length; v++) {
-      const suffix = TREE_VARIANTS[v];
-      const seed = v * 61;
-      this.pool(
-        `tree.lower${suffix}`,
-        rumple(
-          lathe(
-            [
-              [0.17, 2.0],
-              [0.48, 1.9],
-              [0.75, 1.78],
-              [0.86, 1.7],
-              [0.78, 1.95],
-              [0.57, 2.28],
-              [0.3, 2.6],
-              [0, 2.82],
-            ],
-            SKIRT_SEG,
-          ),
-          TREE_LOBE,
-          1 + seed,
-        ),
-        solidMat(0.85),
-        256,
-      );
-      this.pool(
-        `tree.mid${suffix}`,
-        rumple(
-          lathe(
-            [
-              [0.15, 2.78],
-              [0.42, 2.7],
-              [0.64, 2.6],
-              [0.74, 2.52],
-              [0.66, 2.75],
-              [0.48, 3.05],
-              [0.26, 3.3],
-              [0, 3.48],
-            ],
-            SKIRT_SEG,
-          ),
-          TREE_LOBE,
-          2 + seed,
-        ),
-        solidMat(0.85),
-        256,
-      );
-      this.pool(
-        `tree.upper${suffix}`,
-        rumple(
-          lathe(
-            [
-              [0.12, 3.38],
-              [0.32, 3.32],
-              [0.47, 3.22],
-              [0.55, 3.14],
-              [0.48, 3.35],
-              [0.34, 3.6],
-              [0.18, 3.82],
-              [0, 3.98],
-            ],
-            SKIRT_SEG,
-          ),
-          TREE_LOBE,
-          3 + seed,
-        ),
-        solidMat(0.85),
-        256,
-      );
-      // The leader is small, droops least — a young shoot stands up — and is hung
-      // off the axis, which is the one asymmetry a lathe cannot be talked into.
-      // Its top is `def.height` exactly, so the tree is as tall as the sim says.
-      this.pool(
-        `tree.top${suffix}`,
-        rumple(
-          lathe(
-            [
-              [0.1, 3.92],
-              [0.22, 3.86],
-              [0.31, 3.79],
-              [0.36, 3.74],
-              [0.3, 3.95],
-              [0.2, 4.2],
-              [0.1, 4.38],
-              [0, 4.5],
-            ],
-            SKIRT_SEG,
-          ),
-          TREE_LOBE * 0.9,
-          4 + seed,
-        ).translate(0.1, 0, -0.06),
-        solidMat(0.85),
-        256,
-      );
+      const skirts = treeSkirtGeometries(treeCrown(v));
+      for (let i = 0; i < TREE_SKIRTS.length; i++) {
+        this.pool(`${TREE_SKIRTS[i]}${TREE_VARIANTS[v]}`, skirts[i]!, solidMat(0.85), 256);
+      }
     }
 
     // Blueprints: a low translucent slab on each planned cell, with a lip

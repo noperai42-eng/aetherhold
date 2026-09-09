@@ -138,11 +138,21 @@ src/
     render/            scene graph: terrain, instanced buildings, pawn rigs, sky, shroud,
                        landmarks, weather, decor, fx, palette
     ui/hud.ts          both HUDs (manager panels + first-person overlay) in one DOM tree
+    ui/cell.ts         what is true of one square, as facts — the words for them live in hud.ts
+    ui/kit.ts          what a piece of gear would do to the settler wearing it, same seam
     ui/minimap.ts      the corner drawing of the valley, drawn from `world.seen`
     ui/toasts.ts       the things that must not scroll away in the log
     audio/sfx.ts       WebAudio, generated tones — no audio files
     audio/ambience.ts  the bed of sound under all of it, mixed by time of day and weather
   eval/                THE INSTRUMENT — headless colonies, played and scored (see below)
+  review/              THE MIRROR — one HUD panel a page, staged from a seed, for the look
+                       loop to photograph. Served at `/review.html` in dev and never built
+                       into the game. Imports client and sim; nothing imports it.
+  forge/               THE BENCH — one model a page, on an empty ground plane under the
+                       colony's own light rig, with the numbers it is made of on sliders
+                       beside it and a Generate 12 button. Served at `/forge.html` in dev
+                       and never built into the game. Same one-way rule as review/; the
+                       recipes it shapes live in render/, not here (see FORGING.md).
 tests/                 1,585 tests: sim units, headless colony runs, and the first-person
                        controller driven with a stand-in Input
 ```

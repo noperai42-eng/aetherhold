@@ -691,13 +691,27 @@ export class ManagerController {
   }
 }
 
-/** Nearest living body within grabbing distance of a world point, or null. */
+/**
+ * Nearest body within grabbing distance of a world point, or null.
+ *
+ * The dead are included, and for a long time they were not — `if (p.dead)
+ * continue` meant the settler who had just died was the one thing on the map
+ * with nothing to say, at the exact moment the player most wanted to ask. A
+ * grave answers "who" and the panel answered nothing.
+ *
+ * The living win ties regardless of distance, which is the whole of the care
+ * this needs: a body on the floor of the ward must not take the click meant for
+ * the doctor kneeling over it, and after a fight the two are in the same square
+ * often enough that first-past-the-post would feel broken.
+ */
 function pawnAt(world: World, wx: number, wy: number): number | null {
-  let best: { id: number; d: number } | null = null;
+  let best: { id: number; d: number; dead: boolean } | null = null;
   for (const p of world.pawns) {
-    if (p.dead) continue;
     const d = dist(p.x, p.y, wx, wy);
-    if (d < 0.85 && (!best || d < best.d)) best = { id: p.id, d };
+    if (d >= 0.85) continue;
+    const dead = !!p.dead;
+    const better = !best || (best.dead && !dead) || (best.dead === dead && d < best.d);
+    if (better) best = { id: p.id, d, dead };
   }
   return best ? best.id : null;
 }

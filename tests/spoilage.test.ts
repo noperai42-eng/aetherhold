@@ -476,6 +476,24 @@ describe('the larder, played', () => {
    * what this test needs, because three people eating for a fortnight would empty
    * both piles long before either had a chance to go off. Spoilage itself does
    * not look at reservations, so the two piles are treated identically.
+   *
+   * A reservation stops a pile being *taken* and does nothing to stop one being
+   * added to. `dropCarried` looks for a stack on the cell of the same kind with
+   * `amount < MAX_STACK` and tips the armful into it; it never reads
+   * `reservedBy`, and `mergeRot` then averages the two clocks. Measured on seed
+   * 4242: on day three a settler put five units of yard food away in the cold
+   * store, the shelf pile went 60 to 65, and its rot went 0.0000 to 0.0177 —
+   * the colony doing exactly the right thing with warm food, and reading here as
+   * the freezer failing. `downToolsOnFood` cannot close it either, however often
+   * it is called: it reaches the settlers standing there at the time, and an
+   * arrival has the rest of the day with hauling on.
+   *
+   * So the other half of untouchable is a full stack. The merge needs somewhere
+   * to put the armful and a pile already at the ceiling has none — a property of
+   * the pile itself rather than of anybody's priorities, which is what makes it
+   * hold for a fortnight. Both piles and not only the one on the shelf, because
+   * the yard is the control, and a control that keeps on different terms from
+   * the thing it is controlling for is not one.
    */
   function untouchable(stack: ItemStack): ItemStack {
     stack.reservedBy = 1e9;
@@ -538,8 +556,8 @@ describe('the larder, played', () => {
     const shelf = coldStore(world);
     const cooler = world.buildings.find((b) => b.kind === 'cooler')!;
 
-    const yard = untouchable(addItem(world, 'rawfood', 60, out.x, out.y)!);
-    const larder = untouchable(addItem(world, 'rawfood', 60, shelf.x, shelf.y)!);
+    const yard = untouchable(addItem(world, 'rawfood', MAX_STACK, out.x, out.y)!);
+    const larder = untouchable(addItem(world, 'rawfood', MAX_STACK, shelf.x, shelf.y)!);
 
     quietFortnight(world, streams);
 
@@ -551,7 +569,7 @@ describe('the larder, played', () => {
 
     expect(world.items).not.toContain(yard);
     expect(world.items).toContain(larder);
-    expect(larder.amount).toBe(60);
+    expect(larder.amount).toBe(MAX_STACK);
     expect(larder.rot ?? 0).toBe(0);
     // The precondition, stated out loud: a freezer is only a freezer while the
     // wattage holds.

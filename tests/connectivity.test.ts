@@ -15,6 +15,7 @@ import { assignJob, createJob } from '../src/sim/jobs';
 import { buildingAt, isWalkable, wouldBlockDoorway } from '../src/sim/grid';
 import { canPlace, placeBlueprint, setPriority } from '../src/sim/orders';
 import { CONNECTIVITY_INTERVAL, tickConnectivity, wouldSealColony } from '../src/sim/connectivity';
+import { roomAt } from '../src/sim/rooms';
 import { planBlueprint } from '../src/sim/stranded';
 import { regionAt } from '../src/sim/regions';
 import { makeStreams, stepWorld } from '../src/sim/tick';
@@ -283,6 +284,30 @@ function deconstructCount(world: World): number {
   return n;
 }
 
+/**
+ * The stove standing *in* the wall rather than behind it: a three-cell pocket
+ * along y=42, sealed by two courses of wall on every side but the east, where the
+ * only thing between the pocket and the yard is the stove.
+ *
+ * Two courses is the whole fixture. `openTheWay` prefers a cell that touches both
+ * halves at once and finishes the job in one order, and with a single course
+ * there is always such a cell, so the stove is never the shortest way through.
+ * Seal it twice and no one-cell crossing exists anywhere, which drops the pass
+ * back to its other rule — the piece of the boundary nearest the people on the
+ * other side — and the stove, sitting in the near face, is nearest. That is the
+ * shape seed 99001 built for itself on day ten with a fence line.
+ */
+function stoveInTheGap(world: World): void {
+  clear(world, 36, 36, 56, 56);
+  for (let x = 39; x <= 46; x++) {
+    for (const y of [40, 41, 43, 44]) addBuilding(world, 'wall', x, y, true);
+  }
+  addBuilding(world, 'wall', 39, 42, true);
+  addBuilding(world, 'wall', 40, 42, true);
+  addBuilding(world, 'wall', 45, 42, true);
+  addBuilding(world, 'stove', 44, 42, true);
+}
+
 describe('the colony can always reach its own stove and beds', () => {
   it('opens a way to a stove that has been sealed in', () => {
     const world = createWorld(1234);
@@ -295,6 +320,34 @@ describe('the colony can always reach its own stove and beds', () => {
 
     expect(deconstructCount(world)).toBe(1);
     expect(world.messages.some((m) => m.text.includes('The stove is walled off'))).toBe(true);
+  });
+
+  it('does not take the stove apart to reach the stove', () => {
+    const world = createWorld(1234);
+    stripKind(world, (k) => k !== 'stove');
+    stoveInTheGap(world);
+    livingColonists(world).forEach((p, i) => {
+      p.x = 50 + i;
+      p.y = 42;
+      p.path = null;
+      p.jobId = null;
+    });
+
+    world.tick = CONNECTIVITY_INTERVAL;
+    tickConnectivity(world);
+
+    // It still sees the kitchen is cut off and still opens a way in.
+    expect(world.messages.some((m) => m.text.includes('The stove is walled off'))).toBe(true);
+    // Through the wall, not through the stove. The nearest removable thing to the
+    // settlers is the stove itself, and the pass used to take it: a deconstruct
+    // leaves no rebuild plan and nothing in the game ever plans a stove, so a
+    // repair carried out on the colony's behalf cost it its kitchen for the rest
+    // of the run. Seed 99001 grew this exact shape on day ten and starved on day
+    // twenty-seven with two hundred units of raw food in the larder.
+    expect(buildingAt(world, 44, 42)?.kind, 'the stove itself was marked').toBe('stove');
+    expect(world.cellDesig[packCell(world, 44, 42)]).toBe(DESIG_NONE);
+    const down = world.buildings.filter((b) => world.cellDesig[packCell(world, b.x, b.y)] === DESIG_DECONSTRUCT);
+    expect(down.map((b) => b.kind)).toEqual(['wall']);
   });
 
   it('says nothing when one bed is stranded and the others are not', () => {
@@ -352,6 +405,40 @@ function fencedYard(world: World, gate: number[] = []): void {
   });
 }
 
+/**
+ * The same yard, with the colony's cold store set into the west side of it.
+ *
+ * The shape the Steward built for itself on seed 4242, and the reason there is a
+ * fourth question in `openTheWay`. A pantry cut into the perimeter has an outer
+ * wall that is two things at once: the shell holding a week of food at minus five,
+ * and the shortest crossing between the settlers and the rest of the map. Nearest
+ * wins, so nearest is what the pass took.
+ *
+ * Walled and not fenced, because a fence is 1.15 m and encloses nothing — put one
+ * round a cooler and there is no room, no cold, and nothing here to prefer.
+ *
+ *      13   14   15   16          x
+ *   21  .   f    W    .           <- pantry north wall
+ *   22  .   W    .    D           <- outer wall, floor, door onto the yard
+ *   23  .   W    C    W           <- outer wall, the cooler, wall
+ *   24  .   f    W    .           <- pantry south wall
+ */
+function coldStoreInTheFence(world: World): void {
+  fencedYard(world);
+  clear(world, 14, 22, 14, 23);
+  for (const [x, y] of [
+    [14, 22],
+    [14, 23],
+    [15, 21],
+    [15, 24],
+    [16, 23],
+  ]) {
+    addBuilding(world, 'wall', x!, y!, true);
+  }
+  addBuilding(world, 'door', 16, 22, true);
+  addBuilding(world, 'cooler', 15, 23, true);
+}
+
 describe('the colony can always reach the rest of the map', () => {
   it('opens a way out of a yard with no gate in it', () => {
     const world = createWorld(1234);
@@ -390,6 +477,63 @@ describe('the colony can always reach the rest of the map', () => {
     tickConnectivity(world);
 
     expect(deconstructCount(world)).toBe(0);
+  });
+
+  it('opens the yard somewhere other than the wall of the cold store', () => {
+    const world = createWorld(1234);
+    coldStoreInTheFence(world);
+    // The fixture says nothing unless the pantry is a room. A cooler standing in
+    // the open holds no air, and a preference over a shell that does not exist
+    // would pass this test by accident on the day the fix was removed.
+    expect(roomAt(world, 15, 22)).not.toBeNull();
+    expect(roomAt(world, 15, 22)!.id).toBe(roomAt(world, 15, 23)!.id);
+
+    world.tick = CONNECTIVITY_INTERVAL;
+    tickConnectivity(world);
+
+    expect(deconstructCount(world)).toBe(1);
+    expect(world.messages.some((m) => m.text.includes('sealed in'))).toBe(true);
+    // Both faces of the freezer left standing — (14,22) is the nearest cell on
+    // the whole boundary to where the settlers are stood, and it is the one the
+    // pass used to take.
+    expect(world.cellDesig[packCell(world, 14, 22)]).toBe(DESIG_NONE);
+    expect(world.cellDesig[packCell(world, 14, 23)]).toBe(DESIG_NONE);
+    expect(world.cellDesig[packCell(world, 15, 21)]).toBe(DESIG_NONE);
+    expect(world.cellDesig[packCell(world, 15, 24)]).toBe(DESIG_NONE);
+    // What came down instead: a plain fence further along the same wall, one more
+    // twenty-second pass away and worth every second of it.
+    const marked = [...world.cellDesig].findIndex((d) => d !== DESIG_NONE);
+    expect(buildingAt(world, marked % world.width, Math.floor(marked / world.width))!.kind).toBe('fence');
+  });
+
+  it('takes the cold store apart anyway when its shell is the only way out', () => {
+    const world = createWorld(1234);
+    stripKind(world, () => false);
+    clear(world, 36, 36, 56, 56);
+    // Everyone shut inside the freezer itself, so every cell of the boundary is
+    // the shell. A preference that were secretly a refusal would leave them in
+    // there for good, which is worse than a thawed larder by some distance.
+    for (let i = 40; i <= 44; i++) {
+      addBuilding(world, 'wall', i, 40, true);
+      addBuilding(world, 'wall', i, 44, true);
+      addBuilding(world, 'wall', 40, i, true);
+      addBuilding(world, 'wall', 44, i, true);
+    }
+    addBuilding(world, 'cooler', 42, 42, true);
+    livingColonists(world).forEach((p, i) => {
+      p.x = 41 + (i % 3);
+      p.y = 41;
+      p.path = null;
+      p.jobId = null;
+      p.drafted = false;
+    });
+    expect(roomAt(world, 42, 41)).not.toBeNull();
+
+    world.tick = CONNECTIVITY_INTERVAL;
+    tickConnectivity(world);
+
+    expect(deconstructCount(world)).toBe(1);
+    expect(world.messages.some((m) => m.text.includes('sealed in'))).toBe(true);
   });
 
   it('refuses the planner the last cell of a box', () => {

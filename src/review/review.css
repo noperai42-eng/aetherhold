@@ -1,0 +1,55 @@
+/*
+ * The room the panel stands in, and nothing else.
+ *
+ * Everything a panel looks like comes from the game's own stylesheet, which this
+ * file loads and then argues with in exactly three places: `#inspector` is
+ * `position: absolute` and `display: none` in the game because it hangs off the
+ * right edge of a canvas that is not here, and the review page needs it in the
+ * flow so the caption above it is part of the same photograph.
+ *
+ * Any rule here that changes how the panel *reads* — a colour, a size, a weight —
+ * is a bug, because then the frame being judged is not the frame that ships.
+ */
+
+body {
+  overflow: auto;
+  background: #05080c;
+  color: var(--ink);
+  font-family: var(--font);
+  padding: 24px;
+}
+
+.caption {
+  max-width: 234px;
+  margin: 0 0 12px;
+}
+
+.caption h1 {
+  margin: 0 0 4px;
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+}
+
+.caption p {
+  margin: 0;
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--dim);
+}
+
+/* The three overrides, and the reason for each is at the top of this file. */
+#inspector {
+  position: static;
+  display: block;
+  max-height: none;
+}
+
+.index {
+  font-size: 12.5px;
+  line-height: 1.9;
+}
+
+.index a {
+  color: var(--edge-strong);
+}

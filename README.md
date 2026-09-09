@@ -7,13 +7,15 @@ instant and the world never disagrees with itself.
 
 Original setting and art (all geometry is generated in code). No third-party assets.
 
-**The other five documents.** This file is what the game *is* and why each system earns its
+**The other seven documents.** This file is what the game *is* and why each system earns its
 place. [ARCHITECTURE.md](ARCHITECTURE.md) is how it is built.
 [PLAYTEST.md](PLAYTEST.md) is the hands-on script — fifty numbered things to go and try.
 [ACCEPTANCE.md](ACCEPTANCE.md) is what has been checked, by a machine or by a human.
 [METHODOLOGY.md](METHODOLOGY.md) is how it gets changed — the round, the instruments, and
 which one to reach for when the grid goes red.
-[ENDGAME.md](ENDGAME.md) is the plan for what the game becomes after the founding.
+[ENDGAME.md](ENDGAME.md) is the plan for what the game becomes after the founding, and
+[DECIDING.md](DECIDING.md) is the plan for what the player is told while deciding it, and
+[FORGING.md](FORGING.md) is the plan for a bench to shape the things it is all made of.
 
 ## Contents
 
@@ -1779,6 +1781,12 @@ purpose: the answer to "we could not afford to bury her" must never be a real se
   the same carry the warden uses on a prisoner, visible in both views — walks it to an
   empty grave, and lays them in. Not during a fight; the dead will keep for a minute, and
   a settler who walks into gunfire to fetch a body is about to become one.
+- **Click the body.** It has its own card, and deliberately not the settler card with the
+  numbers greyed out: a corpse has no mood, no rest and nothing it would like to be doing,
+  and printing those at zero would say something false about somebody you spent twenty days
+  caring about. What it says is what is still true — their name, what is still on them and
+  what it is worth, where they are lying, how long before there is nothing left, and their
+  story. Whoever is kneeling over them still gets the click if you aimed at the living one.
 - Click the grave afterwards and it tells you who is in it. That is the whole reason to
   build one rather than let the ground take them.
 - A colony that never learns any of this is not punished forever. A body nobody comes for
