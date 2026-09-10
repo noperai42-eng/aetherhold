@@ -45,6 +45,20 @@ const total = census();
 // the verdict written into ROUND_NOTES.md is the part worth keeping.
 const out = process.argv[2] ?? '.look/shots/forge';
 const label = process.argv[3] ?? 'r0';
+/**
+ * A comma list of column counts turns this into an arrangement sweep.
+ *
+ * Without it the sweep is the one every round is compared across and must not
+ * move: the bench, and its grid at the stage's own default. With it the two
+ * standard frames are skipped and the grid is shot once per count instead,
+ * which is the only way to answer whether a family reads better at three to a
+ * row than at four — a question the round that added this could measure the
+ * inputs to and could not settle, because a bounding box is not a silhouette.
+ */
+const arrangement = (process.argv[4] ?? '')
+  .split(',')
+  .map((n) => Number(n.trim()))
+  .filter((n) => Number.isInteger(n) && n > 0);
 mkdirSync(out, { recursive: true });
 
 const browser = await launch();
@@ -76,6 +90,26 @@ const drawn = () => page.evaluate(
 const took = [];
 const shots = [];
 for (const name of models) {
+  if (arrangement.length) {
+    for (const n of arrangement) {
+      await page.goto(`${url}/forge.html?model=${name}&columns=${n}`, { waitUntil: 'networkidle0' });
+      const at = await page.$('.bench');
+      if (!at) { errs.push(`${name}: no bench rendered at ${n} columns`); continue; }
+      // Draw once before touching the page. `networkidle0` only says the module
+      // graph has stopped arriving; clicking into a page whose first frame has
+      // not been scheduled is how this loop lost its last model twice, with
+      // "execution context was destroyed" from inside the click.
+      await drawn();
+      await page.click('#grid');
+      await drawn();
+      const file = `${label}-${name}-c${n}.png`;
+      await at.screenshot({ path: `${out}/${file}` });
+      shots.push({ file, model: name, of: `${n} to a row`, url: page.url() });
+    }
+    took.push(name);
+    continue;
+  }
+
   await page.goto(`${url}/forge.html?model=${name}`, { waitUntil: 'networkidle0' });
   const bench = await page.$('.bench');
   if (!bench) { errs.push(`${name}: no bench rendered`); continue; }

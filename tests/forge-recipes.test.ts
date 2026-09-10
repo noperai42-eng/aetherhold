@@ -1426,6 +1426,21 @@ describe('a recipe survives being written down', () => {
     for (const f of tree.fields) expect(q.get(f.key)).toBe(String(tree.defaults[f.key]));
   });
 
+  it('carries how many to a row when it was asked for, and not otherwise', () => {
+    // A frame shot at three to a row and one shot at four are two pictures of
+    // the same recipe, so an address that could not tell them apart would be a
+    // provenance that lies. It is written only when asked for, because every
+    // frame the look loop has ever taken was at the stage's own default and
+    // stamping a number on those URLs would make them all look deliberate.
+    expect(new URLSearchParams(searchOf(tree, tree.defaults)).has('columns')).toBe(false);
+    const q = new URLSearchParams(searchOf(tree, tree.defaults, 3));
+    expect(q.get('columns')).toBe('3');
+    // And it is not a field: it shapes the frame, not the model, so it must not
+    // come back out as a knob or the next paste would carry it into `decor.ts`.
+    const back = knobsFromSearch(tree, q);
+    expect(Object.keys(back).sort()).toEqual(tree.fields.map((f) => f.key).sort());
+  });
+
   it('round-trips a fiddly number exactly, to the last digit', () => {
     const k: Knobs = { ...tree.defaults, lean: 0.1234567890123, size: 1.0000001, twist: 0 };
     const back = knobsFromSearch(tree, new URLSearchParams(searchOf(tree, k)));

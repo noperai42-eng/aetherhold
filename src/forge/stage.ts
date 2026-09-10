@@ -169,12 +169,18 @@ export class Stage {
    * than an assignment, because a model may carry a lift of its own (a walking
    * settler bobs, a sleeping one is rolled onto its side and raised off the
    * turf) and the grid has no business flattening it.
+   *
+   * `columns` left off is the stage's own default, which is what every frame
+   * the look loop judges is taken at. It is an argument at all because the
+   * frames of the round that wrote this doc could not settle how many a family
+   * should stand in a row, and the only way to settle it is to photograph the
+   * same family at several and look.
    */
-  show(models: readonly THREE.Object3D[]): void {
+  show(models: readonly THREE.Object3D[], columns?: number): void {
     for (const old of [...this.shown.children]) this.shown.remove(old);
     if (!models.length) return;
 
-    placeGrid(models);
+    placeGrid(models, columns);
     for (const m of models) this.shown.add(m);
 
     this.frame();

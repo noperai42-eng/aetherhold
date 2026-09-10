@@ -63,8 +63,24 @@ function chipLabel(bench: Bench, k: Knobs): string {
   return moved ? `${seed}*` : seed;
 }
 
+/**
+ * How many to a row, when the address says something other than the default.
+ *
+ * A whole number above nothing or nothing at all. Unlike a recipe field, which
+ * `knobsFromSearch` turns into `NaN` on purpose so `boundsProblems` can say
+ * what is wrong with it, a bad `columns` falls back: it shapes the frame rather
+ * than the model, so getting it wrong makes a picture that is laid out oddly
+ * and not a rock that is built wrongly, and there is no sentence to write about
+ * it that the frame does not already say.
+ */
+function columnsFromSearch(params: URLSearchParams): number | undefined {
+  const n = Number(params.get('columns'));
+  return Number.isInteger(n) && n > 0 ? n : undefined;
+}
+
 function start(bench: Bench, params: URLSearchParams): void {
   if (!app) return;
+  const columns = columnsFromSearch(params);
   document.title = `${bench.title} — Aetherhold forge`;
 
   app.innerHTML = `
@@ -182,10 +198,10 @@ function start(bench: Bench, params: URLSearchParams): void {
     const made = forge(bench, knobs, protos);
     report(made.problems);
     paste.textContent = recipeText(bench, knobs);
-    stage.show(made.group ? [made.group] : []);
+    stage.show(made.group ? [made.group] : [], columns);
     stage.render();
     if (!keep) return;
-    history.replaceState(null, '', searchOf(bench, knobs));
+    history.replaceState(null, '', searchOf(bench, knobs, columns));
     if (made.group) remember();
   }
 
@@ -201,7 +217,10 @@ function start(bench: Bench, params: URLSearchParams): void {
     const seeds = Array.from({ length: bench.grid ?? GRID }, (_, i) => first + i * bench.seedStep);
     const made = forgeSeeds(bench, knobs, seeds, protos);
     report(made.flatMap((m) => m.problems));
-    stage.show(made.map((m) => m.group).filter((g): g is NonNullable<typeof g> => g !== null));
+    stage.show(
+      made.map((m) => m.group).filter((g): g is NonNullable<typeof g> => g !== null),
+      columns,
+    );
     stage.render();
   }
 

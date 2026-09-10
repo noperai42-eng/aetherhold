@@ -703,6 +703,45 @@ the turf. The layout was already an addition rather than an assignment, so
 nothing was broken; a test now holds that it stays one, because the doc that
 would have warned the next person had been wrong for a round.
 
+**Built — the arrangement, 2026-09-10.** The stage again, answering the brief above.
+There was no way to shoot it: `COLUMNS = 4` is a constant and the only frames the
+loop could take were at four. So the count became an argument the whole way down —
+`Stage.show` passes one to `placeGrid`, `main.ts` reads `?columns=` off the address,
+and the sweep takes a comma list as a fourth argv and shoots the grid once per count.
+It is a URL parameter and nothing else: no slider, not a recipe field, out of
+`knobsFromSearch` and out of the paste, because it shapes the frame and no part of the
+model. It is in the address for the one reason the address exists — a frame at three
+to a row and a frame at four are different pictures of the same recipe, and a URL that
+could not tell them apart would be a provenance that lies.
+
+Twenty-four frames later, no family is worse at three than at four and two are much
+better, so the constant was not merely unchecked — it was wrong for a third of the
+bench. But there is no single number underneath it either: the trees and the piles want
+three, the eight settlers want six, the herd wants four because four *is* one row for a
+family of four, the grass does not care, and the stones read the same at three and at
+four. That is the argument against ever writing a better `COLUMNS`. The count is a
+property of the family, which is why it belongs on the address. **Brief: give each
+bench its own count.** The numbers are decided, so that is wiring and not another
+investigation — a `columns` on `Bench`, three families set away from four, `main.ts`
+defaulting to it. It moves the shipped frame for three families, so last round's fill
+numbers (tree 32, stack 28, settler 33) move with it and want re-reading rather than
+re-fitting.
+
+The round's other product is the number that finally survived being looked at, and it
+came from asking a smaller question than the two thrown-out metrics did: at this
+pitch, does any model on this bench ever touch another? No — not one pair, in any
+family, at any count. The settler geometry sits up to 0.834 m off its own origin, a
+sleeping settler being rolled onto its side, and the grid still clears because
+`gridPitch` steps by the widest model's own size. So both earlier failures ran deeper
+than "a bounding box is not a silhouette": **there was never a spacing fault to find.**
+A world-space box test says clean for every family and a screen-space one says crowded
+for every family, and neither can separate them, because what separates them is not
+spacing. Every crowd on this bench is occlusion along the view ray — a barrel lying
+across a crate is a barrel metres from that crate with the camera on the line between
+them. The pin that came out of it is the first test to hold what `GAP` promises, and
+the next person to see a crowded bench frame can stop looking for a spacing bug and go
+and move the camera.
+
 ## The order of work
 
 Stages 0, 1 and 2 are one piece of work and should be done together; a recipe with

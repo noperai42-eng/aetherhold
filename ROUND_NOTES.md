@@ -4,6 +4,120 @@ One round, one measured gap, one fix. Newest first.
 
 ---
 
+## 2026-09-10 — Nothing on this bench touches anything, and every family still wants a different number
+
+**Track: the forge.** The stage again, one round on, answering the brief the last one
+left: *shoot the piles, the trees and the settlers at two, three, four and six to a row
+and judge where a family stops reading as a lineup and starts reading as a crowd.*
+
+### The instrument the brief needed
+
+There was no way to shoot that. `COLUMNS = 4` is a constant inside `stage.ts` and the
+only frames the loop could take were at four. So the count became an argument: `placeGrid`
+already took one, `Stage.show` now passes one through, `main.ts` reads `?columns=` off the
+address, and `scripts/look/forge.mjs` takes a comma list as a fourth argv and shoots the
+grid once per count instead of the two standard frames.
+
+It is a URL parameter and nothing else — no slider, not a recipe field, out of
+`knobsFromSearch` and out of the paste. `columns` shapes the frame and no part of the
+model, so a bad one falls back to the default rather than going to `NaN` for
+`boundsProblems` to complain about: getting it wrong makes a picture laid out oddly, not a
+rock built wrongly, and there is no sentence to write about it that the frame does not
+already say. It is in the address at all for the one reason the address exists. A frame
+shot at three to a row and a frame shot at four are different pictures of the same recipe,
+and a URL that could not tell them apart would be a provenance that lies.
+
+### What the frames said
+
+Twenty-four frames, six families at two, three, four and six. Eighteen of them were read
+closely; the grass was looked at once and left, because its tufts stand ten times their own
+width apart and the four frames are the same picture.
+
+| bench | at four, the shipped frame | wants | why |
+| --- | --- | --- | --- |
+| stone | a lattice with air round every one | **3 or 4** | the two frames cannot be told apart — both clean, both centred. Last round's fill number prefers three by a point and the eye cannot confirm it |
+| grass | tufts far apart | **4** | ground cover, at any count. The question does not arise |
+| tree | crowns merge, few silhouettes read whole | **3** | at three the interpenetration is largely gone and twelve comparable specimens read. Six is cleaner still and shrinks them into a corner |
+| stack | the back four are swallowed — one heap and not eight kinds | **3** | at three all eight read, two of them partly. At six seven read whole and the logs go behind the ingots, which is better legibility and a worse comparison |
+| animal | one row of four, well apart | **4** | four models at four columns *is* one row. Three splits one beast off to the side and two puts the smallest behind the second-largest, which is the size comparison the frame exists for, gone |
+| settler | the middle three tangle, an arm through a body | **6** | at six every settler reads whole. Three is the runner-up and bigger in frame; four is the only bad one |
+
+No family is worse at three than at four and two of them are much better, so the constant
+was not merely unchecked, it was wrong for a third of the bench. But there is no single
+number underneath: the trees and the piles want three, the settlers want six, the herd
+wants four because four *is* one row for a family of four, and the stones do not care. That
+is the argument against ever writing a better `COLUMNS`. The count is a property of the
+family, which is why it belongs on the address.
+
+### The number that survived being looked at
+
+Two rounds have now gone looking for a metric behind the crowded frames and thrown out two
+of them. This round found the one that holds, by asking a smaller question: at the stage's
+pitch, does any model on this bench ever touch another?
+
+**No. Not one pair, in any family, at two, three, four or six, nor with the family in a
+single column or a single row.** Measured over every bench: the settler geometry sits up
+to 0.834 m off its own origin — a sleeping
+settler is rolled onto its side, so its box centre is nowhere near its position — and the
+grid still clears, because `gridPitch` steps by the widest model's own size.
+
+That reframes both failures. They did not fail only because a bounding box is not a
+silhouette; they failed because **there was never a spacing fault to find.** A world-space
+box test says clean for every family because nothing intersects, and a screen-space box
+test says crowded for every family because from one viewpoint everything projects onto
+everything behind it. Neither instrument can separate the six families, because the thing
+that separates them is not spacing at all. Every crowd on this bench is occlusion along
+the view ray. A frame where a barrel lies across a crate is a frame where the barrel and
+the crate are metres apart and the camera is standing on the line between them.
+
+So the pin this round writes is that one: *never lets two models touch, in any family, at
+any count* — the first test to hold what `GAP` promises. Dropped to zero it turns ten of
+the twelve tests in the file red, which is the drill it was written to pass, and it means
+the next person to see a crowded bench frame can stop looking for a spacing bug and go and
+move the camera.
+
+### One thing the sweep found in itself
+
+The arrangement branch lost its last model twice, with *execution context was destroyed*
+thrown from inside a `page.click`. `networkidle0` only says the module graph has stopped
+arriving; the branch was clicking `Generate` into a page whose first frame had not been
+scheduled. It now draws once before touching anything, which is what the standard branch
+has always done between its goto and its click. The sweep after that change ran all
+twenty-four frames end to end with no console errors, which is one clean run against two
+dirty ones and not a proof; if it throws that again the next suspect is the tail of the
+run, which took five minutes over one frame before finishing the rest in seconds.
+
+### Verified
+
+- `npx tsc --noEmit` — clean.
+- `npm test` — **126 files passed and 2 skipped, 2,627 tests passed and 13 skipped**,
+  against 2,624 last round. The three new ones are the count travelling through
+  `placeGrid`, the count riding the address only when it was asked for, and the clearance
+  pin over every family at every count.
+- The knob end to end: the twenty-four frames are twenty-four different layouts of six
+  recipes, which is `?columns=` travelling from the address through `main.ts` and
+  `Stage.show` into `placeGrid` and out into a picture. Nothing else proves that.
+- The shipped frame did not move. All six `columns=4` frames are byte-identical to last
+  round's `Generate 12` frames, which were shot before any of this existed — same SHA-1,
+  file by file. That is the regression check this change most needed, because the whole
+  argument for a new argument is that leaving it off changes nothing, and it doubles as
+  proof the bench is deterministic enough for two frames of it to be compared at all.
+
+### Next target
+
+- **Give each bench its own count.** The table above is decided, so this is wiring and not
+  another investigation: a `columns` on `Bench`, three families set away from four, and
+  `main.ts` defaulting to it. It moves the shipped frame for the trees, the piles and the
+  settlers, so the fill pins from last round (32, 28, 33) move with it and want re-reading
+  rather than re-fitting.
+- The settler arms still cross along a row at every count. That is reach against pitch and
+  not a count question — the same shape as the piles' retune brief, and it wants the
+  one-body-space treatment the animals round got.
+- Still last on purpose: the twenty-seven buildings, which are the most unequal set of
+  heights this bench will ever hold.
+
+---
+
 ## 2026-09-09 — The room every frame is taken in, which three rounds complained about and none had measured
 
 **Track: the forge.** Not a family — the stage. `src/forge/stage.ts` is the one file

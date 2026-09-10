@@ -59,10 +59,18 @@ export function knobsFromSearch(bench: Bench, params: URLSearchParams): Knobs {
  * the one that was photographed is a difference nobody would ever think to
  * look for.
  */
-export function searchOf(bench: Bench, k: Knobs): string {
+export function searchOf(bench: Bench, k: Knobs, columns?: number): string {
   const p = new URLSearchParams();
   p.set('model', bench.name);
   for (const f of bench.fields) p.set(f.key, String(k[f.key] ?? ''));
+  // Written only when it was asked for, and after the fields rather than among
+  // them, because it is not one: `columns` is how the frame is laid out and no
+  // part of the recipe, so it stays out of `knobsFromSearch` and out of the
+  // paste. It is in the address for the one reason the address exists — a
+  // frame shot at three to a row and a frame shot at four are different
+  // pictures of the same recipe, and a URL that could not tell them apart
+  // would be a provenance that lies.
+  if (columns !== undefined) p.set('columns', String(columns));
   return `?${p}`;
 }
 

@@ -152,6 +152,23 @@ describe('how a grid is spaced and where a model lands', () => {
     expect(models.map((m) => Math.round((m.position.x / 1.45) * 100) / 100)).toEqual([-1, 0, 1]);
   });
 
+  it('lays out at the count it is handed, and at the stage default when it is handed none', () => {
+    // The seam the arrangement sweep is shot through. `Stage.show` cannot be
+    // called here — it wants a WebGL canvas — so this holds the function under
+    // it, which is the part the count travels through.
+    const six = () => Array.from({ length: 6 }, () => slab(1, 1, 1));
+    const at3 = six();
+    placeGrid(at3, 3);
+    // Three to a row is two rows: two distinct z, three distinct x.
+    expect(new Set(at3.map((m) => Math.round(m.position.z * 1e6))).size).toBe(2);
+    expect(new Set(at3.map((m) => Math.round(m.position.x * 1e6))).size).toBe(3);
+    const byDefault = six();
+    placeGrid(byDefault);
+    // Four is the stage's own, so six models make two rows of four and two.
+    expect(new Set(byDefault.map((m) => Math.round(m.position.z * 1e6))).size).toBe(2);
+    expect(new Set(byDefault.map((m) => Math.round(m.position.x * 1e6))).size).toBe(4);
+  });
+
   it('adds to a model that carries a lift of its own instead of overwriting it', () => {
     // A walking settler bobs and a sleeping one is rolled onto its side and
     // raised; a grid that assigned positions would put both flat on the turf.
@@ -314,5 +331,33 @@ describe('how much of a bench frame the subject gets', () => {
       ['animal', 4, 0],
       ['settler', 4, 0],
     ]);
+  });
+
+  it('never lets two models touch, in any family, at any count', () => {
+    // What `GAP` promises, held for the first time. Two rounds went looking for
+    // a number behind the crowded frames and threw out two of them; this is the
+    // one that survived, and it says the crowding is not here. Every family
+    // clears at every count the arrangement sweep was shot at, and at both
+    // ends past it — one to a row and the whole family in one row — which means
+    // a frame where a barrel lies across a crate is a frame where the barrel
+    // and the crate are metres apart and the camera is standing on the line
+    // between them. Occlusion, not contact — so the next person to see a
+    // crowded bench frame can stop looking for a spacing bug and go and move
+    // the camera.
+    const touching: string[] = [];
+    for (const b of BENCHES) {
+      const n = b.grid ?? 12;
+      if (n <= 1) continue;
+      for (const columns of [1, 2, 3, 4, 6, n]) {
+        const { shown } = grid(b, columns);
+        const boxes = shown.children.map((m) => new THREE.Box3().setFromObject(m));
+        for (let i = 0; i < boxes.length; i++) {
+          for (let j = i + 1; j < boxes.length; j++) {
+            if (boxes[i].intersectsBox(boxes[j])) touching.push(`${b.name}@${columns}:${i}/${j}`);
+          }
+        }
+      }
+    }
+    expect(touching).toEqual([]);
   });
 });
