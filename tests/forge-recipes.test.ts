@@ -65,12 +65,24 @@ import {
   growAnimal,
   legSwing,
   poseLegs,
+  settlerBob,
+  settlerGeometry,
+  settlerPose,
+  type SettlerParts,
+  type SettlerPose,
+  SETTLER_DEFAULT,
+  sleeveOf,
   speciesGeometries,
   speciesModels,
+  thumbLimit,
+  assembleSettler,
   type AnimalRecipe,
+  type SettlerRecipe,
   type SpeciesModel,
 } from '../src/client/render/pawns';
 import { ANIMAL_KINDS, RESOURCE_KINDS } from '../src/sim/types';
+import type { PawnActivity } from '../src/sim/types';
+import { SETTLER_PHASE, phaseScale } from '../src/client/gait';
 import { PawnsView } from '../src/client/render/pawns';
 import { ANIMALS } from '../src/sim/wildlife';
 import { knobsFromSearch, recipeText, searchOf } from '../src/forge/address';
@@ -113,10 +125,11 @@ function digest(g: THREE.BufferGeometry): string {
 
 /**
  * The colony's geometry as it stood the day the recipes were written, measured
- * off the pools the renderer had built. Fifty-seven shapes: the loose stone, the
- * grass tuft, the bole, the four skirts of each of the wood's two crowns, one
- * stack of each of the eight things a settler can carry, and every buffer of
- * every one of the four species in the herd.
+ * off the pools the renderer had built. Seventy-three shapes: the loose stone,
+ * the grass tuft, the bole, the four skirts of each of the wood's two crowns,
+ * one stack of each of the eight things a settler can carry, every buffer of
+ * every one of the four species in the herd, and the sixteen a settler is cut
+ * from.
  *
  * The stacks and the herd are here for a different reason from the rest. No
  * slider on either bench moves a vertex of them — a pile's recipe is where its
@@ -191,6 +204,26 @@ const GOLDEN: Readonly<Record<string, string>> = {
   'animal.fenwolf.lining0': 'verts=42 idx=180 hash=c8dc699c box=[-0.0499,-0.0073,0..0.0499,0.1455,0.0251]',
   'animal.fenwolf.leg': 'verts=40 idx=162 hash=7a466b91 box=[-0.05,-0.58,-0.0492..0.047,0,0.0492]',
   'animal.fenwolf.hoof': 'verts=40 idx=126 hash=a202a50 box=[-0.0632,0,-0.067..0.057,0.0605,0.067]',
+  // The settler. Sixteen buffers, of which two are cut to a length the recipe
+  // names — the thigh to `leg` and the sleeve to `sleeve` — so these two lines
+  // are the ones that move when the bench stretches a body rather than the ones
+  // that stay put while it does.
+  'settler.torso': 'verts=189 idx=960 hash=72a7a692 box=[-0.235,-0.29,-0.1457..0.235,0.29,0.1457]',
+  'settler.belt': 'verts=42 idx=120 hash=942d5bd6 box=[-0.22,-0.03,-0.1364..0.22,0.03,0.1364]',
+  'settler.neck': 'verts=85 idx=384 hash=2cf88dc6 box=[-0.1,-0.07,-0.1..0.1,0.12,0.1]',
+  'settler.head': 'verts=231 idx=1080 hash=91277a12 box=[-0.13,-0.1378,-0.1664..0.13,0.1378,0.1664]',
+  'settler.hair': 'verts=200 idx=936 hash=f284523c box=[-0.1477,-0.0627,-0.1885..0.1477,0.158,0.1896]',
+  'settler.hairLong': 'verts=200 idx=936 hash=7abdcd2c box=[-0.1474,-0.1278,-0.1883..0.1474,0.158,0.1896]',
+  'settler.eye': 'verts=42 idx=144 hash=e01a56de box=[-0.0152,-0.016,-0.0132..0.0152,0.016,0.0132]',
+  'settler.leg': 'verts=104 idx=504 hash=a24d96e0 box=[-0.075,-0.74,-0.075..0.075,0,0.075]',
+  'settler.boot': 'verts=78 idx=360 hash=aaaf0c2 box=[-0.0694,-0.049,-0.122..0.0694,0.049,0.1366]',
+  'settler.arm': 'verts=104 idx=504 hash=dcdd36e9 box=[-0.065,-0.53,-0.065..0.065,0,0.065]',
+  'settler.hand': 'verts=408 idx=0 hash=f5e2fb75 box=[-0.0734,-0.0821,-0.074..0.0547,0.0821,0.074]',
+  'settler.rifleStock': 'verts=504 idx=0 hash=5f366205 box=[-0.024,-0.63,-0.1..0.024,-0.53,0.482]',
+  'settler.rifleAction': 'verts=576 idx=0 hash=79f35144 box=[-0.025,-0.575,0.1..0.025,-0.481,0.72]',
+  'settler.club': 'verts=648 idx=0 hash=45d9b923 box=[-0.052,-0.922,0.008..0.052,-0.53,0.112]',
+  'settler.pack': 'verts=324 idx=0 hash=d891e66d box=[-0.19,-0.2,-0.11..0.19,0.2,0.11]',
+  'settler.crate': 'verts=24 idx=36 hash=a653ec3d box=[-0.18,-0.15,-0.18..0.18,0.15,0.18]',
 };
 
 /** Every geometry the defaults build, keyed the way the renderer keys its pools. */
@@ -232,6 +265,10 @@ function fromDefaults(): Map<string, THREE.BufferGeometry> {
   for (const g of stackGeometries().values()) out.set(g.name, g);
   const herd = speciesModels();
   for (const kind of ANIMAL_KINDS) for (const [n, g] of speciesBuffers(kind, herd[kind])) out.set(n, g);
+  // Named off the record rather than by hand, so a buffer added to the settler
+  // arrives here without being remembered — `covers every shape the goldens
+  // name and no others` then asks for its golden.
+  for (const [n, g] of Object.entries(settlerGeometry())) out.set(`settler.${n}`, g);
   return out;
 }
 
@@ -564,6 +601,184 @@ describe('how an animal is posed and how big it is drawn', () => {
       parts.crest * ANIMAL_DEFAULT.calf + ANIMAL_DEFAULT.markClearance,
       6,
     );
+  });
+});
+
+/**
+ * A settler in a pose, with nothing on and nothing in the hands.
+ *
+ * `handsFull` and `cooldown` are the two that outrank the activity, so they are
+ * named at every call site that means them rather than defaulted here.
+ */
+function stand(activity: PawnActivity, phase = 0): SettlerPose {
+  return settlerPose({ activity, prone: false, phase, handsFull: false, cooldown: 0 });
+}
+
+/** The lowest point of either boot, above whatever the settler is standing on. */
+function soleAt(parts: SettlerParts, pose: SettlerPose): number {
+  parts.legL.rotation.x = pose.legL;
+  parts.legR.rotation.x = pose.legR;
+  parts.group.position.y = pose.lift;
+  parts.group.updateMatrixWorld(true);
+  const box = new THREE.Box3();
+  for (const leg of [parts.legL, parts.legR]) {
+    box.expandByObject(leg.children.find((c) => c.name === 'boot')!);
+  }
+  return Math.round(box.min.y * 1e4) / 1e4;
+}
+
+describe('how a settler is posed and how far off the ground it ends up', () => {
+  /** One full stride, in the units `animPhase` is counted in. */
+  const cycle = (2 * Math.PI) / phaseScale(SETTLER_DEFAULT.leg, SETTLER_DEFAULT.swing);
+
+  it('walks at the cadence the gait file worked out for this leg', () => {
+    // Derived from the recipe rather than read off `SETTLER_PHASE`, so a bench
+    // that lengthens the leg gets the cadence that leg walks at. The two have to
+    // agree at the default or the colony on the map changed gait the day the
+    // recipe was written, and nothing else would have said so.
+    expect(phaseScale(SETTLER_DEFAULT.leg, SETTLER_DEFAULT.swing)).toBeCloseTo(SETTLER_PHASE, 10);
+    // `gait.test.ts` holds the scale itself. What is worth writing down here is
+    // the length of the thing every measurement below is sampled across: one
+    // full stride is this much of `animPhase`, which is distance and not time.
+    expect(cycle).toBeCloseTo(12.899, 3);
+  });
+
+  it('writes every one of the eight poses as the number it has always been', () => {
+    // Literal numbers, not `SETTLER_DEFAULT.x`. An expectation written off the
+    // constant it guards moves with it — which is how a drill on the herd raised
+    // a leg swing by ten per cent and walked past the line that was watching it.
+    const r = (n: number): number => Math.round(n * 1e4) / 1e4;
+    const four = (p: SettlerPose): number[] => [r(p.legL), r(p.legR), r(p.armL), r(p.armR)];
+    expect(four(stand('idle'))).toEqual([0, -0, 0.08, 0.08]);
+    expect(four(stand('working'))).toEqual([0.05, -0.05, -1.15, -1.05]);
+    expect(four(stand('fighting'))).toEqual([0.12, -0.12, -1.42, -1.42]);
+    expect(four(stand('eating'))).toEqual([0.35, -0.35, -1.5, -0.6]);
+    expect(four(stand('relaxing'))).toEqual([0.3, -0.3, -0.5, -0.5]);
+    expect(four(stand('breaking'))).toEqual([0, -0, 0.42, 0.42]);
+    expect(four(stand('walking', cycle / 4))).toEqual([0.62, -0.62, -0.465, 0.465]);
+    const down = settlerPose({ activity: 'sleeping', prone: true, phase: 0, handsFull: false, cooldown: 0 });
+    expect(four(down)).toEqual([0, 0, 0.15, -0.15]);
+    expect(down.prone).toBe(true);
+    expect(down.lift).toBeCloseTo(0.16, 6);
+  });
+
+  it('leans over a bench and nowhere else', () => {
+    expect(stand('working').stoop).toBeCloseTo(0.3, 6);
+    for (const a of ['idle', 'walking', 'fighting', 'eating', 'relaxing', 'breaking'] as const) {
+      expect(stand(a).stoop).toBe(0);
+    }
+  });
+
+  it('puts both arms at the same angle for a load, whatever the legs are doing', () => {
+    // The composition the split was made for: hauling is filed under `walking`,
+    // so before it, a colonist carrying a crate got the walk's arm swing and
+    // both hands stayed empty.
+    for (const a of ['idle', 'walking', 'working', 'fighting', 'eating', 'relaxing', 'breaking'] as const) {
+      const p = settlerPose({ activity: a, prone: false, phase: 1.2, handsFull: true, cooldown: 0 });
+      expect(p.armL).toBeCloseTo(-1.3, 6);
+      expect(p.armR).toBeCloseTo(-1.3, 6);
+    }
+    // And the legs still answer to the activity underneath it.
+    const hauling = settlerPose({ activity: 'walking', prone: false, phase: cycle / 4, handsFull: true, cooldown: 0 });
+    expect(hauling.legL).toBeCloseTo(0.62, 6);
+  });
+
+  it('rides the recoil back out of a blow, and stops riding it at a third of a radian', () => {
+    const swung = (cooldown: number): number =>
+      settlerPose({ activity: 'fighting', prone: false, phase: 0, handsFull: false, cooldown }).armL;
+    expect(swung(0)).toBeCloseTo(-1.42, 6);
+    expect(swung(10)).toBeCloseTo(-1.22, 6);
+    expect(swung(60)).toBeCloseTo(-1.07, 6);
+    expect(swung(600)).toBeCloseTo(-1.07, 6);
+  });
+
+  it('hangs the arms inside the roll their own thumbs allow', () => {
+    // `lighting.test.ts` holds the sleeve's colour and `lighting.test.ts` holds
+    // the hand past the cuff. What neither could see is that the splay has a
+    // ceiling and the shipped body sits under it — the tip of a thumb rolled
+    // past the shoulder's own line reads as hands clasped in front of the body
+    // rather than as arms hanging beside it.
+    expect(thumbLimit()).toBeCloseTo(0.12628, 5);
+    expect(SETTLER_DEFAULT.armSplay).toBeLessThan(thumbLimit());
+    // A shorter arm can be rolled further before the thumb gets there, and a
+    // longer one cannot be rolled as far.
+    expect(thumbLimit({ ...SETTLER_DEFAULT, wristY: -0.2 })).toBeCloseTo(0.34997, 5);
+    expect(thumbLimit({ ...SETTLER_DEFAULT, wristY: -1 })).toBeCloseTo(0.07287, 5);
+  });
+
+  it('takes the sleeve down by the step the recipe names and not the one the colony uses', () => {
+    // The colour half of the recipe. `lighting.test.ts` holds the shipped step
+    // at ten L* across every faction and every seed; what it cannot see is
+    // whether the knob under it does anything, and a bench slider that moved
+    // nothing would have looked exactly like one that worked.
+    // CIE L*, the scale the step is named on, written out here the way
+    // `lighting.test.ts` writes it — it is three lines of arithmetic and
+    // exporting the render file's copy of it to be asked this once would be a
+    // wider public surface than the question is worth.
+    const lightness = (c: THREE.Color): number => {
+      const y = 0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b;
+      return 116 * Math.cbrt(y) - 16;
+    };
+    const shirt = new THREE.Color(0x3f6fa8);
+    const step = (r: SettlerRecipe): number => lightness(shirt) - lightness(sleeveOf(shirt, r));
+    expect(step(SETTLER_DEFAULT)).toBeCloseTo(10, 4);
+    expect(step({ ...SETTLER_DEFAULT, sleeveStep: 4 })).toBeCloseTo(4, 4);
+    expect(step({ ...SETTLER_DEFAULT, sleeveStep: 18 })).toBeCloseTo(18, 4);
+    // A shirt already on the floor has no room to give and keeps its sleeves,
+    // however big the step asked for is.
+    const black = new THREE.Color(0x000000);
+    expect(sleeveOf(black, { ...SETTLER_DEFAULT, sleeveStep: 30 }).getHex()).toBe(black.getHex());
+  });
+
+  it('never bobs a body below the height it set out from', () => {
+    // The whole of the first-person bug, in one line. The camera had its own
+    // copy of this expression with the absolute value dropped, so it went one
+    // rise per cycle and spent half of every cycle under the floor it started
+    // on. Sampled finely enough that a sign error anywhere in the cycle shows.
+    for (let i = 0; i <= 200; i++) {
+      expect(settlerBob((i / 200) * cycle * 3)).toBeGreaterThanOrEqual(0);
+    }
+    expect(settlerBob(0)).toBeCloseTo(0, 10);
+    expect(settlerBob(cycle / 8)).toBeCloseTo(0.035, 6);
+    expect(settlerBob(cycle / 4)).toBeCloseTo(0, 10);
+    // Two rises per cycle, one per step.
+    expect(settlerBob(cycle * 3 / 8)).toBeCloseTo(0.035, 6);
+  });
+
+  /**
+   * The round's finding, measured and left standing.
+   *
+   * `gait.ts` argues at length that a settler's foot must stay where it was put,
+   * and `footScrub` holds it there — horizontally. Nothing ever asked the other
+   * question. Rotating a rigid leg about the hip lifts the sole through an arc,
+   * and the body above it does not come down to meet it, so a walking settler is
+   * airborne for everything but three instants of the cycle: at full swing BOTH
+   * boots are forty-four millimetres clear of the ground.
+   *
+   * The bob makes it worse rather than better, and exactly out of phase. It
+   * peaks at the eighths, where the soles are thirty-six millimetres up, and is
+   * flat at the quarters, where they are at their highest. A real walk does the
+   * opposite — the hip is highest over the planted foot at midstance and dips at
+   * double support, which is where these legs are splayed.
+   *
+   * Pinned as it is and not as it should be. Which way to close it is a frame
+   * question and not an arithmetic one: dropping the body by the sole's own rise
+   * plants the foot and dips the hip at the splay, and whether that reads as a
+   * walk or as a limp is what the look loop is for. FORGING.md carries the brief.
+   */
+  it('walks a settler through the air for all but three instants of a stride', () => {
+    const parts = assembleSettler('colony', 4931, 'none', settlerGeometry());
+    const soles = [0, 1, 2, 3, 4, 5, 6, 7, 8].map((i) => soleAt(parts, stand('walking', (i / 8) * cycle)));
+    expect(soles).toEqual([0, 0.0364, 0.0438, 0.0364, 0, 0.0364, 0.0438, 0.0364, 0]);
+
+    // And the bob is a quarter-cycle out with it: highest where the feet are
+    // near the ground, flat where they are furthest off it.
+    const lifts = [0, 1, 2, 3, 4].map((i) => Math.round(stand('walking', (i / 8) * cycle).lift * 1e4) / 1e4);
+    expect(lifts).toEqual([0, 0.035, 0, 0.035, 0]);
+
+    // A settler who is not walking stands on the floor, which is what makes the
+    // above a fact about the gait rather than about the boot's own origin.
+    expect(soleAt(parts, stand('idle'))).toBe(0);
   });
 });
 
@@ -984,6 +1199,173 @@ describe('the bench builds what the page asks it for', () => {
     expect(legs.map((l) => Math.round(l.rotation.x * 1e5) / 1e5).sort((a, b) => a - b)).toEqual(
       [-swung, -swung, swung, swung].map((v) => Math.round(v * 1e5) / 1e5).sort((a, b) => a - b),
     );
+  });
+
+
+  it('stands all eight poses side by side, and no ninth', () => {
+    const settler = benchByName('settler')!;
+    // The grid is the frame this family is judged in, and the only picture in
+    // the repo where the eight stand together: on the map they are one settler
+    // each, scattered across a valley, doing one thing at a time.
+    expect(settler.grid).toBe(8);
+    const seeds = Array.from({ length: settler.grid! }, (_, i) => i * settler.seedStep);
+    const grid = forgeSeeds(settler, settler.defaults, seeds, protos);
+    expect(grid.map((m) => m.group!.name)).toEqual([
+      'settler.idle',
+      'settler.walking',
+      'settler.working',
+      'settler.fighting',
+      'settler.eating',
+      'settler.relaxing',
+      'settler.breaking',
+      'settler.sleeping',
+    ]);
+    // And in eight different shapes, which is what the grid is there to show. A
+    // pose that drew the same body as its neighbour would be a cell of the
+    // picture saying nothing. Read off the limbs rather than off a bounding box:
+    // two poses can occupy the same box while the arms in them are doing
+    // different things, and the arms are the whole of what most of these say.
+    const limbs = grid.map((m) =>
+      m
+        .group!.children.filter((c) => c.name === 'leg' || c.name === 'arm')
+        .map((c) => Math.round(c.rotation.x * 1e4))
+        .join(','),
+    );
+    expect(new Set(limbs).size).toBe(8);
+  });
+
+  it('hangs a bench settler’s parts exactly where the colony hangs them', () => {
+    // The whole reason `assembleSettler` was lifted out of the rig, and the
+    // reason the pose came with it: a bench that splayed its own arm would agree
+    // with the colony right up until somebody moved the shoulder, and nothing
+    // would say which of the two was the game.
+    const settler = benchByName('settler')!;
+    const world = benchWorld();
+    const one = world.pawns.find((p) => p.faction === 'colony' && p.animal === undefined);
+    expect(one).toBeDefined();
+    one!.activity = 'idle';
+    one!.animPhase = 0;
+    one!.carryingItemId = null;
+    one!.weapon = 'none';
+    one!.colorSeed = 4931;
+    world.pawns = [one!];
+    const view = new PawnsView();
+    view.onTick(world);
+    view.sync(world, 1, null, 1 / 60);
+    view.group.updateMatrixWorld(true);
+
+    const made = forge(settler, { ...settler.defaults, pose: 0, phase: 0 }, protos);
+    expect(made.problems).toEqual([]);
+    // From the children down, not from the root: the bench names its top group
+    // for the grid caption and the colony leaves it bare, and that one label is
+    // the only thing about the two that is allowed to differ.
+    const parts = (o: THREE.Object3D): string[] => {
+      const out: string[] = [];
+      const r = (n: number): number => Math.round(n * 1e5) / 1e5;
+      for (const child of o.children) {
+        child.traverse((c) => {
+          if (!c.name) return;
+          out.push(`${c.name} ${r(c.position.x)},${r(c.position.y)},${r(c.position.z)} ${r(c.rotation.x)},${r(c.rotation.z)}`);
+        });
+      }
+      return out.sort();
+    };
+    expect(parts(made.group!)).toEqual(parts(view.group));
+  });
+
+  it('refuses an arm splayed past the shoulder its own thumb would cross', () => {
+    const settler = benchByName('settler')!;
+    const made = forge(settler, { ...settler.defaults, armSplay: 0.2 }, protos);
+    expect(made.group).toBeNull();
+    expect(made.problems.join(' ')).toContain('rolls the thumb past the shoulder');
+    // And the limit moves with the arm it is worked out of, in the direction the
+    // geometry says: a hand hung further from the shoulder is swept further
+    // inboard by the same roll, so a LONGER arm is the tighter limit and a
+    // shorter one is what makes this splay legal. Deriving it is what gets that
+    // right; a number written down would have been written down the other way.
+    expect(forge(settler, { ...settler.defaults, armSplay: 0.2, wristY: -1 }, protos).group).toBeNull();
+    expect(forge(settler, { ...settler.defaults, armSplay: 0.2, wristY: -0.2 }, protos).group).not.toBeNull();
+  });
+
+  it('refuses a body worn inside out', () => {
+    const settler = benchByName('settler')!;
+    const low = forge(settler, { ...settler.defaults, headY: 1.2 }, protos);
+    expect(low.group).toBeNull();
+    expect(low.problems.join(' ')).toContain('is not above the shoulder');
+    const sunk = forge(settler, { ...settler.defaults, shoulderY: 1.0 }, protos);
+    expect(sunk.group).toBeNull();
+    expect(sunk.problems.join(' ')).toContain('is not above the torso');
+  });
+
+  it('puts the crate in the hands of a settler in any of the eight poses', () => {
+    // Carrying is a state of the hands and not an activity — which is the whole
+    // argument `settlerPose` makes — so the bench composes it with every pose
+    // rather than making it a ninth.
+    const settler = benchByName('settler')!;
+    for (let pose = 0; pose < settler.grid!; pose++) {
+      const made = forge(settler, { ...settler.defaults, pose, carrying: 1 }, protos);
+      expect(made.problems).toEqual([]);
+      const load = made.group!.children.find((c) => c.name === 'load')!;
+      expect(load.visible).toBe(true);
+      expect(forge(settler, { ...settler.defaults, pose }, protos).group!.children.find((c) => c.name === 'load')!.visible).toBe(false);
+    }
+  });
+
+  it('hides the weapon of a settler whose hands are already full', () => {
+    // A rifle rides the right hand, so raising both arms to a crate raised the
+    // rifle with them: a settler crossing the map with a shotgun standing out of
+    // their fist above the box.
+    const settler = benchByName('settler')!;
+    const armed = forge(settler, { ...settler.defaults, armed: 2 }, protos);
+    const stock = armed.group!.getObjectByName('stock');
+    expect(stock).toBeDefined();
+    expect(stock!.parent!.visible).toBe(true);
+    const hauling = forge(settler, { ...settler.defaults, armed: 2, carrying: 1 }, protos);
+    expect(hauling.group!.getObjectByName('stock')!.parent!.visible).toBe(false);
+  });
+
+  it('cuts a longer thigh for a longer leg instead of stretching the body round it', () => {
+    // The two knobs that are lengths the buffers are cut to. A bench that moved
+    // the hip and kept the thigh would draw a settler whose knee had come out
+    // through the trouser, and no golden above could see it — the goldens are
+    // written at the default.
+    const settler = benchByName('settler')!;
+    const made = forge(settler, { ...settler.defaults, leg: 1 }, protos);
+    expect(made.problems).toEqual([]);
+    const leg = made.group!.children.find((c) => c.name === 'leg') as THREE.Mesh;
+    expect(leg.position.y).toBeCloseTo(1, 6);
+    leg.geometry.computeBoundingBox();
+    expect(leg.geometry.boundingBox!.min.y).toBeCloseTo(-1, 6);
+    // And the boot is still on the end of it rather than where the old one ended.
+    expect(leg.children.find((c) => c.name === 'boot')!.position.y).toBeCloseTo(-0.951, 6);
+  });
+
+  it('gives a trader freight and gives nobody else any', () => {
+    const settler = benchByName('settler')!;
+    const trader = forge(settler, { ...settler.defaults, tint: 2 }, protos);
+    expect(trader.group!.children.filter((c) => c.name === '').length).toBeGreaterThan(0);
+    expect(trader.group!.getObjectByName('torso')!.children.length).toBe(1);
+    const colonist = forge(settler, { ...settler.defaults, tint: 0 }, protos);
+    expect(colonist.group!.getObjectByName('torso')!.children.length).toBe(0);
+  });
+
+  it('builds the same settler from the pasted block, and none of the colony with it', () => {
+    const settler = benchByName('settler')!;
+    const k = { ...settler.defaults, bob: 0.09, stoop: 0.7 };
+    const pasted = JSON.parse(recipeText(settler, k)) as SettlerRecipe;
+    // Every field of the recipe, not the nineteen the page knows how to draw.
+    expect(Object.keys(pasted).sort()).toEqual(Object.keys(SETTLER_DEFAULT).sort());
+    expect(pasted.bob).toBe(0.09);
+    expect(pasted.stoop).toBe(0.7);
+    // And it is a recipe you can put back: the pose it produces is the pose the
+    // knobs produce, which is what the block is offered for.
+    const mine = settlerPose({ activity: 'working', prone: false, phase: 2, handsFull: false, cooldown: 0 }, pasted);
+    const theirs = settlerPose(
+      { activity: 'working', prone: false, phase: 2, handsFull: false, cooldown: 0 },
+      settler.recipe(k) as SettlerRecipe,
+    );
+    expect(mine).toEqual(theirs);
+    expect(mine.stoop).toBe(0.7);
   });
 
   it('steps the wood’s seeds far enough apart to be different crowns', () => {

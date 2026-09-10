@@ -51,15 +51,22 @@ import {
 import { colorOf, occludeParts } from '../client/render/occlusion';
 import {
   ANIMAL_DEFAULT,
+  SETTLER_DEFAULT,
   animalFittings,
   animalGrowth,
   assembleAnimal,
+  assembleSettler,
   growAnimal,
   poseLegs,
+  settlerGeometry,
+  settlerPose,
   speciesModels,
+  thumbLimit,
   type AnimalRecipe,
+  type SettlerRecipe,
 } from '../client/render/pawns';
 import { ANIMAL_KINDS, RESOURCE_KINDS } from '../sim/types';
+import type { Faction, Pawn, PawnActivity } from '../sim/types';
 import { ANIMALS } from '../sim/wildlife';
 
 /** One draggable number, with the range outside which it stops being that shape. */
@@ -128,7 +135,7 @@ export interface Bench {
    * the sliders prints, so what it offers is a recipe you can put back rather
    * than a list of the eleven fields the page knows how to show you.
    */
-  recipe(k: Knobs): StoneRecipe | TreeRecipe | GrassRecipe | PileRecipe | AnimalRecipe;
+  recipe(k: Knobs): StoneRecipe | TreeRecipe | GrassRecipe | PileRecipe | AnimalRecipe | SettlerRecipe;
   /** The model, standing on y = 0 and facing the way the game draws it. */
   build(k: Knobs, protos: Prototypes): THREE.Group;
 }
@@ -743,7 +750,178 @@ const ANIMAL: Bench = {
   },
 };
 
-export const BENCHES: readonly Bench[] = [STONE, GRASS, TREE, STACK, ANIMAL];
+
+/**
+ * The factions a settler is ever drawn in. `wildlife` and `fauna` are the herd's
+ * and a colonist tinted either would be a body that does not stand anywhere on
+ * the map; the trader is here because it is the one that also carries freight.
+ */
+const SETTLER_FACTIONS: readonly Faction[] = ['colony', 'raider', 'trader', 'prisoner'];
+
+/**
+ * The eight poses, in the order the switch in `settlerPose` writes them, so
+ * `pose` is an index into a list rather than a magic number. `sleeping` is the
+ * prone one and stands in for the dead and the downed, who are drawn the same.
+ */
+const SETTLER_POSES: readonly PawnActivity[] = [
+  'idle',
+  'walking',
+  'working',
+  'fighting',
+  'eating',
+  'relaxing',
+  'breaking',
+  'sleeping',
+];
+
+/** The three weapons a settler can be holding, in the order the field counts them. */
+const SETTLER_ARMS: readonly Pawn['weapon'][] = ['none', 'club', 'rifle'];
+
+/**
+ * Which colonist is on the bench.
+ *
+ * Fixed, and a field rather than a constant, for the two halves of the same
+ * reason: the grid walks the poses, so the body in every cell has to be one
+ * body — eight settlers in eight colours would make the colour the thing the
+ * picture says — and the colour is nonetheless most of what a settler is, so
+ * it has to be draggable somewhere. It is the one number here that changes
+ * nothing about the shape.
+ */
+const SETTLER_SEED = 4931;
+
+/**
+ * The settler's knobs. Five of them are the load rather than the recipe — which
+ * pose, where in it, what is in the hands, what is on the shoulder and who this
+ * is — the way the herd's `species` and `grown` are.
+ *
+ * Every one of the recipe's own fourteen is here. This is the most complicated
+ * body in the game and the bench is the only place any of them can be seen to
+ * move; the two that also cut the buffers, `leg` and `sleeve`, rebuild the
+ * geometry rather than stretching the body around it.
+ */
+const SETTLER_FIELDS: readonly Field[] = [
+  { key: 'pose', label: 'pose', min: 0, max: SETTLER_POSES.length - 1, step: 1, whole: true },
+  { key: 'phase', label: 'through it', min: 0, max: 6.28, step: 0.01 },
+  { key: 'carrying', label: 'hands full', min: 0, max: 1, step: 1, whole: true },
+  { key: 'armed', label: 'weapon', min: 0, max: SETTLER_ARMS.length - 1, step: 1, whole: true },
+  { key: 'tint', label: 'faction', min: 0, max: SETTLER_FACTIONS.length - 1, step: 1, whole: true },
+  { key: 'leg', label: 'leg', min: 0.3, max: 1.2, step: 0.005 },
+  { key: 'swing', label: 'hip swing', min: 0, max: 1.5, step: 0.01 },
+  { key: 'torsoY', label: 'torso', min: 0.5, max: 1.6, step: 0.005 },
+  { key: 'shoulderY', label: 'shoulder', min: 0.6, max: 2, step: 0.005 },
+  { key: 'headY', label: 'head', min: 0.7, max: 2.2, step: 0.005 },
+  { key: 'sleeve', label: 'sleeve', min: 0.2, max: 1, step: 0.005 },
+  { key: 'wristY', label: 'wrist', min: -1, max: -0.1, step: 0.005 },
+  { key: 'armSplay', label: 'arm splay', min: 0, max: 0.6, step: 0.005 },
+  { key: 'sleeveStep', label: 'sleeve step', min: 0, max: 30, step: 0.5 },
+  { key: 'carryArm', label: 'carry arm', min: -2.2, max: 0, step: 0.01 },
+  { key: 'carryY', label: 'load height', min: 0.4, max: 1.8, step: 0.005 },
+  { key: 'carryZ', label: 'load out', min: 0, max: 0.9, step: 0.005 },
+  { key: 'bob', label: 'bob', min: 0, max: 0.2, step: 0.001 },
+  { key: 'stoop', label: 'stoop', min: 0, max: 1.2, step: 0.01 },
+];
+
+function settlerRecipe(k: Knobs): SettlerRecipe {
+  return {
+    leg: k.leg!,
+    swing: k.swing!,
+    torsoY: k.torsoY!,
+    shoulderY: k.shoulderY!,
+    headY: k.headY!,
+    sleeve: k.sleeve!,
+    wristY: k.wristY!,
+    armSplay: k.armSplay!,
+    sleeveStep: k.sleeveStep!,
+    carryArm: k.carryArm!,
+    carryY: k.carryY!,
+    carryZ: k.carryZ!,
+    bob: k.bob!,
+    stoop: k.stoop!,
+  };
+}
+
+const SETTLER: Bench = {
+  name: 'settler',
+  title: 'Settler',
+  note: 'A colonist in one of the eight poses the rig can put them in. Generate 8 stands all eight side by side, which is the only place that picture exists — and `hands full` composes with every one of them, because carrying is a state of the hands and not an activity.',
+  fields: SETTLER_FIELDS,
+  defaults: {
+    // Mid-stride, empty-handed, unarmed and of the colony. Walking because it
+    // is what a settler is doing most of the time the player is looking at one,
+    // and mid-stride because a standing body says nothing about `swing` or
+    // `bob` — the two knobs this bench was opened to look at.
+    pose: SETTLER_POSES.indexOf('walking'),
+    phase: 1.57,
+    carrying: 0,
+    armed: 0,
+    tint: SETTLER_FACTIONS.indexOf('colony'),
+    ...SETTLER_DEFAULT,
+  },
+  seedKey: 'pose',
+  // One pose along. Like the stacks and the species, these are entries in a
+  // list rather than draws from a hash, and the next one is the next one.
+  seedStep: 1,
+  grid: SETTLER_POSES.length,
+  problems(k) {
+    const out = boundsProblems(SETTLER_FIELDS, k);
+    // The one cross-field rule, and it is the arms. `armSplay`'s doc argues that
+    // the roll has a limit and names where it is: the point at which the thumb's
+    // tip crosses the shoulder's own line, past which the hands read as clasped
+    // in front of the body rather than hanging beside it. `thumbLimit` works it
+    // out of the hand and the wrist, so moving either moves this.
+    if (k.armSplay !== undefined && k.wristY !== undefined) {
+      const limit = thumbLimit(settlerRecipe(k));
+      if (k.armSplay > limit) {
+        out.push(`arm splay ${k.armSplay} rolls the thumb past the shoulder, which is at ${limit.toFixed(3)}`);
+      }
+    }
+    // The head has to be above the shoulder and the shoulder above the torso's
+    // centre, or the body is inside out — and the sliders can each be legal on
+    // their own while the three of them together are a settler wearing its ribs
+    // for a hat.
+    if (k.headY !== undefined && k.shoulderY !== undefined && k.headY <= k.shoulderY) {
+      out.push(`head at ${k.headY} is not above the shoulder at ${k.shoulderY}`);
+    }
+    if (k.shoulderY !== undefined && k.torsoY !== undefined && k.shoulderY <= k.torsoY) {
+      out.push(`shoulder at ${k.shoulderY} is not above the torso at ${k.torsoY}`);
+    }
+    return out;
+  },
+  recipe: settlerRecipe,
+  build(k) {
+    const r = settlerRecipe(k);
+    const activity = SETTLER_POSES[k.pose!]!;
+    const faction = SETTLER_FACTIONS[k.tint!]!;
+    // The rig's own assembly and the rig's own pose, called rather than copied.
+    // The geometry is cut here too, because two of the knobs are lengths the
+    // buffers are cut to and a body stretched around an unchanged thigh is not
+    // the body the recipe describes.
+    const parts = assembleSettler(faction, SETTLER_SEED, SETTLER_ARMS[k.armed!]!, settlerGeometry(r), r);
+    const handsFull = k.carrying === 1;
+    const pose = settlerPose(
+      { activity, prone: activity === 'sleeping', phase: k.phase!, handsFull, cooldown: 0 },
+      r,
+    );
+    parts.legL.rotation.x = pose.legL;
+    parts.legR.rotation.x = pose.legR;
+    parts.armL.rotation.x = pose.armL;
+    parts.armR.rotation.x = pose.armR;
+    parts.head.rotation.x = pose.stoop;
+    parts.load.visible = handsFull;
+    if (parts.weapon) parts.weapon.visible = !handsFull;
+
+    // Stood on the floor and tipped over, on the assembly's own group and not on
+    // a wrapper: these are the two lines the rig writes, on the object the rig
+    // writes them on, and `stage.ts` adds to a model's position rather than
+    // setting it — so the lift survives being laid out in a grid.
+    parts.group.position.y = pose.lift;
+    if (pose.prone) parts.group.rotation.x = -Math.PI / 2;
+    parts.group.name = `settler.${activity}`;
+    return parts.group;
+  },
+};
+
+export const BENCHES: readonly Bench[] = [STONE, GRASS, TREE, STACK, ANIMAL, SETTLER];
 
 export function benchByName(name: string): Bench | null {
   return BENCHES.find((b) => b.name === name) ?? null;

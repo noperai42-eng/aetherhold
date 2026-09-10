@@ -4,6 +4,90 @@ One round, one measured gap, one fix. Newest first.
 
 ---
 
+## 2026-09-09 — A walking settler touches the ground three times a stride, and the eye it carries dips
+
+**Track: the forge.** Stage 5 of [FORGING.md](FORGING.md), fourth family and the last one that
+is not a building. `pawns.ts` for the recipe and the two extractions, `src/forge/` for the
+bench entry, `src/client/fps/controller.ts` for a copied equation that had lost a character.
+
+### Why the settler
+
+Every other frame this repo has ever taken has a settler standing in the corner of it, and not
+one of them is a picture *of* a settler. The rig can put a body in eight poses; the game shows
+whichever pose the sim happens to want, at whichever distance the camera happens to be, one at
+a time. There is no frame anywhere in `.look/` where idle, walking, working, fighting, eating,
+relaxing, breaking and sleeping stand on the same ground at the same distance. `Generate 8` is
+that frame, and it is `Bench.grid`'s third user and its first non-enumerable one — the eight
+poses are a list a switch writes, not a family with a census.
+
+### The measured gap
+
+`gait.ts` opens by arguing that its skating fix "is not inverse kinematics. It is one equation",
+and `footScrub` exists "so a test can say so in cells rather than in adjectives". Every word of
+that is about the horizontal. Rotating a rigid leg about the hip also lifts the sole through an
+arc, and nothing brings the body down to meet it. Measured over one stride of 12.899 `animPhase`:
+
+| through the stride | lowest sole, m | bob lift, m |
+| --- | --- | --- |
+| 0 | 0.0000 | 0.0000 |
+| 1/8 | 0.0364 | 0.0350 |
+| 1/4 | 0.0438 | 0.0000 |
+| 3/8 | 0.0364 | 0.0350 |
+| 1/2 | 0.0000 | 0.0000 |
+
+A walking settler touches the ground at three instants of a stride and is off it for the rest —
+44 mm clear on both boots at full swing. The bob does not close the gap and is not trying to:
+it peaks at the eighths and is flat at the quarters, exactly where the soles are highest, while
+a real walk carries the hip highest over the planted foot and dips it where the legs are
+splayed. It is out of phase with the feet, and it is half the size of the hole.
+
+A second reading came out of writing the first one down. `FpsController` carried its own copy of
+that bob with the absolute value dropped, under a comment claiming it was "the same phase,
+amplitude and two-rises-per-cycle the rig bobs on". It was one rise per cycle, and it sank the
+eye 35 mm *below* standing height on every other step while the body it belongs to rose.
+Twenty-one tests already drove that controller and none had looked at the height of the thing
+they were driving.
+
+### What was fixed, and what was not
+
+Not the walk. Which way to close a 44 mm hole between a sole and the turf is a look-loop
+judgement — drop the body by the planted sole's rise and the foot stays put but the hip dips at
+the splay, and whether that reads as a walk or as a limp is a question for a frame, not for a
+test. So it is written down as it is: five sole heights and five lifts as exact numbers in
+`tests/forge-recipes.test.ts`, and a brief in [FORGING.md](FORGING.md) with the bench's `bob`
+slider and eight-pose grid as the instrument to answer it with.
+
+The camera was fixed, because that was a stated contract broken rather than a judgement to make.
+Both callers now share one `settlerBob` — the `stackRise` discipline a third time — and three
+tests go red if the absolute value is dropped again.
+
+And the extractions `recipes.ts` required rather than suggested. `PawnRig`'s constructor came
+out into `assembleSettler`, and a test stands a bench settler and a colony settler side by side
+comparing every named part's position *and* its two rotations: the arm's splay is set once in
+the constructor and never written again, so a comparison that looked only at positions would
+have missed it. `settlerPose` is the two switch statements out of `update()`, a function of a
+stance and nothing else — which is what `update()`'s own doc had been describing for eleven
+rounds while the thing it described was a method on a rig.
+
+### What the frames said about the bench
+
+The eight stand well, and the grid is finally the argument the doc has been making in prose:
+`hands full` composes with every one of the eight, because carrying is a state of the hands and
+not an activity. The walking frame is also where the finding is visible without a test — the
+shadow sits clear of both boots, a body's width from the feet that are supposed to be on it.
+
+Two poses share a bounding box while their arms differ, which is why the bench's own
+distinctness test reads the four limb rotations rather than the box; a family whose variation
+lives in rotation is the first one where a box was the wrong instrument.
+
+`armSplay` is 0.12 and `thumbLimit` — the roll at which the thumb's tip crosses the shoulder's
+own line, which the field's doc argues for and now computes — is 0.12628. The shipped body sits
+five per cent under its own ceiling. Right side of the line, narrower than the doc reads as: a
+drill that nudged the splay by one hundredth turned nine tests red, because the bench's default
+recipe stopped being buildable.
+
+---
+
 ## 2026-09-09 — Four species share one body space, and no two of them are in it
 
 **Track: the forge.** Stage 5 of [FORGING.md](FORGING.md), third family. `pawns.ts` for the

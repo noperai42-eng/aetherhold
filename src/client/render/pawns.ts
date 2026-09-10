@@ -20,7 +20,7 @@ import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeom
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 
 import { ANIMAL_COLOR, FACTION_COLOR, SKIN_TONES, pawnTint } from './palette';
-import { SETTLER_LEG, SETTLER_PHASE, SETTLER_SWING, phaseScale } from '../gait';
+import { SETTLER_LEG, SETTLER_SWING, phaseScale } from '../gait';
 import { ANIMALS } from '../../sim/wildlife';
 import { isRipe } from '../../sim/husbandry';
 import { maturity } from '../../sim/livestock';
@@ -34,7 +34,7 @@ import {
 } from './head-aim';
 import { LAYER_ALL, LAYER_MANAGER } from './renderer';
 import { standHeight } from '../../sim/grid';
-import type { AnimalKind, Pawn, World } from '../../sim/types';
+import type { AnimalKind, Faction, Pawn, PawnActivity, World } from '../../sim/types';
 
 /**
  * The numbers every animal on the map is drawn by, whichever species it is.
@@ -134,38 +134,166 @@ interface Rig {
 }
 
 /**
- * The heights every settler part hangs from. The legs' is the gait's own
- * constant, because the soles have to land on the floor; the rest are laid out
- * from it so the body stacks without a gap or an overlap you can see.
+ * What a settler is drawn by.
+ *
+ * These were nine module constants with their reasoning written above them, and
+ * the reasoning is still here — moved onto the field it belongs to. Two of them
+ * are not this file's to own: `leg` and `swing` are the gait's, and
+ * `SETTLER_DEFAULT` reads them out of `gait.ts` rather than restating them, the
+ * way an animal's `size` stays in `ANIMALS`. `WORK_HEIGHT` is deliberately not
+ * here — it is where a job sits, not how a body is built, and a bench has no
+ * jobs on it.
  */
-const TORSO_Y = 1.02;
-const SHOULDER_Y = 1.28;
-const HEAD_Y = 1.51;
+export interface SettlerRecipe {
+  /**
+   * A settler's leg, hip to sole. The rig hangs its legs from exactly this
+   * height, which is why the soles reach the floor rather than hover above it.
+   */
+  readonly leg: number;
+  /** How far the hip carries that leg, either side of straight down. */
+  readonly swing: number;
+  /**
+   * How high the torso hangs. The rest of the stack is laid out from it and
+   * from `leg`, so the body assembles without a gap or an overlap you can see.
+   */
+  readonly torsoY: number;
+  /** Where the arms hang from. */
+  readonly shoulderY: number;
+  /** Where the head sits, and so what height a settler looks at the world from. */
+  readonly headY: number;
+  /**
+   * Where the sleeve ends, and — with `wristY` — where the hand hangs below it.
+   *
+   * The arm was one 0.6 tube with the hand set three centimetres short of its
+   * tip, and the palm was narrower across than the sleeve: the whole hand lived
+   * inside the cloth and all that came out of the end was the last centimetre of
+   * a sphere. From the close overhead camera — the nearest look the game takes at
+   * a colonist — a settler's free arm was a plain blue tube ending bluntly at the
+   * wrist. So the cloth stops at the wrist and the hand hangs below it: the arm
+   * ends in skin, in silhouette as well as in colour, and the hand is deeper
+   * front to back than the sleeve so it also breaks the outline.
+   */
+  readonly sleeve: number;
+  /** How far below the shoulder the hand hangs. */
+  readonly wristY: number;
+  /**
+   * How far out from straight down an arm hangs, in radians, applied as a roll at
+   * the shoulder and left there through every pose.
+   *
+   * The arms were plumb, and a plumb arm on this body is pressed against the
+   * cloth: the shoulder sits at 0.27 across, the sleeve is 0.065 round, and the
+   * torso lathe is 0.20 across at the waist — five millimetres of daylight
+   * between the two, which at the zoom the colony is played at is less than a
+   * pixel. From above, and above is where the game is watched from, the sleeve
+   * and the shirt were one blue outline with no notch in it.
+   *
+   * Seven degrees is what a slack arm does anyway, and it opens that gap to
+   * forty-eight millimetres at the waist — about the width of the settler's own
+   * hand on screen, and enough that the ground shows between the arm and the
+   * body. It also carries the hand outboard of the thigh, so the sleeve stops
+   * hanging across the trouser it has to be told apart from.
+   *
+   * Seven is also as far as it can go, and the thumb is what stops it. A hand is
+   * cut with its thumb reaching seventy-three millimetres in across the palm so
+   * that it points at the midline, and hung from a shoulder `wristY` above it a
+   * roll past `thumbLimit` sends that tip out past the shoulder's own line: the
+   * hand stops reading as held at the side and starts reading as held away from
+   * the body. Ten degrees would buy another twenty millimetres of daylight and
+   * cost the hand, which is the more expensive of the two.
+   *
+   * The rifle rides the right arm and so cants seven degrees with it. That is not
+   * a cost worth undoing: the weapon is already held a quarter of a metre off the
+   * midline, and a barrel that leans out of the shoulder it is fired from is
+   * nearer the truth than one that stays parallel to the spine.
+   */
+  readonly armSplay: number;
+  /**
+   * How far below the shirt the sleeves are dyed, in L* — the scale on which a
+   * step is a step.
+   *
+   * The arms and the torso wore one material, and from the camera the colony is
+   * managed at that is half the settler in a single value. Measured off the
+   * frame: a colonist at a bench had a torso reading L* 33 and an arm held out of
+   * it reading 28 at the shoulder and rising smoothly to 49 at the wrist — a
+   * gradient with no edge anywhere along it, so the eye joined the two into one
+   * slab and read the arm as a signpost bolted to a torso. A walking colonist
+   * fared better only by accident: its arm hung, so the cylinder turned its side
+   * to the sun and the shading dug a valley the dye had not.
+   *
+   * Shading cannot be relied on for this, and from directly overhead it cannot
+   * help at all — the crown of a raised sleeve and the top of a shoulder face the
+   * same way and take the same light, so whatever separates them has to be in the
+   * cloth. Ten L* is the step. It turns the five-point shading valley at that
+   * settler's shoulder into fifteen, which is an edge; it is above the seven the
+   * hair and the skin are held apart by, which this file already calls three
+   * times a just-noticeable step; and it leaves the darkest sleeve any faction
+   * and any seed can produce at 0.033 of linear luminance, a third clear of the
+   * 0.025 floor below which a surface stops having a shape in it.
+   *
+   * It is deliberately not more. The other boundary the sleeve has to hold is the
+   * one against the trousers, where a hanging arm crosses a thigh — measured at
+   * fifteen points of L* on the same frame, so ten is most of what there is to
+   * spend. What is left there is five points and the dark seam the arm's own
+   * shadow lays down the leg, and the splay above pulls the sleeve outboard of
+   * the thigh so that boundary has less of the arm to carry.
+   */
+  readonly sleeveStep: number;
+  /**
+   * The carrying pose, and where the load rides in it.
+   *
+   * Both arms come forward to the SAME angle. Asymmetric arms read as reaching
+   * for a thing rather than as holding one, which is the difference between a
+   * settler walking to the woodpile and a settler walking back from it. The box
+   * then sits where those two hands end up, which is why these three numbers are
+   * written together: move one and the load is in mid-air or inside the chest.
+   */
+  readonly carryArm: number;
+  /** How high the load rides. */
+  readonly carryY: number;
+  /** How far in front of the chest it rides. */
+  readonly carryZ: number;
+  /**
+   * How far the body rises over a step. Two rises per cycle, one per step, off
+   * the same phase the legs swing on.
+   */
+  readonly bob: number;
+  /** How far a settler leans over a job. Adds to the head's aim, not replaces it. */
+  readonly stoop: number;
+}
+
+/** What the colony on the map is drawn by today. */
+export const SETTLER_DEFAULT: SettlerRecipe = {
+  leg: SETTLER_LEG,
+  swing: SETTLER_SWING,
+  torsoY: 1.02,
+  shoulderY: 1.28,
+  headY: 1.51,
+  sleeve: 0.53,
+  wristY: -0.575,
+  armSplay: 0.12,
+  sleeveStep: 10,
+  carryArm: -1.3,
+  carryY: 1.16,
+  carryZ: 0.4,
+  bob: 0.035,
+  stoop: 0.3,
+};
 
 /**
- * Where the sleeve ends and where the hand hangs below it.
+ * The roll at which the thumb's tip crosses the shoulder's own line.
  *
- * The arm was one 0.6 tube with the hand set three centimetres short of its
- * tip, and the palm was narrower across than the sleeve: the whole hand lived
- * inside the cloth and all that came out of the end was the last centimetre of
- * a sphere. From the close overhead camera — the nearest look the game takes at
- * a colonist — a settler's free arm was a plain blue tube ending bluntly at the
- * wrist. So the cloth stops at the wrist and the hand hangs below it: the arm
- * ends in skin, in silhouette as well as in colour, and the hand is deeper
- * front to back than the sleeve so it also breaks the outline.
+ * `armSplay`'s doc argues for a limit and names it; this is that limit worked
+ * out rather than written down, so a hand cut with a longer thumb or a sleeve
+ * hung from a lower wrist moves it. The thumb reaches `THUMB_REACH` in across
+ * the palm toward the midline and hangs `wristY` below the shoulder, so the tip
+ * sits at `shoulder + wristY·sin(roll) − THUMB_REACH·cos(roll)` across, and the
+ * limit is where that equals the shoulder.
  */
-/**
- * The carrying pose, and where the load rides in it.
- *
- * Both arms come forward to the SAME angle. Asymmetric arms read as reaching
- * for a thing rather than as holding one, which is the difference between a
- * settler walking to the woodpile and a settler walking back from it. The box
- * then sits where those two hands end up, which is why these three numbers are
- * written together: move one and the load is in mid-air or inside the chest.
- */
-const CARRY_ARM = -1.3;
-const CARRY_Y = 1.16;
-const CARRY_Z = 0.4;
+const THUMB_REACH = 0.073;
+
+export function thumbLimit(r: SettlerRecipe = SETTLER_DEFAULT): number {
+  return Math.atan2(THUMB_REACH, -r.wristY);
+}
 
 /**
  * How high off the ground a settler's hands do their work, and so how far down
@@ -174,41 +302,6 @@ const CARRY_Z = 0.4;
  * at the drill in their hands.
  */
 const WORK_HEIGHT = 0.55;
-
-const SLEEVE = 0.53;
-const WRIST_Y = -0.575;
-
-/**
- * How far out from straight down an arm hangs, in radians, applied as a roll at
- * the shoulder and left there through every pose.
- *
- * The arms were plumb, and a plumb arm on this body is pressed against the
- * cloth: the shoulder sits at 0.27 across, the sleeve is 0.065 round, and the
- * torso lathe is 0.20 across at the waist — five millimetres of daylight
- * between the two, which at the zoom the colony is played at is less than a
- * pixel. From above, and above is where the game is watched from, the sleeve
- * and the shirt were one blue outline with no notch in it.
- *
- * Seven degrees is what a slack arm does anyway, and it opens that gap to
- * forty-eight millimetres at the waist — about the width of the settler's own
- * hand on screen, and enough that the ground shows between the arm and the
- * body. It also carries the hand outboard of the thigh, so the sleeve stops
- * hanging across the trouser it has to be told apart from.
- *
- * Seven is also as far as it can go, and the thumb is what stops it. A hand is
- * cut with its thumb reaching seventy-three millimetres in across the palm so
- * that it points at the midline, and hung from a shoulder `WRIST_Y` above it a
- * roll past about 0.127 sends that tip out past the shoulder's own line: the
- * hand stops reading as held at the side and starts reading as held away from
- * the body. Ten degrees would buy another twenty millimetres of daylight and
- * cost the hand, which is the more expensive of the two.
- *
- * The rifle rides the right arm and so cants seven degrees with it. That is not
- * a cost worth undoing: the weapon is already held a quarter of a metre off the
- * midline, and a barrel that leans out of the shoulder it is fired from is
- * nearer the truth than one that stays parallel to the spine.
- */
-const ARM_SPLAY = 0.12;
 
 /**
  * Hair, black through silver. Read off `colorSeed` like the skin and the cloth
@@ -239,54 +332,419 @@ export const HAIR_TONES = [0x1d1714, 0x2b2119, 0xa67546, 0xc26545, 0x9e7a2c, 0xe
 const TROUSER_TONES = [0x5b4d3f, 0x46474b, 0x585b3c, 0x6b5747];
 
 /**
- * How far below the shirt the sleeves are dyed, in L* — the scale on which a
- * step is a step.
- *
- * The arms and the torso wore one material, and from the camera the colony is
- * managed at that is half the settler in a single value. Measured off the
- * frame: a colonist at a bench had a torso reading L* 33 and an arm held out of
- * it reading 28 at the shoulder and rising smoothly to 49 at the wrist — a
- * gradient with no edge anywhere along it, so the eye joined the two into one
- * slab and read the arm as a signpost bolted to a torso. A walking colonist
- * fared better only by accident: its arm hung, so the cylinder turned its side
- * to the sun and the shading dug a valley the dye had not.
- *
- * Shading cannot be relied on for this, and from directly overhead it cannot
- * help at all — the crown of a raised sleeve and the top of a shoulder face the
- * same way and take the same light, so whatever separates them has to be in the
- * cloth. Ten L* is the step. It turns the five-point shading valley at that
- * settler's shoulder into fifteen, which is an edge; it is above the seven the
- * hair and the skin are held apart by, which this file already calls three
- * times a just-noticeable step; and it leaves the darkest sleeve any faction
- * and any seed can produce at 0.033 of linear luminance, a third clear of the
- * 0.025 floor below which a surface stops having a shape in it.
- *
- * It is deliberately not more. The other boundary the sleeve has to hold is the
- * one against the trousers, where a hanging arm crosses a thigh — measured at
- * fifteen points of L* on the same frame, so ten is most of what there is to
- * spend. What is left there is five points and the dark seam the arm's own
- * shadow lays down the leg, and the splay above pulls the sleeve outboard of
- * the thigh so that boundary has less of the arm to carry.
- */
-const SLEEVE_STEP = 10;
-
-/**
- * The shirt's own colour taken `SLEEVE_STEP` down: one garment in two tones,
+ * The shirt's own colour taken `sleeveStep` down: one garment in two tones,
  * not two garments. Hue and saturation are untouched, so the faction still
  * reads off the arms as well as off the chest, and the arithmetic is the herds'
  * — `deepen` shares out a colour's room above the floor in L*, and a fixed drop
  * is that share worked backwards from the room this particular cloth has. A
  * shirt already at the floor has none to give and keeps its sleeves.
  */
-export function sleeveOf(cloth: THREE.Color): THREE.Color {
+export function sleeveOf(cloth: THREE.Color, r: SettlerRecipe = SETTLER_DEFAULT): THREE.Color {
   const room = lstar(luminance(cloth)) - lstar(SILHOUETTE);
-  return deepen(cloth, room > 0 ? Math.min(1, SLEEVE_STEP / room) : 1);
+  return deepen(cloth, room > 0 ? Math.min(1, r.sleeveStep / room) : 1);
+}
+
+/**
+ * How far a walking body rides above its standing height, at `phase`.
+ *
+ * Two rises per cycle, one per step, and never below the height it set out
+ * from: a stride lifts a body over its planted foot and puts it back down, it
+ * does not dig. The absolute value is the whole of that, and it is why this is
+ * a function rather than a line written twice — the first-person eye had its
+ * own copy with the absolute value dropped, under a comment claiming it was
+ * "the same phase, amplitude and two-rises-per-cycle the rig bobs on". It was
+ * one rise per cycle, and it sank the camera thirty-five millimetres into a
+ * crouch on every other step while the body it belonged to rose.
+ *
+ * `phase` is distance travelled and not time elapsed, and the scale comes off
+ * the leg the same way the stride does, so a body built with a longer leg bobs
+ * at the cadence it walks at rather than at the one this settler walks at.
+ */
+export function settlerBob(phase: number, r: SettlerRecipe = SETTLER_DEFAULT): number {
+  return Math.abs(Math.sin(phase * phaseScale(r.leg, r.swing) * 2)) * r.bob;
+}
+
+/**
+ * Every handle a settler's rig keeps on the body it was given: the four limbs
+ * that swing, the head that nods, and the three things that come and go — a
+ * weapon in the hand, a load in both of them, and a caravan's freight.
+ */
+export interface SettlerParts {
+  readonly group: THREE.Group;
+  readonly torso: THREE.Mesh;
+  /** Carries the hair and the eyes, so a nod takes the whole face with it. */
+  readonly head: THREE.Mesh;
+  readonly legL: THREE.Mesh;
+  readonly legR: THREE.Mesh;
+  readonly armL: THREE.Mesh;
+  readonly armR: THREE.Mesh;
+  /** Stock and action, or a club, riding the right hand. Null when unarmed. */
+  readonly weapon: THREE.Group | null;
+  /** The caravan's freight, on the ground. Null for everybody who is not a trader. */
+  readonly freight: THREE.Group | null;
+  /** What a hauler is carrying, hidden on everybody whose hands are empty. */
+  readonly load: THREE.Mesh;
+  /** Every material made here, for the teardown. */
+  readonly mats: THREE.Material[];
+}
+
+/**
+ * One settler, built and hung together: a torso in the faction's cloth, a head
+ * that carries its own hair and eyes, two legs, two sleeved arms, and whatever
+ * of the weapon, the load and the pack train this particular person has.
+ *
+ * Lifted whole out of `PawnRig`'s constructor for the reason the herd's was
+ * lifted out of `AnimalRig`'s — the bench in `src/forge/` has to stand this
+ * body on a page, and a bench that hung its own arm would agree with the colony
+ * right up until somebody moved the shoulder.
+ */
+export function assembleSettler(
+  faction: Faction,
+  colorSeed: number,
+  weapon: Pawn['weapon'],
+  shared: SettlerGeometry,
+  r: SettlerRecipe = SETTLER_DEFAULT,
+): SettlerParts {
+  const group = new THREE.Group();
+  const mats: THREE.Material[] = [];
+  const cloth = pawnTint(FACTION_COLOR[faction], colorSeed);
+  const skin = new THREE.Color(SKIN_TONES[colorSeed % SKIN_TONES.length]!);
+  const hairCol = new THREE.Color(HAIR_TONES[(colorSeed >> 8) % HAIR_TONES.length]!);
+
+  const clothMat = new THREE.MeshStandardMaterial({ color: cloth, roughness: 0.78 });
+  // The same cloth, a measured step darker, so the arms are not the chest
+  // (see `sleeveStep`). Same roughness: it is the same bolt of shirt.
+  const sleeveMat = new THREE.MeshStandardMaterial({ color: sleeveOf(cloth, r), roughness: 0.78 });
+  const trouserMat = new THREE.MeshStandardMaterial({
+    color: TROUSER_TONES[(colorSeed >> 14) % TROUSER_TONES.length]!,
+    roughness: 0.82,
+  });
+  const skinMat = new THREE.MeshStandardMaterial({ color: skin, roughness: 0.62 });
+  const hairMat = new THREE.MeshStandardMaterial({ color: hairCol, roughness: 0.9 });
+  const gearMat = new THREE.MeshStandardMaterial({ color: 0x3b3f45, roughness: 0.5, metalness: 0.3 });
+  // The belt is a dark strap and the boots are darker still, each in its own
+  // leather rather than a shade of the cloth: a band that is the shirt again,
+  // only dimmer, is a fold, and a band in another material is a belt.
+  const leatherMat = new THREE.MeshStandardMaterial({ color: 0x4a3323, roughness: 0.62 });
+  const bootMat = new THREE.MeshStandardMaterial({ color: 0x2c221c, roughness: 0.55 });
+  const eyeMat = new THREE.MeshStandardMaterial({ color: 0x14100e, roughness: 0.35 });
+  mats.push(clothMat, sleeveMat, trouserMat, skinMat, hairMat, gearMat, leatherMat, bootMat, eyeMat);
+
+  const torso = new THREE.Mesh(shared.torso, clothMat);
+  const head = new THREE.Mesh(shared.head, skinMat);
+  // Cropped or to the jaw, on one more bit of the same seed.
+  const hair = new THREE.Mesh((colorSeed >> 12) & 1 ? shared.hairLong : shared.hair, hairMat);
+  const neck = new THREE.Mesh(shared.neck, skinMat);
+  torso.name = 'torso';
+  head.name = 'head';
+  hair.name = 'hair';
+  neck.name = 'neck';
+  const belt = new THREE.Mesh(shared.belt, leatherMat);
+  belt.name = 'belt';
+  const legL = new THREE.Mesh(shared.leg, trouserMat);
+  const legR = new THREE.Mesh(shared.leg, trouserMat);
+  legL.name = 'leg';
+  legR.name = 'leg';
+  const armL = new THREE.Mesh(shared.arm, sleeveMat);
+  const armR = new THREE.Mesh(shared.arm, sleeveMat);
+  armL.name = 'arm';
+  armR.name = 'arm';
+
+  torso.position.y = r.torsoY;
+  head.position.y = r.headY;
+  // The neck rises from the torso's rounded top and flares up into the skull,
+  // and the belt sits where the lathe pinches in, so both are placed off the
+  // torso rather than by eye.
+  neck.position.y = r.torsoY + 0.29;
+  belt.position.y = r.torsoY - 0.15;
+  legL.position.set(-0.11, r.leg, 0);
+  legR.position.set(0.11, r.leg, 0);
+  armL.position.set(-0.27, r.shoulderY, 0);
+  armR.position.set(0.27, r.shoulderY, 0);
+  // The roll is set once and never written again: the pose only ever touches
+  // `rotation.x`, so the splay survives the walk, the nod and lying down. Euler
+  // order is XYZ, which applies the roll in the arm's own frame first and then
+  // swings the splayed arm forward from the shoulder — the joint the gait was
+  // tuned against, unmoved.
+  armL.rotation.z = -r.armSplay;
+  armR.rotation.z = r.armSplay;
+
+  // Hair and eyes ride the head, so `head.rotation.x` is the whole nod. The
+  // hair used to be a second mesh rotated to match by hand, which worked only
+  // because both were centred on the same point.
+  hair.castShadow = true;
+  head.add(hair);
+  // Set low on the face, a third of the way up from the chin. The fringe
+  // comes down to the brow and the eyes have to clear it, and a forehead
+  // with hair over it is what makes the hairline show from overhead.
+  for (const side of [-1, 1] as const) {
+    const eye = new THREE.Mesh(shared.eye, eyeMat);
+    eye.name = 'eye';
+    eye.position.set(side * 0.05, -0.05, 0.147);
+    head.add(eye);
+  }
+
+  // Hands and boots ride their limbs, so they swing from the same pivot. The
+  // hand is cut with its thumb toward -X, which is the midline for the right
+  // arm; the left wears the same buffer mirrored, so both thumbs face in.
+  for (const [side, arm] of [
+    [-1, armL],
+    [1, armR],
+  ] as const) {
+    const hand = new THREE.Mesh(shared.hand, skinMat);
+    hand.name = 'hand';
+    hand.position.y = r.wristY;
+    hand.scale.x = side;
+    hand.castShadow = true;
+    arm.add(hand);
+  }
+  for (const leg of [legL, legR]) {
+    const boot = new THREE.Mesh(shared.boot, bootMat);
+    boot.name = 'boot';
+    boot.position.set(0, -r.leg + 0.049, 0.025); // toe forward, sole on the floor
+    boot.castShadow = true;
+    leg.add(boot);
+  }
+
+  for (const m of [torso, neck, belt, head, legL, legR, armL, armR]) {
+    m.castShadow = true;
+    group.add(m);
+  }
+
+  let arms: THREE.Group | null = null;
+  if (weapon !== 'none') {
+    // Wood for the stock and the club, steel for the action: a rifle in one
+    // grey was a rod from the manager camera, and the two-tone split is what
+    // reads as a weapon at that zoom.
+    const woodMat = new THREE.MeshStandardMaterial({ color: 0x6b4626, roughness: 0.72 });
+    mats.push(woodMat);
+    arms = new THREE.Group();
+    const parts =
+      weapon === 'rifle'
+        ? [new THREE.Mesh(shared.rifleStock, woodMat), new THREE.Mesh(shared.rifleAction, gearMat)]
+        : [new THREE.Mesh(shared.club, woodMat)];
+    for (const part of parts) {
+      part.castShadow = true;
+      arms.add(part);
+    }
+    arms.children[0]!.name = weapon === 'rifle' ? 'stock' : 'club';
+    if (arms.children[1]) arms.children[1].name = 'action';
+    armR.add(arms); // rides the hand, so it swings with the arm
+  }
+
+  // What a hauler is carrying. `carryingItemId` has been on the pawn since
+  // there were pawns and nothing here had ever read it, so a colonist crossing
+  // the map with forty wood was pixel-identical to one walking home empty —
+  // the single largest thing a settler's silhouette was failing to say.
+  //
+  // Built for everyone and hidden, rather than made when the hands fill:
+  // carrying starts and stops dozens of times in a life, and a mesh allocated
+  // on the frame it starts is an allocation inside the draw. Twelve triangles
+  // and one material, both of which the detail level drops when zoomed out.
+  //
+  // One crate stands for every kind of load. WHICH resource it is, is what the
+  // click panel is for; THAT they are carrying is what only the body can say.
+  const sackMat = new THREE.MeshStandardMaterial({ color: 0x7d6647, roughness: 0.9 });
+  mats.push(sackMat);
+  const load = new THREE.Mesh(shared.crate, sackMat);
+  load.name = 'load';
+  load.scale.setScalar(0.85);
+  load.position.set(0, r.carryY, r.carryZ);
+  load.castShadow = true;
+  load.visible = false;
+  group.add(load);
+
+  // The caravan. Everything else the player learns about a pawn comes from its
+  // silhouette, and until now a trader was a settler in a different shade of
+  // cloth — a distinction you have to be told about rather than one you see.
+  // A bundle on the back and crates trailing behind read as freight from the
+  // isometric camera at any zoom the game allows.
+  let freight: THREE.Group | null = null;
+  if (faction === 'trader') {
+    const canvasMat = new THREE.MeshStandardMaterial({ color: 0x8a6a3e, roughness: 0.88 });
+    const strapMat = new THREE.MeshStandardMaterial({ color: 0x5d4526, roughness: 0.8 });
+    mats.push(canvasMat, strapMat);
+
+    const bundle = new THREE.Mesh(shared.pack, canvasMat);
+    bundle.position.set(0, 0.06, -0.22); // the torso's back; the model faces +Z
+    bundle.castShadow = true;
+    torso.add(bundle); // rides the body, so it leans when the trader does
+
+    // Trailing the merchant rather than pinned to the ground: the load belongs
+    // to the pack train, and a train that walks off leaving its crates behind
+    // would be a worse lie than the one this fixes.
+    freight = new THREE.Group();
+    const set: [number, number, number][] = [
+      [-0.42, 0.15, -0.62],
+      [0.38, 0.15, -0.78],
+      [-0.1, 0.44, -0.66],
+    ];
+    for (const [cx, cy, cz] of set) {
+      const crate = new THREE.Mesh(shared.crate, cy > 0.2 ? strapMat : canvasMat);
+      crate.position.set(cx, cy, cz);
+      crate.rotation.y = cx * 0.9; // hand-stacked, not surveyed in
+      crate.castShadow = true;
+      freight.add(crate);
+    }
+    group.add(freight);
+  }
+
+  return { group, torso, head, legL, legR, armL, armR, weapon: arms, freight, load, mats };
+}
+
+/** Everything about a settler that changes the shape of it, and nothing else. */
+export interface SettlerStance {
+  readonly activity: PawnActivity;
+  /** Dead, downed or asleep. All three lie down, so one field says so. */
+  readonly prone: boolean;
+  /** Distance travelled, not time elapsed, so the stride reads off the ground. */
+  readonly phase: number;
+  /** Something in both arms, which outranks whatever the legs are doing. */
+  readonly handsFull: boolean;
+  /** Ticks left on the last blow, which the recoil rides back out of. */
+  readonly cooldown: number;
+}
+
+/** How a settler is standing this frame: four limb angles and three facts about the body. */
+export interface SettlerPose {
+  readonly legL: number;
+  readonly legR: number;
+  readonly armL: number;
+  readonly armR: number;
+  /** Above the floor: the walk's bob, or the lift that keeps a lying body out of the ground. */
+  readonly lift: number;
+  /** Added to the head's aim over a bench, and zero everywhere else. */
+  readonly stoop: number;
+  /** Lying down. The whole rig tips, and the head goes back to neutral. */
+  readonly prone: boolean;
+}
+
+/**
+ * The body, in two layers that are asked two different questions.
+ *
+ * It used to be one: a single switch on `activity` wrote all four limbs at
+ * once, so exactly one thing about a settler could be true at a time. That is
+ * wrong about the commonest sight in the game. Hauling is not an activity —
+ * the simulation files it under `walking` — so a colonist carrying a crate got
+ * the walk's arm swing and both hands stayed empty. The legs answer to
+ * locomotion and the arms answer to what the hands are doing, and because
+ * those are separate questions, walking-while-carrying can now be one pose
+ * instead of two that cannot both win.
+ *
+ * Every pose below is the number it was before the split. The only new
+ * composition is the carry, which is the one that was missing.
+ *
+ * It is a function of the stance and nothing else — no rig, no world, no
+ * frame — which is what lets the bench stand all eight of these side by side
+ * on a page and lets a test say what each one of them is in numbers.
+ */
+export function settlerPose(s: SettlerStance, r: SettlerRecipe = SETTLER_DEFAULT): SettlerPose {
+  // Lying down: the limbs go slack and the body is lifted clear of whatever it
+  // lies on, by half its own thickness. The tipping is the rig's, because it
+  // turns the whole group and this only ever speaks about parts of it.
+  if (s.prone) {
+    return { legL: 0, legR: 0, armL: 0.15, armR: -0.15, lift: 0.16, stoop: 0, prone: true };
+  }
+
+  const ph = s.phase;
+
+  // The legs, which answer only to where the body is going. `swing` carries
+  // out of here because the arms of anyone NOT carrying counter it.
+  let swing = 0;
+  let legL = 0;
+  let legR = 0;
+  let lift = 0;
+  switch (s.activity) {
+    case 'walking': {
+      swing = Math.sin(ph * phaseScale(r.leg, r.swing)) * r.swing;
+      legL = swing;
+      legR = -swing;
+      lift = settlerBob(ph, r);
+      break;
+    }
+    case 'working':
+      legL = 0.05;
+      legR = -0.05;
+      break;
+    case 'fighting':
+      legL = 0.12;
+      legR = -0.12;
+      break;
+    case 'eating':
+      legL = 0.35;
+      legR = -0.35;
+      break;
+    case 'relaxing':
+      legL = 0.3;
+      legR = -0.3;
+      break;
+    // A slow trudge. Readable from the isometric camera at a glance, which is
+    // the only place the player will notice it.
+    case 'breaking':
+      swing = Math.sin(ph * 0.14) * 0.16;
+      legL = swing;
+      legR = -swing;
+      break;
+    default:
+      swing = Math.sin(ph * 0.25) * 0.06;
+      legL = swing;
+      legR = -swing;
+      break;
+  }
+
+  // The arms, which answer to what the hands hold. Carrying outranks the
+  // activity because it outranks it in life: you do not swing an arm you have
+  // put a crate in, whatever else you are doing with your legs.
+  let armL = 0;
+  let armR = 0;
+  if (s.handsFull) {
+    armL = r.carryArm;
+    armR = r.carryArm;
+  } else {
+    switch (s.activity) {
+      case 'walking':
+        armL = -swing * 0.75;
+        armR = swing * 0.75;
+        break;
+      case 'working': {
+        const a = Math.sin(ph * 0.8) * 0.3;
+        armL = -1.15 + a;
+        armR = -1.05 - a;
+        break;
+      }
+      case 'fighting': {
+        const recoil = Math.min(0.35, s.cooldown * 0.02);
+        armL = -1.42 + recoil;
+        armR = -1.42 + recoil;
+        break;
+      }
+      case 'eating': {
+        const a = Math.sin(ph * 0.5) * 0.2;
+        armL = -1.5 + a;
+        armR = -0.6;
+        break;
+      }
+      case 'relaxing':
+        armL = -0.5;
+        armR = -0.5;
+        break;
+      case 'breaking':
+        armL = 0.42 + swing * 0.3;
+        armR = 0.42 - swing * 0.3;
+        break;
+      default:
+        armL = 0.08 + swing;
+        armR = 0.08 - swing;
+        break;
+    }
+  }
+
+  return { legL, legR, armL, armR, lift, stoop: s.activity === 'working' ? r.stoop : 0, prone: false };
 }
 
 /** One settler's body. Parts are plain meshes so limbs can swing independently. */
 class PawnRig implements Rig {
-  readonly group = new THREE.Group();
-  private readonly torso: THREE.Mesh;
+  readonly group: THREE.Group;
   /** Carries the hair and the eyes, so a nod takes the whole face with it. */
   private readonly head: THREE.Mesh;
   private readonly legL: THREE.Mesh;
@@ -294,12 +752,12 @@ class PawnRig implements Rig {
   private readonly armL: THREE.Mesh;
   private readonly armR: THREE.Mesh;
   /** Stock and action, or a club, riding the right hand. Null when unarmed. */
-  private weapon: THREE.Group | null = null;
+  private readonly weapon: THREE.Group | null;
   /** The caravan's freight, on the ground. Null for everybody who is not a trader. */
-  private freight: THREE.Group | null = null;
+  private readonly freight: THREE.Group | null;
   /** What a hauler is carrying, hidden on everybody whose hands are empty. */
   private readonly load: THREE.Mesh;
-  private readonly mats: THREE.Material[] = [];
+  private readonly mats: THREE.Material[];
   private layer = LAYER_ALL;
   /** Where the head is turned to now, eased toward where it wants to be. */
   private aim: HeadAim = HEAD_NEUTRAL;
@@ -308,185 +766,17 @@ class PawnRig implements Rig {
   private look: { x: number; y: number; z: number } | null = null;
 
   constructor(pawn: Pawn, shared: SharedGeometry) {
-    const cloth = pawnTint(FACTION_COLOR[pawn.faction], pawn.colorSeed);
-    const skin = new THREE.Color(SKIN_TONES[pawn.colorSeed % SKIN_TONES.length]!);
-    const hairCol = new THREE.Color(HAIR_TONES[(pawn.colorSeed >> 8) % HAIR_TONES.length]!);
-
-    const clothMat = new THREE.MeshStandardMaterial({ color: cloth, roughness: 0.78 });
-    // The same cloth, a measured step darker, so the arms are not the chest
-    // (see `SLEEVE_STEP`). Same roughness: it is the same bolt of shirt.
-    const sleeveMat = new THREE.MeshStandardMaterial({ color: sleeveOf(cloth), roughness: 0.78 });
-    const trouserMat = new THREE.MeshStandardMaterial({
-      color: TROUSER_TONES[(pawn.colorSeed >> 14) % TROUSER_TONES.length]!,
-      roughness: 0.82,
-    });
-    const skinMat = new THREE.MeshStandardMaterial({ color: skin, roughness: 0.62 });
-    const hairMat = new THREE.MeshStandardMaterial({ color: hairCol, roughness: 0.9 });
-    const gearMat = new THREE.MeshStandardMaterial({ color: 0x3b3f45, roughness: 0.5, metalness: 0.3 });
-    // The belt is a dark strap and the boots are darker still, each in its own
-    // leather rather than a shade of the cloth: a band that is the shirt again,
-    // only dimmer, is a fold, and a band in another material is a belt.
-    const leatherMat = new THREE.MeshStandardMaterial({ color: 0x4a3323, roughness: 0.62 });
-    const bootMat = new THREE.MeshStandardMaterial({ color: 0x2c221c, roughness: 0.55 });
-    const eyeMat = new THREE.MeshStandardMaterial({ color: 0x14100e, roughness: 0.35 });
-    this.mats.push(clothMat, sleeveMat, trouserMat, skinMat, hairMat, gearMat, leatherMat, bootMat, eyeMat);
-
-    this.torso = new THREE.Mesh(shared.torso, clothMat);
-    this.head = new THREE.Mesh(shared.head, skinMat);
-    // Cropped or to the jaw, on one more bit of the same seed.
-    const hair = new THREE.Mesh((pawn.colorSeed >> 12) & 1 ? shared.hairLong : shared.hair, hairMat);
-    const neck = new THREE.Mesh(shared.neck, skinMat);
-    this.torso.name = 'torso';
-    this.head.name = 'head';
-    hair.name = 'hair';
-    neck.name = 'neck';
-    const belt = new THREE.Mesh(shared.belt, leatherMat);
-    belt.name = 'belt';
-    this.legL = new THREE.Mesh(shared.leg, trouserMat);
-    this.legR = new THREE.Mesh(shared.leg, trouserMat);
-    this.legL.name = 'leg';
-    this.legR.name = 'leg';
-    this.armL = new THREE.Mesh(shared.arm, sleeveMat);
-    this.armR = new THREE.Mesh(shared.arm, sleeveMat);
-    this.armL.name = 'arm';
-    this.armR.name = 'arm';
-
-    this.torso.position.y = TORSO_Y;
-    this.head.position.y = HEAD_Y;
-    // The neck rises from the torso's rounded top and flares up into the skull,
-    // and the belt sits where the lathe pinches in, so both are placed off the
-    // torso rather than by eye.
-    neck.position.y = TORSO_Y + 0.29;
-    belt.position.y = TORSO_Y - 0.15;
-    this.legL.position.set(-0.11, SETTLER_LEG, 0);
-    this.legR.position.set(0.11, SETTLER_LEG, 0);
-    this.armL.position.set(-0.27, SHOULDER_Y, 0);
-    this.armR.position.set(0.27, SHOULDER_Y, 0);
-    // The roll is set once and never written again: `setPose` only ever touches
-    // `rotation.x`, so the splay survives the walk, the nod and lying down. Euler
-    // order is XYZ, which applies the roll in the arm's own frame first and then
-    // swings the splayed arm forward from the shoulder — the joint the gait was
-    // tuned against, unmoved.
-    this.armL.rotation.z = -ARM_SPLAY;
-    this.armR.rotation.z = ARM_SPLAY;
-
-    // Hair and eyes ride the head, so `head.rotation.x` is the whole nod. The
-    // hair used to be a second mesh rotated to match by hand, which worked only
-    // because both were centred on the same point.
-    hair.castShadow = true;
-    this.head.add(hair);
-    // Set low on the face, a third of the way up from the chin. The fringe
-    // comes down to the brow and the eyes have to clear it, and a forehead
-    // with hair over it is what makes the hairline show from overhead.
-    for (const side of [-1, 1] as const) {
-      const eye = new THREE.Mesh(shared.eye, eyeMat);
-      eye.name = 'eye';
-      eye.position.set(side * 0.05, -0.05, 0.147);
-      this.head.add(eye);
-    }
-
-    // Hands and boots ride their limbs, so they swing from the same pivot. The
-    // hand is cut with its thumb toward -X, which is the midline for the right
-    // arm; the left wears the same buffer mirrored, so both thumbs face in.
-    for (const [side, arm] of [
-      [-1, this.armL],
-      [1, this.armR],
-    ] as const) {
-      const hand = new THREE.Mesh(shared.hand, skinMat);
-      hand.name = 'hand';
-      hand.position.y = WRIST_Y;
-      hand.scale.x = side;
-      hand.castShadow = true;
-      arm.add(hand);
-    }
-    for (const leg of [this.legL, this.legR]) {
-      const boot = new THREE.Mesh(shared.boot, bootMat);
-      boot.name = 'boot';
-      boot.position.set(0, -SETTLER_LEG + 0.049, 0.025); // toe forward, sole on the floor
-      boot.castShadow = true;
-      leg.add(boot);
-    }
-
-    for (const m of [this.torso, neck, belt, this.head, this.legL, this.legR, this.armL, this.armR]) {
-      m.castShadow = true;
-      this.group.add(m);
-    }
-
-    if (pawn.weapon !== 'none') {
-      // Wood for the stock and the club, steel for the action: a rifle in one
-      // grey was a rod from the manager camera, and the two-tone split is what
-      // reads as a weapon at that zoom.
-      const woodMat = new THREE.MeshStandardMaterial({ color: 0x6b4626, roughness: 0.72 });
-      this.mats.push(woodMat);
-      this.weapon = new THREE.Group();
-      const parts =
-        pawn.weapon === 'rifle'
-          ? [new THREE.Mesh(shared.rifleStock, woodMat), new THREE.Mesh(shared.rifleAction, gearMat)]
-          : [new THREE.Mesh(shared.club, woodMat)];
-      for (const part of parts) {
-        part.castShadow = true;
-        this.weapon.add(part);
-      }
-      this.weapon.children[0]!.name = pawn.weapon === 'rifle' ? 'stock' : 'club';
-      if (this.weapon.children[1]) this.weapon.children[1].name = 'action';
-      this.armR.add(this.weapon); // rides the hand, so it swings with the arm
-    }
-
-    // What a hauler is carrying. `carryingItemId` has been on the pawn since
-    // there were pawns and nothing here had ever read it, so a colonist crossing
-    // the map with forty wood was pixel-identical to one walking home empty —
-    // the single largest thing a settler's silhouette was failing to say.
-    //
-    // Built for everyone and hidden, rather than made when the hands fill:
-    // carrying starts and stops dozens of times in a life, and a mesh allocated
-    // on the frame it starts is an allocation inside the draw. Twelve triangles
-    // and one material, both of which the detail level drops when zoomed out.
-    //
-    // One crate stands for every kind of load. WHICH resource it is, is what the
-    // click panel is for; THAT they are carrying is what only the body can say.
-    const sackMat = new THREE.MeshStandardMaterial({ color: 0x7d6647, roughness: 0.9 });
-    this.mats.push(sackMat);
-    this.load = new THREE.Mesh(shared.crate, sackMat);
-    this.load.name = 'load';
-    this.load.scale.setScalar(0.85);
-    this.load.position.set(0, CARRY_Y, CARRY_Z);
-    this.load.castShadow = true;
-    this.load.visible = false;
-    this.group.add(this.load);
-
-    // The caravan. Everything else the player learns about a pawn comes from its
-    // silhouette, and until now a trader was a settler in a different shade of
-    // cloth — a distinction you have to be told about rather than one you see.
-    // A bundle on the back and crates trailing behind read as freight from the
-    // isometric camera at any zoom the game allows.
-    if (pawn.faction === 'trader') {
-      const canvasMat = new THREE.MeshStandardMaterial({ color: 0x8a6a3e, roughness: 0.88 });
-      const strapMat = new THREE.MeshStandardMaterial({ color: 0x5d4526, roughness: 0.8 });
-      this.mats.push(canvasMat, strapMat);
-
-      const bundle = new THREE.Mesh(shared.pack, canvasMat);
-      bundle.position.set(0, 0.06, -0.22); // the torso's back; the model faces +Z
-      bundle.castShadow = true;
-      this.torso.add(bundle); // rides the body, so it leans when the trader does
-
-      // Trailing the merchant rather than pinned to the ground: the load belongs
-      // to the pack train, and a train that walks off leaving its crates behind
-      // would be a worse lie than the one this fixes.
-      this.freight = new THREE.Group();
-      const set: [number, number, number][] = [
-        [-0.42, 0.15, -0.62],
-        [0.38, 0.15, -0.78],
-        [-0.1, 0.44, -0.66],
-      ];
-      for (const [cx, cy, cz] of set) {
-        const crate = new THREE.Mesh(shared.crate, cy > 0.2 ? strapMat : canvasMat);
-        crate.position.set(cx, cy, cz);
-        crate.rotation.y = cx * 0.9; // hand-stacked, not surveyed in
-        crate.castShadow = true;
-        this.freight.add(crate);
-      }
-      this.group.add(this.freight);
-    }
+    const parts = assembleSettler(pawn.faction, pawn.colorSeed, pawn.weapon, shared);
+    this.group = parts.group;
+    this.head = parts.head;
+    this.legL = parts.legL;
+    this.legR = parts.legR;
+    this.armL = parts.armL;
+    this.armR = parts.armR;
+    this.weapon = parts.weapon;
+    this.freight = parts.freight;
+    this.load = parts.load;
+    this.mats = parts.mats;
   }
 
   setLayer(layer: number): void {
@@ -496,19 +786,12 @@ class PawnRig implements Rig {
   }
 
   /**
-   * The body, in two layers that are asked two different questions.
+   * Where this settler is standing, and what it is doing with itself there.
    *
-   * It used to be one: a single switch on `activity` wrote all four limbs at
-   * once, so exactly one thing about a settler could be true at a time. That is
-   * wrong about the commonest sight in the game. Hauling is not an activity —
-   * the simulation files it under `walking` — so a colonist carrying a crate got
-   * the walk's arm swing and both hands stayed empty. The legs answer to
-   * locomotion and the arms answer to what the hands are doing, and because
-   * those are separate questions, walking-while-carrying can now be one pose
-   * instead of two that cannot both win.
-   *
-   * Every pose below is the number it was before the split. The only new
-   * composition is the carry, which is the one that was missing.
+   * The pose is worked out by `settlerPose` off the stance alone and applied
+   * here; what stays in the rig is everything that needs the rig — the place on
+   * the map, the facing, and the three things that are shown or hidden rather
+   * than moved.
    */
   update(world: World, pawn: Pawn, x: number, z: number, facing: number, dt: number): void {
     const g = this.group;
@@ -543,95 +826,30 @@ class PawnRig implements Rig {
     // are full are full of one thing.
     if (this.weapon) this.weapon.visible = !handsFull;
 
-    if (prone) {
-      // Lying down: tip the whole body over and drop it onto whatever it lies on.
+    const pose = settlerPose({
+      activity: pawn.activity,
+      prone,
+      phase: pawn.animPhase,
+      handsFull,
+      cooldown: pawn.attackCooldown,
+    });
+    this.legL.rotation.x = pose.legL;
+    this.legR.rotation.x = pose.legR;
+    this.armL.rotation.x = pose.armL;
+    this.armR.rotation.x = pose.armR;
+    g.position.y = floor + pose.lift;
+
+    if (pose.prone) {
+      // Tip the whole body over. The lift above already stood it on top of
+      // whatever it lies on instead of through it, and the rotation is set
+      // rather than added to because the line above resets X every frame.
       g.rotation.x = -Math.PI / 2;
-      g.position.y = floor + 0.16;
-      this.setLegs(0, 0);
-      this.setArms(0.15, -0.15);
       this.head.rotation.set(0, 0, 0);
       this.aim = HEAD_NEUTRAL;
       return;
     }
 
-    const ph = pawn.animPhase;
-
-    // The legs, which answer only to where the body is going. `swing` carries
-    // out of here because the arms of anyone NOT carrying counter it.
-    let swing = 0;
-    switch (pawn.activity) {
-      case 'walking': {
-        // `ph` is distance travelled, not time elapsed, so the stride reads off
-        // the ground rather than off the clock and the foot stays where it was
-        // put. The bob rides the same phase: two rises per cycle, one per step.
-        const w = ph * SETTLER_PHASE;
-        swing = Math.sin(w) * SETTLER_SWING;
-        this.setLegs(swing, -swing);
-        g.position.y = floor + Math.abs(Math.sin(w * 2)) * 0.035;
-        break;
-      }
-      case 'working':
-        this.setLegs(0.05, -0.05);
-        break;
-      case 'fighting':
-        this.setLegs(0.12, -0.12);
-        break;
-      case 'eating':
-        this.setLegs(0.35, -0.35);
-        break;
-      case 'relaxing':
-        this.setLegs(0.3, -0.3);
-        break;
-      // A slow trudge. Readable from the isometric camera at a glance, which is
-      // the only place the player will notice it.
-      case 'breaking':
-        swing = Math.sin(ph * 0.14) * 0.16;
-        this.setLegs(swing, -swing);
-        break;
-      default:
-        swing = Math.sin(ph * 0.25) * 0.06;
-        this.setLegs(swing, -swing);
-        break;
-    }
-
-    // The arms, which answer to what the hands hold. Carrying outranks the
-    // activity because it outranks it in life: you do not swing an arm you have
-    // put a crate in, whatever else you are doing with your legs.
-    if (handsFull) {
-      this.setArms(CARRY_ARM, CARRY_ARM);
-    } else {
-      switch (pawn.activity) {
-        case 'walking':
-          this.setArms(-swing * 0.75, swing * 0.75);
-          break;
-        case 'working': {
-          const s = Math.sin(ph * 0.8) * 0.3;
-          this.setArms(-1.15 + s, -1.05 - s);
-          break;
-        }
-        case 'fighting': {
-          const recoil = Math.min(0.35, pawn.attackCooldown * 0.02);
-          this.setArms(-1.42 + recoil, -1.42 + recoil);
-          break;
-        }
-        case 'eating': {
-          const s = Math.sin(ph * 0.5) * 0.2;
-          this.setArms(-1.5 + s, -0.6);
-          break;
-        }
-        case 'relaxing':
-          this.setArms(-0.5, -0.5);
-          break;
-        case 'breaking':
-          this.setArms(0.42 + swing * 0.3, 0.42 - swing * 0.3);
-          break;
-        default:
-          this.setArms(0.08 + swing, 0.08 - swing);
-          break;
-      }
-    }
-
-    this.driveHead(world, pawn, x, z, floor, facing, dt);
+    this.driveHead(world, pawn, x, z, floor, facing, dt, pose.stoop);
   }
 
   /**
@@ -651,6 +869,7 @@ class PawnRig implements Rig {
     floor: number,
     facing: number,
     dt: number,
+    stoop: number,
   ): void {
     if (world.tick !== this.lookTick) {
       this.lookTick = world.tick;
@@ -659,7 +878,12 @@ class PawnRig implements Rig {
 
     let wanted: HeadAim | null = null;
     if (this.look) {
-      const at = aimFromWorld(this.look.x - x, this.look.y - (floor + HEAD_Y), this.look.z - z, facing);
+      const at = aimFromWorld(
+        this.look.x - x,
+        this.look.y - (floor + SETTLER_DEFAULT.headY),
+        this.look.z - z,
+        facing,
+      );
       // A target the neck cannot reach is dropped rather than clamped to the
       // limit and held there. A settler cannot look behind themselves, and one
       // who tries reads as a body with its head on backwards; one who has given
@@ -673,18 +897,7 @@ class PawnRig implements Rig {
     // `rotation.x`, so down is positive here while up is positive in the aim —
     // which is why the pitch arrives negated. `head-aim.ts` says why it is not
     // written upside down at the source instead.
-    const stoop = pawn.activity === 'working' ? 0.3 : 0;
     this.head.rotation.set(stoop - this.aim.pitch, this.aim.yaw, 0);
-  }
-
-  private setLegs(left: number, right: number): void {
-    this.legL.rotation.x = left;
-    this.legR.rotation.x = right;
-  }
-
-  private setArms(left: number, right: number): void {
-    this.armL.rotation.x = left;
-    this.armR.rotation.x = right;
   }
 
   dispose(): void {
@@ -712,7 +925,7 @@ function lookTarget(world: World, pawn: Pawn): { x: number; y: number; z: number
     if (foe && !foe.dead && !foe.buried) {
       return {
         x: foe.x,
-        y: standHeight(world, Math.round(foe.x), Math.round(foe.y)) + HEAD_Y,
+        y: standHeight(world, Math.round(foe.x), Math.round(foe.y)) + SETTLER_DEFAULT.headY,
         z: foe.y,
       };
     }
@@ -1338,7 +1551,16 @@ export interface AnimalFittings {
   huntMark: THREE.BufferGeometry;
 }
 
-interface SharedGeometry extends AnimalFittings {
+/**
+ * The sixteen buffers a settler is cut from, and nothing an animal wears.
+ *
+ * Its own interface because two of them are cut to a length the recipe names —
+ * a body built with a longer leg needs a longer thigh, not the same thigh hung
+ * from a higher hip — so the bench has to be able to ask for a set at its own
+ * numbers, and asking for a set should not build four species of wildlife on
+ * the way past.
+ */
+export interface SettlerGeometry {
   torso: THREE.BufferGeometry;
   belt: THREE.BufferGeometry;
   neck: THREE.BufferGeometry;
@@ -1353,10 +1575,14 @@ interface SharedGeometry extends AnimalFittings {
   rifleStock: THREE.BufferGeometry;
   rifleAction: THREE.BufferGeometry;
   club: THREE.BufferGeometry;
-  /** Each species' body and where its moving parts hang, built once. */
-  animals: Record<AnimalKind, SpeciesModel>;
   pack: THREE.BufferGeometry;
   crate: THREE.BufferGeometry;
+}
+
+/** Everything one view of the map cuts once: the settlers and the herd both. */
+interface SharedGeometry extends SettlerGeometry, AnimalFittings {
+  /** Each species' body and where its moving parts hang, built once. */
+  animals: Record<AnimalKind, SpeciesModel>;
 }
 
 /**
@@ -2352,7 +2578,15 @@ export function animalFittings(): AnimalFittings {
   };
 }
 
-function makeShared(): SharedGeometry {
+/**
+ * Every buffer a settler is cut from, at the lengths this recipe asks for.
+ *
+ * Called once by the view and once per model by the bench, which is why the two
+ * lengths that come off the recipe are read here rather than off the module: a
+ * bench that stretched the leg and kept the thigh would draw a settler whose
+ * knee had come out through the trouser.
+ */
+export function settlerGeometry(r: SettlerRecipe = SETTLER_DEFAULT): SettlerGeometry {
   // The belt is an open band a hair wider than the waist of the lathe, squashed
   // the same way, so it hugs the cloth instead of cutting through it.
   const belt = new THREE.CylinderGeometry(0.215, 0.22, 0.06, 20, 1, true);
@@ -2384,15 +2618,13 @@ function makeShared(): SharedGeometry {
     eye: new THREE.SphereGeometry(0.016, 6, 5),
     // Three rings on the caps: the top of a leg is inside the torso and the
     // bottom inside a boot, so the fourth was paid for and never seen.
-    leg: limb(0.075, SETTLER_LEG, 12, 3),
+    leg: limb(0.075, r.leg, 12, 3),
     boot: makeBoot(),
-    arm: limb(0.065, SLEEVE, 12, 3),
+    arm: limb(0.065, r.sleeve, 12, 3),
     hand: makeHand(),
     rifleStock: makeRifleStock(),
     rifleAction: makeRifleAction(),
     club: makeClub(),
-    animals: speciesModels(),
-    ...animalFittings(),
     // The caravan's load: one bundle high on the back and a few crates set down
     // in the grass. A trader who is just a differently-tinted settler is a thing
     // the player has to be told about; a pile of freight is a thing they see.
@@ -2406,6 +2638,10 @@ function makeShared(): SharedGeometry {
     pack: new RoundedBoxGeometry(0.38, 0.4, 0.22, 1, 0.06),
     crate: new THREE.BoxGeometry(0.36, 0.3, 0.36),
   };
+}
+
+function makeShared(): SharedGeometry {
+  return { ...settlerGeometry(), animals: speciesModels(), ...animalFittings() };
 }
 
 export class PawnsView {

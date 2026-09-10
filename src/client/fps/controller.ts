@@ -11,7 +11,7 @@
 import * as THREE from 'three';
 
 import { BODY_RADIUS, PLAYER_RUN, PLAYER_WALK, moveWithCollision } from '../../sim/movement';
-import { SETTLER_PHASE } from '../gait';
+import { settlerBob } from '../render/pawns';
 import { LAYER_FPS } from '../render/renderer';
 import { cancelJob } from '../../sim/world';
 import { playerAttack } from '../../sim/combat';
@@ -165,12 +165,14 @@ export class FpsController {
 
     // The eye rides the body's own stride instead of a wall clock: it stops the
     // instant the body is blocked, quickens when the settler runs, and is the
-    // same phase, amplitude and two-rises-per-cycle the rig bobs on — so the
-    // head you watch from outside and the head you look out of move together.
-    const bobY =
-      !prone && pawn.activity === 'walking'
-        ? Math.sin(pawn.animPhase * SETTLER_PHASE * 2) * 0.035
-        : 0;
+    // rig's own bob rather than a second copy of it — so the head you watch
+    // from outside and the head you look out of move together.
+    //
+    // It was a copy, and the copy had lost the absolute value: one rise per
+    // cycle where the body had two, and every other step took the camera
+    // thirty-five millimetres BELOW standing height while the body it belongs
+    // to went up. Two lines that have to agree are one line.
+    const bobY = !prone && pawn.activity === 'walking' ? settlerBob(pawn.animPhase) : 0;
 
     this.camera.position.set(x, this.eye + bobY, y);
     this.camera.rotation.y = -this.yaw - Math.PI / 2;

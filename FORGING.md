@@ -556,6 +556,64 @@ is right and the sentence is nearly right; what was missing was anything that wo
 it stopped being. The bench now refuses a collar cut narrower than the widest throat that has
 to wear it, which is the family's one cross-field rule.
 
+**Built — settlers, 2026-09-09.** The last family that is not a building, and the one every
+other frame in the repo has a settler standing in the corner of. `SettlerRecipe` and
+`SETTLER_DEFAULT` in `pawns.ts` are fourteen numbers that were fourteen module constants: the
+leg and the hip's swing, the three heights a torso, a shoulder and a head hang at, the sleeve
+and the wrist, the arm's splay, the sleeve's step in L*, the three that place a carried load,
+the bob and the stoop. Two of the fourteen also cut buffers, so `settlerGeometry(r)` came out
+of `makeShared()` — a bench that lengthened the leg and kept the thigh would draw a settler
+whose knee had come out through the trouser, and no golden could have seen it, because the
+goldens are written at the default.
+
+Two extractions, and `recipes.ts` forbade neither being optional. `PawnRig`'s whole constructor
+came out into `assembleSettler`, the way `AnimalRig`'s came out into `assembleAnimal`, and a
+test stands a bench settler and a colony settler side by side and compares every named part's
+position AND its two rotations — the splay is set once in the constructor and never written
+again, so a comparison that looked only at positions would have missed it entirely. The second
+extraction is the one this family needed and the herd did not: `settlerPose` is the two switch
+statements out of `update()`, a function of the stance and nothing else. That is what lets the
+bench put all eight poses on one page, and it is what makes the grid say *pose* rather than
+*seed* — `Bench.grid` now has a third user, and its first non-enumerable one, since the eight
+poses are a list the switch writes rather than a family with a census.
+
+`update()`'s own doc had been arguing for exactly this since the day the arms and the legs were
+split apart: "the legs answer to locomotion and the arms answer to what the hands are doing,
+and because those are separate questions, walking-while-carrying can now be one pose instead of
+two that cannot both win." That is a description of a pure function of a stance. It had been a
+description of a method on a rig for eleven rounds. The bench's `hands full` toggle composes
+with every one of the eight, which is the argument made in a picture.
+
+And the fault the round is worth, in the half of the gait nothing had ever looked at. `gait.ts`
+opens by arguing that its skating fix "is not inverse kinematics. It is one equation", and
+`footScrub` exists "so a test can say so in cells rather than in adjectives" — and every word
+of that is about the horizontal. Rotating a rigid leg about the hip lifts the sole through an
+arc, and the body above it does not come down to meet it. A walking settler is airborne for all
+but three instants of a stride: at full swing BOTH boots are 44 mm clear of the ground, and at
+the eighths they are 36 mm up. The bob does not help and is exactly out of phase with the feet
+— it peaks at the eighths and is flat at the quarters, where the soles are highest, while a
+real walk carries the hip highest over the planted foot at midstance and dips it at double
+support, which is where these legs are splayed. **Brief: bring the walking body down to its own
+feet — drop it by the planted sole's rise so the foot stays put and the hip dips at the splay
+— and judge whether that reads as a walk or as a limp.** The five sole heights and the five
+lifts are now written out exactly, as they are and not as they should be; which way to close it
+is a frame question, and the bench's `bob` slider and eight-pose grid are the frame.
+
+A second fault fell out of writing that down, and this one was fixed rather than logged, because
+it was a stated contract broken rather than a judgement to make. `FpsController` carried its own
+copy of the rig's bob with the absolute value dropped, under a comment claiming it was "the same
+phase, amplitude and two-rises-per-cycle the rig bobs on". It was one rise per cycle, and it
+sank the camera 35 mm BELOW standing height on every other step while the body it belongs to
+rose. Twenty-one tests already drove that controller and not one of them had looked at the
+height of the thing they were driving. Both now call one `settlerBob` — the `stackRise`
+discipline, a third time — and three tests go red if the absolute value is dropped again.
+
+One smaller thing worth writing down. `armSplay` is 0.12 and `thumbLimit` — the roll at which
+the thumb's tip crosses the shoulder's own line, which the field's own doc argues for and now
+computes — is 0.12628. The shipped body sits five per cent under its own ceiling. That is the
+right side of the line and it is a narrower margin than the doc reads as, so the bench refuses
+anything past it and a drill that nudged the splay by one hundredth turned nine tests red.
+
 ## The order of work
 
 Stages 0, 1 and 2 are one piece of work and should be done together; a recipe with

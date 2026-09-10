@@ -8,7 +8,8 @@
 import { describe, expect, it } from 'vitest';
 
 import { BODY_RADIUS, penetration } from '../src/sim/movement';
-import { PHASE_PER_CELL } from '../src/client/gait';
+import { PHASE_PER_CELL, SETTLER_PHASE } from '../src/client/gait';
+import { settlerBob } from '../src/client/render/pawns';
 import { FpsController } from '../src/client/fps/controller';
 import { describeTarget, interact } from '../src/sim/interact';
 import { isWalkable } from '../src/sim/grid';
@@ -326,6 +327,62 @@ describe('walking a possessed body', () => {
 
     expect(strideRate(true)).toBeCloseTo(strideRate(false), 10);
     expect(strideRate(false)).toBeCloseTo(PHASE_PER_CELL, 10);
+  });
+
+  it('rides the eye on the body’s own bob, so it never sinks below standing height', () => {
+    // The bug this is here for: the camera had its own copy of the rig's bob
+    // expression with the absolute value dropped. That is one rise per cycle
+    // where the body has two, and it took the eye thirty-five millimetres BELOW
+    // standing height on every other step while the body it belongs to went up.
+    // Twenty-one tests already drove this controller and none of them had ever
+    // looked at the height of the thing they were driving.
+    const world = createWorld(77);
+    const spot = clearRun(world);
+    const pawn = bodyIn(world);
+    pawn.x = spot.x;
+    pawn.y = spot.y;
+    pawn.activity = 'walking';
+    // Settled at the bottom of the bob, so `stand` is standing height and not
+    // standing height plus however far through a step the body happened to be.
+    pawn.animPhase = 0;
+
+    const fps = new FpsController();
+    fps.attach(pawn);
+    // Settled, so the eased eye height is not still climbing into place and the
+    // only thing left moving is the bob.
+    for (let i = 0; i < 200; i++) fps.updateCamera(world, pawn, pawn.x, pawn.y, 1 / 60);
+    const stand = fps.camera.position.y;
+
+    const cycle = (2 * Math.PI) / SETTLER_PHASE;
+    let peak = 0;
+    for (let i = 0; i <= 240; i++) {
+      pawn.animPhase = (i / 240) * cycle * 3;
+      fps.updateCamera(world, pawn, pawn.x, pawn.y, 1 / 60);
+      const rise = fps.camera.position.y - stand;
+      expect(rise, `at phase ${pawn.animPhase}`).toBeGreaterThanOrEqual(-1e-9);
+      // And it is the rig's bob and not a second one that happens to be positive.
+      expect(rise).toBeCloseTo(settlerBob(pawn.animPhase), 9);
+      peak = Math.max(peak, rise);
+    }
+    expect(peak).toBeCloseTo(0.035, 4);
+  });
+
+  it('holds the eye still when the body is not walking', () => {
+    const world = createWorld(77);
+    const spot = clearRun(world);
+    const pawn = bodyIn(world);
+    pawn.x = spot.x;
+    pawn.y = spot.y;
+    pawn.activity = 'idle';
+    const fps = new FpsController();
+    fps.attach(pawn);
+    for (let i = 0; i < 200; i++) fps.updateCamera(world, pawn, pawn.x, pawn.y, 1 / 60);
+    const stand = fps.camera.position.y;
+    for (let i = 0; i <= 20; i++) {
+      pawn.animPhase = i * 0.7;
+      fps.updateCamera(world, pawn, pawn.x, pawn.y, 1 / 60);
+      expect(fps.camera.position.y).toBeCloseTo(stand, 9);
+    }
   });
 
   it('takes the wheel: moving yourself cancels the job the manager queued', () => {
