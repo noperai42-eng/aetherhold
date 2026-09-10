@@ -26,6 +26,7 @@ import { assemblyOf, poolsOf, triangles } from '../src/tools/assemble';
 import { exportModels, installFileReader, type Manifest } from '../src/tools/models';
 import { BUILD_MENU } from '../src/sim/buildings';
 import { RESOURCE_KINDS } from '../src/sim/types';
+import { BENCHES } from '../src/forge/recipes';
 
 /** The JSON half of a .glb, read the way the format says to read it. */
 function glbJson(path: string): {
@@ -197,6 +198,42 @@ describe('a whole export, opened the way a consumer would open it', () => {
     // Not a grey suit: some channel has to be well clear of the other two.
     const spread = coloured.map((f) => Math.max(f[0]!, f[1]!, f[2]!) - Math.min(f[0]!, f[1]!, f[2]!));
     expect(Math.max(...spread)).toBeGreaterThan(0.1);
+  });
+
+  it('is the census the forge bench measures its own coverage against', () => {
+    // The contact sheet says "N of 42 assemblies on the bench", and until this
+    // round N was the number of benches. Six benches shape sixteen files —
+    // the wood is two crowns, the stack is eight, the herd is four — so the
+    // line understated by nearly three to one, in the cautious direction, which
+    // is why it stood for four rounds without anyone catching it.
+    //
+    // This is the half of that count the bench cannot check for itself. The
+    // manifest is written by the export and `.gitignore` covers it, so
+    // `forge-recipes.test.ts` can only pin the numerator; here there is a real
+    // export in a temp directory, and every name a bench claims has to be a
+    // file in it. A bench claiming `stack.hides` would go green over there and
+    // red here, which is the right way round.
+    const covered = BENCHES.flatMap((b) => [...b.covers]);
+    for (const name of covered) expect(manifest.models[name], name).toBeTruthy();
+    expect(covered.length).toBe(16);
+    expect(Object.keys(manifest.models).length).toBe(42);
+  });
+
+  it('has twenty-six left, and every one of them is a building', () => {
+    // What the honest number is for. Sixteen of forty-two is not a shortfall
+    // spread thinly over the game; it is one family, deferred on purpose. Every
+    // name the bench does not claim is a bare building — no dot in it, because
+    // the dotted names are exactly the families that come in variants and every
+    // one of those is on the bench already.
+    //
+    // So this goes red two ways, and both are worth knowing. A new building
+    // makes it twenty-seven and says the bench fell further behind. A new
+    // *dotted* model — a fifth species, a ninth resource — fails the second
+    // assertion instead and says a family that has a bench grew past it.
+    const covered = new Set(BENCHES.flatMap((b) => [...b.covers]));
+    const left = Object.keys(manifest.models).filter((n) => !covered.has(n)).sort();
+    expect(left.length).toBe(26);
+    expect(left.filter((n) => n.includes('.'))).toEqual([]);
   });
 
   it('says which parts wore a borrowed colour', () => {

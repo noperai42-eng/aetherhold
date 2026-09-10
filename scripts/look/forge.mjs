@@ -73,8 +73,16 @@ page.on('pageerror', (e) => errs.push(String(e)));
 
 const url = BASE.replace(/\/$/, '');
 await page.goto(`${url}/forge.html`, { waitUntil: 'networkidle0' });
-const models = await page.$$eval('.index a', (as) => as.map((a) => a.textContent.trim()));
-if (!models.length) throw new Error('the bench index listed no models — is the dev server on forge.html?');
+// Each index link carries what that bench shapes, because a bench is not a model:
+// the wood is two crown variants, the stack is eight files, the herd is four
+// species. Reading the names and counting them is what made this sheet say six.
+const listed = await page.$$eval('.index a', (as) => as.map((a) => ({
+  name: a.textContent.trim(),
+  covers: (a.dataset.covers ?? '').split(',').filter(Boolean),
+})));
+if (!listed.length) throw new Error('the bench index listed no models — is the dev server on forge.html?');
+const models = listed.map((m) => m.name);
+const covered = new Set(listed.flatMap((m) => m.covers));
 
 /**
  * Two animation frames.
@@ -133,9 +141,14 @@ for (const name of models) {
 
 // What the sheet has to say out loud, because a contact sheet is the thing
 // somebody will quote as coverage.
+// Assemblies and not benches: the grass declares none on purpose, so a page that
+// declares none at all is a page whose index predates `covers` rather than a
+// bench that covers nothing, and it is told that rather than given a zero.
 const gap = total === null
   ? 'census unknown — run npm run export:models'
-  : `${models.length} of ${total} assemblies on the bench`;
+  : covered.size === 0
+    ? `${models.length} benches, coverage undeclared — is this index built from src/forge/recipes.ts?`
+    : `${covered.size} of ${total} assemblies on the bench`;
 
 // The contact sheet, built from the bytes just written rather than from the
 // files on disk: a `file://` page reading `file://` images is a fight with

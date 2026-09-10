@@ -188,8 +188,11 @@ Three more facts that shape the plan:
 - `review.html` says *"There is no canvas here on purpose"*, and it is right to. Its
   contract — no simulation, no loop, photographable the instant load fires — is what
   makes it cheap. A 3D bench cannot live inside that contract and should not try.
-- The census is 42 assemblies over 35 kinds (`models/manifest.json`): 27 buildings,
-  8 resource piles, 2 trees, 5 people and fauna. Grass is not in it, because a
+- The census is 42 assemblies over 35 kinds (`models/manifest.json`): 26 buildings,
+  1 loose stone, 8 resource piles, 2 trees, 5 people and fauna. This bullet read
+  "27 buildings" until the round that made the count honest checked it: the stone
+  is not in `BUILD_MENU` and never was, and every round note that says
+  "twenty-seven buildings" is quoting this line. Grass is not in it, because a
   tuft's sway is a vertex program injected through `onBeforeCompile` and glTF has
   nowhere to put one — which is an argument *for* a browser bench, since a browser
   can show the thing the `.glb` export cannot.
@@ -909,6 +912,37 @@ is the right shape for a game drawing flat polygons where a material is a palett
 Aetherhold's materials are `MeshStandardMaterial` with an ambient-occlusion bake
 living in vertex colours, so the split is not free and is not obviously worth
 paying for. Revisit if the recipe work makes it cheap.
+
+**Built — an honest census, 2026-09-10.** The brief the animals round logged and four
+rounds of sheets carried: `scripts/look/forge.mjs` printed "`N` of 42 assemblies on the
+bench", and `N` was the number of *benches*. A bench is not a model — the wood is two
+crown variants, the stack is eight files and there is no ninth, the herd is four
+species — so six benches shape sixteen of the forty-two and the line understated by
+nearly three to one.
+
+`Bench` has a `covers` field now: which manifest entries this bench shapes, declared
+where the bench is declared. The stack and the herd derive theirs from the same lists
+their sliders index, so a ninth resource arrives on the bench and in the count at the
+same moment. The grass declares none, and that is the finding rather than an omission
+— a tuft's sway is a vertex program injected through `onBeforeCompile` and glTF has
+nowhere to put one, so the exporter never writes a grass file. The index carries each
+bench's list as `data-covers`, which is what the sweep reads, and a page that declares
+none at all is told it is out of date rather than handed a zero.
+
+The number the honest count produces is worth more than the correction. Sixteen of
+forty-two is not a shortfall spread thinly over the game; the twenty-six that are left
+are *all* buildings, every one of them a bare undotted name, because the dotted names
+are exactly the families that come in variants and every one of those has a bench.
+The pin says both halves and goes red two ways on purpose: a twenty-seventh building
+says the bench fell further behind, and a fifth species or a ninth resource says a
+family that has a bench grew past it.
+
+The count is pinned in two places because neither can do it alone. `models/manifest.json`
+is written by the export and `.gitignore` covers it, so `forge-recipes.test.ts` can only
+pin the numerator — the roster, as literals, against the file that derives it. The
+denominator lives in `export-models.test.ts`, where a real export already runs into a
+temp directory: every name a bench claims has to be a file in it. A bench claiming
+`stack.hides` passes the first and fails the second, which is the right way round.
 
 **Node-side canvas rendering.** `render-art-review.mjs` shims `document` onto
 `@napi-rs/canvas` because Evergrow draws in 2D. Aetherhold draws in WebGL2, and it

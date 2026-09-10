@@ -42,7 +42,12 @@ const app = document.getElementById('app');
 
 function index(missing: string): string {
   const head = missing ? `<h1>Nothing on the bench called “${missing}”</h1>` : '<h1>The bench</h1>';
-  const rows = BENCHES.map((b) => `<div><a href="?model=${b.name}">${b.name}</a> — ${b.note}</div>`).join('');
+  // `data-covers` is what `scripts/look/forge.mjs` reads to say how much of the
+  // game is on the bench, and it is on the index rather than fetched because the
+  // index is the one page that lists every bench without building any of them.
+  const rows = BENCHES.map((b) =>
+    `<div><a href="?model=${b.name}" data-covers="${b.covers.join(',')}">${b.name}</a> — ${b.note}</div>`,
+  ).join('');
   return `<div class="caption">${head}</div><div class="index">${rows}</div>`;
 }
 

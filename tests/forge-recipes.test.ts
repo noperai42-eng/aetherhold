@@ -1551,6 +1551,70 @@ describe('a recipe found on the bench reaches the game', () => {
   });
 });
 
+describe('how much of the game is on the bench', () => {
+  it('says what each bench shapes, in the manifest own words', () => {
+    // The literals and not `RESOURCE_KINDS.map(...)`, which is what the file
+    // under test does: a pin written off the constant it guards moves with it
+    // and cannot see it move. A ninth resource makes this red on purpose, and
+    // the honest fix is to look at the number below rather than to widen it.
+    expect(BENCHES.map((b) => [b.name, [...b.covers]])).toEqual([
+      ['stone', ['stone']],
+      ['grass', []],
+      ['tree', ['tree', 'tree.b']],
+      ['stack', [
+        'stack.wood',
+        'stack.steel',
+        'stack.rawfood',
+        'stack.meal',
+        'stack.medicine',
+        'stack.hide',
+        'stack.components',
+        'stack.assemblies',
+      ]],
+      ['animal', ['animal.mossback', 'animal.dunhare', 'animal.brambletail', 'animal.fenwolf']],
+      ['settler', ['settler']],
+    ]);
+  });
+
+  it('counts sixteen of the forty-two, where the sheet used to count six', () => {
+    // The number the contact sheet prints, and the reason this round exists.
+    // Six is how many benches there are; the benches shape sixteen files. The
+    // gap between the two is the wood's second crown, seven of the eight
+    // stacks and three of the four species — coverage that was already earned
+    // and was being reported away.
+    //
+    // Forty-two is `models/manifest.json`, which is written by the export and
+    // not in git, so it is not read here; the export suite checks this count
+    // against a real one. What this asserts is the numerator, which is ours.
+    const covered = BENCHES.flatMap((b) => [...b.covers]);
+    expect(covered.length).toBe(16);
+    expect(new Set(covered).size).toBe(16);
+  });
+
+  it('lets a bench cover nothing, and only the one that cannot be exported does', () => {
+    // Empty means it. A tuft's sway is a vertex program injected through
+    // `onBeforeCompile` and glTF has nowhere to put one, so the exporter never
+    // writes a grass file and there is no manifest entry for this bench to
+    // claim. Every other bench claiming at least one is what keeps `covers`
+    // from quietly becoming optional.
+    expect(BENCHES.filter((b) => b.covers.length === 0).map((b) => b.name)).toEqual(['grass']);
+  });
+
+  it('puts what each bench covers on the index, which is where the sweep reads it', () => {
+    // The experience half of this: the field is only worth having if the thing
+    // that prints the sheet can see it. `scripts/look/forge.mjs` scrapes
+    // `.index a` and reads `data-covers` off each link, and prints "coverage
+    // undeclared" rather than a zero when it finds none — so an index that
+    // stopped carrying the attribute would not be a wrong number on the sheet,
+    // it would be a sentence saying the page is out of date.
+    const html = readFileSync(fileURLToPath(new URL('../src/forge/main.ts', import.meta.url)), 'utf8');
+    expect(html).toContain('data-covers="${b.covers.join(\',\')}"');
+    const sweep = readFileSync(fileURLToPath(new URL('../scripts/look/forge.mjs', import.meta.url)), 'utf8');
+    expect(sweep).toContain('a.dataset.covers');
+    expect(sweep).toContain('${covered.size} of ${total} assemblies on the bench');
+  });
+});
+
 describe('nothing the game ships imports the bench', () => {
   it('keeps the dependency running one way, out of the game and into the bench', () => {
     // src/forge/ may read the game. Nothing in the game may read src/forge/, or

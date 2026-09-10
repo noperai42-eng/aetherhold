@@ -100,6 +100,23 @@ export interface Bench {
   readonly title: string;
   /** One line on what this is and what it is worth looking at for. */
   readonly note: string;
+  /**
+   * Which entries of `models/manifest.json` this bench shapes.
+   *
+   * Here because a bench is not one model. The wood is two crown variants that
+   * export as `tree` and `tree.b`; the stack is eight files and there is no
+   * ninth; the herd is four species. Counting benches and calling the answer
+   * coverage is what the contact sheet did for four rounds, and it understated
+   * by nearly three to one — the exact failure `FORGING.md` names, a bench that
+   * covers a corner of the game and says it covers the game, arrived at from
+   * the cautious side.
+   *
+   * Empty is allowed and means it: the grass is not in the manifest at all,
+   * because a tuft's sway is a vertex program injected through
+   * `onBeforeCompile` and glTF has nowhere to put one. A bench with nothing to
+   * declare is not a bench that forgot to declare.
+   */
+  readonly covers: readonly string[];
   readonly fields: readonly Field[];
   /** The recipe the colony builds from today, as knobs. */
   readonly defaults: Knobs;
@@ -219,6 +236,7 @@ const STONE: Bench = {
   name: 'stone',
   title: 'Loose stone',
   note: 'A piece of something that broke, lying on the turf. Twenty flat faces and a tone on each.',
+  covers: ['stone'],
   fields: STONE_FIELDS,
   defaults: { ...STONE_DEFAULT },
   seedKey: 'seed',
@@ -299,6 +317,9 @@ const TREE: Bench = {
   name: 'tree',
   title: 'Tree',
   note: 'A bole with buttresses and four lobed skirts of boughs, each turned past the one below it.',
+  // Two, and the bench shows one of them at a time: `crownSeed` picks which,
+  // and the wood's two shipped variants sit sixty-one apart in it.
+  covers: ['tree', 'tree.b'],
   fields: TREE_FIELDS,
   defaults: {
     crownSeed: TREE_DEFAULT.crownSeed,
@@ -454,6 +475,11 @@ const GRASS: Bench = {
   name: 'grass',
   title: 'Grass tuft',
   note: 'Five leaves of five lengths on five bearings, wrung about their own length. Scrub time to see the gust; every tuft in a grid takes the same one, because the phase is a function of where a tuft stands and nothing stands anywhere here.',
+  // Nothing, and that is the finding rather than an omission: the exporter
+  // never writes a tuft, because its sway is a vertex program glTF cannot
+  // hold. The one family on this bench that the `.glb` route cannot reach is
+  // the argument for the bench being a browser.
+  covers: [],
   fields: GRASS_FIELDS,
   defaults: {
     seed: 0,
@@ -594,6 +620,9 @@ const STACK: Bench = {
   name: 'stack',
   title: 'Loose stack',
   note: 'A kind of thing dropped on the ground, and the pile the next of them lands on. Generate 8 stands the whole family side by side, which is the only way to see whether the eight agree about how tall a stack is.',
+  // One file each, off the same list the `kind` slider indexes, so a ninth
+  // resource arrives on the bench and in this count at the same moment.
+  covers: RESOURCE_KINDS.map((k) => `stack.${k}`),
   fields: STACK_FIELDS,
   defaults: {
     // Wood, ten of it, three deep. Ten because that is where `stackSize` tops
@@ -723,6 +752,7 @@ const ANIMAL: Bench = {
   name: 'animal',
   title: 'Herd animal',
   note: 'One of the four species, with the collar and the hunt marker the pen hangs on it. Generate 4 stands the whole herd side by side at their own sizes, which is the only place that picture exists.',
+  covers: ANIMAL_KINDS.map((k) => `animal.${k}`),
   fields: ANIMAL_FIELDS,
   defaults: {
     // The mossback, mid-stride, grown, wearing everything it can wear. Mid-stride
@@ -872,6 +902,9 @@ const SETTLER: Bench = {
   name: 'settler',
   title: 'Settler',
   note: 'A colonist in one of the eight poses the rig can put them in. Generate 8 stands all eight side by side, which is the only place that picture exists — and `hands full` composes with every one of them, because carrying is a state of the hands and not an activity.',
+  // One, for every pose, faction and stage of growth the sliders reach: a
+  // settler is exported as a body, and the rest is what the game does to it.
+  covers: ['settler'],
   fields: SETTLER_FIELDS,
   defaults: {
     // Mid-stride, empty-handed, unarmed and of the colony. Walking because it

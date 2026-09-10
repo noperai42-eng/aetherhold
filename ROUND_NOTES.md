@@ -4,6 +4,125 @@ One round, one measured gap, one fix. Newest first.
 
 ---
 
+## 2026-09-10 — Six benches were never six models, and the sheet had been saying so for four rounds
+
+**Track: the forge.** The brief the animals round logged and every sheet since has
+carried. No geometry moves in this round; a number does.
+
+### The gap, which is a denominator with the wrong numerator over it
+
+`scripts/look/forge.mjs` prints `N of 42 assemblies on the bench` at the top of every
+contact sheet, and the sheet is the thing somebody quotes as coverage. `N` was
+`models.length` — the number of benches the index lists. A bench is not a model. The
+wood is two crown variants that export as `tree` and `tree.b`; the stack is eight
+files and there is no ninth; the herd is four species. Six benches shape **sixteen**
+of the forty-two, and the line had been saying six.
+
+It understated, which is why it survived four rounds: the failure `FORGING.md`'s risks
+section names is a bench that covers a corner of the game and claims the game, and
+this was the same error pointed the safe way. Safe is still wrong. Coverage that has
+been earned and is being reported away is coverage nobody schedules against.
+
+The brief that logged this is the argument for fixing it with a field rather than a
+better sentence. It reads *"Five benches cover fourteen of the forty-two — nine tree
+pools that export as two, eight stacks, four species"*, and two and eight and four is
+fourteen: it counted the families that come in variants and forgot the stone, which is
+one file and was the fifth bench. Fifteen at the time, sixteen now. Counting coverage
+by hand out of prose is exactly the operation that produced the wrong number on the
+sheet, and it got it wrong again in the sentence complaining about it. That paragraph
+is left as it was written — it is a log of a round, not a reference — and this is the
+correction.
+
+### The fix, which is a field where the bench is declared
+
+`Bench.covers` — the manifest entries this bench shapes.
+
+| bench | covers | how many |
+| --- | --- | --- |
+| stone | `stone` | 1 |
+| grass | — | 0 |
+| tree | `tree`, `tree.b` | 2 |
+| stack | `stack.*`, off `RESOURCE_KINDS` | 8 |
+| animal | `animal.*`, off `ANIMAL_KINDS` | 4 |
+| settler | `settler` | 1 |
+
+The stack and the herd derive theirs from the same lists their own sliders index, so a
+ninth resource arrives on the bench and in this count at the same moment. The grass
+declares nothing and means it: a tuft's sway is a vertex program injected through
+`onBeforeCompile` and glTF has nowhere to put one, so the exporter never writes a
+grass file. That is the one family on the bench the `.glb` route cannot reach, which
+is the argument for the bench being a browser at all.
+
+The index carries each list as `data-covers` and the sweep reads it there. A page
+declaring none at all prints *coverage undeclared* rather than a zero — the same
+courtesy `census()` already extends to a box that has never run the export.
+
+### What the honest number turned out to say
+
+Not that the bench is a third of the way. That the **twenty-six left are all
+buildings** — every one a bare undotted name, because the dotted names are exactly the
+families that come in variants and every one of those has a bench. The remaining work
+is one family, deferred on purpose, and it is now countable.
+
+The pin says both halves and goes red two ways. A twenty-seventh building says the
+bench fell further behind. A fifth species or a ninth resource fails the *other*
+assertion and says a family that has a bench grew past it.
+
+### One more off-by-one, in the number everybody quotes
+
+`FORGING.md`'s census bullet reads *"42 assemblies over 35 kinds: 27 buildings, 8
+resource piles, 2 trees, 5 people and fauna"*, and every round note that says "the
+twenty-seven buildings, which are last on purpose" is quoting it. It is 26. The
+twenty-seventh is `stone` — the loose piece of something that broke, lying on the
+turf — which is not in `BUILD_MENU`, has never been buildable, and has had its own
+bench since the first one. The bullet is corrected, and so is the one live claim in
+[ACCEPTANCE.md](ACCEPTANCE.md) that repeats it; the round notes that quote it are left
+alone, because they are a log.
+
+Which is the same mistake a third time in one round: a set counted by hand out of
+prose, off by the one member that does not look like the others. The test now says 26
+and says why, so the next person to want the number reads it from something that fails
+when it changes.
+
+### Two pins, because neither can do it alone
+
+`models/manifest.json` is written by `npm run export:models` and `.gitignore` covers
+it, so a test cannot read it. The split falls out of that:
+
+- **`forge-recipes.test.ts`** pins the numerator — the roster as literals, not as
+  `RESOURCE_KINDS.map(...)`, which is what the file under test does. It also pins that
+  the index carries the attribute and the sweep reads it, which is the half a unit
+  test of a field would miss entirely.
+- **`export-models.test.ts`** pins the denominator, inside the block that already runs
+  a real export into a temp directory: every claimed name has to be a file in it.
+
+A bench claiming `stack.hides` goes green in the first and red in the second, which is
+the right way round, and is the third mutation below.
+
+### Verified
+
+- `npx tsc --noEmit` clean. The two suites green together: 182 tests. The full suite
+  green at 2639, files 126 passed | 2 skipped — 2633 last round plus the six here.
+- Mutation drill, four of them, each turning a different pin red: drop `tree.b` from
+  the wood and all four census tests fail; rename `stone` to `stones` *and update the
+  literal roster to agree*, so only the export pin can see it, and only the export pin
+  does; put `models.length` back in the sheet line and the transport pin fails; take
+  `data-covers` off the index and it fails again, naming the other half.
+- The sheet read back off the frame, not off stdout: **"Aetherhold forge — r30 — 6 of
+  6 shot, 16 of 42 assemblies on the bench"**. Both numbers now say what they are.
+- Eleven of the twelve canvases pixel-identical to r29. The twelfth moved 5 pixels by
+  1 of 255, all of it at x >= 1465, which is the slider panel and not the model.
+
+### Next target
+
+The twenty-six buildings, which are last on purpose and are now the only thing left
+that is not a queued look brief. The briefs the frames wrote and the last four
+rounds did not take still stand — the settler's arms against the pitch, the eight pile
+shapes, the grass's per-blade phase, a body's worth of space for the herd, the walking
+settler's feet.
+
+---
+
 ## 2026-09-10 — The bench borrows the colony's weather, and the harness stops waiting on a frame that was never coming
 
 **Track: the forge.** The brief the turf round wrote, plus an afternoon lost to
