@@ -397,7 +397,7 @@ to be overruled by the photographs:
 | Trees | 2 | Variation already exists and is unaddressable; making it addressable is nearly free. |
 | Piles | 8 | Eight objects sharing a prefix, seen constantly, each small. |
 | People and fauna | 5 | The heaviest models and the most looked-at, but also the ones with the most existing look-loop rounds behind them — least likely to be wrong. |
-| Buildings | 26 | Largest surface (3,451 lines) and least varied per instance; a stove is one stove. Last on purpose. On the bench since 2026-09-10, with one field and no recipe. |
+| Buildings | 26 | Largest surface (3,451 lines) and least varied per instance; a stove is one stove. Last on purpose. On the bench since 2026-09-10, with one field and no recipe. Five of the twenty-six — the machine shells — build from `ShellRecipe` as of 2026-09-10; the bench still has no knob to turn, so the census still reads no recipe here. |
 
 Grass is a special case worth naming: it cannot be exported to `.glb`, so the bench
 is the *only* place its shader sway can ever be judged in isolation. That makes it a
@@ -912,6 +912,30 @@ is the right shape for a game drawing flat polygons where a material is a palett
 Aetherhold's materials are `MeshStandardMaterial` with an ambient-occlusion bake
 living in vertex colours, so the split is not free and is not obviously worth
 paying for. Revisit if the recipe work makes it cheap.
+
+**Built — the machine shells, 2026-09-10.** The first of the twenty-six buildings to come
+out of its literals. The building grid stands all of them together, and the middle of that
+frame is five upright box machines at one footprint and one height band — stove, cooler,
+heater, generator, battery — with twenty-one one-offs around them. Their nine `pool` calls
+were the same shape written five times, months apart, with forty-odd literals between them;
+`buildings.ts` now has `ShellRecipe`, `SHELL_DEFAULT` and two geometry functions, and the
+nine calls read out of the table.
+
+Two fields are findings and not renames. Every lid overhangs its body by the same amount in
+width as in depth, so an overhang is one number and not two; and no body's centre was ever
+chosen, being half its own height above whatever its plinth stands it at, which makes
+`stand` a field and `y` not one — the same number `tests/buildings-view.test.ts` was already
+asserting as "a shell that starts a hand's width above the ground". The four lids' `seat`
+values (+0.02, −0.01, 0.00, 0.00) stay a field: the cooler's two centimetres are filled by
+the gasket plate in `cooler.vent` and the heater's overlap is what keeps its joint shut.
+
+Nothing a player sees moved. The derived numbers differ from the literals by at most one or
+two units in the last place of a double, which is some eight orders of magnitude under what
+a `Float32Array` vertex holds, so all nine buffers are byte-identical — checked before the
+lift was written, pinned after. The census is unchanged and correctly so: it counts benches
+with a recipe, and the building bench still returns null because none of this is draggable
+yet. Making it draggable needs the `covers` partition settled first, since a second
+building bench would have to take its five names off the first.
 
 **Built — what the sphere is actually for, 2026-09-10.** The arrangement question the
 last round left was measured and closed without a change: five arrangements and four fits

@@ -9,9 +9,10 @@
  */
 
 import * as THREE from 'three';
+import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
 import { describe, expect, it } from 'vitest';
 
-import { BuildingsView } from '../src/client/render/buildings';
+import { BuildingsView, SHELL_DEFAULT, shellBodyGeometry, shellLidGeometry } from '../src/client/render/buildings';
 import { AO_FLOOR } from '../src/client/render/occlusion';
 import { BUILDING_COLOR, RESOURCE_COLOR } from '../src/client/render/palette';
 import { groundLiftAt } from '../src/client/render/terrain';
@@ -517,6 +518,114 @@ describe('a machine', () => {
       s.computeBoundingBox();
       expect(f.boundingBox!.min.y, `${feet} never reaches the ground`).toBeLessThan(0.01);
       expect(s.boundingBox!.min.y, `${shell} sits flush on the grass`).toBeGreaterThanOrEqual(0.09);
+    }
+    view.dispose();
+  });
+
+  /** `rbox` as `buildings.ts` writes it, so a golden is built the same way. */
+  const golden = (w: number, h: number, d: number, y: number, r: number) => {
+    const g = new RoundedBoxGeometry(w, h, d, 2, r);
+    g.translate(0, y, 0);
+    return g;
+  };
+
+  /**
+   * The nine `rbox` calls as they stood before the shells were lifted into a
+   * recipe: width, height, depth, centre height and eased edge. Copied out by
+   * hand and frozen, because a recipe checked against the code that reads it
+   * agrees with itself whatever either of them says.
+   */
+  const BEFORE: Record<string, { body: number[]; lid: number[] | null }> = {
+    stove: { body: [0.88, 0.9, 0.86, 0.59, 0.06], lid: null },
+    cooler: { body: [0.92, 1.1, 0.86, 0.65, 0.06], lid: [0.98, 0.2, 0.92, 1.32, 0.07] },
+    heat: { body: [0.78, 1.04, 0.64, 0.62, 0.06], lid: [0.86, 0.12, 0.72, 1.19, 0.05] },
+    gen: { body: [0.9, 0.9, 0.82, 0.57, 0.06], lid: [0.96, 0.16, 0.88, 1.1, 0.06] },
+    batt: { body: [0.86, 0.6, 0.78, 0.4, 0.06], lid: [0.92, 0.12, 0.84, 0.76, 0.05] },
+  };
+
+  it('builds every shell byte-identical to the call it was lifted out of', () => {
+    // These five are the first of the twenty-six buildings to be built from a
+    // recipe rather than from numbers typed into a `pool` call, and the whole
+    // value of that move rests on it having changed nothing.
+    //
+    // Not "close to", either. The recipe reaches its numbers by arithmetic
+    // where the calls had them written down — a body's centre is `stand +
+    // height / 2` rather than 0.59 — and in double precision those two answers
+    // differ by one or two units in the last place. A vertex buffer is
+    // `Float32Array`, and two hundredths of a femtometre on a metre-wide box is
+    // some eight orders of magnitude under what a float32 can hold apart, so
+    // the two round to the same word. Equality is therefore the honest
+    // assertion here, and a tolerance would be the test quietly giving up the
+    // claim its own recipe makes.
+    for (const [kind, want] of Object.entries(BEFORE)) {
+      const recipe = SHELL_DEFAULT[kind]!;
+      const built = [shellBodyGeometry(recipe), shellLidGeometry(recipe)];
+      const expected = [
+        golden(...(want.body as [number, number, number, number, number])),
+        want.lid ? golden(...(want.lid as [number, number, number, number, number])) : null,
+      ];
+      for (let i = 0; i < 2; i++) {
+        const a = expected[i];
+        const b = built[i];
+        if (!a) {
+          expect(b, `${kind} has no lid`).toBeNull();
+          continue;
+        }
+        const pa = a.attributes.position!.array as Float32Array;
+        const pb = b!.attributes.position!.array as Float32Array;
+        expect(pb.length, `${kind}[${i}] vertex count`).toBe(pa.length);
+        let differing = 0;
+        for (let j = 0; j < pa.length; j++) if (pa[j] !== pb[j]) differing++;
+        expect(differing, `${kind}[${i}] words differing from the shipped buffer`).toBe(0);
+      }
+    }
+  });
+
+  it('holds the five recipes at the numbers the five machines were drawn at', () => {
+    // Literal numbers, because a table checked against itself is not a check.
+    // Two of these are the reason the five are one family rather than five
+    // shapes that happen to be boxes. Every lid overhangs its body by the same
+    // amount in width as in depth — one number, four times over — and every
+    // body stands within four centimetres of the same height off the ground,
+    // which is the `stands on feet` test above expressed as a field.
+    //
+    // What the five do not agree on is `seat`, and those four values are the
+    // measurement that says it has to stay a field rather than be derived: see
+    // the recipe's own note for what fills the cooler's two centimetres and
+    // what the heater's minus one is holding shut.
+    expect(SHELL_DEFAULT.stove).toEqual({
+      width: 0.88, depth: 0.86, height: 0.9, stand: 0.14, round: 0.06, lid: null,
+    });
+    expect(SHELL_DEFAULT.cooler).toEqual({
+      width: 0.92, depth: 0.86, height: 1.1, stand: 0.1, round: 0.06,
+      lid: { height: 0.2, overhang: 0.06, seat: 0.02, round: 0.07 },
+    });
+    expect(SHELL_DEFAULT.heat).toEqual({
+      width: 0.78, depth: 0.64, height: 1.04, stand: 0.1, round: 0.06,
+      lid: { height: 0.12, overhang: 0.08, seat: -0.01, round: 0.05 },
+    });
+    expect(SHELL_DEFAULT.gen).toEqual({
+      width: 0.9, depth: 0.82, height: 0.9, stand: 0.12, round: 0.06,
+      lid: { height: 0.16, overhang: 0.06, seat: 0, round: 0.06 },
+    });
+    expect(SHELL_DEFAULT.batt).toEqual({
+      width: 0.86, depth: 0.78, height: 0.6, stand: 0.1, round: 0.06,
+      lid: { height: 0.12, overhang: 0.06, seat: 0, round: 0.05 },
+    });
+    expect(Object.keys(SHELL_DEFAULT).sort()).toEqual(['batt', 'cooler', 'gen', 'heat', 'stove']);
+  });
+
+  it('still pools a body for each of the five and a lid for the four that have one', () => {
+    // The lift is nine `pool` calls rewired, and the way that goes wrong with
+    // nothing else noticing is a part quietly ceasing to be pooled: the colony
+    // would draw a cooler with no lid on it and nothing would throw. So this
+    // asks a real view for each key rather than asking the recipe.
+    const view = new BuildingsView();
+    for (const key of ['stove.body', 'cooler.body', 'cooler.lid', 'heat.body', 'heat.cap',
+      'gen.body', 'gen.hood', 'batt.body', 'batt.lid']) {
+      const g = partGeometry(view, key);
+      g.computeBoundingBox();
+      expect(g.boundingBox!.max.y, `${key} has height`).toBeGreaterThan(0);
     }
     view.dispose();
   });

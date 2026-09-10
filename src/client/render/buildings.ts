@@ -1349,6 +1349,116 @@ export function stackRise(amount: number, r: PileRecipe = PILE_DEFAULT): number 
 }
 
 /**
+ * The shell of a machine: a rounded box held off the ground by the plinth under
+ * it, with a lid laid on its top.
+ *
+ * Five of the twenty-six buildings are this shape and nothing else once their
+ * trim is lifted off — the stove, the cooler, the heater, the generator and the
+ * battery bank. They were written as five pairs of `rbox` calls, months apart,
+ * with forty-odd literals between them, and the only way to see that they were
+ * one shape was to line the five calls up and read the numbers down the column.
+ * That is what this is, and it is the first of the twenty-six to come out of
+ * its literals. It is deliberately the arithmetic that was already there and
+ * not an improvement on it: every buffer it builds is byte-identical to the
+ * call it replaces, which is what `tests/buildings-view.test.ts` holds it to.
+ *
+ * The fields are the ones lining the calls up actually turned up, rather than
+ * the ones the calls were written in. A lid is not a box that happens to sit
+ * near the top of another box: in all four that have one it is wider than its
+ * body by exactly as much as it is deeper, so an overhang is one number and not
+ * two, and three of the four put it at 0.06 with the heater's at 0.08. And no
+ * body's centre was ever a number anybody chose — it is half that body's own
+ * height above whatever its plinth stands it at. So `stand` is a field and `y`
+ * is not.
+ *
+ * What is a field, and reads at first like slop that ought to be derived away,
+ * is `seat`. The four lids sit at +0.02, -0.01, 0.00 and 0.00 against the tops
+ * of their bodies. Two centimetres of daylight under the cooler's lid would be
+ * a fault if it were daylight — it is not: the gasket plate in `cooler.vent`
+ * runs 1.185 to 1.235 and fills it, and the heater's centimetre the other way
+ * is the overlap that keeps its joint from showing a seam. Four numbers with
+ * four reasons behind them, so they stay four numbers.
+ */
+export interface ShellRecipe {
+  /** Across the face, front to back, and up. */
+  readonly width: number;
+  readonly depth: number;
+  readonly height: number;
+  /** How high the plinth underneath holds the shell off the ground. */
+  readonly stand: number;
+  /** The eased edge, in metres. */
+  readonly round: number;
+  /** The lid on top, or none: a stove takes its flue up out of there instead. */
+  readonly lid: ShellLid | null;
+}
+
+/** A lid, given against the body it lies on rather than in world space. */
+export interface ShellLid {
+  readonly height: number;
+  /** How much wider than its body — and, always, by that same amount deeper. */
+  readonly overhang: number;
+  /** Where its underside meets the body's top: clear of it, or lapped over it. */
+  readonly seat: number;
+  readonly round: number;
+}
+
+/**
+ * The five shells the colony builds today, under the names their pools and the
+ * export manifest already use.
+ *
+ * A table where the tree and the pile each have a single `_DEFAULT`, because
+ * there is no one shell: a battery bank is a little over half the height of a
+ * cooler and being low is what it is for. What the five share is the shape, and
+ * the shape is the interface above — which is the whole claim this makes, and
+ * the reason it is worth a recipe rather than a tidier set of literals.
+ */
+export const SHELL_DEFAULT: Readonly<Record<string, ShellRecipe>> = {
+  stove: { width: 0.88, depth: 0.86, height: 0.9, stand: 0.14, round: 0.06, lid: null },
+  cooler: {
+    width: 0.92, depth: 0.86, height: 1.1, stand: 0.1, round: 0.06,
+    lid: { height: 0.2, overhang: 0.06, seat: 0.02, round: 0.07 },
+  },
+  heat: {
+    width: 0.78, depth: 0.64, height: 1.04, stand: 0.1, round: 0.06,
+    lid: { height: 0.12, overhang: 0.08, seat: -0.01, round: 0.05 },
+  },
+  gen: {
+    width: 0.9, depth: 0.82, height: 0.9, stand: 0.12, round: 0.06,
+    lid: { height: 0.16, overhang: 0.06, seat: 0, round: 0.06 },
+  },
+  batt: {
+    width: 0.86, depth: 0.78, height: 0.6, stand: 0.1, round: 0.06,
+    lid: { height: 0.12, overhang: 0.06, seat: 0, round: 0.05 },
+  },
+};
+
+/** The box itself, standing on its plinth. */
+export function shellBodyGeometry(r: ShellRecipe): THREE.BufferGeometry {
+  return rbox(r.width, r.height, r.depth, r.stand + r.height / 2, 0, 0, r.round);
+}
+
+/**
+ * The lid on top of it, or null where the recipe has none.
+ *
+ * Null rather than an empty geometry, because a stove has no lid and a stove
+ * with a lid of no height would still be a pool, an instance and a draw for
+ * every stove in the colony.
+ */
+export function shellLidGeometry(r: ShellRecipe): THREE.BufferGeometry | null {
+  const lid = r.lid;
+  if (!lid) return null;
+  return rbox(
+    r.width + lid.overhang,
+    lid.height,
+    r.depth + lid.overhang,
+    r.stand + r.height + lid.seat + lid.height / 2,
+    0,
+    0,
+    lid.round,
+  );
+}
+
+/**
  * How high off y = 0 a loose stack sits on this cell: on the furniture there,
  * or else on the drawn ground. The ground is not the plane — a snowpack lifts
  * it and a lake bed sinks it (`groundLiftAt`) — and a stack drawn at zero
@@ -1710,7 +1820,7 @@ export class BuildingsView {
       paint('stove', 0x4b4b52, 0.55, 0.3),
       16,
     );
-    this.pool('stove.body', rbox(0.88, 0.9, 0.86, 0.59, 0, 0, 0.06), solidMat(0.4), 16);
+    this.pool('stove.body', shellBodyGeometry(SHELL_DEFAULT.stove), solidMat(0.4), 16);
     // A firebox door, hung: a fixed surround proud of the shell, a leaf proud of
     // that, two hinge knuckles down one stile and a lever handle on the other.
     // It was a dark rectangle lying on the face with a bar across it, which is a
@@ -1983,8 +2093,8 @@ export class BuildingsView {
       paint('cooler', 0x4e565c, 0.55, 0.3),
       16,
     );
-    this.pool('cooler.body', rbox(0.92, 1.1, 0.86, 0.65, 0, 0, 0.06), solidMat(0.4), 16);
-    this.pool('cooler.lid', rbox(0.98, 0.2, 0.92, 1.32, 0, 0, 0.07), solidMat(0.38), 16);
+    this.pool('cooler.body', shellBodyGeometry(SHELL_DEFAULT.cooler), solidMat(0.4), 16);
+    this.pool('cooler.lid', shellLidGeometry(SHELL_DEFAULT.cooler)!, solidMat(0.38), 16);
     // Rime is ice: glass-smooth, so the band and the pane throw the sky back.
     this.pool(
       'cooler.frost',
@@ -2141,8 +2251,8 @@ export class BuildingsView {
       paint('heater', 0x4f4b47, 0.6, 0.28),
       24,
     );
-    this.pool('heat.body', rbox(0.78, 1.04, 0.64, 0.62, 0, 0, 0.06), solidMat(0.42), 24);
-    this.pool('heat.cap', rbox(0.86, 0.12, 0.72, 1.19, 0, 0, 0.05), solidMat(0.38), 24);
+    this.pool('heat.body', shellBodyGeometry(SHELL_DEFAULT.heat), solidMat(0.42), 24);
+    this.pool('heat.cap', shellLidGeometry(SHELL_DEFAULT.heat)!, solidMat(0.38), 24);
     this.pool(
       'heat.grille',
       (() => {
@@ -2542,8 +2652,8 @@ export class BuildingsView {
       paint('generator', 0x534e46, 0.6, 0.3),
       16,
     );
-    this.pool('gen.body', rbox(0.9, 0.9, 0.82, 0.57, 0, 0, 0.06), solidMat(0.4), 16);
-    this.pool('gen.hood', rbox(0.96, 0.16, 0.88, 1.1, 0, 0, 0.06), solidMat(0.38), 16);
+    this.pool('gen.body', shellBodyGeometry(SHELL_DEFAULT.gen), solidMat(0.4), 16);
+    this.pool('gen.hood', shellLidGeometry(SHELL_DEFAULT.gen)!, solidMat(0.38), 16);
     this.pool(
       'gen.wheel',
       merge(
@@ -2658,8 +2768,8 @@ export class BuildingsView {
       paint('battery', 0x515a51, 0.6, 0.3),
       16,
     );
-    this.pool('batt.body', rbox(0.86, 0.6, 0.78, 0.4, 0, 0, 0.06), solidMat(0.45), 16);
-    this.pool('batt.lid', rbox(0.92, 0.12, 0.84, 0.76, 0, 0, 0.05), solidMat(0.4), 16);
+    this.pool('batt.body', shellBodyGeometry(SHELL_DEFAULT.batt), solidMat(0.45), 16);
+    this.pool('batt.lid', shellLidGeometry(SHELL_DEFAULT.batt)!, solidMat(0.4), 16);
     // Terminals and their bar on the lid, two straps over it, a louvred flank
     // either side and the cable that leaves the back of the bank for the
     // ground. The flanks were a flat plate on each side and read as a painted

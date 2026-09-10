@@ -4,6 +4,111 @@ One round, one measured gap, one fix. Newest first.
 
 ---
 
+## 2026-09-10 — Five machines that were one shape written five times
+
+**Track: the forge.** Stage 5 says roll the recipe treatment forward family by family in
+the order the frames say, and the frames have been saying the buildings since the census
+started printing the split. This is the first of the twenty-six to come out of its
+literals: the shell every machine in the colony is built on.
+
+### The gap
+
+Twenty-six of the forty-two assemblies on the bench are buildings, and none of their
+numbers had ever been lifted out of `buildings.ts` — the building bench says so itself, in
+`recipe: () => null` and in a note that calls the frames the thing that decides where to
+start.
+
+### What the frame said, and what the code said back
+
+The building grid stands all twenty-six together, which is what it is for. In the middle
+of it is a cluster of upright box machines at one footprint and one height band — the
+stove, the cooler, the heater, the generator and the battery bank — and around them
+twenty-one one-offs: a statue, a lamp post, a watermill, a campfire, a wall, a trap. The
+five read as a family in the frame before anything was measured.
+
+The code agreed, twice. Lining their nine `pool` calls up in a column showed the same
+shape with different numbers in it. And `tests/buildings-view.test.ts` had already named
+the same five and called them `a machine` — a test written for their feet, listing stove,
+cooler, gen, batt and heat, asserting a foot that reaches the ground and a shell that
+starts a hand's width above it. The family was identified before this round; what it did
+not have was a recipe.
+
+### What the numbers turned out to be
+
+Two of the fields are findings rather than renames.
+
+A lid is not a box that happens to sit near the top of another box. All four that have one
+are wider than their body by exactly as much as they are deeper, so an overhang is one
+number and not two, and three of the four put it at 0.06, the heater at 0.08. And no
+body's centre was ever a number anybody chose: it is half that body's own height above
+whatever its plinth stands it at. So `stand` is a field and `y` is not — and `stand` is
+the `stands on feet` test above it, written as a number instead of an assertion.
+
+The one that looked like slop and is not is `seat`, where the four lids meet their bodies:
+
+| | cooler | heater | generator | battery |
+|---|---|---|---|---|
+| seat | +0.02 | −0.01 | 0.00 | 0.00 |
+
+Two centimetres of daylight under the cooler's lid would be a fault if it were daylight.
+It is not: the gasket plate in `cooler.vent` runs 1.185 to 1.235 and fills it. The
+heater's centimetre the other way is the overlap that keeps its joint from showing a seam.
+Four numbers with four reasons, so they stay four numbers rather than being derived away.
+
+### What did not change
+
+Anything a player sees. The recipe reaches its numbers by arithmetic where the calls had
+them written down, and in double precision those answers differ by one or two units in the
+last place — at most 2.22e-16, on boxes about a metre across. A vertex buffer is
+`Float32Array`, some eight orders of magnitude coarser than that, so the two round to the
+same word. All nine buffers are byte-identical to the calls they replace, which was
+checked before the lift was written and is pinned after it. No frames were swept, and that
+is why: no vertex moved, so no frame can have.
+
+The census did not move either, and should not have. It counts a bench with a recipe, and
+the building bench still has none — five of its twenty-six models are built from one now,
+but nothing on the page can be dragged yet. Saying "42 of 42 on the bench, 16 with a
+recipe" is still the true sentence.
+
+### The pins
+
+Three, in `describe('a machine')` beside the test that already knew these five.
+
+The load-bearing one holds every buffer byte-identical to the nine `rbox` calls as they
+stood, and its golden is those calls copied out by hand and frozen — not `SHELL_DEFAULT`
+read back through the code that reads it, which would agree with itself whatever either of
+them said. It asserts equality and not closeness on purpose: a tolerance there would be
+the test quietly giving up the claim the recipe makes.
+
+The second holds the five recipes at literal numbers. The third asks a real view for all
+nine pool keys, because the way nine rewired `pool` calls go wrong with nothing noticing is
+a part quietly ceasing to be pooled — a cooler drawn with no lid, and nothing thrown.
+
+### Verified
+
+Four mutations, all red, restored green. The cooler's seat to 0, the heater's overhang to
+0.06, the stove's stand to 0.1 — two pins each. And the derivation itself, `stand +
+height / 2` to `stand + height / 3`, leaving the table untouched: that one is caught by the
+byte-identity pin and by `stands on feet`, which is the neighbour proving the new pins
+guard the arithmetic and not just the numbers.
+
+One thing was got wrong and is recorded rather than tidied away. The pooling pin first
+read the key off the mesh and went red; the key is on the geometry, and `pool` says so
+where it sets it — "the geometry is the one thing that survives" a pool replacing its mesh.
+The file's own `partGeometry` helper already did this correctly, and the pin now uses it.
+
+### Next target
+
+The next group in the same family, chosen the same way. The furniture is the obvious
+candidate — `table` and `game` already share a `legs(pitch, h, rTop, rBottom)` helper, and
+the three beds already share `bedSet(prefix, cap, head, ...)`, so both have the
+parameterisation and lack only the recipe. What none of the twenty-six has yet is a knob:
+the bench cannot expose one until enough of the family builds from numbers to be worth a
+slider, and deciding when that is will need the `covers` partition looked at, since a
+second building bench would have to take its five names off the first.
+
+---
+
 ## 2026-09-10 — A sphere has no yaw, but the box it is measured from does
 
 **Track: the forge.** The round went after the eleven models the last one left more than
