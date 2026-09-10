@@ -814,6 +814,41 @@ the top of the wood's frame: (36, 51, 65), which is 0x223040 within rounding. Th
 contradicts the first paragraph of `stage.ts`, which says nothing in the file is a
 lighting decision because the rig is the game's own. **Brief: sync the bench's fog
 from its own sky the way `world-view.ts` does, and shoot all six before and after.**
+
+**Built — the fog, one call for both, 2026-09-10.** The four lines the world view had
+and the bench did not are now one method, `SkyView.applyFog(fog, world)`, and both
+callers go through it. One call rather than a second copy for the same reason the
+bench may not build its own assemblies: a bench keeping its own copy of the game's
+lighting is a bench whose frames are not the game's frames. The bench world's sky
+settles at `b6a18f`, near 40, far 339.41 — a clear day on a 192-cell map, see just
+past the middle of it and fade out past its far corner — against the `0x223040`,
+40, 130 that `Viewport`'s constructor leaves behind.
+
+What it was worth, measured as how far into the haze the far corner of each family's
+frame sits — from the eye and not from the origin, because fog is depth from the
+camera and the camera stands a frame's whole distance back. The grass, the piles and
+the herd never reach a 40 m near plane at all. The stones and the settlers graze it,
+at 0.024 and 0.056. And the wood, the one frame on this bench with real distance in
+it, has its far corner 138 m from the eye against a slate that stopped counting at
+130 — so the top of that picture was raw night-blue with nothing of the ground left
+in it, and is 0.328 of the way into a warm horizon now. The frames agree canvas by
+canvas: eight of the twelve are pixel-identical between the sweeps, three more moved
+by no more than 6 of 255 in a band along the top, and the twelfth is the wood's
+twelve, which moved 726,323 pixels — 42 per cent of it — by up to 110.
+Read back, the change is the dark navy band across the top third becoming turf
+receding into pale warm green.
+
+The round cost an afternoon to a second thing, which was not the change. The sweep
+would not run: the page loaded, its scripts answered, and no animation frame ever
+arrived, so `page.evaluate` hung for fifteen minutes and came back as a protocol
+timeout that reads like a wedged renderer. On the GPU this Chrome takes its frames
+from the display's vertical sync, and a Mac whose display has gone idle stops handing
+them out — the harness now launches with `--disable-frame-rate-limit`, which is a
+free-running frame source instead. 1 frame in seven seconds before, 58 a second
+after, and the sweep re-shot under it is pixel-identical over every canvas.
+[LOOK.md](LOOK.md)'s "What will bite" said this stall was the box and cleared on its
+own; that entry has been corrected, because what it actually clears on is somebody
+touching the keyboard.
 Not folded into this round because the ground has already moved in these frames, and
 two changes in one picture cannot be told apart.
 

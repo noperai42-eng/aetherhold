@@ -544,6 +544,33 @@ describe('what colour the day is', () => {
     mesh.geometry.computeBoundingSphere();
     expect(mesh.geometry.boundingSphere!.radius).toBeLessThan(400);
   });
+
+  it('settles a scene fog on the sky it was drawn under, not on whatever was left in it', () => {
+    // The bug behind this is not a wrong colour, it is a caller that never asks.
+    // `Viewport`'s constructor leaves a fixed slate-blue fog in every scene it
+    // makes, for whoever draws into that scene to overwrite each frame; the
+    // world view always did and the forge bench never did, so for seven rounds
+    // every model on the bench was photographed at noon against a distance
+    // hazing toward night. Both go through `applyFog` now, and this is the one
+    // place that can say all four of its fields move off the slate.
+    //
+    // The colours are the horizon round the clock, which the test above pins
+    // against the dome; what this adds is that they reach the fog at all, and
+    // that the reach comes with them. 40 and 339 are a clear day on a 192-cell
+    // map: see just past the middle of it, fade out past its far corner.
+    const rows = [0, 6, 12, 18].map((i) => {
+      const { sky, world } = rigAt(i / 24);
+      const fog = new THREE.Fog(0x223040, 40, 130);
+      sky.applyFog(fog, world);
+      return [`${String(i).padStart(2, '0')}:00`, fog.color.getHexString(), fog.near, Math.round(fog.far * 100) / 100];
+    });
+    expect(rows).toEqual([
+      ['00:00', '0d1117', 40, 339.41],
+      ['06:00', '633421', 40, 339.41],
+      ['12:00', 'b6a18f', 40, 339.41],
+      ['18:00', '633421', 40, 339.41],
+    ]);
+  });
 });
 
 /**

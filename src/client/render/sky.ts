@@ -717,6 +717,27 @@ export class SkyView {
     return { near: 8 + 32 * vis, far: 34 + (reach - 34) * vis };
   }
 
+  /**
+   * Settle a scene's fog on this sky.
+   *
+   * Both of the things that put this game on a screen have to do it — the world
+   * view every frame, the forge bench once per model — because `Viewport`'s
+   * constructor leaves a fixed slate-blue fog in the scene for whoever draws
+   * into it to overwrite, and a caller that never overwrites it photographs noon
+   * against a distance hazing toward night. It is one call rather than the same
+   * four lines in two files for the reason the bench may not build its own
+   * assemblies: a bench keeping its own copy of the game's lighting is a bench
+   * whose frames are not the game's frames.
+   *
+   * After `sync`, which is what works the colour and the visibility out.
+   */
+  applyFog(fog: THREE.Fog, world: World): void {
+    fog.color.copy(this.fogCol);
+    const range = this.fogRange(world);
+    fog.near = range.near;
+    fog.far = range.far;
+  }
+
   dispose(): void {
     this.dome.geometry.dispose();
     this.domeMat.dispose();

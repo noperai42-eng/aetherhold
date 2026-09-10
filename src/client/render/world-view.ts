@@ -115,10 +115,7 @@ export class WorldView {
     // dozen cells is what makes a raid emerge out of nowhere instead of being
     // spotted from the far wall.
     const fog = this.scene.fog as THREE.Fog;
-    fog.color.copy(this.sky.fogColor());
-    const range = this.sky.fogRange(world);
-    fog.near = range.near;
-    fog.far = range.far;
+    this.sky.applyFog(fog, world);
 
     // The haze over unwalked ground takes its colour from the same sky, so the
     // edge of the map and the edge of the weather are the same kind of thing.

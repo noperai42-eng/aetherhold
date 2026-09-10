@@ -18,10 +18,15 @@
  * file helped.
  */
 
+import { readFileSync, readdirSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+
 import * as THREE from 'three';
 import { beforeAll, describe, expect, it } from 'vitest';
 
 import { BuildingsView } from '../src/client/render/buildings';
+import { QUALITY } from '../src/client/render/renderer';
+import { SkyView } from '../src/client/render/sky';
 import { assemble } from '../src/tools/assemble';
 import { benchWorld, forgeSeeds, prototypes } from '../src/forge/forge';
 import {
@@ -113,7 +118,8 @@ function boxDistance(shown: THREE.Object3D, aspect = ASPECT): number {
 }
 
 /**
- * How far from the origin the frame's own corners reach, in metres of turf.
+ * Where the frame's own corners land on the turf: how far from the origin, and
+ * how far from the camera.
  *
  * The four corners and not the middle of the top edge, which is what the round
  * that found this looked at first and why it read the wood as safe: a corner ray
@@ -121,10 +127,18 @@ function boxDistance(shown: THREE.Object3D, aspect = ASPECT): number {
  * the diagonal, where a square plane's edge is nearest. The wood's top edge is
  * turf at its middle, 71 m out, and off the end of the world at both corners.
  *
+ * Two numbers because two things ask. Whether a plane is wide enough is asked
+ * from the origin, which is where the plane is centred. How deep into the fog a
+ * picture goes is asked from the camera, which stands `dist` back from a subject
+ * that is itself standing on the origin — so the two differ by roughly that
+ * whole distance: the stones' twelve reach 35 m from the middle of the turf and
+ * 47 m from the eye looking at them, which is the difference between sitting
+ * inside a 40 m near plane and crossing it.
+ *
  * `Infinity` for a ray at or above the horizon, which no plane of any size
  * catches.
  */
-function reach(shown: THREE.Object3D, dist: number): number {
+function reach(shown: THREE.Object3D, dist: number): { ground: number; eye: number } {
   const box = new THREE.Box3().setFromObject(shown);
   const centre = box.getCenter(new THREE.Vector3());
   const dir = new THREE.Vector3(
@@ -137,7 +151,8 @@ function reach(shown: THREE.Object3D, dist: number): number {
   const right = new THREE.Vector3().crossVectors(fwd, new THREE.Vector3(0, 1, 0)).normalize();
   const up = new THREE.Vector3().crossVectors(right, fwd).normalize();
   const tanY = Math.tan(FOV / 2);
-  let far = 0;
+  let ground = 0;
+  let seen = 0;
   for (const sx of [-1, 1])
     for (const sy of [-1, 1]) {
       const ray = fwd
@@ -145,11 +160,13 @@ function reach(shown: THREE.Object3D, dist: number): number {
         .add(right.clone().multiplyScalar(sx * tanY * ASPECT))
         .add(up.clone().multiplyScalar(sy * tanY))
         .normalize();
-      if (ray.y >= 0) return Infinity;
-      const hit = eye.clone().add(ray.multiplyScalar(-eye.y / ray.y));
-      far = Math.max(far, Math.abs(hit.x), Math.abs(hit.z));
+      if (ray.y >= 0) return { ground: Infinity, eye: Infinity };
+      const along = -eye.y / ray.y;
+      const hit = eye.clone().add(ray.clone().multiplyScalar(along));
+      ground = Math.max(ground, Math.abs(hit.x), Math.abs(hit.z));
+      seen = Math.max(seen, along);
     }
-  return far;
+  return { ground, eye: seen };
 }
 
 describe('how a grid is spaced and where a model lands', () => {
@@ -444,7 +461,7 @@ describe('how much of a bench frame the subject gets', () => {
     // column is the only one that has to stay true.
     const rows = BENCHES.map((b) => {
       const { shown, dist } = grid(b);
-      const far = reach(shown, dist);
+      const far = reach(shown, dist).ground;
       return [b.name, Math.round(far), far <= GROUND / 2];
     });
     expect(rows).toEqual([
@@ -477,7 +494,7 @@ describe('how much of a bench frame the subject gets', () => {
         const shown = new THREE.Group();
         for (const m of twelve) shown.add(m);
         const box = new THREE.Box3().setFromObject(shown);
-        return { name: a.name, far: box.isEmpty() ? 0 : reach(shown, fitDistance(box, FOV)) };
+        return { name: a.name, far: box.isEmpty() ? 0 : reach(shown, fitDistance(box, FOV)).ground };
       })
       .sort((a, b) => b.far - a.far);
     expect(census.length).toBe(37);
@@ -498,7 +515,7 @@ describe('how much of a bench frame the subject gets', () => {
       for (const f of b.fields) if (f.key !== b.seedKey) top[f.key] = f.max;
       expect(b.problems(top)).toEqual([]);
       const { shown, dist } = grid(b, undefined, top);
-      const far = reach(shown, dist);
+      const far = reach(shown, dist).ground;
       return [b.name, Math.round(far), far <= GROUND / 2];
     });
     expect(maxed).toEqual([
@@ -509,6 +526,81 @@ describe('how much of a bench frame the subject gets', () => {
       ['animal', 30, true],
       ['settler', 86, true],
     ]);
+  });
+
+  it('hazes what the turf is wide enough to show with the bench world own sky', () => {
+    // The round that widened the turf left a dark band across the top of the
+    // wood's frame that it could not account for, and it was not sky: it was
+    // turf, under the fog `Viewport`'s constructor leaves in every scene for
+    // whoever draws into it to overwrite. The world view overwrites it every
+    // frame from the sky it just synced. This bench never did, so a bench frame
+    // at noon faded into a slate blue that belongs to no hour of the game's day
+    // and no weather in it.
+    //
+    // What that cost, family by family. The third column is the slate, the
+    // second is the sky, and both are how far into the haze the far corner of
+    // that family's frame sits — the same corner the turf is sized against, but
+    // measured from the eye rather than from the origin, because fog is depth
+    // from the camera and the camera stands a frame's whole distance back.
+    //
+    // These six predict the sweep either side of this change, canvas by canvas.
+    // The three at zero are pixel-identical between the two. The stones and the
+    // settlers moved in a band along the top by no more than six of 255, which
+    // is a fifth and a twentieth of the way into a haze that is nearly the
+    // colour of the turf already. And the wood — the one frame on this bench
+    // with real distance in it — was *entirely* fogged before: its far corner
+    // stands 138 m from the eye and `Viewport`'s slate stops counting at 130,
+    // so the top of that picture was the raw night-blue rather than anything
+    // mixed with turf. That is the 110-of-255 band the frames show, and it is
+    // the whole visible difference between the two sweeps.
+    const world = benchWorld();
+    const sky = new SkyView(world, QUALITY.high);
+    sky.sync(world, 0, 0);
+    const fog = new THREE.Fog(0x223040, 40, 130);
+    sky.applyFog(fog, world);
+    const slate = new THREE.Fog(0x223040, 40, 130);
+    const depth = (d: number, f: THREE.Fog): number =>
+      Math.round(1000 * Math.min(1, Math.max(0, (d - f.near) / (f.far - f.near)))) / 1000;
+    const rows = BENCHES.map((b) => {
+      const { shown, dist } = grid(b);
+      const far = reach(shown, dist).eye;
+      return [b.name, Math.round(far), depth(far, fog), depth(far, slate)];
+    });
+    expect([fog.color.getHexString(), fog.near, Math.round(fog.far * 100) / 100]).toEqual(['b6a18f', 40, 339.41]);
+    expect(rows).toEqual([
+      ['stone', 47, 0.024, 0.08],
+      ['grass', 14, 0, 0],
+      ['tree', 138, 0.328, 1],
+      ['stack', 27, 0, 0],
+      ['animal', 32, 0, 0],
+      ['settler', 57, 0.056, 0.186],
+    ]);
+  });
+
+  it('asks the sky for that haze rather than keeping a second copy of it', () => {
+    // What the test above cannot see, because it calls `applyFog` itself: that
+    // the bench calls it at all. The bug it is standing in for was never a wrong
+    // number, it was four lines the world view had and this file did not, so the
+    // pin that matters is the one that fails when they go missing again — or
+    // when they come back as a copy. A second copy is a second lighting
+    // decision, and `stage.ts` opens by saying it makes none.
+    const hand: string[] = [];
+    const walk = (dir: string): void => {
+      for (const e of readdirSync(dir, { withFileTypes: true })) {
+        const path = `${dir}/${e.name}`;
+        if (e.isDirectory()) walk(path);
+        else if (e.name.endsWith('.ts') && !path.endsWith('/sky.ts')) {
+          const text = readFileSync(path, 'utf8');
+          if (/fog\.(near|far)\s*=|fog\.color\.copy\(/.test(text)) hand.push(path.split('/src/')[1]!);
+        }
+      }
+    };
+    for (const dir of ['client/render', 'forge']) {
+      walk(fileURLToPath(new URL(`../src/${dir}`, import.meta.url)));
+    }
+    expect(hand).toEqual([]);
+    const stage = readFileSync(fileURLToPath(new URL('../src/forge/stage.ts', import.meta.url)), 'utf8');
+    expect(/this\.sky\.applyFog\(/.test(stage)).toBe(true);
   });
 
   it('never lets two models touch, in any family, at any count', () => {

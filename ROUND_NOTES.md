@@ -4,6 +4,109 @@ One round, one measured gap, one fix. Newest first.
 
 ---
 
+## 2026-09-10 — The bench borrows the colony's weather, and the harness stops waiting on a frame that was never coming
+
+**Track: the forge.** The brief the turf round wrote, plus an afternoon lost to
+something that had nothing to do with it and is worth more than the round.
+
+### The fix, which is one call in two places
+
+`Viewport`'s constructor leaves a `THREE.Fog(0x223040, 40, 130)` in every scene it
+makes, for whoever draws into that scene to overwrite each frame. The world view
+overwrote it. The bench never did, so seven rounds of bench frames were photographed
+at noon against a distance hazing toward night-blue.
+
+The four lines are now one method on the class that owns the sky —
+`SkyView.applyFog(fog, world)` — and both callers go through it. One call rather than
+a second copy for the same reason `recipes.ts` says a bench may not build its own
+assemblies: a bench keeping its own copy of the game's lighting is a bench whose
+frames are not the game's frames. On the bench's own world the sky settles at
+`b6a18f`, near 40, far 339.41 — a clear day on a 192-cell map, which is see just past
+the middle of it and fade out past its far corner.
+
+### What it was worth, family by family
+
+How far into the haze the far corner of each frame sits. The corner is the one the
+turf is sized against, but measured from the eye rather than from the origin — fog is
+depth from the camera, and the camera stands a frame's whole distance back from a
+subject that is itself on the origin. Getting that wrong is what the first version of
+this pin did, and it read three families as untouched that the frames plainly moved.
+
+| family | far corner, from the eye | into the sky's fog | into the slate it was left in |
+| --- | --- | --- | --- |
+| stone | 47 m | 0.024 | 0.08 |
+| grass | 14 m | 0 | 0 |
+| **tree** | **138 m** | **0.328** | **1** |
+| stack | 27 m | 0 | 0 |
+| animal | 32 m | 0 | 0 |
+| settler | 57 m | 0.056 | 0.186 |
+
+The last column is the finding. The wood's far corner stands 138 m from the eye and
+the slate stopped counting at 130, so the top of that picture was not turf mixed with
+a haze — it was the raw night-blue, nothing of the ground left in it.
+
+The frames say the same thing, canvas by canvas. **Eight of the twelve are
+pixel-identical** between the sweeps, both frames of each of the three families
+sitting at zero among them. Of the four that moved, three moved by no more than **6
+of 255** in a band along the top and nowhere else — the stones' twelve by 3,509
+pixels, the settlers' twelve by 71,717, the wood's single by 69,425. The twelfth is
+the wood's twelve: **726,323 pixels, 42 per cent of the canvas, by up to 110 of 255**.
+Read back: the dark navy band across the top third is gone, and the turf recedes into
+a pale warm green instead.
+
+### The afternoon, which was not the round
+
+The sweep would not run. The page loaded, its scripts answered `evaluate` in
+milliseconds, the WebGL2 context came up, no console error — and exactly one animation
+frame ever fired. Every harness in `scripts/look/` waits on `requestAnimationFrame`,
+so all of them hung, and fifteen minutes later puppeteer returned
+`Runtime.callFunctionOn timed out`, which reads exactly like a wedged renderer.
+
+It was not the change: reverting to the committed file and re-running stalled the same
+way. On the GPU this Chrome takes its frames from the display's own vertical sync, and
+a Mac whose display has gone idle stops handing them out. `--disable-frame-rate-limit`
+swaps that for a free-running source. Measured on the same page: **1 frame in seven
+seconds** before, **58 a second** after.
+
+What cornered it was that a `page.screenshot` forces a composite, and frames run for
+about a second after each one — a page that is dead until photographed is not a page
+whose script is stuck.
+
+[LOOK.md](LOOK.md)'s "What will bite" already had this symptom, filed as *the GPU
+stalls sometimes, it is the box, it clears on its own*. What it clears on is somebody
+touching the keyboard. That entry is corrected rather than added to.
+
+### Verified
+
+- `npx tsc --noEmit` clean.
+- The full suite green at 2633, files 126 passed | 2 skipped. A comment in
+  `tests/forge-stage.test.ts` was corrected a minute into that run — a measurement
+  in prose, 60 m where the number is 47 — and vitest imports a file when a worker
+  reaches it, so which of the two texts that run read is not knowable. The file was
+  run again on its own afterwards: 17 passed.
+- Mutation drill, three of them, each turning the intended pin red and nothing else:
+  take the `applyFog` call out of `stage.ts` and the drift guard fails; put the four
+  lines back by hand instead of the call and it fails naming `forge/stage.ts`; drop
+  `fog.far` from `applyFog` itself and both fog pins fail, in two suites. The third
+  was run again after the pin was corrected to measure from the eye.
+- Twelve frames re-shot after the refactor onto `SkyView`: pixel-identical to the
+  twelve shot before it, canvas by canvas.
+- The harness flag is inert to the picture: the whole sweep re-shot under it came back
+  pixel-identical over every canvas, the only bytes that moved being a few hundred in
+  the slider panel, where the text rasteriser is a shade off run to run regardless.
+
+### Next target
+
+The contact sheet still says **6 of 42**, and it has said so for three rounds. Nothing
+on the bench is wrong now in a way a frame is complaining about; what is wrong is how
+much of the game is not on it. The briefs the frames wrote and this round did not take
+are still queued — the settler's arms against the pitch, the eight pile shapes, the
+grass's per-blade phase, a body's worth of space for the animals, the walking
+settler's feet — and behind all of them the twenty-seven buildings, which are last on
+purpose.
+
+---
+
 ## 2026-09-10 — The bench stops running out of world, and the dark at the top of the wood turns out not to be sky
 
 **Track: the forge.** The brief the count round wrote, and the correction that

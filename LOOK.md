@@ -323,14 +323,22 @@ Each of these cost a round or an hour. They are listed so that they cost nothing
   hazed grey-blue by the shroud. It looks like a lighting regression. If a frame is
   uniformly hazed, print `aether.world.tick` and `aether.world.seen` before blaming a
   shader. `chrome.mjs` carries the flags; never launch Chrome another way.
-- **The GPU stalls, sometimes.** The page answers `evaluate` instantly, the renderer
-  still names the Apple GPU, and no animation frame arrives for minutes, so the tick
-  freezes and `captureScreenshot` times out. It is the box, not the round — it hit two
-  rounds' code alike and cleared on its own. First kill every orphaned `Chrome for
-  Testing` (a failed harness leaves its browser on the GPU, and the next run stalls
-  behind it) and rerun; if it persists, `diag-hang.mjs` races ten animation frames
-  against fifteen seconds and, on a loss, prints the main-thread liveness, the JS
-  stack, and the draw calls attributed to shader programs — a stall with a live main
+- **No animation frames when nobody is at the machine.** The page answers `evaluate`
+  instantly, `performance.now` advances, the WebGL2 context comes up, and exactly one
+  animation frame ever fires — so the tick freezes and every harness hangs waiting on
+  `requestAnimationFrame`, which surfaces fifteen minutes later as `Runtime.callFunctionOn
+  timed out` from inside `page.evaluate` and reads like a wedged renderer. It is not the
+  round and it is not an orphaned browser: on the GPU this Chrome takes its frames from
+  the display's own vertical sync, and a Mac whose display has gone idle stops handing
+  them out. `--disable-frame-rate-limit`, in `chrome.mjs` since 2026-09-10, swaps that
+  for a free-running frame source; measured on the same page, 1 frame in seven seconds
+  before and 58 a second after, with every canvas of the forge sweep pixel-identical
+  either side. This entry used to say the stall was the box and cleared on its own,
+  which is what it looks like when somebody touches the keyboard. If frames still stall
+  with the flag, kill every orphaned `Chrome for Testing` (a failed harness leaves its
+  browser on the GPU) and rerun; if it persists, `diag-hang.mjs` races ten animation
+  frames against fifteen seconds and, on a loss, prints the main-thread liveness, the
+  JS stack, and the draw calls attributed to shader programs — a stall with a live main
   thread is the GPU; one with a stack is yours.
 - **Capture only after the gate.** The dev server serves the tree as it is; a frame
   taken while builders are mid-edit is of a program that does not compile.

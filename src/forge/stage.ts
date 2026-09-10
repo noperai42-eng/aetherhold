@@ -233,6 +233,15 @@ export class Stage {
     // the focus is what is being photographed rather than the middle of a map
     // no part of which is on screen.
     this.sky.sync(this.world, centre.x, centre.z);
+    // And the fog off the same sky, which is what `world-view.ts` does every
+    // frame and this file did not do at all. `Viewport`'s constructor leaves a
+    // `THREE.Fog(0x223040, 40, 130)` in the scene for the game to overwrite, so
+    // a bench that never overwrote it photographed every model at noon against
+    // a distance hazing toward night-blue — the top of a wood's frame measured
+    // (36, 51, 65), which is that colour. The file's first paragraph says
+    // nothing in it is a lighting decision, and fog is one. After `sync`,
+    // because the colour is what that call just worked out.
+    this.sky.applyFog(this.viewport.scene.fog as THREE.Fog, this.world);
   }
 
   resize(width: number, height: number): void {
