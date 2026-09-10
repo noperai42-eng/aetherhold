@@ -86,15 +86,18 @@ import { SETTLER_PHASE, phaseScale } from '../src/client/gait';
 import { PawnsView } from '../src/client/render/pawns';
 import { ANIMALS } from '../src/sim/wildlife';
 import { knobsFromSearch, recipeText, searchOf } from '../src/forge/address';
-import { benchWorld, forge, forgeSeeds, prototypes } from '../src/forge/forge';
+import { benchWorld, forge, forgeSeeds, gridSeeds, prototypes, standBuildings } from '../src/forge/forge';
 import {
   BENCHES,
+  BUILDING_MODELS,
   benchByName,
   type Bench,
   type GrassRecipe,
   type Knobs,
   type Prototypes,
 } from '../src/forge/recipes';
+import { BUILD_MENU } from '../src/sim/buildings';
+import { assemblyOf } from '../src/tools/assemble';
 
 /**
  * What a geometry is, in one line that changes when the shape does.
@@ -1385,6 +1388,193 @@ describe('the bench builds what the page asks it for', () => {
  * a surprise. `forge.html` being absent from the build input keeps the page out;
  * this keeps the direction of the arrow out too.
  */
+describe('the twenty-six buildings had to be stood up before they could be read', () => {
+  let bare: Prototypes;
+  let stood: Prototypes;
+
+  beforeAll(() => {
+    // The same world twice, once with the colony's buildings on it and once
+    // without, because the difference between the two is the whole round.
+    bare = prototypes(benchWorld(), new BuildingsView());
+    const world = benchWorld();
+    standBuildings(world);
+    stood = prototypes(world, new BuildingsView());
+  });
+
+  it('stands one of every kind the build menu offers', () => {
+    // Twenty-seven kinds and twenty-six models, and the one they differ by is
+    // `stonewall`, which draws out of the loose stone's pool and the wall's
+    // rather than out of one of its own. Ten more of the kinds are not named
+    // after the model they draw — `campfire` draws `fire`, `watermill` draws
+    // `mill` — which is why this stands one of every kind rather than trying to
+    // stand one of every model.
+    const world = benchWorld();
+    const before = world.buildings.length;
+    standBuildings(world);
+    const put = world.buildings.slice(before);
+    expect(put).toHaveLength(BUILD_MENU.length);
+    expect(put.map((b) => b.kind).sort()).toEqual([...BUILD_MENU].sort());
+    // Finished and drawing, which is what a model of a thing is. `tint` dulls
+    // an electrical building that is not powered, and a lamp on the bench at
+    // half its colour reads as a design decision rather than as a colony with
+    // no generator running.
+    expect(put.every((b) => b.powered)).toBe(true);
+    // One cell each, none on top of another, or `addBuilding` would have
+    // refused and `standBuildings` would have thrown by name.
+    expect(new Set(put.map((b) => `${b.x},${b.y}`)).size).toBe(BUILD_MENU.length);
+  });
+
+  it('wears a borrowed white until it does, which is what nobody could see', () => {
+    // The measured gap, as a number rather than as an argument. The building
+    // pools were always in `prototypes` — nothing had to be plumbed — and every
+    // one of them came out of an empty pool wearing the near-white its material
+    // is waiting to be multiplied by, because the colour of a building is not
+    // written down anywhere: it is a hash of the cell it stands on, written
+    // when the first instance goes in. No instance, no tint.
+    //
+    // Seventeen of the twenty-six, and the nine missing from this list are the
+    // reason it is a list and not a count. `benchWorld` lays a starter room, so
+    // a bed, a conduit, a door, a generator, a lamp, a prison door, a stove, a
+    // table and a wall each already had one instance somewhere on the map and
+    // already carried a tint. Nine of the twenty-six looked right by accident,
+    // which is exactly how a fault like this survives being glanced at — and if
+    // the starter room ever changes, this list changes with it and says so.
+    const white = (ps: Prototypes): string[] => {
+      const out = new Set<string>();
+      for (const [key, mesh] of ps) {
+        const mat = mesh.material as THREE.MeshStandardMaterial;
+        if (mat.color.getHex() === 0xffffff) out.add(assemblyOf(key));
+      }
+      return [...out].filter((n) => BUILDING_MODELS.includes(n)).sort();
+    };
+    expect(white(bare)).toEqual([
+      'batt', 'bench', 'cooler', 'fence', 'fire', 'fish', 'game', 'grave', 'heat',
+      'lab', 'med', 'mill', 'sandbag', 'solar', 'statue', 'trap', 'turret',
+    ]);
+    expect(white(stood)).toEqual([]);
+  });
+
+  it('is stood by the page before the page reads anything off it', () => {
+    // The test above measures `prototypes`, and `prototypes` is not where the
+    // decision is: the world is stood up in `main.ts` and handed over, so the
+    // whole fix is one call in the right order and the order is the part that
+    // can be lost. Before, not after — a pool read after the tint is written is
+    // a tinted pool, and a pool read before it is a white one, and nothing
+    // about the two lines says which way round they go except which way round
+    // they are.
+    const main = readFileSync(fileURLToPath(new URL('../src/forge/main.ts', import.meta.url)), 'utf8');
+    const stand = main.indexOf('standBuildings(world)');
+    const read = main.indexOf('prototypes(world');
+    expect(stand, 'main.ts never stands the buildings up').toBeGreaterThan(-1);
+    expect(read, 'main.ts never reads the prototypes').toBeGreaterThan(-1);
+    expect(stand).toBeLessThan(read);
+  });
+
+  it('hands the bench every part of the building it asked for and nothing else', () => {
+    const bench = benchByName('building')!;
+    const made = forge(bench, bench.defaults, stood);
+    expect(made.problems).toEqual([]);
+    const parts = made.group!.children as THREE.Mesh[];
+    expect(parts.length).toBeGreaterThan(0);
+    // The default is the watermill, index 16, which is on the bench on purpose:
+    // it is the one building in the set whose shape is not a box, so a bench
+    // that opens on it says something about whether the bench works.
+    expect(BUILDING_MODELS[bench.defaults.kind!]).toBe('mill');
+    for (const part of parts) {
+      expect(assemblyOf(part.name)).toBe('mill');
+      const mat = part.material as THREE.MeshStandardMaterial;
+      expect(mat.color.getHex()).not.toBe(0xffffff);
+      expect(mat.vertexColors).toBe(true);
+    }
+  });
+
+  it('says which building is missing rather than drawing an empty group', () => {
+    const bench = benchByName('building')!;
+    // Off the end of the roster: caught by the bounds check before it is built,
+    // the way every other bench's out-of-range field is.
+    expect(bench.problems({ kind: BUILDING_MODELS.length })).toEqual([
+      `kind is ${BUILDING_MODELS.length}, outside 0..${BUILDING_MODELS.length - 1}`,
+    ]);
+    // And in range, but read off a world nothing was stood in: this is the
+    // throw that made the frames complain out loud instead of quietly drawing a
+    // white box, which is the only reason the pool problem was found at all.
+    expect(() => bench.build({ kind: 0 }, new Map() as Prototypes)).toThrow(
+      /nothing stood in it to be read/,
+    );
+  });
+});
+
+describe('what the grid button asks for', () => {
+  it('stays inside the field it is stepping through, from every bench own default', () => {
+    // The run the page builds when Generate is pressed with the bench as it
+    // opens. Written as it is: these are the seven runs the contact sheet
+    // shoots, and the last column is the one that has to stay true.
+    const rows = BENCHES.map((b) => {
+      const f = b.fields.find((x) => x.key === b.seedKey)!;
+      const seeds = gridSeeds(b, b.defaults[b.seedKey] ?? 0);
+      return [b.name, seeds.length, seeds.every((s) => s >= f.min && s <= f.max)];
+    });
+    expect(rows).toEqual([
+      ['stone', 12, true],
+      ['grass', 12, true],
+      ['tree', 12, true],
+      ['stack', 8, true],
+      ['animal', 4, true],
+      ['settler', 8, true],
+      ['building', 26, true],
+    ]);
+  });
+
+  it('shows the whole list when the list is what it is stepping through', () => {
+    // The four benches whose seed key is an index rather than a hash. Wherever
+    // the slider is standing, Generate has to come back with every entry once —
+    // that is the only thing the button is for on a bench like this, and it is
+    // what it did not do.
+    for (const name of ['stack', 'animal', 'settler', 'building']) {
+      const b = benchByName(name)!;
+      const f = b.fields.find((x) => x.key === b.seedKey)!;
+      const whole = Array.from({ length: f.max - f.min + 1 }, (_, i) => f.min + i);
+      for (let start = f.min; start <= f.max; start++) {
+        const seeds = gridSeeds(b, start);
+        // The whole list and not just as many values as the list has: counting
+        // up off the end gives eight distinct numbers too, and a size check
+        // goes green on them. Sorted, against the range itself.
+        expect([...seeds].sort((a, b) => a - b), `${name} from ${start}`).toEqual(whole);
+        expect(seeds[0], `${name} from ${start}`).toBe(start);
+      }
+    }
+  });
+
+  it('leaves a seed a thousand wide exactly where it was', () => {
+    // The behaviour the wrap is not allowed to have changed, and the reason it
+    // is modular on the value rather than on a step index: the stone bench's
+    // default seed is 3.7, which is not on its own lattice, and its run has
+    // always been 3.7 to 14.7.
+    //
+    // Exactly, and not `toBeCloseTo`. The first version of the wrap wrote the
+    // textbook positive remainder and handed this bench 3.7000000000000455; a
+    // stone's shape is a hash of its seed, so a difference no assertion at six
+    // decimal places can see is a difference the whole grid can be seen to
+    // have. `toBeCloseTo` was in this line and went green on it. The frames
+    // went red.
+    const stone = benchByName('stone')!;
+    const seeds = gridSeeds(stone, stone.defaults.seed!);
+    expect(seeds).toEqual([3.7, 4.7, 5.7, 6.7, 7.7, 8.7, 9.7, 10.7, 11.7, 12.7, 13.7, 14.7]);
+    // And the wood, whose step is 61 rather than 1.
+    const tree = benchByName('tree')!;
+    expect(gridSeeds(tree, 0)).toEqual([0, 61, 122, 183, 244, 305, 366, 427, 488, 549, 610, 671]);
+  });
+
+  it('is the page own run and not a second copy of it', () => {
+    // The pin that fails if `drawGrid` goes back to counting up on its own,
+    // which is how the settler bench asked for a ninth of eight poses for as
+    // long as it has existed.
+    const main = readFileSync(fileURLToPath(new URL('../src/forge/main.ts', import.meta.url)), 'utf8');
+    expect(main).toContain('gridSeeds(bench, knobs[bench.seedKey] ?? 0)');
+    expect(main).not.toMatch(/i \* bench\.seedStep/);
+  });
+});
+
 describe('a recipe survives being written down', () => {
   const stone = benchByName('stone')!;
   const tree = benchByName('tree')!;
@@ -1573,22 +1763,29 @@ describe('how much of the game is on the bench', () => {
       ]],
       ['animal', ['animal.mossback', 'animal.dunhare', 'animal.brambletail', 'animal.fenwolf']],
       ['settler', ['settler']],
+      ['building', [
+        'batt', 'bed', 'bench', 'conduit', 'cooler', 'door', 'fence', 'fire', 'fish',
+        'game', 'gen', 'grave', 'heat', 'lab', 'lamp', 'med', 'mill', 'prison',
+        'sandbag', 'solar', 'statue', 'stove', 'table', 'trap', 'turret', 'wall',
+      ]],
     ]);
   });
 
-  it('counts sixteen of the forty-two, where the sheet used to count six', () => {
-    // The number the contact sheet prints, and the reason this round exists.
-    // Six is how many benches there are; the benches shape sixteen files. The
-    // gap between the two is the wood's second crown, seven of the eight
-    // stacks and three of the four species — coverage that was already earned
-    // and was being reported away.
+  it('counts forty-two of the forty-two, and no bench claims a file twice', () => {
+    // The number the contact sheet prints. It read six for four rounds because
+    // it counted benches; it read sixteen for one round, which was the honest
+    // count of what six benches shaped; and the buildings arriving takes it to
+    // the whole census.
     //
     // Forty-two is `models/manifest.json`, which is written by the export and
     // not in git, so it is not read here; the export suite checks this count
-    // against a real one. What this asserts is the numerator, which is ours.
+    // against a real one. What this asserts is the numerator, which is ours —
+    // including that it is a set: `stonewall` draws out of the loose stone's
+    // pool as well as the wall's, so a slider over build kinds rather than over
+    // models is exactly how a file gets claimed twice.
     const covered = BENCHES.flatMap((b) => [...b.covers]);
-    expect(covered.length).toBe(16);
-    expect(new Set(covered).size).toBe(16);
+    expect(covered.length).toBe(42);
+    expect(new Set(covered).size).toBe(42);
   });
 
   it('lets a bench cover nothing, and only the one that cannot be exported does', () => {
@@ -1611,7 +1808,30 @@ describe('how much of the game is on the bench', () => {
     expect(html).toContain('data-covers="${b.covers.join(\',\')}"');
     const sweep = readFileSync(fileURLToPath(new URL('../scripts/look/forge.mjs', import.meta.url)), 'utf8');
     expect(sweep).toContain('a.dataset.covers');
-    expect(sweep).toContain('${covered.size} of ${total} assemblies on the bench');
+    expect(sweep).toContain(
+      '${covered.size} of ${total} assemblies on the bench, ${shaped.size} with a recipe',
+    );
+  });
+
+  it('says how many of them have a recipe, which is a smaller number', () => {
+    // The other half of the sentence, and the reason it exists: the buildings
+    // are on the bench with one field, the one that picks which building. All
+    // forty-two of the game's models can be looked at; sixteen of them have a
+    // recipe behind the glass. A sheet printing only the first would read as the
+    // second, and the round before this one is on record about what a coverage
+    // number that reads wrong costs.
+    const shaped = new Set(
+      BENCHES.filter((b) => b.recipe(b.defaults) !== null).flatMap((b) => [...b.covers]),
+    );
+    expect(shaped.size).toBe(16);
+    expect(BENCHES.filter((b) => b.recipe(b.defaults) === null).map((b) => b.name)).toEqual([
+      'building',
+    ]);
+    // And the transport for it, the same way `covers` is carried.
+    const html = readFileSync(fileURLToPath(new URL('../src/forge/main.ts', import.meta.url)), 'utf8');
+    expect(html).toContain('data-recipe=');
+    const sweep = readFileSync(fileURLToPath(new URL('../scripts/look/forge.mjs', import.meta.url)), 'utf8');
+    expect(sweep).toContain("a.dataset.recipe === 'yes'");
   });
 });
 

@@ -4,6 +4,167 @@ One round, one measured gap, one fix. Newest first.
 
 ---
 
+## 2026-09-10 — The twenty-six buildings reach the bench, wearing a colour that was never theirs
+
+**Track: the forge.** The last family, and the one the census round named as the only
+thing left that was not already a queued look brief.
+
+### The gap, which was not the one the plan said it was
+
+The plan said the buildings could not be looked at. The probe said something worse and
+more useful: they *could*. Their pools were already in `prototypes` — nothing had to be
+plumbed, no code was missing — and seventeen of the twenty-six came out of it wearing
+`ffffff`.
+
+The colour of a building is not written down anywhere. It is a hash of the cell the
+thing stands on, and `assemble` writes it onto a cloned material from the **first**
+instance it finds in the pool. A pool with nothing in it this run never had a tint
+written, so its material stays the near-white it is waiting to be multiplied by. The
+exporter has known this for as long as it has existed — it calls it a borrowed colour
+in the manifest and stands one of everything up before reading anything off it. The
+bench never did.
+
+Seventeen and not twenty-six is the part worth keeping. `benchWorld` lays a starter
+room, so a bed, a conduit, a door, a generator, a lamp, a prison door, a stove, a table
+and a wall each already had an instance somewhere on the map and already carried a
+tint. **Nine of the twenty-six looked right by accident.** That is how a fault like this
+survives being glanced at, and it is why the pin is a list of the seventeen names rather
+than the number seventeen: if the starter room ever changes, the list changes with it
+and says so.
+
+### The fix
+
+`standBuildings(world)` in `forge.ts` — one of every kind in `BUILD_MENU`, powered, on a
+lattice three cells apart and inset three from the edge, each kind taking the first cell
+that will have it. Three apart because these are drawn with contact shadows; inset
+because the occlusion bake reads a cell's neighbours and an edge cell has fewer of them
+than any cell the game will draw. It is the exporter's strategy and not the exporter's
+code: `populate()` lives in a file that imports `node:fs`, so the browser bundle cannot
+have it.
+
+Twenty-seven kinds, twenty-six models. `stonewall` draws out of the loose stone's pool
+and the wall's rather than out of one of its own, and ten more of the kinds are not
+named after the model they draw — `campfire` draws `fire`, `watermill` draws `mill` —
+which is why the bench's slider runs over models and the standing-up runs over kinds.
+Both counts were written down as twenty-eight here first, from memory rather than from
+`BUILD_MENU`, and a probe of the real list corrected them before this note shipped. `main.ts` calls it **before** `prototypes`, and the order is the whole fix, so the
+order is what is pinned.
+
+The bench itself has one field, the one that picks which building, and no recipe. That
+is stated rather than papered over: `Bench.recipe` returns `Recipe | null` now, and
+`recipeText` prints a sentence saying the numbers are still literals in the render file
+instead of printing an empty object that a person could paste somewhere and believe.
+
+### Two bugs the frames found and the tests could not
+
+**The settler bench has been asking for a ninth of eight poses since it shipped.**
+`drawGrid` started its run at the seed in the box, which is right for a field a thousand
+wide and wrong for a field that is an index into a list. The settler's default pose is
+`walking`, index 1 of eight, so its own Generate 8 asked for poses 1 through 8 and
+`SETTLER_POSES[k.pose!]!` handed the builder `undefined`. The exclamation mark is what
+kept anyone from hearing about it. Every settler sheet in these notes has one body in it
+posed by a value that is not in the list.
+
+It surfaced now because the building bench throws by name instead of asserting, and its
+default is the watermill at index 16, so its Generate 26 asked for kinds 16 through 41
+and said so out loud. The three other list-indexed benches — the stack, the herd, the
+settler — are safe or nearly safe only because their defaults are index 0 or 1.
+
+`gridSeeds` wraps the run inside the seed field's own range: on a thousand-wide seed it
+is the same run it always was, and on a list it is the whole list from wherever you are
+standing in it. The frames could not judge this one — an `undefined` activity falls
+through to the same pose as `idle`, so the settler grid is pixel-identical either way.
+The bug was real, invisible, and only a pin can hold it.
+
+**And one I wrote in the same hour.** The first `gridSeeds` used the textbook positive
+remainder, `((v % w) + w) % w`. The stone bench's default seed is 3.7, and
+`((3.7 % 1000) + 1000) % 1000` is `3.7000000000000455`, because 1003.7 is not a float.
+Forty-five femtoseeds is nothing until it goes through a hash: the sweep came back with
+the whole stone grid subtly reshaded, 113,697 pixels moved by up to 28 of 255. The pin
+covering that line said `toBeCloseTo(3.7, 6)` and went green on it. The frames went red.
+The pin is exact equality now, and the branch is only taken when it is needed.
+
+That is the ladder working in the direction it is usually claimed to work in and rarely
+does: not a test catching what a person would have missed, but a photograph catching
+what a test was written too loosely to see.
+
+### What the frames say about the set itself
+
+Twenty-six models in one frame, correctly coloured, is the first time this game's
+buildings have been seen side by side. What it shows is an arrangement problem, and it
+has a number: **the heights spread 47 to 1** — the wall is 2.60 m and a conduit is 0.05 m
+— while the footprints spread only 3 to 1. `placeGrid` steps by footprint. So the set is
+laid out on an almost even lattice while its subjects vary by a factor of fifty in the
+one dimension the lattice does not account for, and the frame reads as it must: the wall
+and the doors tower over and hide what is behind them, and the conduit is a smear on the
+turf that a person would have to be told is a model.
+
+Measured, the shipped arrangement is already the one that fills the most picture — of
+the twenty-six column counts a twenty-six-model grid could take, four is the best, and
+it gives up nothing. So this is not a fill problem, and the row in `forge-stage.test.ts`
+now says so in points. It is the settlers' problem, one family larger: what is wrong is
+which of them is behind which, and no amount of frame-filling fixes that.
+
+### One number that had to be split before it shipped
+
+The sheet now reads `42 of 42 assemblies on the bench, 16 with a recipe`, and the second
+half is this round refusing to undo its predecessor's work in the opposite direction.
+The census round spent itself correcting a coverage number that understated by three to
+one. A bench with one field that picks which model puts that model in front of a camera
+and shapes nothing; printing `42 of 42` alone would have read as the recipe treatment
+being finished, and it has reached sixteen. `Bench.recipe` returning null is what makes
+the split derivable rather than declared, so it cannot drift.
+
+### The pins
+
+Eleven new tests. The literal white list and its transport (the order of the two lines
+in `main.ts`, because that order *is* the fix); `standBuildings` standing one of every
+menu kind, powered, one per cell; the bench handing back every part of the building
+asked for and refusing an index off the end both ways; `gridSeeds` staying inside every
+bench's field from every start, covering the whole list for the four list-indexed
+benches, and leaving the stone's 3.7-to-14.7 exactly where it was; the census pins moved
+to 42 of 42; and the recipe count at sixteen with its own transport.
+
+Two mutations, both decisive, and the second was decisive against me. Dropping
+`standBuildings` from `main.ts` reddened the transport pin alone — the right one, since
+`prototypes` itself is not where the decision lives. Un-wrapping `gridSeeds` reddened
+one test where it should have reddened two: `new Set(seeds).size` is 8 for poses 1
+through 8 as surely as for 0 through 7. The whole-list pin compares against the sorted
+range now, and the drill is the only reason it does.
+
+The old `has twenty-six left, and every one of them is a building` pin is retired, and
+what replaced it is worth more: nothing left over **in either direction**. A model the
+game ships that no bench claims lands in `unbenched`; a name a bench claims that the
+export does not write lands in `phantom`. A count alone would let a bench drop one model
+and add another in the same round and never say a word.
+
+### Verified
+
+The full suite green: 2649 passed | 13 skipped, over 126 files passed | 2 skipped, in
+1102 seconds. `npx tsc --noEmit` clean. One of the eleven files, `tests/export-models.test.ts`,
+took a comment-only edit twenty-one seconds into that run and so was re-run on its own
+afterwards, 15 passed: a suite that may have read a file before an edit is not evidence
+about the file after it, and comment-only is a claim about the edit rather than a proof.
+The r31 sweep: seven of seven models shot, no console errors, and all twelve canvases of
+the six shipped families **pixel-identical** to r30 over the canvas region — checked
+after the float fix, because the sweep before it was not.
+
+The sweep was also shot twice with no change between to establish that it is
+deterministic run to run, which is what made the stone grid's 113,697 moved pixels
+attributable to an edit rather than to the harness. That check is worth its two minutes
+any round a frame moves and nobody meant it to.
+
+### Next target
+
+The arrangement of the twenty-six, which is the first brief in this project written off
+a measurement of the subjects rather than of the frame: 47 to 1 in height against 3 to 1
+in footprint. An arrangement sweep — `scripts/look/forge.mjs` takes a comma list of
+column counts — cannot answer it alone, because the axis that is wrong is not the one
+columns move. Sorting the set by height, or stepping the grid by height as well as by
+footprint, are the two things to photograph.
+
+---
+
 ## 2026-09-10 — Six benches were never six models, and the sheet had been saying so for four rounds
 
 **Track: the forge.** The brief the animals round logged and every sheet since has

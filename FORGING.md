@@ -397,7 +397,7 @@ to be overruled by the photographs:
 | Trees | 2 | Variation already exists and is unaddressable; making it addressable is nearly free. |
 | Piles | 8 | Eight objects sharing a prefix, seen constantly, each small. |
 | People and fauna | 5 | The heaviest models and the most looked-at, but also the ones with the most existing look-loop rounds behind them — least likely to be wrong. |
-| Buildings | 27 | Largest surface (3,451 lines) and least varied per instance; a stove is one stove. Last on purpose. |
+| Buildings | 26 | Largest surface (3,451 lines) and least varied per instance; a stove is one stove. Last on purpose. On the bench since 2026-09-10, with one field and no recipe. |
 
 Grass is a special case worth naming: it cannot be exported to `.glb`, so the bench
 is the *only* place its shader sway can ever be judged in isolation. That makes it a
@@ -912,6 +912,44 @@ is the right shape for a game drawing flat polygons where a material is a palett
 Aetherhold's materials are `MeshStandardMaterial` with an ambient-occlusion bake
 living in vertex colours, so the split is not free and is not obviously worth
 paying for. Revisit if the recipe work makes it cheap.
+
+**Built — the twenty-six buildings, 2026-09-10.** The family the census round named as
+the only one left. The plan said they could not be looked at; the probe said they could,
+and that seventeen of the twenty-six came out of `prototypes` wearing `ffffff`.
+
+A building's colour is not written down anywhere — it is a hash of the cell it stands
+on, and `assemble` writes it onto a cloned material from the first instance in the pool.
+An empty pool never had a tint written, so its material stays the near-white it waits to
+be multiplied by. The exporter has always known this and stands one of everything up
+before reading anything off it; the bench did not. `standBuildings(world)` in `forge.ts`
+does it now — one of every `BUILD_MENU` kind (twenty-seven of them, drawing twenty-six
+models, since `stonewall` shares the wall's), powered, on a lattice three cells apart and
+inset three from the map edge — called from `main.ts` **before** `prototypes`, which is
+the whole fix and therefore the thing pinned.
+Seventeen and not twenty-six because `benchWorld` lays a starter room: nine of them
+already had an instance and looked right by accident, which is the pin's argument for
+being a list of names rather than a count.
+
+The bench has one field, the one that picks which building, and no recipe. `Bench.recipe`
+returns `Recipe | null` and the paste block prints a sentence rather than an empty object.
+That null is also what makes the sheet honest in the other direction: it now reads
+**`42 of 42 assemblies on the bench, 16 with a recipe`**, because a bench that shows a
+model without shaping it is coverage of the first kind and not the second, and fixing an
+understatement by shipping an overstatement would be no fix at all.
+
+Two bugs came out of the frames rather than the code. `drawGrid` started its run at the
+seed in the box, which is right for a thousand-wide seed field and wrong for a field that
+indexes a list — the settler bench has been asking for a ninth of eight poses since it
+shipped, `SETTLER_POSES[k.pose!]!` handing the builder `undefined` behind an exclamation
+mark. `gridSeeds` wraps inside the field's own range now. And the first version of that
+wrap used `((v % w) + w) % w`, which is `3.7000000000000455` for the stone bench's
+default seed and reshaded its whole grid; the pin on that line said `toBeCloseTo` and
+went green. Both are in ROUND_NOTES.md.
+
+What the frames say next is the arrangement: the twenty-six spread **47 to 1 in height**
+(a wall is 2.60 m, a conduit is 0.05 m) against 3 to 1 in footprint, and `placeGrid` steps
+by footprint. Four columns is already the fill-optimal count and gives up nothing, so this
+is the settlers' problem one family larger — what is behind what — and not a fill problem.
 
 **Built — an honest census, 2026-09-10.** The brief the animals round logged and four
 rounds of sheets carried: `scripts/look/forge.mjs` printed "`N` of 42 assemblies on the

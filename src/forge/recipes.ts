@@ -49,6 +49,7 @@ import {
   type TuftRecipe,
 } from '../client/render/decor';
 import { colorOf, occludeParts } from '../client/render/occlusion';
+import { assemblyOf } from '../tools/assemble';
 import {
   ANIMAL_DEFAULT,
   SETTLER_DEFAULT,
@@ -166,8 +167,13 @@ export interface Bench {
    * numbers that happened to be draggable. This is what the paste block under
    * the sliders prints, so what it offers is a recipe you can put back rather
    * than a list of the eleven fields the page knows how to show you.
+   *
+   * Null when there is nothing to put back. The buildings are on the bench to
+   * be looked at before any of their numbers have been lifted out of
+   * `buildings.ts`, and a bench with no recipe says so rather than printing an
+   * empty object, which would claim it has one.
    */
-  recipe(k: Knobs): StoneRecipe | TreeRecipe | GrassRecipe | PileRecipe | AnimalRecipe | SettlerRecipe;
+  recipe(k: Knobs): StoneRecipe | TreeRecipe | GrassRecipe | PileRecipe | AnimalRecipe | SettlerRecipe | null;
   /** The model, standing on y = 0 and facing the way the game draws it. */
   build(k: Knobs, protos: Prototypes): THREE.Group;
 }
@@ -990,7 +996,83 @@ const SETTLER: Bench = {
   },
 };
 
-export const BENCHES: readonly Bench[] = [STONE, GRASS, TREE, STACK, ANIMAL, SETTLER];
+/**
+ * The twenty-six buildings, by name, alphabetically.
+ *
+ * A list rather than a walk of the pools, because a `Field`'s range is fixed
+ * when this module loads and the pools are not read until a world has been
+ * synced. Written down once here and checked against a real export in
+ * `tests/export-models.test.ts`, which is the same split `covers` uses: this
+ * file owns the numerator, the export owns the denominator.
+ *
+ * Buildings and not build kinds, and the two counts differ by one: `BUILD_MENU`
+ * has twenty-seven entries, and `stonewall` draws out of the loose stone's pool
+ * and the wall's rather than out of one of its own. A slider over kinds would
+ * photograph the wall twice and call it two models. It would also be a slider
+ * over the wrong names — ten of the kinds are not called what their model is
+ * called, `campfire` drawing `fire` and `watermill` drawing `mill`.
+ */
+export const BUILDING_MODELS: readonly string[] = [
+  'batt', 'bed', 'bench', 'conduit', 'cooler', 'door', 'fence', 'fire', 'fish',
+  'game', 'gen', 'grave', 'heat', 'lab', 'lamp', 'med', 'mill', 'prison',
+  'sandbag', 'solar', 'statue', 'stove', 'table', 'trap', 'turret', 'wall',
+];
+
+const BUILDING_FIELDS: readonly Field[] = [
+  { key: 'kind', label: 'which', min: 0, max: BUILDING_MODELS.length - 1, step: 1, whole: true },
+];
+
+const BUILDING: Bench = {
+  name: 'building',
+  title: 'Building',
+  note: 'One of the twenty-six models the colony draws its buildings from, as the renderer draws it. No knobs yet: the recipe treatment has not reached this family, and these frames are what decides where in it to start. Generate 26 stands the whole set together, which is the only way to see a stove against a turret.',
+  covers: BUILDING_MODELS,
+  fields: BUILDING_FIELDS,
+  // The watermill, which is index 16 and is here on purpose: it is the one
+  // building in the set whose shape is not a box, and a bench that opens on a
+  // box says nothing about whether the bench works.
+  defaults: { kind: 16 },
+  seedKey: 'kind',
+  // One along. There is nothing hashed here to spread out — the twenty-six are
+  // twenty-six hand-built models in a list, and the next one is the next one.
+  seedStep: 1,
+  grid: BUILDING_MODELS.length,
+  problems(k) {
+    // Bounds and nothing else. There is no cross-field rule because there is
+    // only one field, and inventing a second so this entry looks like the
+    // others is the thing the stone's `problems` already refuses to do.
+    return boundsProblems(BUILDING_FIELDS, k);
+  },
+  // Nothing to paste. Every other bench prints a recipe you can put back into a
+  // render file; a building has no recipe yet, and printing an empty object
+  // would say it has one and that it is empty. This is the state of the family,
+  // said out loud, and it is what stage 5 has left to do.
+  recipe: () => null,
+  build(k, protos) {
+    const model = BUILDING_MODELS[k.kind!];
+    if (!model) throw new Error(`no building at index ${k.kind}`);
+    const group = new THREE.Group();
+    // Every pooled part whose name belongs to this model, cloned off the
+    // renderer's own prototype: its geometry carries the offset from the
+    // building's origin and the ambient-occlusion bake, and its material
+    // carries the tint that was read off a real instance standing in the bench
+    // world. Nothing is rebuilt here, which is the file's first rule.
+    for (const [key, proto] of protos) {
+      if (assemblyOf(key) !== model) continue;
+      const mesh = new THREE.Mesh(proto.geometry, proto.material);
+      mesh.name = key;
+      mesh.castShadow = proto.castShadow;
+      mesh.receiveShadow = proto.receiveShadow;
+      group.add(mesh);
+    }
+    if (!group.children.length) {
+      throw new Error(`no ${model} prototype in the renderer's pools — nothing stood in it to be read`);
+    }
+    return group;
+  },
+};
+
+export const BENCHES: readonly Bench[] = [STONE, GRASS, TREE, STACK, ANIMAL, SETTLER, BUILDING];
 
 export function benchByName(name: string): Bench | null {
   return BENCHES.find((b) => b.name === name) ?? null;

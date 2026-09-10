@@ -123,7 +123,16 @@ function print(v: unknown, indent: string): string {
   return JSON.stringify(v);
 }
 
-/** The whole recipe these knobs describe, as the block under the sliders. */
+/**
+ * The whole recipe these knobs describe, as the block under the sliders.
+ *
+ * A bench with no recipe gets a sentence instead of `null`. The buildings are
+ * on the bench before the recipe treatment has reached them, and a paste block
+ * reading "null" looks like a bug in the printer rather than like the honest
+ * state of a family nobody has parameterised yet.
+ */
 export function recipeText(bench: Bench, k: Knobs): string {
-  return print(bench.recipe(k), '');
+  const r = bench.recipe(k);
+  if (r === null) return `// ${bench.title} has no recipe yet — its numbers are still literals in the render file.`;
+  return print(r, '');
 }

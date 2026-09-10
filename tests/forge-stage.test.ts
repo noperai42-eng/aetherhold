@@ -311,6 +311,7 @@ describe('how much of a bench frame the subject gets', () => {
       ['stack', 32],
       ['animal', 34],
       ['settler', 29],
+      ['building', 30],
     ]);
   });
 
@@ -356,6 +357,7 @@ describe('how much of a bench frame the subject gets', () => {
       ['stack', 32, 42],
       ['animal', 34, 38],
       ['settler', 29, 40],
+      ['building', 30, 43],
     ]);
     // And where the third comes from, which is the reason it is not being taken
     // here: `fitDistance` takes a box and a lens and nothing else, so twelve
@@ -377,13 +379,19 @@ describe('how much of a bench frame the subject gets', () => {
   });
 
   it('stands each family at the count its own frames were judged at', () => {
-    // The six counts as literal numbers, and the shape each one actually makes.
+    // The counts as literal numbers, and the shape each one actually makes.
     // Three of them were moved off the stage's four by twenty-four frames of the
-    // same six families at two, three, four and six, so a seventh count arriving
-    // without frames behind it should have to come through here. The second and
-    // third columns are why this is not just the table restated: they are read
-    // back off the laid-out grid, so a count that stopped reaching `placeGrid`
-    // would fail even with the table untouched.
+    // same six families at two, three, four and six, so a count arriving without
+    // frames behind it has to come through here. The second and third columns
+    // are why this is not just the table restated: they are read back off the
+    // laid-out grid, so a count that stopped reaching `placeGrid` would fail
+    // even with the table untouched.
+    //
+    // The buildings are the row that has not been through that: their 4 is the
+    // stage's default and no frame chose it. Seven rows deep is a shape none of
+    // the other six make — the next-deepest is the wood at four — and whether
+    // twenty-six things want to be seen four to a row is a question for their
+    // own sweep. The row is here saying 4 is what ships, not that 4 was judged.
     const rows = BENCHES.map((b) => {
       const { shown } = grid(b);
       const at = shown.children.map((m) => m.position);
@@ -401,6 +409,7 @@ describe('how much of a bench frame the subject gets', () => {
       ['stack', 3, 3, 3],
       ['animal', 4, 4, 1],
       ['settler', 6, 6, 2],
+      ['building', 4, 4, 7],
     ]);
   });
 
@@ -414,6 +423,13 @@ describe('how much of a bench frame the subject gets', () => {
     // argued: six gives up four points, because what is wrong with eight poses
     // at four to a row is not their size but which of them is behind which, and
     // no amount of frame-filling fixes an arm through a body.
+    //
+    // The buildings give up nothing, which is the one thing the arrangement
+    // question for them can be answered on without frames: of the twenty-six
+    // column counts a twenty-six-model grid could take, the stage's default is
+    // already the one that fills the most picture. If their sweep moves them off
+    // 4 it will be for the reason the settlers moved — what stands behind what —
+    // and this row is where that trade gets written down in points.
     const rows = BENCHES.filter((b) => (b.grid ?? 12) > 1).map((b) => {
       const n = b.grid ?? 12;
       let best = 0;
@@ -438,6 +454,7 @@ describe('how much of a bench frame the subject gets', () => {
       ['stack', 3, 0],
       ['animal', 4, 0],
       ['settler', 4, 4],
+      ['building', 4, 0],
     ]);
   });
 
@@ -471,18 +488,21 @@ describe('how much of a bench frame the subject gets', () => {
       ['stack', 21, true],
       ['animal', 25, true],
       ['settler', 43, true],
+      ['building', 75, true],
     ]);
   });
 
-  it('is wide enough for the families that have not arrived and the sliders that have', () => {
+  it('is wide enough for the whole census and for the sliders at the top of their range', () => {
     // Why 260 and not 220, which would also have covered the wood. A plane large
-    // enough to swallow twenty-seven buildings is worth sizing once against the
-    // family that has not arrived rather than twice, so the number was chosen
-    // against three things this measures and one it cannot.
+    // enough to swallow twenty-six buildings is worth sizing once against the
+    // family that had not arrived rather than twice, so the number was chosen
+    // against three things this measures and one it cannot. The family has since
+    // arrived and stands at 75 m in the row below, which is what sizing against
+    // a guess bought: nothing had to move when the guess came true.
     //
     // First: everything the game actually has, twelve to a grid, whether or not
     // it has a recipe on this bench yet. That is the whole census — the
-    // twenty-seven buildings included — and the widest of them is a wood of the
+    // twenty-six buildings included — and the widest of them is a wood of the
     // second tree at 86 m, which is a smaller wood than the bench's own.
     const view = new BuildingsView();
     view.sync(benchWorld());
@@ -525,7 +545,15 @@ describe('how much of a bench frame the subject gets', () => {
       ['stack', 36, true],
       ['animal', 30, true],
       ['settler', 86, true],
+      ['building', 75, true],
     ]);
+    // The buildings are the row where maxing changes nothing, and the reason is
+    // worth a line rather than a shrug: their only field is the one that picks
+    // which building, and the loop above skips a bench's seed key because
+    // dragging a seed is not a slider being tested. A bench with no other knob
+    // therefore measures the same here as it does two tests up. When the recipe
+    // treatment reaches this family the row will start moving, and if it never
+    // does, the recipe treatment never reached this family.
   });
 
   it('hazes what the turf is wide enough to show with the bench world own sky', () => {
@@ -574,6 +602,7 @@ describe('how much of a bench frame the subject gets', () => {
       ['stack', 27, 0, 0],
       ['animal', 32, 0, 0],
       ['settler', 57, 0.056, 0.186],
+      ['building', 99, 0.196, 0.651],
     ]);
   });
 

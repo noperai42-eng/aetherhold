@@ -79,10 +79,16 @@ await page.goto(`${url}/forge.html`, { waitUntil: 'networkidle0' });
 const listed = await page.$$eval('.index a', (as) => as.map((a) => ({
   name: a.textContent.trim(),
   covers: (a.dataset.covers ?? '').split(',').filter(Boolean),
+  recipe: a.dataset.recipe === 'yes',
 })));
 if (!listed.length) throw new Error('the bench index listed no models — is the dev server on forge.html?');
 const models = listed.map((m) => m.name);
 const covered = new Set(listed.flatMap((m) => m.covers));
+// What can be looked at and what can be shaped are two counts. A bench with no
+// knobs but the one that picks which model puts that model in front of a camera
+// and nothing more, and reporting that as coverage would overstate by as much as
+// counting benches understated.
+const shaped = new Set(listed.filter((m) => m.recipe).flatMap((m) => m.covers));
 
 /**
  * Two animation frames.
@@ -148,7 +154,7 @@ const gap = total === null
   ? 'census unknown — run npm run export:models'
   : covered.size === 0
     ? `${models.length} benches, coverage undeclared — is this index built from src/forge/recipes.ts?`
-    : `${covered.size} of ${total} assemblies on the bench`;
+    : `${covered.size} of ${total} assemblies on the bench, ${shaped.size} with a recipe`;
 
 // The contact sheet, built from the bytes just written rather than from the
 // files on disk: a `file://` page reading `file://` images is a fight with

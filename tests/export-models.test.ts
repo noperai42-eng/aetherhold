@@ -201,11 +201,11 @@ describe('a whole export, opened the way a consumer would open it', () => {
   });
 
   it('is the census the forge bench measures its own coverage against', () => {
-    // The contact sheet says "N of 42 assemblies on the bench", and until this
-    // round N was the number of benches. Six benches shape sixteen files —
-    // the wood is two crowns, the stack is eight, the herd is four — so the
-    // line understated by nearly three to one, in the cautious direction, which
-    // is why it stood for four rounds without anyone catching it.
+    // The contact sheet says "N of 42 assemblies on the bench". For four rounds
+    // N was the number of benches, and a bench is not a model — the wood is two
+    // crowns, the stack is eight, the herd is four — so six benches shaping
+    // sixteen files read as six, understating by nearly three to one. In the
+    // cautious direction, which is why nobody caught it.
     //
     // This is the half of that count the bench cannot check for itself. The
     // manifest is written by the export and `.gitignore` covers it, so
@@ -215,25 +215,30 @@ describe('a whole export, opened the way a consumer would open it', () => {
     // red here, which is the right way round.
     const covered = BENCHES.flatMap((b) => [...b.covers]);
     for (const name of covered) expect(manifest.models[name], name).toBeTruthy();
-    expect(covered.length).toBe(16);
+    expect(covered.length).toBe(42);
     expect(Object.keys(manifest.models).length).toBe(42);
   });
 
-  it('has twenty-six left, and every one of them is a building', () => {
-    // What the honest number is for. Sixteen of forty-two is not a shortfall
-    // spread thinly over the game; it is one family, deferred on purpose. Every
-    // name the bench does not claim is a bare building — no dot in it, because
-    // the dotted names are exactly the families that come in variants and every
-    // one of those is on the bench already.
+  it('has nothing left over, in either direction', () => {
+    // The count closed this round, and a count that has closed is worth more as
+    // a pin than one that has not: while sixteen of forty-two was the number,
+    // this test could only say how far behind the bench was, and the figure had
+    // to be edited every time it caught anything. Nothing left over needs no
+    // maintenance and goes red on its own.
     //
-    // So this goes red two ways, and both are worth knowing. A new building
-    // makes it twenty-seven and says the bench fell further behind. A new
-    // *dotted* model — a fifth species, a ninth resource — fails the second
-    // assertion instead and says a family that has a bench grew past it.
+    // It goes red two ways, and both are the thing worth knowing. A new model
+    // in the game that no bench claims lands in `unbenched` and says the bench
+    // fell behind again. A name a bench claims that the export does not write
+    // lands in `phantom` and says a bench is shaping something that is not
+    // there any more — the failure mode of a hand-written roster, and the one a
+    // count alone would let through, because dropping a model and adding one in
+    // the same round leaves the total where it was.
     const covered = new Set(BENCHES.flatMap((b) => [...b.covers]));
-    const left = Object.keys(manifest.models).filter((n) => !covered.has(n)).sort();
-    expect(left.length).toBe(26);
-    expect(left.filter((n) => n.includes('.'))).toEqual([]);
+    const shipped = new Set(Object.keys(manifest.models));
+    const unbenched = [...shipped].filter((n) => !covered.has(n)).sort();
+    const phantom = [...covered].filter((n) => !shipped.has(n)).sort();
+    expect(unbenched).toEqual([]);
+    expect(phantom).toEqual([]);
   });
 
   it('says which parts wore a borrowed colour', () => {

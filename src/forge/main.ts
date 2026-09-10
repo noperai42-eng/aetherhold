@@ -23,7 +23,7 @@ import './forge.css';
 
 import { BuildingsView } from '../client/render/buildings';
 import { knobsFromSearch, recipeText, searchOf } from './address';
-import { benchWorld, forge, forgeSeeds, prototypes } from './forge';
+import { benchWorld, forge, forgeSeeds, gridSeeds, prototypes, standBuildings } from './forge';
 import { BENCHES, benchByName, type Bench, type Knobs } from './recipes';
 import { Stage } from './stage';
 
@@ -45,8 +45,19 @@ function index(missing: string): string {
   // `data-covers` is what `scripts/look/forge.mjs` reads to say how much of the
   // game is on the bench, and it is on the index rather than fetched because the
   // index is the one page that lists every bench without building any of them.
+  //
+  // `data-recipe` splits that number in two, and the split is the point. A bench
+  // can show a model without shaping it: the buildings arrived with no fields
+  // but the one that picks which building, so all forty-two of the game's models
+  // can be looked at while sixteen of them have a recipe behind the glass. One
+  // number for both would read as the second and be true only of the first,
+  // which is the failure the round before this one spent itself correcting in
+  // the other direction. It is not worth fixing an understatement by shipping an
+  // overstatement.
   const rows = BENCHES.map((b) =>
-    `<div><a href="?model=${b.name}" data-covers="${b.covers.join(',')}">${b.name}</a> — ${b.note}</div>`,
+    `<div><a href="?model=${b.name}" data-covers="${b.covers.join(',')}" data-recipe="${
+      b.recipe(b.defaults) === null ? 'no' : 'yes'
+    }">${b.name}</a> — ${b.note}</div>`,
   ).join('');
   return `<div class="caption">${head}</div><div class="index">${rows}</div>`;
 }
@@ -117,6 +128,10 @@ function start(bench: Bench, params: URLSearchParams): void {
 
   const canvas = document.getElementById('stage') as HTMLCanvasElement;
   const world = benchWorld();
+  // Before the prototypes are read, not after: a pool with nothing standing in
+  // it never had a tint written, and every building would come off the bench
+  // wearing the near-white its material waits to be multiplied by.
+  standBuildings(world);
   const view = new BuildingsView();
   const protos = prototypes(world, view);
   const stage = new Stage(canvas, world);
@@ -225,8 +240,7 @@ function start(bench: Bench, params: URLSearchParams): void {
    * only thing that decides them.
    */
   function drawGrid(): void {
-    const first = knobs[bench.seedKey] ?? 0;
-    const seeds = Array.from({ length: bench.grid ?? GRID }, (_, i) => first + i * bench.seedStep);
+    const seeds = gridSeeds(bench, knobs[bench.seedKey] ?? 0);
     const made = forgeSeeds(bench, knobs, seeds, protos);
     report(made.flatMap((m) => m.problems));
     stage.show(
