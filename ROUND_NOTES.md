@@ -4,6 +4,130 @@ One round, one measured gap, one fix. Newest first.
 
 ---
 
+## 2026-09-09 — The room every frame is taken in, which three rounds complained about and none had measured
+
+**Track: the forge.** Not a family — the stage. `src/forge/stage.ts` is the one file
+on the bench that no test had ever touched, and it is the file every frame the look loop
+judges goes through.
+
+### Why the stage
+
+Because the contact sheet asked for it three rounds running, in the same words. The piles
+round wrote that "the pitch is a function of footprint and nothing else". The animals round
+sharpened it to "two thirds of that frame is grass" and then could not judge how big the
+four species should look beside each other, *because* of it — the frame that judgement
+needed was the frame the complaint was about. And r24's sheet added a third symptom on its
+own: the tree grid is pulled back far enough that the background plane runs out and sky
+shows at the top of the frame, which no other frame on the sheet does.
+
+Three complaints, no number. There are twenty-seven buildings left to photograph through
+this lens, and fixing the instrument before using it twenty-seven more times is what
+"driven by the contact sheet" means.
+
+### The measured gap
+
+The metric the two briefs were reaching for: what fraction of the frame the subject
+actually occupies. Screen space and not metres — the models lie flat on the ground and the
+camera looks down at them from 27 degrees, so a grid that is wide and shallow in metres is
+wide and *short* in the picture, and metres cannot say that.
+
+| bench | shipped | pitch per axis | + aspect-invariant box fit | + live-aspect box fit | best columns |
+| --- | --- | --- | --- | --- | --- |
+| stone | 28% | 28% | 28% | 39% | 29% @ 3 |
+| grass | 30% | 30% | 31% | 43% | 30% @ 4 |
+| tree | 31% | 32% | 32% | 42% | 32% @ 3 |
+| stack | 28% | 28% | 29% | 39% | 32% @ 3 |
+| animal | **23%** | **34%** | 38% | 38% | 34% @ 4 |
+| settler | 27% | 33% | 35% | 41% | 33% @ 4 |
+
+The table names one culprit and clears two.
+
+The culprit is the pitch, and it is `GAP`'s own wording broken. The field is documented as
+"how far apart two models in a grid stand, **as a fraction of the wider one**", and the code
+took the widest *dimension* of any model and stepped by it on x and on z alike. A family
+whose models are long and thin therefore paid its own length as the gap between columns
+that are a third as wide. The herd stands along z: four fenwolves 0.58 m through the
+shoulder were spaced 2.32 m apart across, in a picture meant to let a mossback be compared
+with a dunhare. Reading each axis off that axis gives 0.84 across and 2.32 along, and takes
+the herd from 23 per cent of the frame to 34. It is worth nothing at all to the four
+families whose footprints are square, which is the right signature for a fault that only
+touches models that are longer than they are wide.
+
+### What was fixed, and what was not
+
+The pitch was fixed. The two suspects the earlier briefs also named were measured and
+acquitted, which is worth as much.
+
+`COLUMNS = 4` is argued in a comment — "past that a grid of twelve is a strip of stamps" —
+and had never been checked. Measured, four is within one point of the best column count for
+five of the six families. Only the piles want three, and they want it by four points, so
+that is the one brief left: shoot the eight stacks at three to a row beside four and judge
+whether a squarer block reads better, which is what a number says and what a number cannot
+settle.
+
+The sphere is the more interesting acquittal. `fitDistance` frames a sphere round the
+bounding box rather than the box, and that costs a third of the subject — 28 per cent
+becomes 40 if the box is fitted against both fields. But almost none of that gain is the
+sphere being loose: on a square canvas the exact fit is four centimetres tighter over
+thirty-four metres. Almost all of it is the canvas being wider than it is tall, and banking
+it would make every frame a function of the window it was taken in. That is the one thing
+the rest of the file is arranged not to be — it is why the `Viewport` is pinned at `high`
+rather than guessed from the machine, so that "a bench frame that gains a shadow when it is
+opened on a different laptop is not a frame two rounds can be compared across". The same
+argument covers the window. So the sphere stays, and the trade is now written into its doc
+in numbers instead of claimed in a sentence, with a test holding both sides.
+
+One thing put right in passing: `show`'s doc said "every model already has its feet at
+y = 0", which last round's settlers made false — a walking settler bobs and a sleeping one
+is rolled onto its side and raised off the turf. The layout was already an addition rather
+than an assignment so nothing was broken, but the doc that would have warned the next person
+had been wrong for a round, and a test now holds that the lift survives the grid.
+
+### What the frames said
+
+The herd is the frame to look at. Four animals that stood in a line across seven and a half
+metres of turf now stand in a line across three, and the mossback, the fenwolf, the
+brambletail and the dunhare are finally near enough each other to be compared — which is
+what the animals round asked for and could not have. The tree grid still shows sky, because
+that is the sphere and the sphere is staying.
+
+The frames also found the round's third thing, which no brief had asked for and which took
+two wrong answers before it got an honest one. With the pitch tightened, three of the six
+families came up big enough to show that they are crowded. The eight piles are the worst:
+a barrel lies across a crate, the green mound is half behind another crate, and what the
+frame shows is one heap rather than eight kinds. The twelve trees interpenetrate badly
+enough that few silhouettes can be read whole. The eight settlers overlap arm across body.
+The other three read clean — the stones are a lattice with air round every one, the four
+animals stand well apart, and the grass is ground cover where the question does not arise.
+
+Then two attempts to make that a number, both thrown out by the frames, which is the part
+worth keeping. The first said a row clears the row in front where `pitch.z` beats
+`height / tan 27`. That forgets the azimuth: the camera stands 43 degrees round, so a step
+along z is not a step away from it, and the threshold is wrong by half. The second fixed the
+trigonometry and counted screen-space bounding-box intersections instead — and ranked the
+stones third-worst on a bench whose stone frame has clear air round every stone.
+
+Both failed underneath for one reason: **a bounding box is not a silhouette.** The animal box
+is topped by a hunt marker floating half a metre above the beast, so the herd measures as the
+tallest family here and photographs as the airiest. The settler box is as wide as an
+outstretched arm and as full of holes. This bench has already met that instrument once — last
+round found two settler poses sharing a box while their arms differed, and read the four limb
+rotations instead — and meeting it twice in two rounds is the lesson, not the arithmetic. Two
+tests were written on the first threshold and deleted when the frames came back; nothing here
+pins a crowding number, because nothing measured one that survived being looked at.
+
+So the crowding stays where the columns brief already was: a look-loop judgement. Column count
+does not change whether one model hides another at a fixed pitch. What it changes is how many
+neighbours each model has, and twelve to a row is a single row that hides nothing at all and is
+also twelve specks in a frame framed by a sphere. Two costs on opposite sides of one question.
+**Brief: shoot the piles, the trees and the settlers at two, three, four and six to a row and
+judge where a family stops reading as a lineup and starts reading as a crowd — the same brief
+as the piles-at-three above, and the pile frame is the worst crowd on the bench, so start
+there.** The twenty-seven buildings are the most unequal set of heights this bench will ever
+hold, so this wants settling before they arrive rather than after.
+
+---
+
 ## 2026-09-09 — A walking settler touches the ground three times a stride, and the eye it carries dips
 
 **Track: the forge.** Stage 5 of [FORGING.md](FORGING.md), fourth family and the last one that

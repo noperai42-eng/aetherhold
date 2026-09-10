@@ -614,6 +614,95 @@ computes — is 0.12628. The shipped body sits five per cent under its own ceili
 right side of the line and it is a narrower margin than the doc reads as, so the bench refuses
 anything past it and a drill that nudged the splay by one hundredth turned nine tests red.
 
+**Built — the stage, 2026-09-09.** Not a family. The room every family is
+photographed in, taken on because the contact sheet asked for it three rounds
+running and `src/forge/stage.ts` was the one file on the bench that no test had
+ever touched. The piles round wrote that "the pitch is a function of footprint
+and nothing else"; the animals round sharpened it to "two thirds of that frame is
+grass" and could not judge the four species' sizes because of it; and r24's sheet
+added a third symptom, a tree grid pulled back far enough that the background
+plane runs out and sky shows. Nothing could say how much, because nothing
+measured it.
+
+The fault is the pitch, and it is `GAP`'s own wording broken. The field is
+documented as "how far apart two models in a grid stand, **as a fraction of the
+wider one**", and the code took the widest *dimension* of any model and stepped
+by it on x and z alike. A family whose models are long and thin therefore paid
+its own length as the gap between columns that are a third as wide. The herd
+stands along z: four fenwolves 0.58 m through were spaced 2.32 m apart across,
+and got 23 per cent of the frame. `gridPitch` now reads each axis off that axis
+— 0.84 across, 2.32 along — and the same four get 34.
+
+The measurement is the round's real product, and it is the thing the two earlier
+briefs were reaching for: what fraction of the frame the subject actually
+occupies, in screen space rather than in metres, because a grid that is wide and
+shallow on the ground is wide and *short* in the picture and metres cannot say
+that. Written out per family, as it is: stone 28, grass 30, tree 32, stack 28,
+animal 34, settler 33.
+
+Two suspects were measured and acquitted, which is worth as much as the
+conviction. `COLUMNS = 4` is argued in a comment — "past that a grid of twelve is
+a strip of stamps" — and never checked; measured, four is within a point of the
+best column count for five of the six families. Only the piles want three, and
+they want it by four points. **Brief: shoot the eight stacks at three to a row
+beside four and judge whether a squarer block of piles reads better than a row of
+four and a row of four, which is what the number says and what a number cannot
+settle.**
+
+The second acquittal is the sphere. `fitDistance` frames a sphere round the
+bounding box rather than the box, which costs a third of the subject: an exact
+fit against both fields takes every family from about 28 per cent to about 40.
+Measured, almost none of that is the sphere being loose — on a square canvas the
+exact fit is four centimetres tighter over thirty-four metres — and almost all of
+it is the canvas being wider than it is tall. Banking it means every frame
+becomes a function of the window it was taken in, which is the one thing the rest
+of that file is arranged not to be: the same argument the `Viewport` is pinned at
+`high` for. So the sphere stays, the trade is written into its doc in numbers
+rather than claimed in a sentence, and a test holds both sides of it.
+
+The frames the fix produced found the round's third thing, which no brief had
+asked for. With the pitch tightened, three of the six families came up large
+enough to show that they are crowded — the eight piles read as one heap with a
+barrel across a crate and the mound half behind another, the twelve trees
+interpenetrate so that few silhouettes can be read whole, and the eight settlers
+overlap arm across body. The other three read clean: the twelve stones are a
+lattice with air round every one of them, the four animals stand apart, and the
+grass is ground cover where the question does not arise.
+
+What is worth writing down is the two attempts to turn that into a number, both
+of which the frames threw out. The first said a row clears the row in front when
+`pitch.z` beats `height / tan 27`; it forgot that the camera stands at 43 degrees
+of azimuth, so a step along z is not a step directly away from it. The second
+corrected the trigonometry and counted screen-space bounding-box overlaps, and
+ranked the stones as the third-worst family on the bench — against a frame in
+which no stone touches another. Both failed the same way underneath: **a bounding
+box is not a silhouette.** The animal box is topped by a hunt marker floating a
+half-metre clear of the beast, so the herd measures as the tallest family on the
+bench and photographs as the airiest; the settler box is as wide as an
+outstretched arm and as full of gaps. This bench has met that instrument before —
+the settler round found two poses sharing a box while their arms differed, and
+read the four limb rotations instead.
+
+So the crowding stays a look-loop judgement, which is what the columns brief above
+already was, and this widens it rather than replacing it. Column count does not
+change whether one model hides another at a fixed pitch; what it changes is how
+many neighbours each model has. Twelve to a row is a single row that hides nothing
+and is also twelve specks in a frame framed by a sphere. Two costs on opposite
+sides of one question, and no number on the bench has yet been able to stand
+between them. **Brief: shoot the piles, the trees and the settlers at two, three,
+four and six to a row, and judge where a family stops reading as a lineup and
+starts reading as a crowd — this is the same brief as the piles-at-three above,
+and the pile frame is the worst crowd on the bench, so start there.** The
+twenty-seven buildings are the most unequal set of heights this bench will ever
+hold, so this wants settling before they arrive rather than after.
+
+One smaller thing the round put right in passing. `show`'s doc said "every model
+already has its feet at y = 0", which the settlers made false last round — a
+walking settler bobs and a sleeping one is rolled onto its side and raised off
+the turf. The layout was already an addition rather than an assignment, so
+nothing was broken; a test now holds that it stays one, because the doc that
+would have warned the next person had been wrong for a round.
+
 ## The order of work
 
 Stages 0, 1 and 2 are one piece of work and should be done together; a recipe with

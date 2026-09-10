@@ -32,13 +32,101 @@ import type { World } from '../sim/types';
  * and a longhouse cannot space them in metres.
  */
 const GAP = 0.45;
-/** At most four to a row: past that a grid of twelve is a strip of stamps. */
+/**
+ * At most four to a row: past that a grid of twelve is a strip of stamps.
+ *
+ * Measured after the fact rather than argued: at the fit this stage actually
+ * uses, four is within a point of the best column count for five of the six
+ * families on the bench, and costs the piles four. See `tests/forge-stage.test.ts`.
+ */
 const COLUMNS = 4;
-/** Three-quarter: round to the left of the sun and up enough to see the ground. */
-const AZIMUTH = Math.PI * 0.24;
-const ELEVATION = Math.PI * 0.15;
+/**
+ * Three-quarter: round to the left of the sun and up enough to see the ground.
+ *
+ * Exported because a test that measures what a frame shows has to project onto
+ * the axes this camera actually uses. A test carrying its own copy of 27 degrees
+ * still passes when this line changes, which makes it a decoration rather than
+ * a pin.
+ */
+export const AZIMUTH = Math.PI * 0.24;
+export const ELEVATION = Math.PI * 0.15;
 /** Air left round the bounding sphere, so nothing is cropped by a lens change. */
 const MARGIN = 1.22;
+
+/**
+ * The footprint a grid steps by, one number per axis.
+ *
+ * Per axis and not one number for both, which is what `GAP`'s own wording asks
+ * for and what the code did not do: it took the widest *dimension* of any model
+ * and stepped by that on x and on z alike, so a family whose models are long and
+ * thin paid its own length as the gap between columns that are a third as wide.
+ * The herd stands along z: four fenwolves 0.58 m through the shoulder were
+ * spaced 2.32 m apart across, in the frame that was supposed to let a mossback
+ * be compared with a dunhare. A footprint has two numbers and this reads both.
+ *
+ * Still the widest model rather than each model's own, because a grid with a
+ * ragged pitch is a grid nothing can be measured against.
+ */
+export function gridPitch(models: readonly THREE.Object3D[]): { x: number; z: number } {
+  const box = new THREE.Box3();
+  const size = new THREE.Vector3();
+  let x = 0;
+  let z = 0;
+  for (const m of models) {
+    box.setFromObject(m);
+    box.getSize(size);
+    x = Math.max(x, size.x);
+    z = Math.max(z, size.z);
+  }
+  return { x: x * (1 + GAP), z: z * (1 + GAP) };
+}
+
+/**
+ * Lay these out in rows of `columns`, centred on the origin. Mutates positions.
+ *
+ * Returns the pitch it used, because the pitch is the thing a test can hold and
+ * the arrangement is the thing a frame shows.
+ */
+export function placeGrid(
+  models: readonly THREE.Object3D[],
+  columns: number = COLUMNS,
+): { x: number; z: number } {
+  const pitch = gridPitch(models);
+  const cols = Math.min(columns, models.length);
+  const rows = Math.ceil(models.length / cols);
+  models.forEach((m, i) => {
+    const col = i % cols;
+    const row = Math.floor(i / cols);
+    m.position.x += (col - (cols - 1) / 2) * pitch.x;
+    m.position.z += (row - (rows - 1) / 2) * pitch.z;
+  });
+  return pitch;
+}
+
+/**
+ * How far back a camera with this vertical field must stand to hold the box.
+ *
+ * A sphere round the box, deliberately. What it buys is that the framing is a
+ * function of what is standing there and of nothing else: a sphere has no aspect
+ * and no yaw, so the same recipe photographed in a tall window and a wide one
+ * comes back the same size, and two rounds of the look loop are comparable.
+ *
+ * What it costs is a third of the subject: fitting the box itself against both
+ * fields takes every family on the bench from about 28 per cent of the frame to
+ * about 40. Measured, that gain is almost none of it the sphere being loose —
+ * on a square canvas an exact fit is four centimetres tighter over thirty-four
+ * metres — and almost all of it the canvas being wider than it is tall. Banking
+ * it means every frame becomes a function of the window it was taken in, which
+ * is the one thing the rest of this file is arranged not to be. See
+ * `tests/forge-stage.test.ts`, which measures both.
+ *
+ * The vertical field is the one the lens quotes; the horizontal follows the
+ * aspect, so a wide canvas is never the tighter of the two and this is safe.
+ */
+export function fitDistance(box: THREE.Box3, fov: number): number {
+  const radius = box.getSize(new THREE.Vector3()).length() / 2;
+  return (radius / Math.sin(fov / 2)) * MARGIN;
+}
 
 export class Stage {
   readonly viewport: Viewport;
@@ -73,34 +161,21 @@ export class Stage {
   }
 
   /**
-   * Stand these on the ground, spaced by the widest of them, and frame the lot.
+   * Stand these on the ground, spaced by the widest footprint among them, and
+   * frame the lot.
    *
-   * Every model already has its feet at y = 0 and its own middle over the
-   * origin, so laying out a grid is a translation in x and z and nothing else.
+   * Every model is built with its own middle over the origin, so laying out a
+   * grid is a translation in x and z and nothing else — and an addition rather
+   * than an assignment, because a model may carry a lift of its own (a walking
+   * settler bobs, a sleeping one is rolled onto its side and raised off the
+   * turf) and the grid has no business flattening it.
    */
   show(models: readonly THREE.Object3D[]): void {
     for (const old of [...this.shown.children]) this.shown.remove(old);
     if (!models.length) return;
 
-    const box = new THREE.Box3();
-    const size = new THREE.Vector3();
-    let pitch = 0;
-    for (const m of models) {
-      box.setFromObject(m);
-      box.getSize(size);
-      pitch = Math.max(pitch, size.x, size.z);
-    }
-    pitch *= 1 + GAP;
-
-    const cols = Math.min(COLUMNS, models.length);
-    const rows = Math.ceil(models.length / cols);
-    models.forEach((m, i) => {
-      const col = i % cols;
-      const row = Math.floor(i / cols);
-      m.position.x += (col - (cols - 1) / 2) * pitch;
-      m.position.z += (row - (rows - 1) / 2) * pitch;
-      this.shown.add(m);
-    });
+    placeGrid(models);
+    for (const m of models) this.shown.add(m);
 
     this.frame();
   }
@@ -109,11 +184,7 @@ export class Stage {
   private frame(): void {
     const box = new THREE.Box3().setFromObject(this.shown);
     const centre = box.getCenter(new THREE.Vector3());
-    const radius = box.getSize(new THREE.Vector3()).length() / 2;
-    const fov = (this.camera.fov * Math.PI) / 180;
-    // The vertical field is the one the lens quotes; the horizontal follows the
-    // aspect, so a wide canvas is never the tighter of the two and this is safe.
-    const dist = (radius / Math.sin(fov / 2)) * MARGIN;
+    const dist = fitDistance(box, (this.camera.fov * Math.PI) / 180);
     const dir = new THREE.Vector3(
       Math.cos(ELEVATION) * Math.cos(AZIMUTH),
       Math.sin(ELEVATION),
