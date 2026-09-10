@@ -742,6 +742,44 @@ them. The pin that came out of it is the first test to hold what `GAP` promises,
 the next person to see a crowded bench frame can stop looking for a spacing bug and go
 and move the camera.
 
+**Built — a count for each family, 2026-09-10.** The wiring the round before
+decided. `Bench.columns` carries what its frames were judged at: the wood and the
+piles at three, the eight settlers at six, and the stones, the grass and the herd
+left at four, which is now what `COLUMNS` means — the count for a family that does
+not name its own. `main.ts` takes the address first and the bench second, and puts
+only the address's answer back in the address, because a bench's own count comes
+back from `?model=` alone and stamping it would freeze today's number into a link
+meant to show the shipped frame whatever it becomes.
+
+The proof it reaches a browser and not only a test: every family's shipped grid
+frame is now byte-identical to its arrangement frame at the chosen count — the
+wood's to the one shot at three, the piles' to three, the settlers' to six, and the
+other three to four, same SHA-1 file by file. Three of last round's fill numbers
+moved with it and were re-read rather than re-fitted. The piles gained the four
+points four was costing them and now sit at 32. The wood held at 32, because its
+pitch is square and three-by-four frames almost exactly as four-by-three does. The
+settlers gave up four and sit at 29, which is the one count on this bench chosen
+against the fill: what is wrong with eight poses at four to a row is not their size
+but which of them is behind which, and no amount of frame-filling fixes an arm
+through a body.
+
+Reading the shipped frames back found the thing this round is actually worth, and
+it is not the counts. The wood's picture is a third sky across its top quarter, and
+it was the same third at four, so the arrangement did not cause it. The bench lays
+a 200 m square of turf under the subject; `fitDistance` stands the camera on the
+line out of the subject's centre, so a wood four metres tall at its middle rides
+the camera up with it while the pitch stays 27 degrees down, and the frame's two
+top corners land 105 m out. A corner ray carries the horizontal half field as well
+as the vertical one and leaves along the diagonal, where a square plane's edge is
+nearest — the middle of that same top edge is still turf at 71 m, which is why the
+rim shows in the corners and nowhere else. All six reaches are written down (35,
+11, 105, 21, 25, 43), so the wood is one family over an edge the rest are nowhere
+near. **Brief: widen the turf until no frame on this bench sees its edge, and shoot
+the wood before and after.** It is one number in `stage.ts` and it is not a silent
+edit, because it changes what is behind every tree in every frame two rounds are
+compared across, and because a plane large enough to swallow twenty-seven buildings
+is worth sizing once against the family that has not arrived yet rather than twice.
+
 ## The order of work
 
 Stages 0, 1 and 2 are one piece of work and should be done together; a recipe with

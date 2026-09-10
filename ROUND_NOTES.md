@@ -4,6 +4,97 @@ One round, one measured gap, one fix. Newest first.
 
 ---
 
+## 2026-09-10 — Each family gets the count its own frames chose, and the wood turns out to be standing on the edge of the world
+
+**Track: the forge.** The wiring the arrangement round decided, and then the thing
+that fell out of looking at what the wiring shipped.
+
+### The count, which was the whole brief
+
+`Bench.columns`. The wood and the piles at three, the eight settlers at six, and the
+stones, the grass and the herd left at four — which is now what `COLUMNS` means: the
+count for a family that does not name its own. `main.ts` takes the address first and
+the bench second, and puts only the address's answer back in the address. A bench's
+own count comes back from `?model=` alone, so stamping it would make an ordinary
+visit read as a deliberate override, and worse, would freeze today's number into a
+link meant to show the shipped frame whatever the shipped frame becomes.
+
+The proof that it reaches a browser and not only a test is the sweep. Every family's
+shipped grid frame is byte-identical to its arrangement frame at the chosen count —
+the wood's to the one shot at three, the piles' to three, the settlers' to six, and
+the other three to four, same SHA-1 file by file. That is `Bench.columns` travelling
+into a picture, and nothing short of two frames agreeing to the byte says it.
+
+Three of last round's fill numbers moved with it, and were re-read rather than
+re-fitted:
+
+| bench | fill, before | after | why |
+| --- | --- | --- | --- |
+| stack | 28 | **32** | three recovers the four points four was costing it, which was the largest gap on the bench |
+| tree | 32 | **32** | unmoved, and that is the answer: the wood's pitch is square, so three-by-four frames almost exactly as four-by-three does. The count bought silhouettes, not size |
+| settler | 33 | **29** | given up on purpose. Six is the one count here chosen against the fill, because what is wrong with eight poses at four to a row is not their size but which of them is behind which |
+
+The tree's two distance numbers moved with the deeper grid too: an exact box fit is
+now worth sixty-six centimetres on a square canvas where it was forty-two, because a
+grid three wide and four deep has more to gain from a canvas that is not wider than
+tall. Forty-two, not the four the comment beside those numbers has been claiming: it
+pinned 34.44 and 34.02 and then wrote the difference as four centimetres. The pins
+were right and the sentence about them was not, which is a decimal and not a
+measurement, and is fixed in passing because this round rewrote the sentence anyway.
+
+### The thing the round is actually worth
+
+Reading the shipped frames back, the wood's picture is a third sky across its top
+quarter. It was the same third at four to a row, so the arrangement did not cause
+it — this has been in every tree frame the loop has ever taken and nobody had
+looked.
+
+The bench lays a 200 m square of turf under the subject. `fitDistance` stands the
+camera on the line out of the subject's centre, so a wood four metres tall at its
+middle rides the camera up with it while the pitch stays 27 degrees down, and the
+frame's two top corners land **105 m** from the origin against a turf that stops at
+100. It is the corners and not the top edge: a corner ray carries the horizontal
+half field as well as the vertical one and leaves along the diagonal, where a square
+plane's edge is nearest. The middle of that same top edge is still turf at 71 m,
+which is exactly why the rim shows in the corners of the picture and nowhere else.
+
+All six reaches are written down as they are — 35, 11, **105**, 21, 25, 43 — so the
+wood is one family over an edge the rest are nowhere near, rather than six families
+crowding it. `GROUND` is exported for the same reason `AZIMUTH` and `ELEVATION`
+were: a test carrying its own copy of 200 would still pass after the line moved.
+
+### Verified
+
+- `npx tsc --noEmit` — clean.
+- Two mutations, both caught. `TREE.columns` 3 to 4 turns two tests red; `SETTLER.columns`
+  6 to 4 turns four red, including the one that says what the six counts are. `GROUND`
+  200 to 400 turns the turf pin red.
+- The knob end to end: six shipped frames, six arrangement frames, same bytes.
+- `npm run look:forge .look/shots/forge r27` — 6/6 models, no console errors.
+- `npm test` — **126 files passed and 2 skipped, 2,629 tests passed and 13 skipped**,
+  against 2,627 at the start of the round. The two new ones are the six counts with
+  the shape each makes, and how far past its own turf each frame reaches.
+- That suite does not stand on the final bytes and is not claimed to. Two comment
+  passes landed after it started, one of them a minute in, both in the two forge
+  files; `npx vitest run tests/forge-stage.test.ts tests/forge-recipes.test.ts` on
+  the bytes that ship is **177 passed**, and nothing outside those two files has
+  been touched since the suite began. A suite that predates a line is not evidence
+  about it, so the line it predates is named rather than let stand.
+
+### Next target
+
+- **Widen the turf until no frame on this bench sees its edge, and shoot the wood
+  before and after.** One number in `stage.ts`, and not a silent edit: it changes
+  what is behind every tree in every frame two rounds are compared across. Worth
+  sizing once against the twenty-seven buildings that have not arrived yet rather
+  than twice.
+- The settler arms still cross along a row at every count. Reach against pitch, not a
+  count question, and it wants the one-body-space treatment the animals round got.
+- Still last on purpose: the twenty-seven buildings, and they are the reason the turf
+  is worth doing first.
+
+---
+
 ## 2026-09-10 — Nothing on this bench touches anything, and every family still wants a different number
 
 **Track: the forge.** The stage again, one round on, answering the brief the last one

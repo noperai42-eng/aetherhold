@@ -126,6 +126,21 @@ export interface Bench {
    * even than it is.
    */
   readonly grid?: number;
+  /**
+   * How many to a row, when four is the wrong number for this family.
+   *
+   * Four is the stage's own, and it is the only count any forge frame had ever
+   * been taken at until twenty-four of them were shot at two, three, four and
+   * six. No family is worse at three than at four and two are much better, but
+   * there is no single number underneath either, because a grid trades two
+   * costs against each other: a wide one pulls the camera back until every
+   * model is small, and a deep one puts each row behind the last. Where a
+   * family lands depends on how tall it stands and how much of it has to be
+   * seen past. Left off is four, which is right for the stones, the grass and
+   * the herd. The address can still override it; this is what the shipped frame
+   * is taken at.
+   */
+  readonly columns?: number;
   /** Everything wrong with this set of values, in words. Empty is buildable. */
   problems(k: Knobs): string[];
   /**
@@ -300,6 +315,11 @@ const TREE: Bench = {
   },
   seedKey: 'crownSeed',
   seedStep: 61,
+  // Three. At four the crowns merge and few of the twelve silhouettes read
+  // whole; at three the interpenetration is largely gone and all twelve are
+  // still worth looking at. Six separates them further and shrinks the wood
+  // into a corner of the frame.
+  columns: 3,
   problems(k) {
     const out = boundsProblems(TREE_FIELDS, k);
     const r = treeRecipe(k);
@@ -590,6 +610,14 @@ const STACK: Bench = {
   // eight hand-built shapes in a list, and the next one is the next one.
   seedStep: 1,
   grid: RESOURCE_KINDS.length,
+  // Three, and the only family four actually cost: every other bench was within
+  // a point of its best fill at four and the piles were four points short. At
+  // four the back row is swallowed and the eight read as one heap rather than
+  // eight kinds; at three all eight read, two of them partly. Six reads seven
+  // whole and puts the logs behind the ingots, which is better legibility and a
+  // worse comparison — and comparison is the whole reason eight hand-built
+  // shapes are photographed together.
+  columns: 3,
   problems(k) {
     const out = boundsProblems(STACK_FIELDS, k);
     // The one cross-field rule, and it is a division: `stackSize` ramps from
@@ -862,6 +890,14 @@ const SETTLER: Bench = {
   // list rather than draws from a hash, and the next one is the next one.
   seedStep: 1,
   grid: SETTLER_POSES.length,
+  // Six, and the only family that wants more than four. Eight poses at four put
+  // the middle three in a tangle, an arm through a body; at six every one reads
+  // whole. It is also the one count on this bench chosen against the fill:
+  // fitting the frame prefers four and six gives up four points of it, because
+  // what is wrong at four is not size but which settler is behind which. The
+  // arms still cross along a row at every count, and that is reach against
+  // pitch rather than a count question.
+  columns: 6,
   problems(k) {
     const out = boundsProblems(SETTLER_FIELDS, k);
     // The one cross-field rule, and it is the arms. `armSplay`'s doc argues that

@@ -64,7 +64,7 @@ function chipLabel(bench: Bench, k: Knobs): string {
 }
 
 /**
- * How many to a row, when the address says something other than the default.
+ * How many to a row the address asked for, if it asked for anything.
  *
  * A whole number above nothing or nothing at all. Unlike a recipe field, which
  * `knobsFromSearch` turns into `NaN` on purpose so `boundsProblems` can say
@@ -80,7 +80,14 @@ function columnsFromSearch(params: URLSearchParams): number | undefined {
 
 function start(bench: Bench, params: URLSearchParams): void {
   if (!app) return;
-  const columns = columnsFromSearch(params);
+  // What the address asked for, and what the bench asks for when it did not.
+  // Only the first goes back into the address. A bench's own count is a
+  // property of the bench and comes back from `?model=` alone, so stamping it
+  // would make an ordinary visit read as a deliberate override — and would
+  // freeze today's count into a link that is meant to show the shipped frame
+  // whatever the shipped frame becomes.
+  const asked = columnsFromSearch(params);
+  const columns = asked ?? bench.columns;
   document.title = `${bench.title} — Aetherhold forge`;
 
   app.innerHTML = `
@@ -201,7 +208,7 @@ function start(bench: Bench, params: URLSearchParams): void {
     stage.show(made.group ? [made.group] : [], columns);
     stage.render();
     if (!keep) return;
-    history.replaceState(null, '', searchOf(bench, knobs, columns));
+    history.replaceState(null, '', searchOf(bench, knobs, asked));
     if (made.group) remember();
   }
 

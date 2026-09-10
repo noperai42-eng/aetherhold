@@ -33,13 +33,32 @@ import type { World } from '../sim/types';
  */
 const GAP = 0.45;
 /**
- * At most four to a row: past that a grid of twelve is a strip of stamps.
+ * How many to a row for a family that does not name its own.
  *
- * Measured after the fact rather than argued: at the fit this stage actually
- * uses, four is within a point of the best column count for five of the six
- * families on the bench, and costs the piles four. See `tests/forge-stage.test.ts`.
+ * Measured after the fact rather than argued, and then measured again against
+ * frames. At the fit this stage uses, four is within a point of the best column
+ * count for five of the six families and cost the piles four — but filling the
+ * frame is not the whole of reading a family, and twenty-four frames at two,
+ * three, four and six moved three benches off this number. `Bench.columns`
+ * carries those; this is what is left, which is the stones, the grass and the
+ * herd. See `tests/forge-stage.test.ts`.
  */
 const COLUMNS = 4;
+/**
+ * How wide the turf is, in metres, square and centred under the subject.
+ *
+ * Exported for the same reason the two camera angles are: a test that asks what
+ * a frame shows has to ask it of this number rather than of its own copy. It is
+ * five metres short. `fitDistance` stands the camera on the line out of the
+ * subject's centre, so a wood four metres tall at its middle rides the camera up
+ * with it while the pitch stays 27 degrees down, and the frame's two top corners
+ * land 105 m out — a corner ray carrying the horizontal half field as well as
+ * the vertical one, leaving along the diagonal where a square plane's edge is
+ * nearest. The middle of that top edge is still turf at 71 m, which is why the
+ * rim shows in the corners and nowhere else. No other family's frame reaches
+ * past 43 m. See `tests/forge-stage.test.ts`.
+ */
+export const GROUND = 200;
 /**
  * Three-quarter: round to the left of the sun and up enough to see the ground.
  *
@@ -147,7 +166,7 @@ export class Stage {
     this.viewport.scene.add(this.sky.group);
 
     const ground = new THREE.Mesh(
-      new THREE.PlaneGeometry(200, 200),
+      new THREE.PlaneGeometry(GROUND, GROUND),
       // The colour the map's grass is drawn in, before the season and the snow
       // the terrain mesh mixes over it. Flat on purpose: the ground is here to
       // catch the model's shadow and to say which way is down, and a bench

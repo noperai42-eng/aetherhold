@@ -24,7 +24,7 @@ import { beforeAll, describe, expect, it } from 'vitest';
 import { BuildingsView } from '../src/client/render/buildings';
 import { benchWorld, forgeSeeds, prototypes } from '../src/forge/forge';
 import { BENCHES, benchByName, type Bench, type Prototypes } from '../src/forge/recipes';
-import { AZIMUTH, ELEVATION, fitDistance, gridPitch, placeGrid } from '../src/forge/stage';
+import { AZIMUTH, ELEVATION, GROUND, fitDistance, gridPitch, placeGrid } from '../src/forge/stage';
 
 /** A box of exactly these dimensions, its middle over the origin, feet on the turf. */
 function slab(w: number, h: number, d: number): THREE.Mesh {
@@ -208,17 +208,17 @@ describe('how much of a bench frame the subject gets', () => {
   /**
    * The grid the bench's own `Generate` button builds, laid out and framed.
    *
-   * `columns` left off on purpose where the shipped arrangement is what is being
-   * measured: `placeGrid` carries the stage's own default, so the numbers below
-   * move if `COLUMNS` does, which is what makes them a pin on the frame rather
-   * than on an argument this file chose.
+   * `columns` left off is the shipped arrangement — the bench's own count where
+   * it has one and the stage's where it has not — so the numbers below move if
+   * either does, which is what makes them a pin on the frame rather than on an
+   * argument this file chose. Handed a count, it is the sweep instead.
    */
   function grid(bench: Bench, columns?: number): { shown: THREE.Group; dist: number } {
     const n = bench.grid ?? 12;
     const seeds = Array.from({ length: n }, (_, i) => i * bench.seedStep);
     const models = forgeSeeds(bench, bench.defaults, seeds, protos).map((m) => m.group!);
     expect(models).toHaveLength(n);
-    placeGrid(models, columns);
+    placeGrid(models, columns ?? bench.columns);
     const shown = new THREE.Group();
     for (const m of models) shown.add(m);
     return { shown, dist: fitDistance(new THREE.Box3().setFromObject(shown), FOV) };
@@ -239,9 +239,9 @@ describe('how much of a bench frame the subject gets', () => {
       ['stone', 28],
       ['grass', 30],
       ['tree', 32],
-      ['stack', 28],
+      ['stack', 32],
       ['animal', 34],
-      ['settler', 33],
+      ['settler', 29],
     ]);
   });
 
@@ -283,29 +283,68 @@ describe('how much of a bench frame the subject gets', () => {
     expect(rows).toEqual([
       ['stone', 28, 39],
       ['grass', 30, 43],
-      ['tree', 32, 42],
-      ['stack', 28, 39],
+      ['tree', 32, 43],
+      ['stack', 32, 42],
       ['animal', 34, 38],
-      ['settler', 33, 41],
+      ['settler', 29, 40],
     ]);
     // And where the third comes from, which is the reason it is not being taken
     // here: `fitDistance` takes a box and a lens and nothing else, so twelve
-    // trees stand at one distance in any window. An exact box fit is worth four
-    // centimetres in a square one and pulls four and a half metres closer as the
-    // window widens — so the gain in the column above is not the sphere being
-    // loose, it is the canvas being wider than it is tall, and banking it would
-    // make every frame a function of the window it was taken in.
+    // trees stand at one distance in any window. An exact box fit is worth two
+    // thirds of a metre in a square one and pulls nearly five metres closer as
+    // the window widens — so the gain in the column above is mostly not the
+    // sphere being loose, it is the canvas being wider than it is tall, and
+    // banking it would make every frame a function of the window it was taken
+    // in. The wood is three to a row now, which makes its grid deeper than it
+    // is wide and hands the square canvas more to gain than the four-wide one
+    // gave it: sixty-six centimetres where it was forty-two. Forty-two, and not
+    // the four the line here used to say — 34.44 against 34.02 is 0.42 m, and
+    // the round that wrote it dropped a decimal. The four and a half metres in
+    // the same sentence was right and is now nearly five.
     const { shown, dist } = grid(benchByName('tree')!);
-    expect(Math.round(dist * 100) / 100).toBe(34.44);
-    expect(Math.round(boxDistance(shown, 1) * 100) / 100).toBe(34.02);
-    expect(Math.round(boxDistance(shown, 16 / 9) * 100) / 100).toBe(29.84);
+    expect(Math.round(dist * 100) / 100).toBe(34.43);
+    expect(Math.round(boxDistance(shown, 1) * 100) / 100).toBe(33.77);
+    expect(Math.round(boxDistance(shown, 16 / 9) * 100) / 100).toBe(29.56);
   });
 
-  it('is right to stop at four to a row, which nothing had checked', () => {
-    // `COLUMNS` is argued in a comment — "past that a grid of twelve is a strip
-    // of stamps" — and never measured. Four is within a point of the best
-    // column count for five of the six families and costs the piles four, so
-    // the comment is right and the piles are the one frame worth a brief.
+  it('stands each family at the count its own frames were judged at', () => {
+    // The six counts as literal numbers, and the shape each one actually makes.
+    // Three of them were moved off the stage's four by twenty-four frames of the
+    // same six families at two, three, four and six, so a seventh count arriving
+    // without frames behind it should have to come through here. The second and
+    // third columns are why this is not just the table restated: they are read
+    // back off the laid-out grid, so a count that stopped reaching `placeGrid`
+    // would fail even with the table untouched.
+    const rows = BENCHES.map((b) => {
+      const { shown } = grid(b);
+      const at = shown.children.map((m) => m.position);
+      return [
+        b.name,
+        b.columns ?? 4,
+        new Set(at.map((v) => Math.round(v.x * 1e6))).size,
+        new Set(at.map((v) => Math.round(v.z * 1e6))).size,
+      ];
+    });
+    expect(rows).toEqual([
+      ['stone', 4, 4, 3],
+      ['grass', 4, 4, 3],
+      ['tree', 3, 3, 4],
+      ['stack', 3, 3, 3],
+      ['animal', 4, 4, 1],
+      ['settler', 6, 6, 2],
+    ]);
+  });
+
+  it('gives up fill only where the frames said fill was the wrong judge', () => {
+    // What each family ships at, against what fitting the frame would choose,
+    // in points of picture. `COLUMNS = 4` was argued in a comment — "past that
+    // a grid of twelve is a strip of stamps" — and never measured; measured, it
+    // was within a point for five of six and cost the piles four. The piles now
+    // ship at three and that four is recovered. The settlers are the one family
+    // shipped against this number, and the cost is written here rather than
+    // argued: six gives up four points, because what is wrong with eight poses
+    // at four to a row is not their size but which of them is behind which, and
+    // no amount of frame-filling fixes an arm through a body.
     const rows = BENCHES.filter((b) => (b.grid ?? 12) > 1).map((b) => {
       const n = b.grid ?? 12;
       let best = 0;
@@ -320,16 +359,77 @@ describe('how much of a bench frame the subject gets', () => {
           at = c;
         }
       }
-      const four = grid(b);
-      return [b.name, at, pct(best) - pct(frameFill(four.shown, four.dist))];
+      const shipped = grid(b);
+      return [b.name, at, pct(best) - pct(frameFill(shipped.shown, shipped.dist))];
     });
     expect(rows).toEqual([
       ['stone', 3, 1],
       ['grass', 4, 0],
       ['tree', 3, 0],
-      ['stack', 3, 4],
+      ['stack', 3, 0],
       ['animal', 4, 0],
-      ['settler', 4, 0],
+      ['settler', 4, 4],
+    ]);
+  });
+
+  it('runs out of turf in the wood\'s frame, and in no other', () => {
+    // Found by looking at the shipped frames after the counts moved, and it is
+    // not the counts: the wood's picture is a third sky across its top quarter
+    // at three to a row and was the same third at four. The cause is height.
+    // `fitDistance` puts the camera on the line out of the box's centre, and a
+    // wood's centre is metres up, so the camera rides up with it while the pitch
+    // stays 27 degrees down — and the top of the frame, 19 degrees above that
+    // axis, clears the far edge of a 200 m plane. The number below is where the
+    // top of each frame meets the ground, from the origin, and the wood is the
+    // one family whose frame reaches past the turf it is standing on.
+    const reach = BENCHES.map((b) => {
+      const { shown, dist } = grid(b);
+      const box = new THREE.Box3().setFromObject(shown);
+      const centre = box.getCenter(new THREE.Vector3());
+      const dir = new THREE.Vector3(
+        Math.cos(ELEVATION) * Math.cos(AZIMUTH),
+        Math.sin(ELEVATION),
+        Math.cos(ELEVATION) * Math.sin(AZIMUTH),
+      );
+      const eye = centre.clone().add(dir.clone().multiplyScalar(dist));
+      // The four corners of the frame, not the middle of its top edge. The
+      // middle of the wood's top edge is still turf at 71 m; it is the two top
+      // corners that go over, because a corner ray carries the horizontal half
+      // field as well as the vertical one and leaves along the diagonal, where
+      // a square plane's edge is nearest.
+      const fwd = dir.clone().negate().normalize();
+      const right = new THREE.Vector3().crossVectors(fwd, new THREE.Vector3(0, 1, 0)).normalize();
+      const up = new THREE.Vector3().crossVectors(right, fwd).normalize();
+      const tanY = Math.tan(FOV / 2);
+      let far = 0;
+      for (const sx of [-1, 1])
+        for (const sy of [-1, 1]) {
+          const ray = fwd
+            .clone()
+            .add(right.clone().multiplyScalar(sx * tanY * ASPECT))
+            .add(up.clone().multiplyScalar(sy * tanY))
+            .normalize();
+          // A ray at or above the horizon is off the turf at any size.
+          if (ray.y >= 0) return [b.name, 'sky', false];
+          const hit = eye.clone().add(ray.multiplyScalar(-eye.y / ray.y));
+          far = Math.max(far, Math.abs(hit.x), Math.abs(hit.z));
+        }
+      return [b.name, Math.round(far), far <= GROUND / 2];
+    });
+    // Metres from the origin, against a turf that stops at 100. The wood is over
+    // by five, and the next-widest frame reaches 43 — so this is not a family
+    // being close to the edge, it is one family over it and the rest nowhere
+    // near. Written as it is and not as it should be: the plane is a number in
+    // `stage.ts` and widening it is a look-loop round with frames, because it
+    // changes what is behind every tree in every frame two rounds are compared
+    // across.
+    expect(reach).toEqual([
+      ['stone', 35, true],
+      ['grass', 11, true],
+      ['tree', 105, false],
+      ['stack', 21, true],
+      ['animal', 25, true],
+      ['settler', 43, true],
     ]);
   });
 
