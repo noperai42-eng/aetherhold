@@ -370,20 +370,49 @@ describe('how a grid is spaced and where a model lands', () => {
     expect(over[1]!.position.x).toBeCloseTo(-1.45 / 2, 6);
   });
 
-  it('holds the whole box, from any yaw and at any canvas shape', () => {
-    // The property the sphere is chosen for: turn the subject on the spot and
-    // the distance does not move, so a frame is a function of what is standing
-    // in it and not of which way round it happens to be.
+  it('holds the whole box, and holds it still at ninety degrees and nowhere else', () => {
+    // This pin was called 'from any yaw and at any canvas shape' and the line
+    // under it called that the property the sphere is chosen for. Neither half
+    // is true, and the yaw half is not true by a third. A sphere has no yaw, but
+    // `Box3.setFromObject` has one: it re-measures a turned subject into a box
+    // wide enough to hold its corners where they now reach, and the sphere is
+    // measured from that box. What is left of the claim is pinned here as it is.
     const box = new THREE.Box3(new THREE.Vector3(-3, 0, -1), new THREE.Vector3(3, 2, 1));
     const dist = fitDistance(box, FOV);
     expect(dist).toBeCloseTo(12.4284, 4);
+    // Ninety degrees is the angle the old pin turned, and the only one it could
+    // have turned and still passed: an axis-aligned box lands back on itself. It
+    // is a property of the box, so every fit that reads one has it, which is why
+    // it was never evidence about spheres.
     const turned = new THREE.Box3(new THREE.Vector3(-1, 0, -3), new THREE.Vector3(1, 2, 3));
     expect(fitDistance(turned, FOV)).toBeCloseTo(dist, 6);
+
+    // The same footprint at the angles nobody turned it to, re-measured the way
+    // a re-measure actually works: a 6 by 2 rectangle turned by t reaches
+    // 3|cos t| + |sin t| across and 3|sin t| + |cos t| through.
+    const at = (deg: number) => {
+      const t = (deg * Math.PI) / 180;
+      const x = 3 * Math.abs(Math.cos(t)) + Math.abs(Math.sin(t));
+      const z = 3 * Math.abs(Math.sin(t)) + Math.abs(Math.cos(t));
+      return fitDistance(new THREE.Box3(new THREE.Vector3(-x, 0, -z), new THREE.Vector3(x, 2, z)), FOV);
+    };
+    expect([30, 45, 60].map((d) => Math.round((at(d) / dist - 1) * 1000) / 10)).toEqual([21.3, 24.3, 21.3]);
+    expect(at(90) / dist).toBeCloseTo(1, 12);
+
     // And the whole of the box is inside the vertical field with the stated air
     // round it: half the diagonal, over the distance, against the half-angle.
     const radius = box.getSize(new THREE.Vector3()).length() / 2;
     expect(Math.asin(radius / dist)).toBeLessThan(FOV / 2);
     expect(dist / (radius / Math.sin(FOV / 2))).toBeCloseTo(1.22, 6);
+
+    // The canvas half of the old title is the half that nearly holds, and it is
+    // worth having the edge of it written down rather than the word 'any'. The
+    // sphere is fitted to the vertical field and the horizontal follows the
+    // aspect, so anything wider than this is safe with room over; anything
+    // narrower crops the subject. The loop shoots at 1.2 and a phone held
+    // upright is 0.46, which is the shape this does not cover.
+    const narrowest = Math.tan(Math.asin(Math.sin(FOV / 2) / 1.22)) / Math.tan(FOV / 2);
+    expect(narrowest).toBeCloseTo(0.804, 3);
   });
 });
 
@@ -501,6 +530,36 @@ describe('how much of a bench frame the subject gets', () => {
     expect(Math.round(dist * 100) / 100).toBe(34.47);
     expect(Math.round(boxDistance(shown, 1) * 100) / 100).toBe(33.8);
     expect(Math.round(boxDistance(shown, 16 / 9) * 100) / 100).toBe(29.6);
+  });
+
+  it('frames a turned subject further off, which is what the sphere was said to prevent', () => {
+    // The other half of the trade in the test above, measured, because the doc
+    // claimed it and a claim in a comment is not a measurement. Turning a family
+    // on the spot is supposed to leave the frame alone. Forty-five degrees, per
+    // cent further off:
+    const turnedBy = (b: Bench, deg: number) => {
+      const { shown } = grid(b);
+      shown.rotation.y = (deg * Math.PI) / 180;
+      shown.updateMatrixWorld(true);
+      return fitDistance(new THREE.Box3().setFromObject(shown), FOV);
+    };
+    const rows = BENCHES.map((b) => [b.name, Math.round((turnedBy(b, 45) / turnedBy(b, 0) - 1) * 100)]);
+    expect(rows).toEqual([
+      ['stone', 34],
+      ['grass', 34],
+      ['tree', 26],
+      ['stack', 26],
+      ['animal', 8],
+      ['settler', 11],
+      ['building', 28],
+    ]);
+    // The two that move least are the two whose grids are longest and thinnest —
+    // the herd at 1.81 to 1 and the settlers at 2 to 1, against 1.08 to 1.45 for
+    // the rest — which is the shape a turn has least room to swell. Written as
+    // the ordering it is and not as a formula: a box turned on paper swells by
+    // 36 to 41 per cent for every family here, and the geometry inside the box
+    // swells by less than that and by a different amount each time.
+    for (const b of BENCHES) expect(turnedBy(b, 90) / turnedBy(b, 0)).toBeCloseTo(1, 9);
   });
 
   it('stands each family at the count its own frames were judged at', () => {

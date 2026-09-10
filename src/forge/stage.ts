@@ -187,6 +187,23 @@ export function placeGrid(
  * and no yaw, so the same recipe photographed in a tall window and a wide one
  * comes back the same size, and two rounds of the look loop are comparable.
  *
+ * Half of that is true and the half that is not was doing argument. The aspect
+ * half holds: this takes a lens and a box and no canvas, so a wide window and a
+ * square one stand the camera in the same place. The yaw half does not. A sphere
+ * has no yaw, but the box it is measured from has one, and `Box3.setFromObject`
+ * re-measures it on every call — turn a subject on the spot and its box swells
+ * to hold the corners at their new reach, and the sphere swells with it. On the
+ * bench's own families, turned 45 degrees: the stones are framed 34 per cent
+ * further off, the grass 34, the wood and the stacks 26, the buildings 28, and
+ * fifteen degrees is already worth seventeen on the stones. It holds still at 90
+ * alone, where an axis-aligned box lands back on itself — which is a property of
+ * the box, and every fit that reads one has it. No bench turns a subject on the
+ * spot, which is the move the claim is about — the wood's `twist` yaws a crown
+ * against its own trunk, which is a change of shape, and the bench drops the
+ * hashed yaw the map turns a whole tree by on purpose. So the claim has never
+ * carried weight; it is corrected here because it was being offered as a reason
+ * to keep the sphere, and the reason to keep the sphere is the aspect.
+ *
  * What it costs is a third of the subject: fitting the box itself against both
  * fields takes every family on the bench from about 28 per cent of the frame to
  * about 40. Measured, that gain is almost none of it the sphere being loose —

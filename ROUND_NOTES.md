@@ -4,6 +4,131 @@ One round, one measured gap, one fix. Newest first.
 
 ---
 
+## 2026-09-10 — A sphere has no yaw, but the box it is measured from does
+
+**Track: the forge.** The round went after the eleven models the last one left more than
+half hidden, measured five arrangements and four fits, shipped none of them, and found the
+thing worth fixing somewhere else: a pin whose title claims two properties the code has
+neither of.
+
+### The gap that was aimed at
+
+The target the last round named was the eleven that remain — ten in the stone, the wood and
+the stacks, where every model is one height and no order helps, and one of four animals in
+a single row. It called them a footprint question: whether a grid should step by the widest
+model or by each row's own, and whether a family of four wants a row at all.
+
+### What was measured and thrown away
+
+Each is on top of the shipped height sort, counted the way `hiddenBehind` counts, and the
+cost is what it does to a model's mean apparent size.
+
+| Arrangement | more than half hidden | costs |
+|---|---|---|
+| as it ships | 11 | — |
+| half a pitch across, alternate rows | 15 | up to 18 per cent |
+| half a pitch across, every row, cumulative | 16 | up to 44 per cent |
+| cells laid on the camera's own ground axes | 9 | 26 to 56 per cent |
+| rows opened to clear the tallest at 27 degrees | 1 | 4 to 80 per cent |
+
+Six to a row instead of three or four clears three of the eleven and costs 14 to 54 per
+cent; two and three to a row are a wash or worse on five of the seven.
+
+The camera-axes row is the one that deserved a frame it did not get. It is right in
+principle — the grid is laid out on world x and z and photographed from 43 degrees off
+both, so its rows are not rows on screen — and it is the only thing measured here that
+empties the herd's row entirely. It also hides two more trees than it started with, and
+costs more than a quarter of every model on every bench. Nothing in the table is free the
+way the height sort was free. The eleven are not an arrangement with an answer nobody had
+found yet; they are what this camera costs.
+
+### The gap that was actually there
+
+Pricing those arrangements meant pricing the fit, and `fitDistance` fits the bounding
+sphere of the subject's box against the vertical half-field. Four fits were measured
+against it: the box as the camera actually sees it, a vertical cylinder of the box's ground
+circumradius and its exact height, and both again with the canvas aspect taken back out.
+The two that read the aspect are worth 31 to 45 per cent more subject in every grid frame.
+The two that do not are worth nothing — 1 to 13 per cent of area, mostly 2. The shape is
+not where the third of the frame is. The aspect is.
+
+Which is a result this file already had. `leaves a third of the picture on the table to be
+the same picture in any window` measured that same third and declined it in writing: the
+gain is almost none of it the sphere being loose and almost all of it the canvas being
+wider than it is tall, and banking it would make every frame a function of the window it
+was taken in. That decision stands, and this round does not reopen it.
+
+What that pin does not cover is the other half of the sentence the sphere is defended with.
+`fitDistance`'s doc said a sphere has no aspect and no yaw. The aspect half is true. The
+yaw half is not, and it is not true by a third: a sphere has no yaw, but
+`Box3.setFromObject` has one, and it re-measures a turned subject into a box wide enough to
+hold its corners where they now reach. The sphere is measured from that box. Turned 45
+degrees, on the bench's own families, per cent further off:
+
+| stone | grass | tree | stack | animal | settler | building |
+|---|---|---|---|---|---|---|
+| 34 | 34 | 26 | 26 | 8 | 11 | 28 |
+
+Fifteen degrees is already worth seventeen on the stones. It holds at 90 degrees alone,
+where an axis-aligned box lands back on itself — a property of the box, which every fit
+that reads one has, and so never evidence about spheres. The old pin turned the box 90
+degrees and nothing else, which is the one angle at which it could have passed. And no
+bench turns a subject on the spot, which is the move the claim is about: the wood's `twist`
+yaws a crown against its own trunk, which is a change of shape and not a turn, and the
+bench drops the hashed yaw the map turns a whole tree by on purpose so that the lean reads
+the same on every seed. The claim has never carried weight; it was carrying an argument.
+
+### What did not change
+
+No pixel. `fitDistance`'s body is untouched and the diff in `src/forge/stage.ts` is comment
+only, checked line by line, so there is nothing here for the look loop to judge and no
+sweep was shot.
+
+### The pins
+
+`holds the whole box, and holds it still at ninety degrees and nowhere else` keeps every
+assertion the old title made, turns the same footprint to 30, 45 and 60 degrees — 21.3,
+24.3 and 21.3 per cent further off — and writes down the edge the word "any" was standing
+in for on the canvas half: the sphere is safe at any aspect above 0.804 and crops below it,
+where a phone held upright is 0.46.
+
+`frames a turned subject further off, which is what the sphere was said to prevent` is the
+same measurement on the real families, at 45 degrees and again at 90. Its ordering is
+written as an ordering and not as a formula: the two that move least are the two whose
+grids are longest and thinnest, at 1.81 and 2 to 1 against 1.08 to 1.45 for the rest — and
+the paper version of the sum over-predicts every row, because a box turned on paper swells
+by 36 to 41 per cent for all seven families while the geometry inside it swells by less,
+and by a different amount each time.
+
+The mutation drill: making the sphere forget the subject has a height turns nine tests red,
+both of these among them.
+
+### Verified
+
+Full suite 2654 passed | 13 skipped over 126 files, which is exactly one more than the
+round before: the yaw pin was rewritten in place and one test was added beside it.
+`tsc --noEmit` clean. No sweep was shot, and the reason is checkable rather than asserted —
+`git diff` on `src/forge/stage.ts` has no line in it that is not a comment, so no frame can
+have moved.
+
+One claim in this round was written before it was checked and had to be narrowed. The first
+draft said nothing under `src/forge/` yaws a subject, on the strength of one grep for
+`rotation.y`. `recipes.ts` yaws by quaternion: `twist` spins a tree's crown skirts against
+its trunk. That is a change of shape and not a turn of the subject, so the point stands, but
+it stands narrower than it was written, and it was written into four files before it was
+checked in the second way.
+
+### Next target
+
+The building bench, which is the largest hole left in the plan table and the one the
+contact sheet has been printing for three rounds: 42 of 42 assemblies on the bench, 16 with
+a recipe. The buildings are 26 of the 42 and their bench has one field, which picks which
+building — `recipe: () => null`. Stage 5 says roll the recipe treatment forward family by
+family in the order the frames say, and the frames have been saying the buildings since the
+census started printing the split.
+
+---
+
 ## 2026-09-10 — The tall ones stand at the back, which is a rule about grids and not about buildings
 
 **Track: the forge.** The target the buildings round named, and it turned out not to be

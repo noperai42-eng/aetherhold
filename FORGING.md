@@ -913,6 +913,27 @@ Aetherhold's materials are `MeshStandardMaterial` with an ambient-occlusion bake
 living in vertex colours, so the split is not free and is not obviously worth
 paying for. Revisit if the recipe work makes it cheap.
 
+**Built — what the sphere is actually for, 2026-09-10.** The arrangement question the
+last round left was measured and closed without a change: five arrangements and four fits
+against the eleven models that are still more than half hidden, and not one of them is
+free. Opening the rows clears ten of the eleven and costs up to 80 per cent of every
+model's size; laying the cells on the camera's own ground axes clears the herd's row
+entirely, hides two more trees, and costs a quarter to a half everywhere. The eleven are
+what this camera costs, not a grid nobody has thought of.
+
+What came out of pricing them is a correction. `fitDistance` fits the bounding sphere and
+its doc defended that with two properties: no aspect and no yaw. The first is true and is
+worth a third of every grid frame, which an earlier round measured and chose to leave on
+the table so that a frame is not a function of the window it was taken in. The second is
+false. A sphere has no yaw but `Box3.setFromObject` does, and turning a family 45 degrees
+frames it 8 to 34 per cent further off — the stones by a third, and by seventeen per cent
+at fifteen degrees. It holds at 90 alone, where an axis-aligned box lands back on itself,
+which is the only angle the old pin turned. And no bench turns a subject on the spot: the
+wood's `twist` yaws a crown against its trunk, which is a change of shape, and the bench
+drops the map's hashed whole-tree yaw on purpose. The claim was carrying an argument rather
+than any weight. Corrected in place, pinned at four angles
+and at the aspect below which the sphere crops, 0.804.
+
 **Built — tallest at the back, 2026-09-10.** The arrangement question the buildings round
 left, answered in `placeGrid` rather than on the building bench, because it was never a
 question about the buildings. The camera stands above the grid and off its near corner, so
