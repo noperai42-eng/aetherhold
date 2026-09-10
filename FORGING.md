@@ -764,8 +764,11 @@ but which of them is behind which, and no amount of frame-filling fixes an arm
 through a body.
 
 Reading the shipped frames back found the thing this round is actually worth, and
-it is not the counts. The wood's picture is a third sky across its top quarter, and
-it was the same third at four, so the arrangement did not cause it. The bench lays
+it is not the counts. The wood's picture reads as a third sky across its top quarter
+and mostly is not — the round after this one measured it properly and found 743 sky
+pixels in 1.7 million, two wedges in the top corners, the rest of that dark band
+being turf under the bench's fog. It was the same at four, so the arrangement did not
+cause it either way. The bench lays
 a 200 m square of turf under the subject; `fitDistance` stands the camera on the
 line out of the subject's centre, so a wood four metres tall at its middle rides
 the camera up with it while the pitch stays 27 degrees down, and the frame's two
@@ -779,6 +782,40 @@ the wood before and after.** It is one number in `stage.ts` and it is not a sile
 edit, because it changes what is behind every tree in every frame two rounds are
 compared across, and because a plane large enough to swallow twenty-seven buildings
 is worth sizing once against the family that has not arrived yet rather than twice.
+
+**Built — the turf, sized once, 2026-09-10.** The brief above, done: `GROUND` is 260.
+Chosen against four measurements rather than up to the wood. It clears the wood's
+105 m by a quarter again; it clears the widest twelve-grid of anything the game
+actually has, which is a wood of `tree.b` at 86 m; it clears the twenty-seven
+buildings that have not reached the bench yet, the widest of which is a dozen doors
+at 50 m; and it clears every family on the bench with every slider dragged to the top
+of its range, the widest of those being the grass at 117 m. The one thing it does not
+clear is the wood with every slider at the top, which reaches 450 m — and that is not
+a plane to widen, it is past this camera's own 400 m far plane, so the pin says so
+rather than stopping short of it quietly. Widening costs two triangles: the sun's
+shadow frustum and the sky dome follow the subject's centre, not the ground.
+
+The frames, before and after, and the correction they forced. The wood's picture had
+743 pale sky pixels in 1.7 million — two wedges in the top corners, eleven rows deep,
+tapering from 162 pixels in the top row to two in the eleventh — and has none at all
+now. Every other family's frame is the same picture: at most a hundred pixels moved
+on the stones' shadow edges by up to 29 of 255, which is the shadow coordinate being
+interpolated across a plane a third larger and is not something a reader would see.
+The correction is that the round before called the top of that frame a third sky. It
+is not. The measurement behind that number could not tell sky from turf gone dark,
+and almost all of that band is turf.
+
+**Which is the next brief, and it is a lighting one.** The turf goes dark because
+`Viewport`'s constructor sets `THREE.Fog(0x223040, 40, 130)` and nothing on the bench
+ever replaces it. The game replaces it every frame — `world-view.ts` reads
+`SkyView.fogColor()` and `fogRange(world)` and writes both — so a bench frame hazes
+toward a night-blue that the colony at noon never shows. Measured off the pixels at
+the top of the wood's frame: (36, 51, 65), which is 0x223040 within rounding. That
+contradicts the first paragraph of `stage.ts`, which says nothing in the file is a
+lighting decision because the rig is the game's own. **Brief: sync the bench's fog
+from its own sky the way `world-view.ts` does, and shoot all six before and after.**
+Not folded into this round because the ground has already moved in these frames, and
+two changes in one picture cannot be told apart.
 
 ## The order of work
 

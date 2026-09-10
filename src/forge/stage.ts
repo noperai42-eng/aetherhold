@@ -48,17 +48,28 @@ const COLUMNS = 4;
  * How wide the turf is, in metres, square and centred under the subject.
  *
  * Exported for the same reason the two camera angles are: a test that asks what
- * a frame shows has to ask it of this number rather than of its own copy. It is
- * five metres short. `fitDistance` stands the camera on the line out of the
- * subject's centre, so a wood four metres tall at its middle rides the camera up
- * with it while the pitch stays 27 degrees down, and the frame's two top corners
- * land 105 m out — a corner ray carrying the horizontal half field as well as
- * the vertical one, leaving along the diagonal where a square plane's edge is
- * nearest. The middle of that top edge is still turf at 71 m, which is why the
- * rim shows in the corners and nowhere else. No other family's frame reaches
- * past 43 m. See `tests/forge-stage.test.ts`.
+ * a frame shows has to ask it of this number rather than of its own copy.
+ *
+ * It was 200 and it was five metres short. `fitDistance` stands the camera on
+ * the line out of the subject's centre, so a wood four metres tall at its middle
+ * rides the camera up with it while the pitch stays 27 degrees down, and the
+ * frame's two top corners land 105 m out — a corner ray carrying the horizontal
+ * half field as well as the vertical one, leaving along the diagonal where a
+ * square plane's edge is nearest. The middle of that top edge is still turf at
+ * 71 m, which is why the rim showed in the corners and nowhere else.
+ *
+ * 260 is sized once rather than up to the wood. It clears the wood's 105 by a
+ * quarter again; it clears the widest twelve-grid of anything the game actually
+ * has, which is a wood of `tree.b` at 86 m; it clears the twenty-seven buildings
+ * that have not reached this bench yet, the widest of which is a dozen doors at
+ * 50 m; and it clears every family on the bench with every slider at the top of
+ * its range, the widest of those being the grass at 117 m. The one thing it does
+ * not clear is the wood with every slider at the top, which reaches 450 m — and
+ * that one is not a plane to widen, it is past this camera's own 400 m far
+ * plane. Widening costs two triangles: the sun's shadow frustum and the sky dome
+ * follow the subject's centre, not this. See `tests/forge-stage.test.ts`.
  */
-export const GROUND = 200;
+export const GROUND = 260;
 /**
  * Three-quarter: round to the left of the sun and up enough to see the ground.
  *
@@ -133,11 +144,11 @@ export function placeGrid(
  * What it costs is a third of the subject: fitting the box itself against both
  * fields takes every family on the bench from about 28 per cent of the frame to
  * about 40. Measured, that gain is almost none of it the sphere being loose —
- * on a square canvas an exact fit is four centimetres tighter over thirty-four
- * metres — and almost all of it the canvas being wider than it is tall. Banking
- * it means every frame becomes a function of the window it was taken in, which
- * is the one thing the rest of this file is arranged not to be. See
- * `tests/forge-stage.test.ts`, which measures both.
+ * on a square canvas an exact fit is forty-two centimetres tighter over
+ * thirty-four metres — and almost all of it the canvas being wider than it is
+ * tall. Banking it means every frame becomes a function of the window it was
+ * taken in, which is the one thing the rest of this file is arranged not to be.
+ * See `tests/forge-stage.test.ts`, which measures both.
  *
  * The vertical field is the one the lens quotes; the horizontal follows the
  * aspect, so a wide canvas is never the tighter of the two and this is safe.

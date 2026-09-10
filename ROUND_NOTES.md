@@ -4,6 +4,90 @@ One round, one measured gap, one fix. Newest first.
 
 ---
 
+## 2026-09-10 — The bench stops running out of world, and the dark at the top of the wood turns out not to be sky
+
+**Track: the forge.** The brief the count round wrote, and the correction that
+reading the frames back forced on the round that wrote it.
+
+### The fix, which is one number
+
+`GROUND` was 200 and the wood's frame reached 105 m from the origin at its two top
+corners. It is 260 now. The number is sized once rather than up to the wood, which
+is what the brief asked for, and it was chosen against four measurements:
+
+| what it has to clear | metres from the origin |
+| --- | --- |
+| the wood's shipped frame, which is what found this | 105 |
+| the widest twelve-grid of anything the game actually has (`tree.b`) | 86 |
+| the widest of the twenty-seven buildings that have not reached the bench (a dozen doors) | 50 |
+| every family with every slider at the top of its range, worst being the grass | 117 |
+| the wood with every slider at the top — **not cleared** | 450 |
+
+The last row is the honest one. Eleven metres of tree twelve to a grid reaches 450 m,
+and no plane fixes that, because 450 is past this camera's own 400 m far plane. The
+pin says so rather than stopping short of it quietly.
+
+Widening is free: the sun's shadow frustum and the sky dome follow the subject's
+centre, not the ground, so this is two triangles and no other consequence.
+
+### The correction, which is the part worth reading
+
+The round before this one said the wood's picture was **a third sky across its top
+quarter**. It is not, and the number behind that sentence could not have told the
+difference: it counted every pixel whose blue beat its green, and the bench's fog is
+a dark blue.
+
+Measured properly, by diffing the same frame before and after the plane moved: the
+sky in that picture was **743 pixels of 1.7 million** — two wedges in the top
+corners, eleven rows deep, 162 pixels wide in the top row and two in the eleventh.
+Every one of them is turf now, and the wood's picture has no sky pixel left in it.
+The rest of that dark band was always turf. Small, then, and still the far edge of
+the world in shot, which is the thing a bench cannot have in its pictures.
+
+The other five frames did not move: at most a hundred pixels on the stones' shadow
+edges, by up to 29 of 255, which is the shadow coordinate interpolated across a plane
+a third larger. Nothing a reader would see.
+
+### What the correction found underneath it
+
+The reason a noon frame has a night-blue band at the top at all. `Viewport`'s
+constructor sets `THREE.Fog(0x223040, 40, 130)`; the game replaces it every frame
+from its own sky, `world-view.ts` reading `SkyView.fogColor()` and `fogRange(world)`;
+the bench never does. So the bench's turf hazes toward 0x223040 between 40 m and
+130 m under a noon sky, and the top of the wood's frame measures (36, 51, 65), which
+is that colour within rounding.
+
+That contradicts the first paragraph of `stage.ts`, which says nothing in the file is
+a lighting decision because the rig is the game's own. Fog is a lighting decision and
+it is the one piece never wired.
+
+### Verified
+
+- `npx tsc --noEmit` — clean.
+- `npm run look:forge .look/shots/forge r28` — 6/6 models, no console errors, and the
+  six frames read back against r27 pixel by pixel.
+- Mutations, all caught, and the second one was wrong before it was run. `GROUND`
+  back to 200 turns both turf pins red. 220 — which clears the wood's 105 and not the
+  grass's 117 — turns only the slider pin red and leaves the shipped six green, which
+  is the row that says why the number is not smaller. The note first claimed 240 would
+  do that; 240 is 120 either side and clears the grass, so it would have passed.
+- `npm test` — **126 files passed and 2 skipped, 2,630 tests passed and 13 skipped**,
+  against 2,629 at the start of the round: one test replaced by two. Taken on the bytes
+  that ship — `stage.ts` was restored from its backup five seconds before the run began
+  and nothing under `src/` or `tests/` moved after it.
+
+### Next target
+
+- **Sync the bench's fog from its own sky the way `world-view.ts` does, and shoot all
+  six before and after.** Not folded into this round because the ground has already
+  moved in these frames, and two changes in one picture cannot be told apart.
+- The settler arms still cross along a row at every count. Reach against pitch, not a
+  count question, and it wants the one-body-space treatment the animals round got.
+- Still last on purpose: the twenty-seven buildings, and the turf is now sized for
+  them.
+
+---
+
 ## 2026-09-10 — Each family gets the count its own frames chose, and the wood turns out to be standing on the edge of the world
 
 **Track: the forge.** The wiring the arrangement round decided, and then the thing

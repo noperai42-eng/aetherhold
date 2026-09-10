@@ -22,8 +22,15 @@ import * as THREE from 'three';
 import { beforeAll, describe, expect, it } from 'vitest';
 
 import { BuildingsView } from '../src/client/render/buildings';
+import { assemble } from '../src/tools/assemble';
 import { benchWorld, forgeSeeds, prototypes } from '../src/forge/forge';
-import { BENCHES, benchByName, type Bench, type Prototypes } from '../src/forge/recipes';
+import {
+  BENCHES,
+  benchByName,
+  type Bench,
+  type Knobs,
+  type Prototypes,
+} from '../src/forge/recipes';
 import { AZIMUTH, ELEVATION, GROUND, fitDistance, gridPitch, placeGrid } from '../src/forge/stage';
 
 /** A box of exactly these dimensions, its middle over the origin, feet on the turf. */
@@ -103,6 +110,46 @@ function boxDistance(shown: THREE.Object3D, aspect = ASPECT): number {
   // The same air `fitDistance` leaves, so the two numbers differ by the fit and
   // by nothing else.
   return need * 1.22;
+}
+
+/**
+ * How far from the origin the frame's own corners reach, in metres of turf.
+ *
+ * The four corners and not the middle of the top edge, which is what the round
+ * that found this looked at first and why it read the wood as safe: a corner ray
+ * carries the horizontal half field as well as the vertical one and leaves along
+ * the diagonal, where a square plane's edge is nearest. The wood's top edge is
+ * turf at its middle, 71 m out, and off the end of the world at both corners.
+ *
+ * `Infinity` for a ray at or above the horizon, which no plane of any size
+ * catches.
+ */
+function reach(shown: THREE.Object3D, dist: number): number {
+  const box = new THREE.Box3().setFromObject(shown);
+  const centre = box.getCenter(new THREE.Vector3());
+  const dir = new THREE.Vector3(
+    Math.cos(ELEVATION) * Math.cos(AZIMUTH),
+    Math.sin(ELEVATION),
+    Math.cos(ELEVATION) * Math.sin(AZIMUTH),
+  );
+  const eye = centre.clone().add(dir.clone().multiplyScalar(dist));
+  const fwd = dir.clone().negate().normalize();
+  const right = new THREE.Vector3().crossVectors(fwd, new THREE.Vector3(0, 1, 0)).normalize();
+  const up = new THREE.Vector3().crossVectors(right, fwd).normalize();
+  const tanY = Math.tan(FOV / 2);
+  let far = 0;
+  for (const sx of [-1, 1])
+    for (const sy of [-1, 1]) {
+      const ray = fwd
+        .clone()
+        .add(right.clone().multiplyScalar(sx * tanY * ASPECT))
+        .add(up.clone().multiplyScalar(sy * tanY))
+        .normalize();
+      if (ray.y >= 0) return Infinity;
+      const hit = eye.clone().add(ray.multiplyScalar(-eye.y / ray.y));
+      far = Math.max(far, Math.abs(hit.x), Math.abs(hit.z));
+    }
+  return far;
 }
 
 describe('how a grid is spaced and where a model lands', () => {
@@ -211,12 +258,17 @@ describe('how much of a bench frame the subject gets', () => {
    * `columns` left off is the shipped arrangement — the bench's own count where
    * it has one and the stage's where it has not — so the numbers below move if
    * either does, which is what makes them a pin on the frame rather than on an
-   * argument this file chose. Handed a count, it is the sweep instead.
+   * argument this file chose. Handed a count, it is the sweep instead; handed
+   * knobs, it is whatever a slider can be dragged to rather than what ships.
    */
-  function grid(bench: Bench, columns?: number): { shown: THREE.Group; dist: number } {
+  function grid(
+    bench: Bench,
+    columns?: number,
+    knobs: Knobs = bench.defaults,
+  ): { shown: THREE.Group; dist: number } {
     const n = bench.grid ?? 12;
     const seeds = Array.from({ length: n }, (_, i) => i * bench.seedStep);
-    const models = forgeSeeds(bench, bench.defaults, seeds, protos).map((m) => m.group!);
+    const models = forgeSeeds(bench, knobs, seeds, protos).map((m) => m.group!);
     expect(models).toHaveLength(n);
     placeGrid(models, columns ?? bench.columns);
     const shown = new THREE.Group();
@@ -372,64 +424,90 @@ describe('how much of a bench frame the subject gets', () => {
     ]);
   });
 
-  it('runs out of turf in the wood\'s frame, and in no other', () => {
-    // Found by looking at the shipped frames after the counts moved, and it is
-    // not the counts: the wood's picture is a third sky across its top quarter
-    // at three to a row and was the same third at four. The cause is height.
-    // `fitDistance` puts the camera on the line out of the box's centre, and a
-    // wood's centre is metres up, so the camera rides up with it while the pitch
-    // stays 27 degrees down — and the top of the frame, 19 degrees above that
-    // axis, clears the far edge of a 200 m plane. The number below is where the
-    // top of each frame meets the ground, from the origin, and the wood is the
-    // one family whose frame reaches past the turf it is standing on.
-    const reach = BENCHES.map((b) => {
+  it('stands every frame on its own turf, the wood by a quarter of the plane', () => {
+    // The round before found this by looking, and overstated it: it called the
+    // top of the wood's frame a third sky, when the measurement behind that
+    // number could not tell sky from turf gone dark. The sky was 743 pixels of
+    // 1.7 million, two wedges in the top corners eleven rows deep, and the rest
+    // of that dark band is turf under the bench's fog. Small, and still the far
+    // edge of the world in shot. The cause is height, not arrangement:
+    // `fitDistance` puts the camera on the line out of the box's centre, so a
+    // wood four metres tall at its middle rides the camera up while the pitch
+    // stays 27 degrees down, and the frame's two top corners cleared the far
+    // side of the 200 m plane the bench used to lay. The turf is 260 now, and
+    // the same frame has no sky in it at all.
+    //
+    // Metres from the origin against a half-extent of 130. The wood is the
+    // reason for the number and it is the only family anywhere near the edge:
+    // the next-widest frame is the settlers' at 43, which is a third of the way
+    // out. Written as it is: these six move when the recipes move, and the third
+    // column is the only one that has to stay true.
+    const rows = BENCHES.map((b) => {
       const { shown, dist } = grid(b);
-      const box = new THREE.Box3().setFromObject(shown);
-      const centre = box.getCenter(new THREE.Vector3());
-      const dir = new THREE.Vector3(
-        Math.cos(ELEVATION) * Math.cos(AZIMUTH),
-        Math.sin(ELEVATION),
-        Math.cos(ELEVATION) * Math.sin(AZIMUTH),
-      );
-      const eye = centre.clone().add(dir.clone().multiplyScalar(dist));
-      // The four corners of the frame, not the middle of its top edge. The
-      // middle of the wood's top edge is still turf at 71 m; it is the two top
-      // corners that go over, because a corner ray carries the horizontal half
-      // field as well as the vertical one and leaves along the diagonal, where
-      // a square plane's edge is nearest.
-      const fwd = dir.clone().negate().normalize();
-      const right = new THREE.Vector3().crossVectors(fwd, new THREE.Vector3(0, 1, 0)).normalize();
-      const up = new THREE.Vector3().crossVectors(right, fwd).normalize();
-      const tanY = Math.tan(FOV / 2);
-      let far = 0;
-      for (const sx of [-1, 1])
-        for (const sy of [-1, 1]) {
-          const ray = fwd
-            .clone()
-            .add(right.clone().multiplyScalar(sx * tanY * ASPECT))
-            .add(up.clone().multiplyScalar(sy * tanY))
-            .normalize();
-          // A ray at or above the horizon is off the turf at any size.
-          if (ray.y >= 0) return [b.name, 'sky', false];
-          const hit = eye.clone().add(ray.multiplyScalar(-eye.y / ray.y));
-          far = Math.max(far, Math.abs(hit.x), Math.abs(hit.z));
-        }
+      const far = reach(shown, dist);
       return [b.name, Math.round(far), far <= GROUND / 2];
     });
-    // Metres from the origin, against a turf that stops at 100. The wood is over
-    // by five, and the next-widest frame reaches 43 — so this is not a family
-    // being close to the edge, it is one family over it and the rest nowhere
-    // near. Written as it is and not as it should be: the plane is a number in
-    // `stage.ts` and widening it is a look-loop round with frames, because it
-    // changes what is behind every tree in every frame two rounds are compared
-    // across.
-    expect(reach).toEqual([
+    expect(rows).toEqual([
       ['stone', 35, true],
       ['grass', 11, true],
-      ['tree', 105, false],
+      ['tree', 105, true],
       ['stack', 21, true],
       ['animal', 25, true],
       ['settler', 43, true],
+    ]);
+  });
+
+  it('is wide enough for the families that have not arrived and the sliders that have', () => {
+    // Why 260 and not 220, which would also have covered the wood. A plane large
+    // enough to swallow twenty-seven buildings is worth sizing once against the
+    // family that has not arrived rather than twice, so the number was chosen
+    // against three things this measures and one it cannot.
+    //
+    // First: everything the game actually has, twelve to a grid, whether or not
+    // it has a recipe on this bench yet. That is the whole census — the
+    // twenty-seven buildings included — and the widest of them is a wood of the
+    // second tree at 86 m, which is a smaller wood than the bench's own.
+    const view = new BuildingsView();
+    view.sync(benchWorld());
+    view.bakeOcclusion();
+    const census = assemble(view.group)
+      .map((a) => {
+        const twelve = Array.from({ length: 12 }, () => a.group.clone());
+        placeGrid(twelve);
+        const shown = new THREE.Group();
+        for (const m of twelve) shown.add(m);
+        const box = new THREE.Box3().setFromObject(shown);
+        return { name: a.name, far: box.isEmpty() ? 0 : reach(shown, fitDistance(box, FOV)) };
+      })
+      .sort((a, b) => b.far - a.far);
+    expect(census.length).toBe(37);
+    expect([census[0].name, Math.round(census[0].far)]).toEqual(['tree.b', 86]);
+    expect(census.every((c) => c.far <= GROUND / 2)).toBe(true);
+
+    // Second: every bench with every slider dragged to the top of its range,
+    // which is a frame a person can actually take and the look loop never does.
+    // Five of the six still stand on turf there, the widest being the grass at
+    // 117 m — which is what the extra thirty metres over the wood's 105 is for.
+    //
+    // Third, the one this plane cannot cover: the wood at the top of its sliders
+    // is eleven metres tall and reaches 450 m, and no plane fixes that, because
+    // 450 is past this camera's own 400 m far plane. The row says so rather than
+    // the number quietly stopping short of it.
+    const maxed = BENCHES.map((b) => {
+      const top: Record<string, number> = { ...b.defaults };
+      for (const f of b.fields) if (f.key !== b.seedKey) top[f.key] = f.max;
+      expect(b.problems(top)).toEqual([]);
+      const { shown, dist } = grid(b, undefined, top);
+      const far = reach(shown, dist);
+      return [b.name, Math.round(far), far <= GROUND / 2];
+    });
+    expect(maxed).toEqual([
+      ['stone', 62, true],
+      ['grass', 117, true],
+      ['tree', 450, false],
+      ['stack', 36, true],
+      ['animal', 30, true],
+      ['settler', 86, true],
     ]);
   });
 
