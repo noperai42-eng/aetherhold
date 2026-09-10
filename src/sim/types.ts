@@ -253,6 +253,16 @@ export type Faction = 'colony' | 'raider' | 'wildlife' | 'fauna' | 'trader' | 'p
  */
 export type AnimalKind = 'mossback' | 'dunhare' | 'brambletail' | 'fenwolf';
 
+/**
+ * The four, in one order, the way `RESOURCE_KINDS` lists the eight.
+ *
+ * A union is a set and has no order, and everything that has to walk all four —
+ * the bench that stands them side by side, the tests that measure them — was
+ * reading `Object.keys` off a record and trusting the order a literal happened
+ * to be written in.
+ */
+export const ANIMAL_KINDS: AnimalKind[] = ['mossback', 'dunhare', 'brambletail', 'fenwolf'];
+
 export interface Cell {
   x: number;
   y: number;

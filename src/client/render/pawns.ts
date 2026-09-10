@@ -37,54 +37,89 @@ import { standHeight } from '../../sim/grid';
 import type { AnimalKind, Pawn, World } from '../../sim/types';
 
 /**
- * How far a four-legged body swings a leg. The leg's length is the species'
- * own — a hare crouches on legs a third as long as a mossback's — and lives in
- * its `SpeciesModel`, so the stride is worked out from the leg that is drawn.
+ * The numbers every animal on the map is drawn by, whichever species it is.
+ *
+ * A species' own shape is a table — a barrel's radii, a hem's nine samples, the
+ * rake of an ear — and a table is not draggable on a slider; it is what the JSON
+ * paste in [FORGING.md](../../../FORGING.md) is for. These four are the numbers
+ * that belong to no species in particular, and each was a module constant with
+ * its argument written above it. The arguments are kept, on the fields.
  */
-const ANIMAL_SWING = 0.55;
+export interface AnimalRecipe {
+  /**
+   * How far a four-legged body swings a leg. The leg's length is the species'
+   * own — a hare crouches on legs a third as long as a mossback's — and lives in
+   * its `SpeciesModel`, so the stride is worked out from the leg that is drawn.
+   */
+  readonly swing: number;
+  /**
+   * How big a newborn is beside its dam, as a fraction of her linear size.
+   *
+   * Not the quarter that its carcass is worth — that is a volume and this is a
+   * length, and a body a quarter as long would be a toy standing in the grass.
+   * Just under half reads as young at a glance from the manager camera and is
+   * still a thing you can click.
+   */
+  readonly calf: number;
+  /**
+   * The radius the one shared collar buffer is cut to — a mossback's throat, the
+   * widest neck on the map. Every other species wears the same buffer scaled by
+   * its own `collarR` over this, so the ring is a strap on the neck rather than
+   * a hoop around it.
+   */
+  readonly collarR: number;
+  /**
+   * How far over the top of an animal the hunt marker's point hangs — in world
+   * units, which is the whole of the fix.
+   *
+   * The height was a number in the animal's own body space, multiplied by the
+   * species' size on the way out, so the air under the marker shrank with the
+   * animal: a mossback got twenty-three centimetres of it and a brambletail got
+   * under three. On the small species the marker did not hover over the hide, it
+   * lay on it — and a red-orange shape lying on a grey shoulder is not an order
+   * the player gave, it is a wound the animal took. The clearance is the same for
+   * every species now, and for a calf too: the marker is drawn for the player and
+   * not for the world, so it is sized and hung in the player's units.
+   *
+   * What it is measured from moved as well. It used to be a height each species
+   * declared, and all four declared the crown of the barrel — which on the
+   * mossback leaves the antlers, the ears and the whole head above it, so 0.24 of
+   * air over the back put the marker's point at 1.19 and the mossback's own
+   * silhouette reaches 1.36. The marker sat on the neck and read as a collar. The
+   * rig measures the animal it has just built instead, so a species that grows a
+   * taller crown gets the right clearance without anyone remembering to retype a
+   * number; 0.16 is what that leaves as air, close enough that the eye joins the
+   * marker to the animal and clear of every head on the map.
+   */
+  readonly markClearance: number;
+}
+
+/** What the herds on the map are drawn by today. */
+export const ANIMAL_DEFAULT: AnimalRecipe = {
+  swing: 0.55,
+  calf: 0.45,
+  collarR: 0.15,
+  markClearance: 0.16,
+};
 
 /**
- * How big a newborn is beside its dam, as a fraction of her linear size.
+ * How far a leg has swung at this point in its stride.
  *
- * Not the quarter that its carcass is worth — that is a volume and this is a
- * length, and a body a quarter as long would be a toy standing in the grass.
- * Just under half reads as young at a glance from the manager camera and is
- * still a thing you can click.
+ * One expression, called by the rig on every walking animal and by the bench,
+ * because a stride worked out twice is two strides that agree until somebody
+ * edits one of them.
  */
-const CALF_SCALE = 0.45;
+export function legSwing(phase: number, r: AnimalRecipe = ANIMAL_DEFAULT): number {
+  return Math.sin(phase) * r.swing;
+}
 
 /**
- * The radius the one shared collar buffer is cut to — a mossback's throat, the
- * widest neck on the map. Every other species wears the same buffer scaled by
- * its own `collarR` over this, so the ring is a strap on the neck rather than
- * a hoop around it.
+ * How much of its full size an animal of this maturity is drawn at — the newborn's
+ * fraction at nought, all of it at one, and the whole way up in between.
  */
-const COLLAR_R = 0.15;
-
-/**
- * How far over the top of an animal the hunt marker's point hangs — in world
- * units, which is the whole of the fix.
- *
- * The height was a number in the animal's own body space, multiplied by the
- * species' size on the way out, so the air under the marker shrank with the
- * animal: a mossback got twenty-three centimetres of it and a brambletail got
- * under three. On the small species the marker did not hover over the hide, it
- * lay on it — and a red-orange shape lying on a grey shoulder is not an order
- * the player gave, it is a wound the animal took. The clearance is the same for
- * every species now, and for a calf too: the marker is drawn for the player and
- * not for the world, so it is sized and hung in the player's units.
- *
- * What it is measured from moved as well. It used to be a height each species
- * declared, and all four declared the crown of the barrel — which on the
- * mossback leaves the antlers, the ears and the whole head above it, so 0.24 of
- * air over the back put the marker's point at 1.19 and the mossback's own
- * silhouette reaches 1.36. The marker sat on the neck and read as a collar. The
- * rig measures the animal it has just built instead, so a species that grows a
- * taller crown gets the right clearance without anyone remembering to retype a
- * number; 0.16 is what that leaves as air, close enough that the eye joins the
- * marker to the animal and clear of every head on the map.
- */
-const MARK_CLEARANCE = 0.16;
+export function animalGrowth(maturity: number, r: AnimalRecipe = ANIMAL_DEFAULT): number {
+  return r.calf + (1 - r.calf) * maturity;
+}
 
 /**
  * What `PawnsView` needs from a body, whichever body plan it has. Settlers are
@@ -810,7 +845,7 @@ type Tone = 'hide' | 'dark' | 'shade' | 'pale' | 'horn';
 type Vec3 = readonly [number, number, number];
 
 /** Something rooted on the skull — an antler or an ear — one side, mirrored for the other. */
-interface Crown {
+export interface Crown {
   geometry: THREE.BufferGeometry;
   /**
    * A second surface riding the first in a lighter tone: the inside of an ear.
@@ -840,7 +875,7 @@ interface Crown {
  * a tail — is welded into `body`, and the patches in another tone sit still
  * in `markings`.
  */
-interface SpeciesModel {
+export interface SpeciesModel {
   body: THREE.BufferGeometry;
   /**
    * A saddle over the back, a pale belly, a white scut: still, and not the
@@ -873,13 +908,23 @@ interface SpeciesModel {
   crowns: Crown[];
   leg: THREE.BufferGeometry;
   hoof: THREE.BufferGeometry;
+  /**
+   * How long that leg is, and the one place it is said.
+   *
+   * The rig sets the hoof at `-legLength` inside the leg, so this and the length
+   * the capsule was cut to are the same measurement: they were written twice per
+   * species, agreeing by hand, and a leg lengthened in one of the two places
+   * would have left its own hoof hanging in the air or buried in the turf. The
+   * settler's leg has been one named number all along, ten lines further down
+   * this file; the herds now follow it.
+   */
   legLength: number;
   /** Fore left, fore right, hind left, hind right — `update()` pairs them diagonally by index. */
   legsAt: readonly (readonly [number, number])[];
 }
 
-/** Every buffer a species owns, for the teardown. */
-function speciesGeometries(m: SpeciesModel): THREE.BufferGeometry[] {
+/** Every buffer a species owns, for the teardown and for the goldens. */
+export function speciesGeometries(m: SpeciesModel): THREE.BufferGeometry[] {
   return [
     m.body,
     ...m.markings.map((k) => k.geometry),
@@ -890,6 +935,262 @@ function speciesGeometries(m: SpeciesModel): THREE.BufferGeometry[] {
     m.leg,
     m.hoof,
   ];
+}
+
+/**
+ * Every handle an animal's rig keeps on the body it was given: the parts that
+ * move, the three fittings that come and go, and the top of the silhouette the
+ * hunt marker hangs over.
+ */
+export interface AnimalParts {
+  /** The whole animal, including the marker, which does not scale with it. */
+  readonly group: THREE.Group;
+  /** Everything the animal is made of, scaled by its size and its growth. */
+  readonly body: THREE.Group;
+  readonly neck: THREE.Mesh;
+  readonly head: THREE.Mesh;
+  /** Fore left, fore right, hind left, hind right — paired diagonally by index. */
+  readonly legs: THREE.Mesh[];
+  readonly mark: THREE.Mesh;
+  readonly collar: THREE.Mesh;
+  readonly tag: THREE.Mesh;
+  /** The top of the silhouette in body space, measured off the rig just built. */
+  readonly crest: number;
+  /** Every material made here, for the teardown. */
+  readonly mats: THREE.Material[];
+}
+
+/**
+ * What `growAnimal` needs to set a body down at a size: the group it scales and
+ * the marker it hangs, and the top of the silhouette it hangs it over.
+ */
+interface Grown {
+  readonly body: THREE.Group;
+  readonly mark: THREE.Mesh;
+  readonly crest: number;
+}
+
+/**
+ * Draw this animal at `scale` of its body space, and hang the marker over it.
+ *
+ * The two lines belong together and used to be written out three times — once
+ * in the rig's constructor at full size, once in its update when a calf grew,
+ * and a third time would have been the bench. A marker left behind by a body
+ * that changed size is a red cone standing in a mossback's shoulder.
+ */
+export function growAnimal(a: Grown, scale: number, r: AnimalRecipe = ANIMAL_DEFAULT): void {
+  a.body.scale.setScalar(scale);
+  a.mark.position.y = a.crest * scale + r.markClearance;
+}
+
+/** Diagonal pairs, the way a four-legged animal actually moves. */
+export function poseLegs(legs: THREE.Mesh[], phase: number, r: AnimalRecipe = ANIMAL_DEFAULT): void {
+  const s = legSwing(phase, r);
+  legs[0]!.rotation.x = s;
+  legs[3]!.rotation.x = s;
+  legs[1]!.rotation.x = -s;
+  legs[2]!.rotation.x = -s;
+}
+
+/**
+ * One animal, built and hung together: a body in its species' shape, a neck, a
+ * head, four legs, and the collar, the tag and the hunt mark that show when the
+ * sim says so.
+ *
+ * Lifted whole out of `AnimalRig`'s constructor so the bench in `src/forge/` can
+ * stand the same animal on a page. It is the rule the recipes file states about
+ * geometry, applied to an assembly: a bench that hung its own neck would agree
+ * with the pen right up until somebody moved `neckAt`.
+ */
+export function assembleAnimal(
+  kind: AnimalKind,
+  colorSeed: number,
+  size: number,
+  model: SpeciesModel,
+  shared: AnimalFittings,
+  r: AnimalRecipe = ANIMAL_DEFAULT,
+): AnimalParts {
+  const group = new THREE.Group();
+  const body = new THREE.Group();
+  const legs: THREE.Mesh[] = [];
+  const mats: THREE.Material[] = [];
+
+  const hide = hideTint(ANIMAL_COLOR[kind], colorSeed);
+  const hideMat = new THREE.MeshStandardMaterial({ color: hide, roughness: 0.9 });
+  // Hooves, the backs of ears, the flag of a tail: the coat's own colour gone
+  // darker, which is how those parts differ on the animal and not a second dye.
+  // Most of the way down to the floor, because these are the deepest thing on
+  // the animal and have to read as another substance — but not through it. The
+  // four hooves under a mossback come out between 0.030 and 0.040 of luminance
+  // depending on the seed, where the old offset ran 0.010 to 0.045 and put
+  // eighty-six per cent of its seeds under the floor outright — a scanline
+  // across the fenwolf's darkest ear read 13,13,13 out of 255.
+  const darkMat = new THREE.MeshStandardMaterial({
+    color: deepen(hide, 0.82),
+    roughness: 0.85,
+  });
+  // The markings on the back, which are hide and nothing else: one step deeper
+  // than the coat and a touch richer, never greyer. Painted in `darkMat` — the
+  // tone a hoof is — the mossback's back marking read at a settler's eye
+  // height as a hole burnt through the shoulder rather than as markings, and
+  // half of that was the value: a patch four times darker than the hide around
+  // it is a thing missing from the animal, not a thing on it. Under a third of
+  // the room down, so it stays plainly the coat: 3.1 to 13.8 points of L*
+  // under it across every species and seed, deep on a pale hare where there is
+  // room for depth and shallow on a dark wolf where there is not.
+  const shadeMat = new THREE.MeshStandardMaterial({
+    color: toneShift(deepen(hide, 0.3), 0.02, 0),
+    roughness: 0.9,
+  });
+  // The belly, the chest, the scut: lighter and greyer, the way an underside
+  // is. Kept a step short of white so the hare stays a hare and not a lamp.
+  // This one goes up, so it needs no floor — only the sRGB space its numbers
+  // were chosen in, which is the whole of what changed here.
+  const paleMat = new THREE.MeshStandardMaterial({
+    color: toneShift(hide, -0.15, 0.26),
+    roughness: 0.92,
+  });
+  const hornMat = new THREE.MeshStandardMaterial({ color: 0x8f7e62, roughness: 0.7 });
+  // Low roughness on the eye and the nose, so both take a highlight from the
+  // sun: the glint is what makes a bead read as an eye rather than a dot.
+  const eyeMat = new THREE.MeshStandardMaterial({ color: 0x14100e, roughness: 0.35 });
+  mats.push(hideMat, darkMat, shadeMat, paleMat, hornMat, eyeMat);
+  const coat: Record<Tone, THREE.Material> = {
+    hide: hideMat,
+    dark: darkMat,
+    shade: shadeMat,
+    pale: paleMat,
+    horn: hornMat,
+  };
+  const tone = (t: Tone): THREE.Material => coat[t];
+
+  const barrel = new THREE.Mesh(model.body, hideMat);
+  barrel.name = 'body';
+  const neck = new THREE.Mesh(model.neck, hideMat);
+  neck.name = 'neck';
+  neck.position.set(...model.neckAt);
+  // A positive pitch carries the top of the neck toward +Z, into the skull.
+  // It leaned the other way for a long time and its top hung in the air a
+  // hand's width behind the head it was meant to hold up.
+  neck.rotation.x = model.neckPitch;
+  const head = new THREE.Mesh(model.head, hideMat);
+  head.name = 'head';
+  head.position.set(...model.headAt);
+
+  for (const side of [-1, 1] as const) {
+    const eye = new THREE.Mesh(shared.animalEye, eyeMat);
+    eye.position.set(side * model.eyeAt[0], model.eyeAt[1], model.eyeAt[2]);
+    head.add(eye);
+  }
+  const nose = new THREE.Mesh(shared.animalNose, eyeMat);
+  nose.position.set(...model.noseAt);
+  head.add(nose);
+
+  // Antlers and ears ride the head, so they dip when it grazes.
+  for (const crown of model.crowns) {
+    for (const side of [-1, 1] as const) {
+      const prong = new THREE.Mesh(crown.geometry, tone(crown.tone));
+      prong.position.set(side * crown.at[0], crown.at[1], crown.at[2]);
+      prong.rotation.set(crown.pitch, 0, side * -crown.roll);
+      if (crown.mirrored) prong.scale.x = side;
+      prong.castShadow = true;
+      // The pale inside of an ear, seated on the blade's own origin so it
+      // needs no second set of angles and cannot drift off the ear it lines.
+      if (crown.lining) {
+        const inner = new THREE.Mesh(crown.lining.geometry, tone(crown.lining.tone));
+        inner.castShadow = true;
+        prong.add(inner);
+      }
+      head.add(prong);
+    }
+  }
+
+  for (const m of [barrel, neck, head]) {
+    m.castShadow = true;
+    body.add(m);
+  }
+  for (const marking of model.markings) {
+    const patch = new THREE.Mesh(marking.geometry, tone(marking.tone));
+    patch.name = marking.name;
+    patch.castShadow = true;
+    body.add(patch);
+  }
+
+  for (const [lx, lz] of model.legsAt) {
+    const leg = new THREE.Mesh(model.leg, hideMat);
+    leg.name = 'leg';
+    leg.position.set(lx, model.legLength, lz);
+    leg.castShadow = true;
+    // The hoof rides the leg, so it swings from the hip with it. Its
+    // geometry stands on its own origin, so it is set at the leg's foot and
+    // its sole is the leg's sole.
+    const hoof = new THREE.Mesh(model.hoof, darkMat);
+    hoof.name = 'hoof';
+    hoof.position.y = -model.legLength;
+    hoof.castShadow = true;
+    leg.add(hoof);
+    legs.push(leg);
+    body.add(leg);
+  }
+
+  // The top of everything this animal carries, taken off the rig that was
+  // just built and before it is scaled, so the number is in body space and a
+  // calf's shrinks with it. Measured rather than declared: the species used to
+  // name its own marker height and every one of them named the crown of the
+  // barrel, which on a mossback is forty-one centimetres below the tips of its
+  // antlers — so the marker hung inside the head and read as a red collar.
+  // Nothing here is hidden yet; the collar and its tag are hung on the neck
+  // below, after this, because `Box3` measures invisible children too.
+  const crest = new THREE.Box3().setFromObject(body).max.y;
+  group.add(body);
+
+  // The marker is a hollow funnel and the camera sees both of its walls at
+  // once. Drawn double-sided in one flat colour that was fifteen thousand
+  // pixels of one value at eye level — the inside and the outside of a cone
+  // lit identically is not a cone, it is a hole cut in the frame. Two shells
+  // on the one buffer instead: the outer wall in the order's own red and the
+  // inner wall, which is what the eye sees down the throat of it, a good deal
+  // deeper. Nothing here is lit, so the two values have to be painted.
+  const markMat = new THREE.MeshBasicMaterial({ color: 0xd8563f, side: THREE.FrontSide });
+  const markInnerMat = new THREE.MeshBasicMaterial({ color: 0x7c2a1c, side: THREE.BackSide });
+  mats.push(markMat, markInnerMat);
+  const mark = new THREE.Mesh(shared.huntMark, markMat);
+  mark.name = 'mark';
+  const markInner = new THREE.Mesh(shared.huntMark, markInnerMat);
+  markInner.name = 'mark-inner';
+  mark.add(markInner);
+  // The geometry's point is its origin, so this is where the point hangs: over
+  // the top of the animal's own silhouette, scaled to it, and the same air
+  // above that whatever the animal is.
+  mark.visible = false;
+  group.add(mark);
+
+  const collarMat = new THREE.MeshLambertMaterial({ color: 0xc9553a });
+  mats.push(collarMat);
+  const collar = new THREE.Mesh(shared.animalCollar, collarMat);
+  collar.name = 'collar';
+  // On the neck, square to it, so it rings the neck the way a collar does
+  // rather than lying level across a sloping one.
+  collar.position.set(0, model.collarAt, 0);
+  // The buffer is cut to a mossback's throat, so every narrower species wears
+  // it scaled down to its own. The tag rides the ring and scales with it,
+  // which is what a hare's tag should do anyway.
+  collar.scale.setScalar(model.collarR / r.collarR);
+  collar.visible = false;
+  neck.add(collar);
+
+  const tagMat = new THREE.MeshLambertMaterial({ color: 0x4fd1c5 });
+  mats.push(tagMat);
+  const tag = new THREE.Mesh(shared.petTag, tagMat);
+  tag.name = 'tag';
+  // Hung off the front of the ring and parented to it, so it lies against
+  // the throat below the collar rather than floating where the neck used to be.
+  tag.position.set(0, -0.04, 0.13);
+  tag.visible = false;
+  collar.add(tag);
+  const parts = { group, body, neck, head, legs, mark, collar, tag, crest, mats };
+  growAnimal(parts, size, r);
+  return parts;
 }
 
 /**
@@ -912,10 +1213,9 @@ function speciesGeometries(m: SpeciesModel): THREE.BufferGeometry[] {
  * everyone else.
  */
 class AnimalRig implements Rig {
-  readonly group = new THREE.Group();
-  private readonly body = new THREE.Group();
+  readonly group: THREE.Group;
   private readonly head: THREE.Mesh;
-  private readonly legs: THREE.Mesh[] = [];
+  private readonly legs: THREE.Mesh[];
   /** Floats over anything the player has marked, so a hunt order is visible. */
   private readonly mark: THREE.Mesh;
   private readonly collar: THREE.Mesh;
@@ -923,12 +1223,12 @@ class AnimalRig implements Rig {
   private readonly tag: THREE.Mesh;
   /** Last collar state pushed to the material, so the colour is set on change only. */
   private ripe = false;
-  private readonly mats: THREE.Material[] = [];
+  private readonly mats: THREE.Material[];
+  /** Everything `assembleAnimal` hung, kept so the growth is set by one call. */
+  private readonly parts: AnimalParts;
   private layer = LAYER_ALL;
   private readonly size: number;
   private readonly legLength: number;
-  /** The top of this animal's silhouette in body space, so a calf's marker comes down with it. */
-  private readonly crest: number;
   /** Last growth factor pushed to the body scale, so it is set on change only. */
   private grown = -1;
   /**
@@ -944,182 +1244,15 @@ class AnimalRig implements Rig {
     const model = shared.animals[kind];
     this.size = def.size;
     this.legLength = model.legLength;
-
-    const hide = hideTint(ANIMAL_COLOR[kind], pawn.colorSeed);
-    const hideMat = new THREE.MeshStandardMaterial({ color: hide, roughness: 0.9 });
-    // Hooves, the backs of ears, the flag of a tail: the coat's own colour gone
-    // darker, which is how those parts differ on the animal and not a second dye.
-    // Most of the way down to the floor, because these are the deepest thing on
-    // the animal and have to read as another substance — but not through it. The
-    // four hooves under a mossback come out between 0.030 and 0.040 of luminance
-    // depending on the seed, where the old offset ran 0.010 to 0.045 and put
-    // eighty-six per cent of its seeds under the floor outright — a scanline
-    // across the fenwolf's darkest ear read 13,13,13 out of 255.
-    const darkMat = new THREE.MeshStandardMaterial({
-      color: deepen(hide, 0.82),
-      roughness: 0.85,
-    });
-    // The markings on the back, which are hide and nothing else: one step deeper
-    // than the coat and a touch richer, never greyer. Painted in `darkMat` — the
-    // tone a hoof is — the mossback's back marking read at a settler's eye
-    // height as a hole burnt through the shoulder rather than as markings, and
-    // half of that was the value: a patch four times darker than the hide around
-    // it is a thing missing from the animal, not a thing on it. Under a third of
-    // the room down, so it stays plainly the coat: 3.1 to 13.8 points of L*
-    // under it across every species and seed, deep on a pale hare where there is
-    // room for depth and shallow on a dark wolf where there is not.
-    const shadeMat = new THREE.MeshStandardMaterial({
-      color: toneShift(deepen(hide, 0.3), 0.02, 0),
-      roughness: 0.9,
-    });
-    // The belly, the chest, the scut: lighter and greyer, the way an underside
-    // is. Kept a step short of white so the hare stays a hare and not a lamp.
-    // This one goes up, so it needs no floor — only the sRGB space its numbers
-    // were chosen in, which is the whole of what changed here.
-    const paleMat = new THREE.MeshStandardMaterial({
-      color: toneShift(hide, -0.15, 0.26),
-      roughness: 0.92,
-    });
-    const hornMat = new THREE.MeshStandardMaterial({ color: 0x8f7e62, roughness: 0.7 });
-    // Low roughness on the eye and the nose, so both take a highlight from the
-    // sun: the glint is what makes a bead read as an eye rather than a dot.
-    const eyeMat = new THREE.MeshStandardMaterial({ color: 0x14100e, roughness: 0.35 });
-    this.mats.push(hideMat, darkMat, shadeMat, paleMat, hornMat, eyeMat);
-    const coat: Record<Tone, THREE.Material> = {
-      hide: hideMat,
-      dark: darkMat,
-      shade: shadeMat,
-      pale: paleMat,
-      horn: hornMat,
-    };
-    const tone = (t: Tone): THREE.Material => coat[t];
-
-    const barrel = new THREE.Mesh(model.body, hideMat);
-    barrel.name = 'body';
-    const neck = new THREE.Mesh(model.neck, hideMat);
-    neck.name = 'neck';
-    neck.position.set(...model.neckAt);
-    // A positive pitch carries the top of the neck toward +Z, into the skull.
-    // It leaned the other way for a long time and its top hung in the air a
-    // hand's width behind the head it was meant to hold up.
-    neck.rotation.x = model.neckPitch;
-    this.head = new THREE.Mesh(model.head, hideMat);
-    this.head.name = 'head';
-    this.head.position.set(...model.headAt);
-
-    for (const side of [-1, 1] as const) {
-      const eye = new THREE.Mesh(shared.animalEye, eyeMat);
-      eye.position.set(side * model.eyeAt[0], model.eyeAt[1], model.eyeAt[2]);
-      this.head.add(eye);
-    }
-    const nose = new THREE.Mesh(shared.animalNose, eyeMat);
-    nose.position.set(...model.noseAt);
-    this.head.add(nose);
-
-    // Antlers and ears ride the head, so they dip when it grazes.
-    for (const crown of model.crowns) {
-      for (const side of [-1, 1] as const) {
-        const prong = new THREE.Mesh(crown.geometry, tone(crown.tone));
-        prong.position.set(side * crown.at[0], crown.at[1], crown.at[2]);
-        prong.rotation.set(crown.pitch, 0, side * -crown.roll);
-        if (crown.mirrored) prong.scale.x = side;
-        prong.castShadow = true;
-        // The pale inside of an ear, seated on the blade's own origin so it
-        // needs no second set of angles and cannot drift off the ear it lines.
-        if (crown.lining) {
-          const inner = new THREE.Mesh(crown.lining.geometry, tone(crown.lining.tone));
-          inner.castShadow = true;
-          prong.add(inner);
-        }
-        this.head.add(prong);
-      }
-    }
-
-    for (const m of [barrel, neck, this.head]) {
-      m.castShadow = true;
-      this.body.add(m);
-    }
-    for (const marking of model.markings) {
-      const patch = new THREE.Mesh(marking.geometry, tone(marking.tone));
-      patch.name = marking.name;
-      patch.castShadow = true;
-      this.body.add(patch);
-    }
-
-    for (const [lx, lz] of model.legsAt) {
-      const leg = new THREE.Mesh(model.leg, hideMat);
-      leg.name = 'leg';
-      leg.position.set(lx, model.legLength, lz);
-      leg.castShadow = true;
-      // The hoof rides the leg, so it swings from the hip with it. Its
-      // geometry stands on its own origin, so it is set at the leg's foot and
-      // its sole is the leg's sole.
-      const hoof = new THREE.Mesh(model.hoof, darkMat);
-      hoof.name = 'hoof';
-      hoof.position.y = -model.legLength;
-      hoof.castShadow = true;
-      leg.add(hoof);
-      this.legs.push(leg);
-      this.body.add(leg);
-    }
-
-    // The top of everything this animal carries, taken off the rig that was
-    // just built and before it is scaled, so the number is in body space and a
-    // calf's shrinks with it. Measured rather than declared: the species used to
-    // name its own marker height and every one of them named the crown of the
-    // barrel, which on a mossback is forty-one centimetres below the tips of its
-    // antlers — so the marker hung inside the head and read as a red collar.
-    // Nothing here is hidden yet; the collar and its tag are hung on the neck
-    // below, after this, because `Box3` measures invisible children too.
-    this.crest = new THREE.Box3().setFromObject(this.body).max.y;
-    this.body.scale.setScalar(def.size);
-    this.group.add(this.body);
-
-    // The marker is a hollow funnel and the camera sees both of its walls at
-    // once. Drawn double-sided in one flat colour that was fifteen thousand
-    // pixels of one value at eye level — the inside and the outside of a cone
-    // lit identically is not a cone, it is a hole cut in the frame. Two shells
-    // on the one buffer instead: the outer wall in the order's own red and the
-    // inner wall, which is what the eye sees down the throat of it, a good deal
-    // deeper. Nothing here is lit, so the two values have to be painted.
-    const markMat = new THREE.MeshBasicMaterial({ color: 0xd8563f, side: THREE.FrontSide });
-    const markInnerMat = new THREE.MeshBasicMaterial({ color: 0x7c2a1c, side: THREE.BackSide });
-    this.mats.push(markMat, markInnerMat);
-    this.mark = new THREE.Mesh(shared.huntMark, markMat);
-    this.mark.name = 'mark';
-    const markInner = new THREE.Mesh(shared.huntMark, markInnerMat);
-    markInner.name = 'mark-inner';
-    this.mark.add(markInner);
-    // The geometry's point is its origin, so this is where the point hangs: over
-    // the top of the animal's own silhouette, scaled to it, and the same air
-    // above that whatever the animal is.
-    this.mark.position.y = this.crest * def.size + MARK_CLEARANCE;
-    this.mark.visible = false;
-    this.group.add(this.mark);
-
-    const collarMat = new THREE.MeshLambertMaterial({ color: 0xc9553a });
-    this.mats.push(collarMat);
-    this.collar = new THREE.Mesh(shared.animalCollar, collarMat);
-    this.collar.name = 'collar';
-    // On the neck, square to it, so it rings the neck the way a collar does
-    // rather than lying level across a sloping one.
-    this.collar.position.set(0, model.collarAt, 0);
-    // The buffer is cut to a mossback's throat, so every narrower species wears
-    // it scaled down to its own. The tag rides the ring and scales with it,
-    // which is what a hare's tag should do anyway.
-    this.collar.scale.setScalar(model.collarR / COLLAR_R);
-    this.collar.visible = false;
-    neck.add(this.collar);
-
-    const tagMat = new THREE.MeshLambertMaterial({ color: 0x4fd1c5 });
-    this.mats.push(tagMat);
-    this.tag = new THREE.Mesh(shared.petTag, tagMat);
-    this.tag.name = 'tag';
-    // Hung off the front of the ring and parented to it, so it lies against
-    // the throat below the collar rather than floating where the neck used to be.
-    this.tag.position.set(0, -0.04, 0.13);
-    this.tag.visible = false;
-    this.collar.add(this.tag);
+    const parts = assembleAnimal(kind, pawn.colorSeed, def.size, model, shared);
+    this.parts = parts;
+    this.group = parts.group;
+    this.head = parts.head;
+    this.legs = parts.legs;
+    this.mark = parts.mark;
+    this.collar = parts.collar;
+    this.tag = parts.tag;
+    this.mats = parts.mats;
   }
 
   setLayer(layer: number): void {
@@ -1137,12 +1270,11 @@ class AnimalRig implements Rig {
     // at, so the herd growing up has to be the thing you can see from across the
     // yard. Everything born outside the pen has no birthday and lands on 1 here,
     // which is every wild animal on the map.
-    const grow = CALF_SCALE + (1 - CALF_SCALE) * maturity(world, pawn);
+    const grow = animalGrowth(maturity(world, pawn));
     if (grow !== this.grown) {
       this.grown = grow;
-      this.body.scale.setScalar(this.size * grow);
-      this.mark.position.y = this.crest * this.size * grow + MARK_CLEARANCE;
-      this.walkPhase = phaseScale(this.legLength * this.size * grow, ANIMAL_SWING);
+      growAnimal(this.parts, this.size * grow);
+      this.walkPhase = phaseScale(this.legLength * this.size * grow, ANIMAL_DEFAULT.swing);
     }
     this.mark.visible = !!pawn.hunted && !pawn.dead;
     this.collar.visible = pawn.tame === true;
@@ -1172,12 +1304,7 @@ class AnimalRig implements Rig {
     const ph = pawn.animPhase;
     if (pawn.activity === 'walking') {
       const w = ph * this.walkPhase;
-      const s = Math.sin(w) * ANIMAL_SWING;
-      // Diagonal pairs, the way a four-legged animal actually moves.
-      this.legs[0]!.rotation.x = s;
-      this.legs[3]!.rotation.x = s;
-      this.legs[1]!.rotation.x = -s;
-      this.legs[2]!.rotation.x = -s;
+      poseLegs(this.legs, w);
       this.head.rotation.x = 0;
       this.group.position.y = floor + Math.abs(Math.sin(w * 2)) * 0.03 * this.size * this.grown;
     } else {
@@ -1194,7 +1321,24 @@ class AnimalRig implements Rig {
 }
 
 /** Geometry is shared across every body; only materials are per-pawn. */
-interface SharedGeometry {
+/**
+ * The parts every species wears the same, in the same buffer: two eyes, a nose,
+ * a collar, its tag and the hunt marker.
+ *
+ * Named apart from the rest of the shared geometry because the bench holds these
+ * five and none of the settler's fourteen, and because a bench that cut its own
+ * collar would be a bench that agrees with the pen right up until somebody
+ * changed one of them.
+ */
+export interface AnimalFittings {
+  animalEye: THREE.BufferGeometry;
+  animalNose: THREE.BufferGeometry;
+  animalCollar: THREE.BufferGeometry;
+  petTag: THREE.BufferGeometry;
+  huntMark: THREE.BufferGeometry;
+}
+
+interface SharedGeometry extends AnimalFittings {
   torso: THREE.BufferGeometry;
   belt: THREE.BufferGeometry;
   neck: THREE.BufferGeometry;
@@ -1211,11 +1355,6 @@ interface SharedGeometry {
   club: THREE.BufferGeometry;
   /** Each species' body and where its moving parts hang, built once. */
   animals: Record<AnimalKind, SpeciesModel>;
-  animalEye: THREE.BufferGeometry;
-  animalNose: THREE.BufferGeometry;
-  animalCollar: THREE.BufferGeometry;
-  petTag: THREE.BufferGeometry;
-  huntMark: THREE.BufferGeometry;
   pack: THREE.BufferGeometry;
   crate: THREE.BufferGeometry;
 }
@@ -1861,6 +2000,7 @@ function blob(radii: Vec3, at: Vec3, widthSegs = 10, heightSegs = 7): THREE.Buff
  * the thickest here, and end in hooves.
  */
 function makeMossback(): SpeciesModel {
+  const legLength = 0.6;
   const barrel = makeBarrel(0.22, 0.46, 4, 14).scale(1.05, 0.95, 1).translate(0, 0.66, 0);
   const hump = blob([0.2, 0.17, 0.24], [0, 0.78, 0.18]);
   // The withers, in the coat one step deeper: a cape of coarser hair over the
@@ -1912,9 +2052,9 @@ function makeMossback(): SpeciesModel {
       // Out sideways under the antlers, the way an elk's are.
       ear({ halfWidth: 0.05, length: 0.14, halfDepth: 0.019, point: 0.3 }, [0.098, 0.055, -0.03], 1.0, -0.1),
     ],
-    leg: limb(0.062, 0.6, 9, 1),
+    leg: limb(0.062, legLength, 9, 1),
     hoof: makeHoof(0.07),
-    legLength: 0.6,
+    legLength,
     legsAt: [
       [-0.15, 0.3],
       [0.15, 0.3],
@@ -1933,6 +2073,7 @@ function makeMossback(): SpeciesModel {
  * tinted to nothing — and the crouch is the first thing that fixes that.
  */
 function makeDunhare(): SpeciesModel {
+  const legLength = 0.34;
   // Rotated about X before it is set down: a positive pitch lifts the -Z end.
   const egg = new THREE.SphereGeometry(1, 12, 9).scale(0.22, 0.24, 0.3).rotateX(0.3).translate(0, 0.42, 0);
   const haunchL = blob([0.1, 0.13, 0.15], [-0.16, 0.3, -0.17]);
@@ -2004,9 +2145,9 @@ function makeDunhare(): SpeciesModel {
       // width read as a single stick through the head, not as ears.
       ear({ halfWidth: 0.055, length: 0.34, halfDepth: 0.021, point: 0.2 }, [0.066, 0.072, -0.028], 0.38, -0.4),
     ],
-    leg: limb(0.04, 0.34, 9, 1),
+    leg: limb(0.04, legLength, 9, 1),
     hoof: makeHoof(0.045),
-    legLength: 0.34,
+    legLength,
     legsAt: [
       [-0.12, 0.2],
       [0.12, 0.2],
@@ -2024,6 +2165,7 @@ function makeDunhare(): SpeciesModel {
  * reason anyone can pick it out of the grass.
  */
 function makeBrambletail(): SpeciesModel {
+  const legLength = 0.45;
   const barrel = makeBarrel(0.14, 0.62, 3, 12).translate(0, 0.45, 0);
   const brush = makeBrush(0.09, 0.48).rotateX(1.0).translate(0, 0.5, -0.42);
   return {
@@ -2048,9 +2190,9 @@ function makeBrambletail(): SpeciesModel {
     crowns: [
       ear({ halfWidth: 0.068, length: 0.17, halfDepth: 0.024, point: 0.85 }, [0.076, 0.068, -0.02], 0.36, -0.12),
     ],
-    leg: limb(0.04, 0.45, 9, 1),
+    leg: limb(0.04, legLength, 9, 1),
     hoof: makeHoof(0.045),
-    legLength: 0.45,
+    legLength,
     legsAt: [
       [-0.1, 0.27],
       [0.1, 0.27],
@@ -2068,6 +2210,7 @@ function makeBrambletail(): SpeciesModel {
  * low; a paler belly under a grey-brown coat.
  */
 function makeFenwolf(): SpeciesModel {
+  const legLength = 0.58;
   const barrel = makeBarrel(0.18, 0.5, 4, 14).scale(1, 0.95, 1).translate(0, 0.6, 0);
   const ruff = blob([0.22, 0.2, 0.18], [0, 0.66, 0.3], 12, 8);
   const brush = makeBrush(0.075, 0.48).rotateX(-0.5).translate(0, 0.6, -0.4);
@@ -2096,9 +2239,9 @@ function makeFenwolf(): SpeciesModel {
     crowns: [
       ear({ halfWidth: 0.058, length: 0.15, halfDepth: 0.022, point: 0.8 }, [0.078, 0.068, -0.03], 0.32, -0.15),
     ],
-    leg: limb(0.05, 0.58, 9, 1),
+    leg: limb(0.05, legLength, 9, 1),
     hoof: makeHoof(0.055),
-    legLength: 0.58,
+    legLength,
     legsAt: [
       [-0.13, 0.28],
       [0.13, 0.28],
@@ -2134,7 +2277,7 @@ function makeFenwolf(): SpeciesModel {
  * somebody gave. That silhouette is the tip. Opening it into a ring the width
  * of a thumbnail costs nothing, shows a coin of ground or hide straight through
  * the middle of it, and leaves a funnel: a thing pointing at an animal rather
- * than a thing running down one. `MARK_CLEARANCE` does the other half.
+ * than a thing running down one. `ANIMAL_DEFAULT.markClearance` does the other half.
  */
 function makeHuntMark(): THREE.BufferGeometry {
   const profile = [
@@ -2144,6 +2287,69 @@ function makeHuntMark(): THREE.BufferGeometry {
     [0.07, 0.192],
   ].map(([r, y]) => new THREE.Vector2(r, y));
   return new THREE.LatheGeometry(profile, 14);
+}
+
+/**
+ * Every species' body, built fresh.
+ *
+ * A `SpeciesModel` owns its buffers, so this hands out a new set each time it is
+ * called rather than a shared table: the view builds one for the map and the
+ * bench builds one for the page, and neither disposes the other's.
+ */
+export function speciesModels(): Record<AnimalKind, SpeciesModel> {
+  return {
+    mossback: makeMossback(),
+    dunhare: makeDunhare(),
+    brambletail: makeBrambletail(),
+    fenwolf: makeFenwolf(),
+  };
+}
+
+/** The five buffers every species wears the same. */
+export function animalFittings(): AnimalFittings {
+  return {
+  // A bead on a body drawn at most a cell across. Six by four was a
+  // twelve-sided lump: from eleven cells up that is a dot and reads as an
+  // eye, but a settler standing at a hare's head sees a chipped bead with a
+  // flat facet catching the sun where the highlight should be round. Eight
+  // round is what keeps the highlight round, and it is the ring count that
+  // matters here rather than the stack count — the eye is a bead seen from
+  // the side, so the ring above the equator and the ring below it are the
+  // ones the eye reads, and the sixth was between them and the pole.
+  animalEye: new THREE.SphereGeometry(0.027, 8, 5),
+  // A dark nose on the end of the muzzle, in the eye's material so it takes
+  // the same glint. It is the one thing that marks which end of a lowered
+  // head is the front from the manager camera, and at arm's length it is the
+  // one thing that says the muzzle ends rather than stops: drawn a little
+  // wide and a little flat, the way a nose sits across a snout.
+  animalNose: new THREE.SphereGeometry(0.032, 7, 5).scale(1.15, 0.85, 0.9),
+  // A band round the neck. The only thing on the map that separates a tamed
+  // mossback from the wild one grazing beside it, so it is a ring of solid
+  // colour rather than a tint the isometric camera would lose in shadow.
+  //
+  // Four round the tube and twenty round the ring. Sixteen by thirty-two was
+  // a thousand triangles on a strap and put a bonded mossback seven hundred
+  // over the animal budget; six by twenty-two was still two hundred and
+  // sixty-four, a tenth of an animal spent rounding a section that is thirty
+  // millimetres across on the largest species and nine on the smallest. A
+  // collar is a flat strap of leather with edges, and four is the section a
+  // strap actually has — the twenty that stayed are the ones the eye reads,
+  // because what shows at any distance is the ring's own curve and not the
+  // shape of the leather's edge. The hundred triangles that buys go into the
+  // mossback's tail, which every animal on the map wears and which no player
+  // has to tame anything to see.
+  animalCollar: new THREE.TorusGeometry(ANIMAL_DEFAULT.collarR, 0.034, 4, 20).rotateX(Math.PI / 2),
+  // A little lozenge hung off the collar: the tell that this one is somebody's
+  // rather than the colony's. A shape rather than a second collar colour,
+  // because the collar already says something — pale gold when there is
+  // something to collect — and two meanings on one surface is one meaning lost.
+  // Squashed to under a third of its depth, so half of those rings were drawn
+  // flat against each other: ten by six spent a hundred triangles on a
+  // lozenge thirty-two millimetres tall on the largest species and fourteen
+  // on the smallest, and it is a silhouette at both.
+  petTag: new THREE.SphereGeometry(0.07, 8, 5).scale(0.8, 1.2, 0.45),
+  huntMark: makeHuntMark(),
+  };
 }
 
 function makeShared(): SharedGeometry {
@@ -2185,53 +2391,8 @@ function makeShared(): SharedGeometry {
     rifleStock: makeRifleStock(),
     rifleAction: makeRifleAction(),
     club: makeClub(),
-    animals: {
-      mossback: makeMossback(),
-      dunhare: makeDunhare(),
-      brambletail: makeBrambletail(),
-      fenwolf: makeFenwolf(),
-    },
-    // A bead on a body drawn at most a cell across. Six by four was a
-    // twelve-sided lump: from eleven cells up that is a dot and reads as an
-    // eye, but a settler standing at a hare's head sees a chipped bead with a
-    // flat facet catching the sun where the highlight should be round. Eight
-    // round is what keeps the highlight round, and it is the ring count that
-    // matters here rather than the stack count — the eye is a bead seen from
-    // the side, so the ring above the equator and the ring below it are the
-    // ones the eye reads, and the sixth was between them and the pole.
-    animalEye: new THREE.SphereGeometry(0.027, 8, 5),
-    // A dark nose on the end of the muzzle, in the eye's material so it takes
-    // the same glint. It is the one thing that marks which end of a lowered
-    // head is the front from the manager camera, and at arm's length it is the
-    // one thing that says the muzzle ends rather than stops: drawn a little
-    // wide and a little flat, the way a nose sits across a snout.
-    animalNose: new THREE.SphereGeometry(0.032, 7, 5).scale(1.15, 0.85, 0.9),
-    // A band round the neck. The only thing on the map that separates a tamed
-    // mossback from the wild one grazing beside it, so it is a ring of solid
-    // colour rather than a tint the isometric camera would lose in shadow.
-    //
-    // Four round the tube and twenty round the ring. Sixteen by thirty-two was
-    // a thousand triangles on a strap and put a bonded mossback seven hundred
-    // over the animal budget; six by twenty-two was still two hundred and
-    // sixty-four, a tenth of an animal spent rounding a section that is thirty
-    // millimetres across on the largest species and nine on the smallest. A
-    // collar is a flat strap of leather with edges, and four is the section a
-    // strap actually has — the twenty that stayed are the ones the eye reads,
-    // because what shows at any distance is the ring's own curve and not the
-    // shape of the leather's edge. The hundred triangles that buys go into the
-    // mossback's tail, which every animal on the map wears and which no player
-    // has to tame anything to see.
-    animalCollar: new THREE.TorusGeometry(COLLAR_R, 0.034, 4, 20).rotateX(Math.PI / 2),
-    // A little lozenge hung off the collar: the tell that this one is somebody's
-    // rather than the colony's. A shape rather than a second collar colour,
-    // because the collar already says something — pale gold when there is
-    // something to collect — and two meanings on one surface is one meaning lost.
-    // Squashed to under a third of its depth, so half of those rings were drawn
-    // flat against each other: ten by six spent a hundred triangles on a
-    // lozenge thirty-two millimetres tall on the largest species and fourteen
-    // on the smallest, and it is a silhouette at both.
-    petTag: new THREE.SphereGeometry(0.07, 8, 5).scale(0.8, 1.2, 0.45),
-    huntMark: makeHuntMark(),
+    animals: speciesModels(),
+    ...animalFittings(),
     // The caravan's load: one bundle high on the back and a few crates set down
     // in the grass. A trader who is just a differently-tinted settler is a thing
     // the player has to be told about; a pile of freight is a thing they see.

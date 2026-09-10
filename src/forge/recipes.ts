@@ -49,7 +49,18 @@ import {
   type TuftRecipe,
 } from '../client/render/decor';
 import { colorOf, occludeParts } from '../client/render/occlusion';
-import { RESOURCE_KINDS } from '../sim/types';
+import {
+  ANIMAL_DEFAULT,
+  animalFittings,
+  animalGrowth,
+  assembleAnimal,
+  growAnimal,
+  poseLegs,
+  speciesModels,
+  type AnimalRecipe,
+} from '../client/render/pawns';
+import { ANIMAL_KINDS, RESOURCE_KINDS } from '../sim/types';
+import { ANIMALS } from '../sim/wildlife';
 
 /** One draggable number, with the range outside which it stops being that shape. */
 export interface Field {
@@ -117,7 +128,7 @@ export interface Bench {
    * the sliders prints, so what it offers is a recipe you can put back rather
    * than a list of the eleven fields the page knows how to show you.
    */
-  recipe(k: Knobs): StoneRecipe | TreeRecipe | GrassRecipe | PileRecipe;
+  recipe(k: Knobs): StoneRecipe | TreeRecipe | GrassRecipe | PileRecipe | AnimalRecipe;
   /** The model, standing on y = 0 and facing the way the game draws it. */
   build(k: Knobs, protos: Prototypes): THREE.Group;
 }
@@ -619,7 +630,120 @@ const STACK: Bench = {
   },
 };
 
-export const BENCHES: readonly Bench[] = [STONE, GRASS, TREE, STACK];
+
+/**
+ * The one coat every animal on this bench wears.
+ *
+ * `hideTint` spreads a species' colour over its seeds, and a bench that let the
+ * seed follow the species would put four colours in a grid whose whole job is to
+ * say four sizes. One seed, so the only thing that differs across the four is
+ * the animal.
+ */
+const ANIMAL_SEED = 7;
+
+/**
+ * The herd's knobs. Three of them are the load rather than the recipe — which
+ * species, where in its stride it is, and how grown it is — the way the grass
+ * bench's `time` and `wind` are the weather and not the tuft. `size` is
+ * deliberately not here: it lives in `ANIMALS`, it is the sim's number and not
+ * the renderer's, and a grid of four at their own sizes is the only picture
+ * that says how big these animals are beside each other.
+ */
+const ANIMAL_FIELDS: readonly Field[] = [
+  { key: 'species', label: 'species', min: 0, max: ANIMAL_KINDS.length - 1, step: 1, whole: true },
+  { key: 'phase', label: 'stride', min: 0, max: 6.28, step: 0.01 },
+  { key: 'grown', label: 'grown', min: 0, max: 1, step: 0.01 },
+  { key: 'fittings', label: 'collar and mark', min: 0, max: 1, step: 1, whole: true },
+  { key: 'swing', label: 'leg swing', min: 0, max: 1.5, step: 0.01 },
+  { key: 'calf', label: 'newborn', min: 0.05, max: 1, step: 0.01 },
+  { key: 'collarR', label: 'collar cut', min: 0.02, max: 0.4, step: 0.005 },
+  { key: 'markClearance', label: 'mark air', min: 0, max: 1, step: 0.005 },
+];
+
+/**
+ * The widest throat on the map, worked out once and kept.
+ *
+ * `speciesModels()` builds all four species' geometry to hand back four records,
+ * and the only thing this question needs off it is one number that cannot change
+ * while the page is open. Asking it inside `problems` would build a herd on
+ * every draw and then build a second one in `build` to keep one animal out of
+ * it.
+ */
+let throat = 0;
+function widestThroat(): number {
+  if (!throat) throat = Math.max(...Object.values(speciesModels()).map((m) => m.collarR));
+  return throat;
+}
+
+function animalRecipe(k: Knobs): AnimalRecipe {
+  return {
+    swing: k.swing!,
+    calf: k.calf!,
+    collarR: k.collarR!,
+    markClearance: k.markClearance!,
+  };
+}
+
+const ANIMAL: Bench = {
+  name: 'animal',
+  title: 'Herd animal',
+  note: 'One of the four species, with the collar and the hunt marker the pen hangs on it. Generate 4 stands the whole herd side by side at their own sizes, which is the only place that picture exists.',
+  fields: ANIMAL_FIELDS,
+  defaults: {
+    // The mossback, mid-stride, grown, wearing everything it can wear. Mid-stride
+    // because a standing animal says nothing about `swing`, and wearing the
+    // collar because two of the four knobs are about things a bare animal does
+    // not have on it.
+    species: 0,
+    phase: 1.57,
+    grown: 1,
+    fittings: 1,
+    ...ANIMAL_DEFAULT,
+  },
+  seedKey: 'species',
+  // One species along. Like the stacks, these are hand-built shapes in a list
+  // rather than draws from a hash, and the next one is the next one.
+  seedStep: 1,
+  grid: ANIMAL_KINDS.length,
+  problems(k) {
+    const out = boundsProblems(ANIMAL_FIELDS, k);
+    // The one cross-field rule, and it is the collar. The buffer is cut once at
+    // this radius and every species wears it scaled by its own throat over it,
+    // so a cut narrower than the widest neck on the map is a strap scaled up
+    // past one — a hoop standing off the throat with daylight under it, which is
+    // the exact fault the per-species `collarR` was added to fix.
+    if (k.collarR !== undefined) {
+      const widest = widestThroat();
+      if (k.collarR < widest) {
+        out.push(`collar cut ${k.collarR} is narrower than the widest throat that wears it, ${widest}`);
+      }
+    }
+    return out;
+  },
+  recipe: animalRecipe,
+  build(k) {
+    const r = animalRecipe(k);
+    const kind = ANIMAL_KINDS[k.species!]!;
+    const model = speciesModels()[kind];
+    const { size } = ANIMALS[kind];
+    // The rig's own assembly, called rather than copied — a bench that hung its
+    // own neck would agree with the pen right up until somebody moved `neckAt`.
+    // The seed is fixed: a coat that changed with the species would make four
+    // different colours the thing the grid says, when what it has to say is four
+    // different sizes.
+    const parts = assembleAnimal(kind, ANIMAL_SEED, size, model, animalFittings(), r);
+    growAnimal(parts, size * animalGrowth(k.grown!, r), r);
+    poseLegs(parts.legs, k.phase!, r);
+    const on = k.fittings === 1;
+    parts.mark.visible = on;
+    parts.collar.visible = on;
+    parts.tag.visible = on;
+    parts.group.name = `animal.${kind}`;
+    return parts.group;
+  },
+};
+
+export const BENCHES: readonly Bench[] = [STONE, GRASS, TREE, STACK, ANIMAL];
 
 export function benchByName(name: string): Bench | null {
   return BENCHES.find((b) => b.name === name) ?? null;

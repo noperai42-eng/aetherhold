@@ -57,7 +57,22 @@ import {
   type StoneRecipe,
   type TuftBlade,
 } from '../src/client/render/decor';
-import { RESOURCE_KINDS } from '../src/sim/types';
+import {
+  ANIMAL_DEFAULT,
+  animalFittings,
+  animalGrowth,
+  assembleAnimal,
+  growAnimal,
+  legSwing,
+  poseLegs,
+  speciesGeometries,
+  speciesModels,
+  type AnimalRecipe,
+  type SpeciesModel,
+} from '../src/client/render/pawns';
+import { ANIMAL_KINDS, RESOURCE_KINDS } from '../src/sim/types';
+import { PawnsView } from '../src/client/render/pawns';
+import { ANIMALS } from '../src/sim/wildlife';
 import { knobsFromSearch, recipeText, searchOf } from '../src/forge/address';
 import { benchWorld, forge, forgeSeeds, prototypes } from '../src/forge/forge';
 import {
@@ -98,15 +113,17 @@ function digest(g: THREE.BufferGeometry): string {
 
 /**
  * The colony's geometry as it stood the day the recipes were written, measured
- * off the pools the renderer had built. Nineteen shapes: the loose stone, the
- * grass tuft, the bole, the four skirts of each of the wood's two crowns, and
- * one stack of each of the eight things a settler can carry.
+ * off the pools the renderer had built. Fifty-seven shapes: the loose stone, the
+ * grass tuft, the bole, the four skirts of each of the wood's two crowns, one
+ * stack of each of the eight things a settler can carry, and every buffer of
+ * every one of the four species in the herd.
  *
- * The eight stacks are here for a different reason from the rest. No slider on
- * the bench moves a vertex of them — a pile's recipe is where its stacks are
- * put, not what they are made of — so these lines are not guarding a refactor
+ * The stacks and the herd are here for a different reason from the rest. No
+ * slider on either bench moves a vertex of them — a pile's recipe is where its
+ * stacks are put, and an animal's is the stride, the newborn, the collar and the
+ * marker, none of which is a shape — so these lines are not guarding a refactor
  * that lifted their literals into a table. They are the first thing that has
- * ever measured `logs()` and `pelt()` at all.
+ * ever measured `logs()`, `pelt()`, `makeMossback()` or `makeFenwolf()` at all.
  *
  * A line here changes when the model changes. That is the whole contract — if a
  * change to a builder is meant to change the shape, the new digest is what the
@@ -133,9 +150,74 @@ const GOLDEN: Readonly<Record<string, string>> = {
   'stack.hide': 'verts=1284 idx=0 hash=b4381014 box=[-0.3,0,-0.2642..0.2922,0.344,0.2248]',
   'stack.components': 'verts=1428 idx=0 hash=cd1787f5 box=[-0.29,0,-0.29..0.29,0.29,0.29]',
   'stack.assemblies': 'verts=432 idx=0 hash=ea4016ed box=[-0.29,0,-0.255..0.29,0.31,0.255]',
+  // The herd. Ten buffers on a mossback and a dunhare, nine on the two that
+  // carry no antler; the leg and the hoof of a dunhare and a brambletail are the
+  // same cut, and the digests say so.
+  'animal.mossback.body': 'verts=1116 idx=0 hash=234f1a21 box=[-0.231,0.4562,-0.45..0.231,0.95,0.45]',
+  'animal.mossback.saddle': 'verts=55 idx=210 hash=e5172b28 box=[-0.215,0.7955,-0.0657..0.2009,0.972,0.4203]',
+  'animal.mossback.tail': 'verts=56 idx=264 hash=eeb0bcd4 box=[-0.05,0.535,-0.545..0.05,0.7877,-0.3649]',
+  'animal.mossback.neck': 'verts=65 idx=288 hash=2ae16625 box=[-0.16,-0.15,-0.16..0.16,0.27,0.16]',
+  'animal.mossback.head': 'verts=1032 idx=0 hash=fb648b0d box=[-0.1182,-0.115,-0.1344..0.1182,0.11,0.347]',
+  'animal.mossback.crown0': 'verts=396 idx=0 hash=d6404876 box=[-0.02,0,-0.0287..0.0892,0.317,0.0277]',
+  'animal.mossback.crown1': 'verts=54 idx=240 hash=e5626366 box=[-0.05,-0.007,-0.019..0.05,0.14,0.019]',
+  'animal.mossback.lining1': 'verts=42 idx=180 hash=73081988 box=[-0.043,-0.0068,0..0.043,0.1358,0.0217]',
+  'animal.mossback.leg': 'verts=40 idx=162 hash=dc77e699 box=[-0.062,-0.6,-0.0611..0.0583,0,0.0611]',
+  'animal.mossback.hoof': 'verts=40 idx=126 hash=74bb440 box=[-0.0805,0,-0.0853..0.0725,0.077,0.0853]',
+  'animal.dunhare.body': 'verts=1296 idx=0 hash=95622a35 box=[-0.2575,0.17,-0.3091..0.2575,0.6658,0.2946]',
+  'animal.dunhare.saddle': 'verts=65 idx=252 hash=c890d2ac box=[-0.2401,0.419,-0.3149..0.242,0.6873,0.3069]',
+  'animal.dunhare.belly': 'verts=70 idx=270 hash=64458d4f box=[-0.2,0.17,-0.2161..0.1879,0.49,0.2961]',
+  'animal.dunhare.scut': 'verts=80 idx=324 hash=118e8639 box=[-0.076,0.474,-0.3869..0.0715,0.63,-0.2371]',
+  'animal.dunhare.neck': 'verts=65 idx=288 hash=a50bf389 box=[-0.09,-0.07,-0.09..0.09,0.145,0.09]',
+  'animal.dunhare.head': 'verts=1032 idx=0 hash=89635cf0 box=[-0.0985,-0.1,-0.1152..0.0985,0.1,0.248]',
+  'animal.dunhare.crown0': 'verts=54 idx=240 hash=28a8acbf box=[-0.055,-0.017,-0.021..0.055,0.34,0.021]',
+  'animal.dunhare.lining0': 'verts=42 idx=180 hash=789a7522 box=[-0.0473,-0.0165,0..0.0473,0.3298,0.0239]',
+  'animal.dunhare.leg': 'verts=40 idx=162 hash=e45e6cf1 box=[-0.04,-0.34,-0.0394..0.0376,0,0.0394]',
+  'animal.dunhare.hoof': 'verts=40 idx=126 hash=fd3ff162 box=[-0.0518,0,-0.0548..0.0466,0.0495,0.0548]',
+  'animal.brambletail.body': 'verts=864 idx=0 hash=af75dc89 box=[-0.14,0.31,-0.6674..0.14,0.8596,0.45]',
+  'animal.brambletail.chest': 'verts=70 idx=270 hash=599521b2 box=[-0.11,0.28,0.1621..0.1034,0.48,0.4379]',
+  'animal.brambletail.brush-tip': 'verts=80 idx=324 hash=80c1634d box=[-0.0604,0.776,-0.7005..0.0568,0.9,-0.5815]',
+  'animal.brambletail.neck': 'verts=65 idx=288 hash=35679fa0 box=[-0.09,-0.07,-0.09..0.09,0.14,0.09]',
+  'animal.brambletail.head': 'verts=1032 idx=0 hash=2f9515a9 box=[-0.0936,-0.09,-0.1056..0.0936,0.09,0.2385]',
+  'animal.brambletail.crown0': 'verts=54 idx=240 hash=1feca675 box=[-0.068,-0.0085,-0.024..0.068,0.17,0.024]',
+  'animal.brambletail.lining0': 'verts=42 idx=180 hash=7a32d7a5 box=[-0.0585,-0.0082,0..0.0585,0.1649,0.0274]',
+  'animal.brambletail.leg': 'verts=40 idx=162 hash=a1a279a5 box=[-0.04,-0.45,-0.0394..0.0376,0,0.0394]',
+  'animal.brambletail.hoof': 'verts=40 idx=126 hash=fd3ff162 box=[-0.0518,0,-0.0548..0.0466,0.0495,0.0548]',
+  'animal.fenwolf.body': 'verts=1620 idx=0 hash=68166b89 box=[-0.22,0.3814,-0.7718..0.22,0.86,0.48]',
+  'animal.fenwolf.belly': 'verts=70 idx=270 hash=77fdbe71 box=[-0.15,0.37,-0.2754..0.141,0.63,0.3154]',
+  'animal.fenwolf.brush-tip': 'verts=80 idx=324 hash=27b97f6d box=[-0.0556,0.349,-0.8117..0.0522,0.463,-0.7023]',
+  'animal.fenwolf.neck': 'verts=65 idx=288 hash=e73b2255 box=[-0.13,-0.12,-0.13..0.13,0.22,0.13]',
+  'animal.fenwolf.head': 'verts=1032 idx=0 hash=ea45c00b box=[-0.1083,-0.1,-0.1248..0.1083,0.1,0.2765]',
+  'animal.fenwolf.crown0': 'verts=54 idx=240 hash=8398c12b box=[-0.058,-0.0075,-0.022..0.058,0.15,0.022]',
+  'animal.fenwolf.lining0': 'verts=42 idx=180 hash=c8dc699c box=[-0.0499,-0.0073,0..0.0499,0.1455,0.0251]',
+  'animal.fenwolf.leg': 'verts=40 idx=162 hash=7a466b91 box=[-0.05,-0.58,-0.0492..0.047,0,0.0492]',
+  'animal.fenwolf.hoof': 'verts=40 idx=126 hash=a202a50 box=[-0.0632,0,-0.067..0.057,0.0605,0.067]',
 };
 
 /** Every geometry the defaults build, keyed the way the renderer keys its pools. */
+/**
+ * A species' buffers, each under the name its golden is written against.
+ *
+ * `speciesGeometries` returns the same set for the teardown and does not name
+ * them, because nothing needed the names until these lines did. The two are
+ * held together by `covers every buffer the species owns` below: a marking or a
+ * crown added to a species and not named here is a shape with no golden, which
+ * is the way the eight stacks went unmeasured for eleven rounds.
+ */
+function speciesBuffers(kind: string, m: SpeciesModel): [string, THREE.BufferGeometry][] {
+  return [
+    [`animal.${kind}.body`, m.body],
+    ...m.markings.map((k) => [`animal.${kind}.${k.name}`, k.geometry] as [string, THREE.BufferGeometry]),
+    [`animal.${kind}.neck`, m.neck],
+    [`animal.${kind}.head`, m.head],
+    ...m.crowns.map((c, i) => [`animal.${kind}.crown${i}`, c.geometry] as [string, THREE.BufferGeometry]),
+    ...m.crowns.flatMap((c, i) =>
+      c.lining ? [[`animal.${kind}.lining${i}`, c.lining.geometry] as [string, THREE.BufferGeometry]] : [],
+    ),
+    [`animal.${kind}.leg`, m.leg],
+    [`animal.${kind}.hoof`, m.hoof],
+  ];
+}
+
 function fromDefaults(): Map<string, THREE.BufferGeometry> {
   const out = new Map<string, THREE.BufferGeometry>();
   out.set('decor.stone', stoneGeometry(STONE_DEFAULT));
@@ -148,6 +230,8 @@ function fromDefaults(): Map<string, THREE.BufferGeometry> {
     treeSkirtGeometries(treeCrown(variant)).forEach((g, i) => out.set(`${TREE_SKIRTS[i]}${suffix}`, g));
   }
   for (const g of stackGeometries().values()) out.set(g.name, g);
+  const herd = speciesModels();
+  for (const kind of ANIMAL_KINDS) for (const [n, g] of speciesBuffers(kind, herd[kind])) out.set(n, g);
   return out;
 }
 
@@ -307,6 +391,179 @@ describe('how much is in a stack decides how it is drawn', () => {
     expect(stackSize(1, r)).toBeCloseTo(0.1, 6);
     expect(stackSize(2, r)).toBeCloseTo(1, 6);
     expect(stackLift(30, r)).toBeCloseTo(1 + PILE_DEFAULT.liftStep, 6);
+  });
+});
+
+/**
+ * What a species is, measured — the first time any of it has been.
+ *
+ * The buffers have goldens above; these are the relations between them that no
+ * digest can see, and the reason the herd was worth a round. Two of them are
+ * invariants the code now keeps by construction, and the third is a promise the
+ * file makes that turns out not to hold.
+ */
+describe('the four species are measured against each other', () => {
+  const herd = speciesModels();
+
+  it('covers every buffer the species owns, so none goes unmeasured', () => {
+    for (const kind of ANIMAL_KINDS) {
+      const named = speciesBuffers(kind, herd[kind]).map(([, g]) => g);
+      // Set against set, by identity: a marking added to a species and left out
+      // of `speciesBuffers` is a shape with no golden, which is exactly how the
+      // eight stacks went eleven rounds without one.
+      expect(new Set(named)).toEqual(new Set(speciesGeometries(herd[kind])));
+    }
+  });
+
+  it('cuts a leg to the one length it declares', () => {
+    for (const kind of ANIMAL_KINDS) {
+      const m = herd[kind];
+      m.leg.computeBoundingBox();
+      const box = m.leg.boundingBox!;
+      // Hung from the hip: the top of the capsule is the origin the rig rotates
+      // about, and the whole length hangs below it. Both halves matter — the rig
+      // sets the hoof at `-legLength` inside the leg, so a capsule cut to any
+      // other length puts the sole through the turf or leaves it in the air.
+      expect(box.max.y).toBeCloseTo(0, 6);
+      expect(box.min.y).toBeCloseTo(-m.legLength, 6);
+    }
+  });
+
+  it('stands the hoof on the sole of the leg it hangs from', () => {
+    const fittings = animalFittings();
+    for (const kind of ANIMAL_KINDS) {
+      const m = herd[kind];
+      const parts = assembleAnimal(kind, 7, 1, m, fittings);
+      parts.group.updateMatrixWorld(true);
+      for (const leg of parts.legs) {
+        const hoof = leg.children.find((c) => c.name === 'hoof')!;
+        expect(hoof.position.y).toBeCloseTo(-m.legLength, 6);
+      }
+    }
+  });
+
+  /**
+   * The promise, and what measuring it says.
+   *
+   * `SpeciesModel` states that "everything is laid out in body space, where a
+   * mossback is a unit tall at the withers, and the rig scales the whole thing
+   * by the species' `size` — so a hare is a hare-sized version of these numbers,
+   * not a different set." Taken at its word that makes `size` the height an
+   * animal is drawn at, as a fraction of a mossback.
+   *
+   * It is not. Each species is written in its own space — the four withers run
+   * 0.666 to 0.95 before any scaling — so `size` lands somewhere else on every
+   * one of them. A dunhare marked 0.45 of a mossback stands 0.32 of one; the
+   * brambletail and the fenwolf come up about a tenth short. Nothing had ever
+   * checked it, and it is not silently retuned here: how big the animals are
+   * beside each other is a thing to judge in frames, so this table is what the
+   * numbers are, and the brief is in FORGING.md.
+   */
+  it('does not lay the four out in one body space, whatever the file says', () => {
+    const withers: Record<string, number> = {};
+    for (const kind of ANIMAL_KINDS) {
+      herd[kind].body.computeBoundingBox();
+      withers[kind] = herd[kind].body.boundingBox!.max.y;
+    }
+    expect(withers).toEqual({
+      mossback: expect.closeTo(0.95, 3),
+      dunhare: expect.closeTo(0.6658, 3),
+      brambletail: expect.closeTo(0.8596, 3),
+      fenwolf: expect.closeTo(0.86, 3),
+    });
+    // A unit tall at the withers, five per cent short of one.
+    expect(withers.mossback).toBeLessThan(1);
+
+    const tall = (k: string): number => (withers[k]! * ANIMALS[k as 'mossback'].size) / withers.mossback!;
+    expect(tall('mossback')).toBeCloseTo(1, 3);
+    expect(tall('dunhare')).toBeCloseTo(0.3154, 3);
+    expect(tall('brambletail')).toBeCloseTo(0.2715, 3);
+    expect(tall('fenwolf')).toBeCloseTo(0.6337, 3);
+    // Which is the gap, stated as the thing a reader would otherwise assume:
+    // drawn height is not `size`, and on the dunhare it is thirty per cent under.
+    for (const kind of ANIMAL_KINDS) {
+      if (kind === 'mossback') continue;
+      expect(tall(kind)).toBeLessThan(ANIMALS[kind].size);
+    }
+  });
+
+  it('cuts the one collar wider than the widest throat that wears it', () => {
+    // Every species scales the shared ring by its own throat over the cut, so a
+    // cut narrower than a neck would scale the strap up past one and stand it
+    // off the throat — the fault the per-species `collarR` exists to fix.
+    const widest = Math.max(...ANIMAL_KINDS.map((k) => herd[k].collarR));
+    expect(widest).toBeCloseTo(0.13, 6);
+    expect(ANIMAL_DEFAULT.collarR).toBeGreaterThan(widest);
+  });
+});
+
+/**
+ * The three expressions the rig and the bench share, held apart from the bodies
+ * they are applied to.
+ */
+describe('how an animal is posed and how big it is drawn', () => {
+  it('swings a leg by the recipe, and pairs them diagonally', () => {
+    expect(legSwing(0)).toBeCloseTo(0, 6);
+    // The number, not `ANIMAL_DEFAULT.swing`. An expectation written off the
+    // constant it is guarding moves with it, and a drill that raised the swing
+    // to 0.6 walked straight past this line.
+    expect(legSwing(Math.PI / 2)).toBeCloseTo(0.55, 6);
+    expect(legSwing(Math.PI / 2, { ...ANIMAL_DEFAULT, swing: 0.2 })).toBeCloseTo(0.2, 6);
+
+    const legs = [0, 1, 2, 3].map(() => new THREE.Mesh());
+    poseLegs(legs, Math.PI / 2);
+    // Fore left with hind right, fore right with hind left: the gait of a
+    // four-legged animal, and the one thing a bench that copied the pose could
+    // get backwards without anything going red.
+    expect(legs[0]!.rotation.x).toBeCloseTo(ANIMAL_DEFAULT.swing, 6);
+    expect(legs[3]!.rotation.x).toBeCloseTo(ANIMAL_DEFAULT.swing, 6);
+    expect(legs[1]!.rotation.x).toBeCloseTo(-ANIMAL_DEFAULT.swing, 6);
+    expect(legs[2]!.rotation.x).toBeCloseTo(-ANIMAL_DEFAULT.swing, 6);
+  });
+
+  it('takes a mossback a third of a metre of stride to do it', () => {
+    // What 0.55 radians is worth on the ground, which is the thing the number
+    // was chosen for and the thing a reader can argue with. A mossback's leg is
+    // 0.6 m, so at full swing its hoof reaches 0.31 m behind where it stood and
+    // lifts 9 cm of daylight under itself.
+    const herd = speciesModels();
+    const parts = assembleAnimal('mossback', 7, 1, herd.mossback, animalFittings());
+    const hoofOf = (leg: THREE.Mesh): THREE.Vector3 => {
+      parts.group.updateMatrixWorld(true);
+      return leg.children.find((c) => c.name === 'hoof')!.getWorldPosition(new THREE.Vector3());
+    };
+    const still = hoofOf(parts.legs[0]!);
+    poseLegs(parts.legs, Math.PI / 2);
+    const swung = hoofOf(parts.legs[0]!);
+    expect(swung.y - still.y).toBeCloseTo(0.0885, 4);
+    expect(Math.abs(swung.z - still.z)).toBeCloseTo(0.3136, 4);
+  });
+
+  it('draws a newborn at the fraction of its dam the recipe names', () => {
+    expect(animalGrowth(0)).toBeCloseTo(ANIMAL_DEFAULT.calf, 6);
+    expect(animalGrowth(1)).toBeCloseTo(1, 6);
+    expect(animalGrowth(0.5)).toBeCloseTo(0.725, 6);
+    expect(animalGrowth(0, { ...ANIMAL_DEFAULT, calf: 0.2 })).toBeCloseTo(0.2, 6);
+  });
+
+  it('carries the hunt marker up with a body that grows, keeping its air', () => {
+    const herd = speciesModels();
+    const parts = assembleAnimal('mossback', 7, 1, herd.mossback, animalFittings());
+    // Built at full size: the marker's point stands the recipe's clearance over
+    // the crest of the animal.
+    expect(parts.mark.position.y).toBeCloseTo(parts.crest + ANIMAL_DEFAULT.markClearance, 6);
+    // And the clearance written out, in metres, rather than read back off the
+    // recipe that sets it: 16 cm of daylight between the crest of the animal and
+    // the point of the cone, the same 16 cm over a hare as over a mossback.
+    expect(parts.mark.position.y - parts.crest).toBeCloseTo(0.16, 6);
+    growAnimal(parts, ANIMAL_DEFAULT.calf);
+    expect(parts.body.scale.y).toBeCloseTo(ANIMAL_DEFAULT.calf, 6);
+    // The air over a calf is the same air as over its dam — it is drawn for the
+    // player, in the player's units, and not in the animal's.
+    expect(parts.mark.position.y).toBeCloseTo(
+      parts.crest * ANIMAL_DEFAULT.calf + ANIMAL_DEFAULT.markClearance,
+      6,
+    );
   });
 });
 
@@ -632,6 +889,103 @@ describe('the bench builds what the page asks it for', () => {
     expect(made.problems.join(' ')).toContain('has no width');
   });
 
+  it('stands the four species side by side, and no fifth', () => {
+    const animal = benchByName('animal')!;
+    // The grid is the frame this family is judged in, and the only picture in
+    // the repo where the four stand at their own sizes on the same ground: on
+    // the map they are eleven cells below a camera, in a field, at three
+    // different distances and half of them cropped.
+    expect(animal.grid).toBe(ANIMAL_KINDS.length);
+    const seeds = Array.from({ length: animal.grid! }, (_, i) => i * animal.seedStep);
+    const grid = forgeSeeds(animal, animal.defaults, seeds, protos);
+    expect(grid.map((m) => m.group!.name)).toEqual(ANIMAL_KINDS.map((k) => `animal.${k}`));
+    // And at four different heights, which is what the grid is there to show.
+    const tops = grid.map((m) => Math.round(new THREE.Box3().setFromObject(m.group!).max.y * 1e3) / 1e3);
+    expect(new Set(tops).size).toBe(ANIMAL_KINDS.length);
+  });
+
+  it('hangs a bench animal’s parts exactly where the pen hangs them', () => {
+    // The whole reason `assembleAnimal` was lifted out of the rig. A bench that
+    // hung its own neck would agree with the pen right up until somebody moved
+    // `neckAt`, and nothing would say which of the two was the game.
+    const animal = benchByName('animal')!;
+    const world = benchWorld();
+    const beast = world.pawns.find((p) => p.animal === 'mossback');
+    expect(beast).toBeDefined();
+    world.pawns = [beast!];
+    const view = new PawnsView();
+    view.onTick(world);
+    view.sync(world, 1, null, 1 / 60);
+    view.group.updateMatrixWorld(true);
+
+    const made = forge(animal, animal.defaults, protos);
+    expect(made.problems).toEqual([]);
+    // From the children down, not from the root: the bench names its top group
+    // for the grid caption and the pen leaves it bare, and that one label is the
+    // only thing about the two that is allowed to differ.
+    const parts = (o: THREE.Object3D): string[] => {
+      const out: string[] = [];
+      const r = (n: number): number => Math.round(n * 1e5) / 1e5;
+      for (const child of o.children) {
+        child.traverse((c) => {
+          if (!c.name) return;
+          out.push(`${c.name} ${r(c.position.x)},${r(c.position.y)},${r(c.position.z)}`);
+        });
+      }
+      return out.sort();
+    };
+    expect(parts(made.group!)).toEqual(parts(view.group));
+  });
+
+  it('refuses a collar cut narrower than the neck it has to ring', () => {
+    const animal = benchByName('animal')!;
+    const made = forge(animal, { ...animal.defaults, collarR: 0.1 }, protos);
+    expect(made.group).toBeNull();
+    expect(made.problems.join(' ')).toContain('narrower than the widest throat');
+  });
+
+  it('takes the collar and the marker off an animal nobody has claimed', () => {
+    const animal = benchByName('animal')!;
+    const bare = forge(animal, { ...animal.defaults, fittings: 0 }, protos);
+    const worn: string[] = [];
+    bare.group!.traverse((c) => {
+      if (c.visible && ['mark', 'collar', 'tag'].includes(c.name)) worn.push(c.name);
+    });
+    expect(worn).toEqual([]);
+    const kept = forge(animal, animal.defaults, protos);
+    const shown: string[] = [];
+    kept.group!.traverse((c) => {
+      if (c.visible && ['mark', 'collar', 'tag'].includes(c.name)) shown.push(c.name);
+    });
+    expect(shown.sort()).toEqual(['collar', 'mark', 'tag']);
+  });
+
+  it('draws a newborn at the fraction of its dam the recipe names', () => {
+    const animal = benchByName('animal')!;
+    const grown = forge(animal, animal.defaults, protos);
+    const calf = forge(animal, { ...animal.defaults, grown: 0 }, protos);
+    const body = (m: THREE.Object3D): THREE.Object3D => m.children[0]!;
+    expect(body(calf.group!).scale.y / body(grown.group!).scale.y).toBeCloseTo(ANIMAL_DEFAULT.calf, 6);
+    // The marker comes down with it and keeps the same air, which is the pair of
+    // lines `growAnimal` exists to keep together.
+    const mark = (m: THREE.Object3D): THREE.Mesh => m.children.find((c) => c.name === 'mark') as THREE.Mesh;
+    expect(mark(calf.group!).position.y).toBeLessThan(mark(grown.group!).position.y);
+  });
+
+  it('swings the bench animal’s legs the way the herd swings them', () => {
+    const animal = benchByName('animal')!;
+    const made = forge(animal, animal.defaults, protos);
+    const legs: THREE.Mesh[] = [];
+    made.group!.traverse((c) => {
+      if (c.name === 'leg') legs.push(c as THREE.Mesh);
+    });
+    expect(legs).toHaveLength(4);
+    const swung = legSwing(animal.defaults.phase!);
+    expect(legs.map((l) => Math.round(l.rotation.x * 1e5) / 1e5).sort((a, b) => a - b)).toEqual(
+      [-swung, -swung, swung, swung].map((v) => Math.round(v * 1e5) / 1e5).sort((a, b) => a - b),
+    );
+  });
+
   it('steps the wood’s seeds far enough apart to be different crowns', () => {
     // A crown seeds its four skirts at `i + 1 + crownSeed`, so a step of one
     // would give two neighbours in the grid three of the same four outlines.
@@ -776,6 +1130,19 @@ describe('a recipe found on the bench reaches the game', () => {
     // `buildings.ts` is a pile's arithmetic, not somebody's afternoon of it.
     expect(pasted).toEqual(stack.recipe(k));
     expect(Object.keys(pasted).sort()).toEqual(Object.keys(PILE_DEFAULT).sort());
+  });
+
+  it('builds the same animal from the pasted block, and none of the herd with it', () => {
+    const animal = benchByName('animal')!;
+    const k = { ...animal.defaults, species: 3, phase: 2.2, grown: 0.4, swing: 0.9 };
+    const pasted = JSON.parse(recipeText(animal, k)) as AnimalRecipe;
+    // Which species stood on the bench, how far through its stride it was and
+    // how grown are the load, not the recipe. What goes back into `pawns.ts` is
+    // how an animal is drawn and worn, which is the same four numbers for all
+    // four of them.
+    expect(pasted).toEqual(animal.recipe(k));
+    expect(Object.keys(pasted).sort()).toEqual(Object.keys(ANIMAL_DEFAULT).sort());
+    expect(pasted.swing).toBe(0.9);
   });
 
   it('builds the same tree from its own address, so a link is the frame', () => {

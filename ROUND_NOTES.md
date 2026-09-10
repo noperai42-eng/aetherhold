@@ -4,6 +4,101 @@ One round, one measured gap, one fix. Newest first.
 
 ---
 
+## 2026-09-09 — Four species share one body space, and no two of them are in it
+
+**Track: the forge.** Stage 5 of [FORGING.md](FORGING.md), third family. `pawns.ts` for the
+animal's recipe and the rig it was buried in, `src/forge/` for the bench entry, and a doc
+comment that told the reader how the four species relate to each other and was wrong.
+
+### Why the animals
+
+Not because the table says so — [FORGING.md](FORGING.md) guesses an order and says out loud
+that the photographs overrule it. The frames say animals for a reason that has nothing to do
+with how they are built: `r10-A-animals.png` is the only picture of a mossback, a dunhare, a
+brambletail and a fenwolf that this repo has ever taken, and in it they are eleven cells below
+a manager's camera, in a field, at three different distances, and half of them are cropped.
+There is no frame anywhere in `.look/` where the four stand on the same ground at the same
+distance. `Generate 4` is that frame.
+
+That also makes this the second user of `Bench.grid`, the optional field the piles added, which
+is the only test of whether the field was right rather than a special case with one caller.
+
+### The measured gap
+
+`SpeciesModel`'s doc comment says everything is laid out in body space, "where a mossback is a
+unit tall at the withers, and the rig scales the whole thing by the species' `size` — so a hare
+is a hare-sized version of these numbers, not a different set." That reads as a promise that
+`size` is the height an animal is drawn at, relative to a mossback. It is what a reader tuning
+`ANIMALS` would believe. Measured:
+
+| | withers, body space | `size` | drawn, against a mossback |
+| --- | --- | --- | --- |
+| mossback | 0.95 | 1.0 | 1.0000 |
+| fenwolf | 0.86 | 0.7 | 0.6337 |
+| brambletail | 0.8596 | 0.3 | 0.2715 |
+| dunhare | 0.6658 | 0.45 | 0.3154 |
+
+The unit is 0.95, not 1. The spread between the four body spaces is 43 per cent, so `size`
+lands somewhere different on every species: a dunhare marked 0.45 of a mossback stands 0.32 of
+one — 30 per cent under its own number — and the brambletail and the fenwolf each come up
+about a tenth short. Nothing had ever checked it, and the grid frame is the first place anyone
+could have seen it.
+
+A smaller one came with it. `ANIMAL_DEFAULT.collarR` is documented as "a mossback's throat, the
+widest neck on the map" and is 0.15 against a mossback's own 0.13. The number is fine; what was
+missing was anything that would notice if it stopped being.
+
+### What was fixed, and what was not
+
+Not the four sizes. How big the animals should look beside each other is a look-loop judgement
+with frames in it, and the frame it needs did not exist until this round produced it. What is
+fixed is that it is written down: four withers and four drawn heights as exact numbers in
+`tests/forge-recipes.test.ts`, the direction of the error recorded, and a brief in
+[FORGING.md](FORGING.md).
+
+One real fault did get fixed. Each species wrote its leg length twice — once as the argument to
+`limb()` and once as the `legLength` field ten lines down — while the settler in the same file
+uses one named `SETTLER_LEG`. The rig hangs a hoof at `-legLength` inside the leg, so the two
+drifting apart would put a hoof in the air or under the turf, silently, in a family nothing
+measured. Each species now names its length once, and two tests hold it.
+
+And the extraction, which `recipes.ts` required rather than suggested: a bench may not build
+its own assemblies, so `AnimalRig`'s whole constructor came out into `assembleAnimal`, with
+`growAnimal` and `poseLegs` beside it on the `stackRise` pattern — one expression, two callers,
+never two copies. A test stands a bench animal and a pen animal side by side and compares every
+named part's position, which is the payoff measured rather than asserted.
+
+### What the frames said about the bench
+
+The single mossback frames well. The grid of four does not: the stage spaces models by the
+largest horizontal dimension of the widest of them and then frames a bounding *sphere*, so four
+animals that are long and thin stand 1.3 m apart while being 0.3 m wide, laid along a diagonal
+inside a sphere they fill a sliver of. Two thirds of that frame is grass. It is the same brief
+the piles round opened — the pitch is a function of footprint and nothing else — sharpened by a
+second symptom: it is not only depth that the grid gets wrong, it is which axis a row is spaced
+on, and how a one-row family is fitted.
+
+The sheet's own coverage line is out by nearly three to one in the other direction:
+`scripts/look/forge.mjs` prints "`N` of 42 assemblies on the bench" with `N` counting benches,
+and five benches shape fourteen of the forty-two. Understating is the safe direction and the
+one its comment argues for, so it is logged in [FORGING.md](FORGING.md) rather than patched —
+saying it honestly means each `Bench` declaring which manifest entries it covers, which is a
+field on the interface and not a word in a template.
+
+### Verified
+
+`npx tsc --noEmit` clean. Full suite `125 passed | 2 skipped`, `2578 passed | 13 skipped` —
+exactly fifty-four more than the round before, matching the fifty-four new tests.
+`npm run look:forge` r23: `5/5 models`, no console errors. Eight
+mutations run against the new pins, and the first pass caught six. The two that walked through
+were the leg swing and the marker's clearance, and both for the same reason: the expectation
+was written as `ANIMAL_DEFAULT.swing` and `ANIMAL_DEFAULT.markClearance`, so it moved with the
+constant it was supposed to be guarding. A pin written off the thing it guards is not a pin.
+Both are now numbers — 0.55 radians, which is 0.31 m of stride and 9 cm of daylight under a
+mossback's hoof, and 16 cm of air over the crest — and the second pass caught eight of eight.
+
+---
+
 ## 2026-09-09 — The colony promises eight stacks are the same height, and eight of them are not
 
 **Track: the forge.** Stage 5 of [FORGING.md](FORGING.md), second family. `buildings.ts` for

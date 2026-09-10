@@ -491,6 +491,71 @@ tree grid over nine metres deep and shrink every tree in it to a stamp. Raising 
 splitting row pitch from column pitch are both design changes to every frame the loop has
 taken so far, which makes this a brief too.
 
+**Built — animals, 2026-09-09.** The four species, and the first family the contact sheet
+picked on the strength of how badly it was photographed. `r10-A-animals.png` is the only
+picture of a mossback, a dunhare, a brambletail and a fenwolf that this repo has ever taken,
+and in it they are eleven cells below a manager's camera, in a field, at three different
+distances, and half of them are cropped. Nobody has ever seen the four of them standing on the
+same ground at the same distance. `Generate 4` is that picture, and `Bench.grid` — the field
+the piles added — has a second user, which is the only test of whether the field was right.
+
+`AnimalRecipe` and `ANIMAL_DEFAULT` in `pawns.ts` are the four numbers that were four module
+constants: the leg swing, the fraction of its dam a newborn is drawn at, the collar's cut and
+the marker's air. The species themselves stay tables — a blob radius, a hem sample, an ear
+rake — for the reason `recipes.ts` states about trees: a table is not draggable, and a slider
+that averaged four species into one would be a slider that draws an animal the game does not
+have.
+
+The extraction was not optional. `recipes.ts` forbids the bench from building its own
+assemblies, so the whole of `AnimalRig`'s constructor came out into `assembleAnimal`, and the
+rig now calls it. `growAnimal` and `poseLegs` are the same discipline as `stackRise`: the body
+scale and the marker's height are one expression called from two places rather than two copies
+that agree until one is edited, and a test stands a bench animal and a pen animal side by side
+and compares every named part's position — the payoff of the extraction, measured rather than
+asserted.
+
+Reading the file to write the recipe found the fault the round is worth. Each species wrote its
+leg length twice, once as the argument to `limb()` and once as the `legLength` field ten lines
+down, while the settler in the same file uses one named `SETTLER_LEG`. The rig places a hoof at
+`-legLength` inside the leg, so the two numbers drifting apart would leave a hoof in the air or
+under the turf, silently, in a family nothing measured. Each species now names its length once,
+and two tests hold it: a leg's box runs from 0 to `-legLength`, and the assembled hoof sits at
+`-legLength` inside it.
+
+And the promise the family was worth measuring. `SpeciesModel` says everything is laid out in
+body space, "where a mossback is a unit tall at the withers, and the rig scales the whole thing
+by the species' `size` — so a hare is a hare-sized version of these numbers, not a different
+set." It is not. The four withers run 0.666 to 0.95 before any scaling — a 43 per cent spread —
+so `size` is not the drawn height it reads as. A dunhare marked 0.45 of a mossback stands 0.32
+of one; the brambletail and the fenwolf come up about a tenth short of their own numbers; and
+the mossback, the unit, is 0.95. The four withers and the four drawn heights are now written
+out exactly, and so is the direction of the error. **Brief: put the four species into one body
+space, or make `size` mean the drawn height.** How big the animals are beside each other is a
+look-loop judgement with frames in it, so it is a brief and not a silent edit — and the grid
+frame this round adds is the first frame that judgement could ever be made from.
+
+The grid frame also sharpened the pitch brief the piles opened. The stage spaces models by the
+largest horizontal dimension of the widest of them and then frames a bounding *sphere*, so four
+animals that are long and thin stand 1.3 m apart while being 0.3 m across, laid along a
+diagonal inside a sphere they fill a sliver of, with two thirds of the frame grass. It is not
+only depth the grid gets wrong; it is which axis a row is spaced on, and how a family only one
+row deep is fitted.
+
+One more thing surfaced that belongs to the sheet rather than to the animals, and is logged
+rather than fixed. `scripts/look/forge.mjs` prints "`N` of 42 assemblies on the bench", but `N`
+is the number of *benches*, not the number of assemblies they cover. Five benches cover
+fourteen of the forty-two — nine tree pools that export as two, eight stacks, four species —
+so the line understates by nearly three to one. It errs toward the caution its own comment
+argues for, which is why it is a brief and not a bug, but saying it honestly needs each `Bench`
+to declare which manifest entries it shapes, and that is a field on the interface rather than a
+word in a template.
+
+One smaller false promise came with it. `ANIMAL_DEFAULT.collarR` is documented as "a mossback's
+throat, the widest neck on the map", and it is 0.15 against a mossback's own 0.13. The number
+is right and the sentence is nearly right; what was missing was anything that would notice if
+it stopped being. The bench now refuses a collar cut narrower than the widest throat that has
+to wear it, which is the family's one cross-field rule.
+
 ## The order of work
 
 Stages 0, 1 and 2 are one piece of work and should be done together; a recipe with
