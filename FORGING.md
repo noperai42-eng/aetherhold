@@ -913,6 +913,29 @@ Aetherhold's materials are `MeshStandardMaterial` with an ambient-occlusion bake
 living in vertex colours, so the split is not free and is not obviously worth
 paying for. Revisit if the recipe work makes it cheap.
 
+**Built — tallest at the back, 2026-09-10.** The arrangement question the buildings round
+left, answered in `placeGrid` rather than on the building bench, because it was never a
+question about the buildings. The camera stands above the grid and off its near corner, so
+a nearer model stands in front of the one behind it; `gridPitch` steps by footprint and had
+no opinion about height. `placeGrid` deals the cells by height now, tallest into the
+furthest, and the models keep the order they arrived in.
+
+Free, and that is why it and not the alternative. Spreading the rows far enough to clear a
+2.60 m model at 27 degrees of elevation needs 3.26 times the pitch and costs 79 per cent of
+every model's apparent size; sorting costs nothing and gains two per cent, the grid's box
+narrowing as its widest models come off the edges. Across the seven benches' Generate
+frames, seventeen of eighty-two models were more than half hidden behind a nearer one and
+eleven are — and the buildings' four are none.
+
+The eleven left are a footprint question, not a height one: ten of them are in the stone,
+the wood and the stacks, whose models are all of a height (1.19, 1.00 and 1.10 to 1), and
+the eleventh is one of four animals standing in a single row. `tests/forge-stage.test.ts`
+carries the seven-family table, and it is where that round will be measured from.
+
+The sort key is rounded to a millimetre, which is not fussiness. A box is measured by
+subtracting its floor from its ceiling, and a metre-tall model standing 35 mm off the turf
+measures 0.9999999999999999 — raw, a settler's bob decides where the settler stands.
+
 **Built — the twenty-six buildings, 2026-09-10.** The family the census round named as
 the only one left. The plan said they could not be looked at; the probe said they could,
 and that seventeen of the twenty-six came out of `prototypes` wearing `ffffff`.

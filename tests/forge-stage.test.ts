@@ -88,6 +88,77 @@ function frameFill(shown: THREE.Object3D, dist: number, aspect = ASPECT): number
   return (halfW / (dist * tanX)) * (halfH / (dist * tanY));
 }
 
+/**
+ * For each child of `shown`, how much of it something nearer the camera covers.
+ *
+ * A bounding-box proxy and not a rasterisation: a model becomes the rectangle its
+ * eight box corners project into, and it counts as covered where a rectangle
+ * whose nearest corner is nearer than its own overlaps it. Boxes are fatter than
+ * silhouettes, so this reads high — it is a floor on how much of a model can be
+ * seen and not a claim about pixels. What it is for is comparing two arrangements
+ * of the same models under the same lens, and for that a consistent over-read is
+ * worth more than an exact one that needs a GPU to take.
+ */
+function hiddenBehind(shown: THREE.Object3D, dist: number, aspect = ASPECT): number[] {
+  const box = new THREE.Box3().setFromObject(shown);
+  const centre = box.getCenter(new THREE.Vector3());
+  const dir = new THREE.Vector3(
+    Math.cos(ELEVATION) * Math.cos(AZIMUTH),
+    Math.sin(ELEVATION),
+    Math.cos(ELEVATION) * Math.sin(AZIMUTH),
+  );
+  const eye = centre.clone().add(dir.clone().multiplyScalar(dist));
+  const fwd = dir.clone().negate().normalize();
+  const right = new THREE.Vector3().crossVectors(fwd, new THREE.Vector3(0, 1, 0)).normalize();
+  const up = new THREE.Vector3().crossVectors(right, fwd).normalize();
+  const tanY = Math.tan(FOV / 2);
+  const tanX = tanY * aspect;
+  const rects = shown.children.map((m) => {
+    const b = new THREE.Box3().setFromObject(m);
+    let x0 = Infinity;
+    let x1 = -Infinity;
+    let y0 = Infinity;
+    let y1 = -Infinity;
+    let near = Infinity;
+    for (const x of [b.min.x, b.max.x])
+      for (const y of [b.min.y, b.max.y])
+        for (const z of [b.min.z, b.max.z]) {
+          const v = new THREE.Vector3(x, y, z).sub(eye);
+          const d = v.dot(fwd);
+          near = Math.min(near, d);
+          const px = v.dot(right) / (d * tanX);
+          const py = v.dot(up) / (d * tanY);
+          x0 = Math.min(x0, px);
+          x1 = Math.max(x1, px);
+          y0 = Math.min(y0, py);
+          y1 = Math.max(y1, py);
+        }
+    return { x0, x1, y0, y1, near };
+  });
+  // A fixed lattice over each rectangle rather than exact rectangle algebra: the
+  // covering rectangles overlap each other, and adding their areas up would
+  // double-count every overlap. Two hundred a side is a fortieth of a per cent.
+  const N = 200;
+  return rects.map((r, i) => {
+    let hit = 0;
+    for (let a = 0; a < N; a++) {
+      const px = r.x0 + ((a + 0.5) / N) * (r.x1 - r.x0);
+      for (let b = 0; b < N; b++) {
+        const py = r.y0 + ((b + 0.5) / N) * (r.y1 - r.y0);
+        for (let j = 0; j < rects.length; j++) {
+          const o = rects[j]!;
+          if (j === i || o.near >= r.near) continue;
+          if (px >= o.x0 && px <= o.x1 && py >= o.y0 && py <= o.y1) {
+            hit++;
+            break;
+          }
+        }
+      }
+    }
+    return hit / (N * N);
+  });
+}
+
 /** The distance an exact fit of the box against both fields would need. */
 function boxDistance(shown: THREE.Object3D, aspect = ASPECT): number {
   const box = new THREE.Box3().setFromObject(shown);
@@ -245,6 +316,60 @@ describe('how a grid is spaced and where a model lands', () => {
     expect(a.position.z).toBeCloseTo(-0.1, 6);
   });
 
+  it('deals the cells by height, tallest into the row furthest from the camera', () => {
+    // Handed shortest-first, so an unsorted grid would come out in this order and
+    // a sorted one has to come out reversed. Same footprint on all four, so the
+    // pitch is one number and the only thing being read is who got which cell.
+    const models = [slab(1, 0.2, 1), slab(1, 0.5, 1), slab(1, 1, 1), slab(1, 2, 1)];
+    const pitch = placeGrid(models, 2);
+    const cell = (m: THREE.Object3D) => [
+      Math.round((m.position.x / pitch.x) * 100) / 100,
+      Math.round((m.position.z / pitch.z) * 100) / 100,
+    ];
+    // Row -0.5 is the far row: the camera stands off toward +z. The 2 m slab and
+    // the 1 m slab are in it, the two short ones are in front. Read down the
+    // column, this is the array handed in — shortest first — so the 0.2 m slab
+    // is the near-right cell and the 2 m slab is the far-left one.
+    expect(models.map(cell)).toEqual([
+      [0.5, 0.5],
+      [-0.5, 0.5],
+      [0.5, -0.5],
+      [-0.5, -0.5],
+    ]);
+  });
+
+  it('leaves a family that is all one height in the order it arrived, lift and all', () => {
+    // The bug this was written off. A box is measured by subtracting its floor
+    // from its ceiling, and for a metre-tall slab standing 35 mm off the turf
+    // that subtraction returns 0.9999999999999999 rather than 1. Sorted on the
+    // raw number, `a` reads as the shorter of two identical slabs and is dealt
+    // the near cell — the model's own bob decides where it stands, which is not
+    // a decision a bob is entitled to make.
+    const a = slab(1, 1, 1);
+    const b = slab(1, 1, 1);
+    a.position.y = 0.035;
+    expect(new THREE.Box3().setFromObject(a).getSize(new THREE.Vector3()).y).not.toBe(1);
+    placeGrid([a, b], 2);
+    expect(a.position.x).toBeCloseTo(-1.45 / 2, 6);
+    expect(b.position.x).toBeCloseTo(1.45 / 2, 6);
+  });
+
+  it('is deaf under a millimetre and hears the millimetre', () => {
+    // Where the rounding sits, from both sides, because a tolerance nobody has
+    // measured the edges of is a tolerance that quietly becomes zero or infinity.
+    const under = [slab(1, 1, 1), slab(1, 1.0004, 1)];
+    placeGrid(under, 2);
+    expect(under[0]!.position.x).toBeCloseTo(-1.45 / 2, 6);
+
+    const over = [slab(1, 1, 1), slab(1, 1.0006, 1)];
+    placeGrid(over, 2);
+    // Six tenths of a millimetre is a millimetre once rounded, so it goes first.
+    // The pitch does not move with it: `gridPitch` reads x and z and not height,
+    // which is the whole reason a grid of one footprint and many heights was
+    // being dealt cells with no regard to who would be standing behind whom.
+    expect(over[1]!.position.x).toBeCloseTo(-1.45 / 2, 6);
+  });
+
   it('holds the whole box, from any yaw and at any canvas shape', () => {
     // The property the sphere is chosen for: turn the subject on the spot and
     // the distance does not move, so a frame is a function of what is standing
@@ -352,7 +477,7 @@ describe('how much of a bench frame the subject gets', () => {
     });
     expect(rows).toEqual([
       ['stone', 28, 39],
-      ['grass', 30, 43],
+      ['grass', 30, 42],
       ['tree', 32, 43],
       ['stack', 32, 42],
       ['animal', 34, 38],
@@ -368,14 +493,14 @@ describe('how much of a bench frame the subject gets', () => {
     // banking it would make every frame a function of the window it was taken
     // in. The wood is three to a row now, which makes its grid deeper than it
     // is wide and hands the square canvas more to gain than the four-wide one
-    // gave it: sixty-six centimetres where it was forty-two. Forty-two, and not
+    // gave it: sixty-seven centimetres where it was forty-two. Forty-two, and not
     // the four the line here used to say — 34.44 against 34.02 is 0.42 m, and
     // the round that wrote it dropped a decimal. The four and a half metres in
     // the same sentence was right and is now nearly five.
     const { shown, dist } = grid(benchByName('tree')!);
-    expect(Math.round(dist * 100) / 100).toBe(34.43);
-    expect(Math.round(boxDistance(shown, 1) * 100) / 100).toBe(33.77);
-    expect(Math.round(boxDistance(shown, 16 / 9) * 100) / 100).toBe(29.56);
+    expect(Math.round(dist * 100) / 100).toBe(34.47);
+    expect(Math.round(boxDistance(shown, 1) * 100) / 100).toBe(33.8);
+    expect(Math.round(boxDistance(shown, 16 / 9) * 100) / 100).toBe(29.6);
   });
 
   it('stands each family at the count its own frames were judged at', () => {
@@ -413,6 +538,50 @@ describe('how much of a bench frame the subject gets', () => {
     ]);
   });
 
+  it('leaves eleven of the eighty-two more than half hidden, where seventeen were', () => {
+    // What the arrangement round was written off, per family, as it is. The first
+    // column is how many of that family's grid are more than half covered by
+    // something nearer the camera; the second is the mean over the family, in
+    // points of the model's own screen rectangle.
+    //
+    // Dealt in index order, which is what `placeGrid` did before it sorted, the
+    // same seven read: 2 and 29, 1 and 25, 6 and 47, 3 and 34, 1 and 31, 0 and 22,
+    // 4 and 21. Seventeen of the eighty-two more than half hidden against eleven
+    // here, and the buildings' four against none.
+    //
+    // Two rows are a point worse in the mean and are written that way rather than
+    // explained away: the stone goes 29 to 31 while shedding one of its two, and
+    // the wood 47 to 48. Both are families of one height, where the sort has
+    // nothing to sort and moves models only by narrowing the grid's box.
+    //
+    // Ten of the eleven left are in those two and the stacks — 1.19 to 1, 1.00 to
+    // 1 and 1.10 to 1 in height — where no order helps, because what covers them
+    // is footprint against pitch. The eleventh is one of the four animals, and it
+    // is a different reason again: four to a row is one row, and a row is all one
+    // depth, so the only thing left to hide behind is a neighbour along it. Both
+    // are footprint questions and both are a different round from this one.
+    const rows = BENCHES.map((b) => {
+      const { shown, dist } = grid(b);
+      const each = hiddenBehind(shown, dist);
+      return [
+        b.name,
+        each.filter((h) => h > 0.5).length,
+        Math.round((each.reduce((t, h) => t + h, 0) / each.length) * 100),
+      ];
+    });
+    expect(rows).toEqual([
+      ['stone', 1, 31],
+      ['grass', 0, 11],
+      ['tree', 6, 48],
+      ['stack', 3, 34],
+      ['animal', 1, 17],
+      ['settler', 0, 22],
+      ['building', 0, 14],
+    ]);
+    expect(rows.reduce((t, r) => t + (r[1] as number), 0)).toBe(11);
+    expect(BENCHES.reduce((t, b) => t + (b.grid ?? 12), 0)).toBe(82);
+  });
+
   it('gives up fill only where the frames said fill was the wrong judge', () => {
     // What each family ships at, against what fitting the frame would choose,
     // in points of picture. `COLUMNS = 4` was argued in a comment — "past that
@@ -424,12 +593,22 @@ describe('how much of a bench frame the subject gets', () => {
     // at four to a row is not their size but which of them is behind which, and
     // no amount of frame-filling fixes an arm through a body.
     //
+    // The herd's point is the same coin from the other side, and it was not paid
+    // by a column count. `placeGrid` stands the tall ones at the back now, which
+    // moves a family's widest models off the edges of its grid and narrows the
+    // box a little; for four animals of three very different heights that is
+    // enough to make three to a row the fuller frame and to cost the shipped four
+    // a point. Bought with it: of the four, one used to be more than half hidden
+    // behind a nearer neighbour and none is. A point of picture for a whole
+    // animal is the trade this column exists to write down.
+    //
     // The buildings give up nothing, which is the one thing the arrangement
-    // question for them can be answered on without frames: of the twenty-six
+    // question for them could be answered on without frames: of the twenty-six
     // column counts a twenty-six-model grid could take, the stage's default is
-    // already the one that fills the most picture. If their sweep moves them off
-    // 4 it will be for the reason the settlers moved — what stands behind what —
-    // and this row is where that trade gets written down in points.
+    // already the one that fills the most picture. That held — their sweep moved
+    // them off nothing, because what was wrong with twenty-six buildings at four
+    // to a row was never the four. It was that a door 2.60 m tall and a conduit
+    // 0.055 m tall were dealt cells in alphabetical order.
     const rows = BENCHES.filter((b) => (b.grid ?? 12) > 1).map((b) => {
       const n = b.grid ?? 12;
       let best = 0;
@@ -452,7 +631,7 @@ describe('how much of a bench frame the subject gets', () => {
       ['grass', 4, 0],
       ['tree', 3, 0],
       ['stack', 3, 0],
-      ['animal', 4, 0],
+      ['animal', 3, 1],
       ['settler', 4, 4],
       ['building', 4, 0],
     ]);
@@ -488,7 +667,7 @@ describe('how much of a bench frame the subject gets', () => {
       ['stack', 21, true],
       ['animal', 25, true],
       ['settler', 43, true],
-      ['building', 75, true],
+      ['building', 74, true],
     ]);
   });
 
@@ -541,11 +720,11 @@ describe('how much of a bench frame the subject gets', () => {
     expect(maxed).toEqual([
       ['stone', 62, true],
       ['grass', 117, true],
-      ['tree', 450, false],
+      ['tree', 447, false],
       ['stack', 36, true],
       ['animal', 30, true],
-      ['settler', 86, true],
-      ['building', 75, true],
+      ['settler', 85, true],
+      ['building', 74, true],
     ]);
     // The buildings are the row where maxing changes nothing, and the reason is
     // worth a line rather than a shrug: their only field is the one that picks
@@ -596,13 +775,13 @@ describe('how much of a bench frame the subject gets', () => {
     });
     expect([fog.color.getHexString(), fog.near, Math.round(fog.far * 100) / 100]).toEqual(['b6a18f', 40, 339.41]);
     expect(rows).toEqual([
-      ['stone', 47, 0.024, 0.08],
+      ['stone', 47, 0.023, 0.078],
       ['grass', 14, 0, 0],
-      ['tree', 138, 0.328, 1],
+      ['tree', 138, 0.329, 1],
       ['stack', 27, 0, 0],
       ['animal', 32, 0, 0],
-      ['settler', 57, 0.056, 0.186],
-      ['building', 99, 0.196, 0.651],
+      ['settler', 57, 0.055, 0.184],
+      ['building', 98, 0.194, 0.647],
     ]);
   });
 

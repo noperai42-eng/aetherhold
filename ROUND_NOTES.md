@@ -4,6 +4,136 @@ One round, one measured gap, one fix. Newest first.
 
 ---
 
+## 2026-09-10 — The tall ones stand at the back, which is a rule about grids and not about buildings
+
+**Track: the forge.** The target the buildings round named, and it turned out not to be
+a question about the buildings.
+
+### The gap
+
+The last round measured the twenty-six and found them 47 to 1 in height against 3 to 1 in
+footprint, and `gridPitch` steps by footprint. So the door at 2.60 m and the conduit at
+0.055 m were dealt cells in alphabetical order, and the camera sits above the grid and off
+its near corner. Four of the twenty-six were more than half hidden behind a nearer
+neighbour: the statue 78 per cent gone, the battery 77, the bed 57, the mill 51.
+
+The brief said to photograph two things — sorting the set by height, or stepping the grid
+by height as well as by footprint. Measured before either was shot, they are not close:
+
+| | mean hidden | more than half hidden | mean visible area |
+|---|---|---|---|
+| as it shipped, 4 columns | 21.2% | 4 | — |
+| rows 1.5x apart | 10.2% | 1 | −31% |
+| rows 2x apart | 6.1% | 1 | −53% |
+| rows 3.26x apart (full clearance at 27°) | 1.8% | 0 | −79% |
+| **sorted, tallest at the back** | **13.5%** | **0** | **+2%** |
+| sorted + rows 1.5x apart | 4.1% | 0 | −31% |
+
+Sorting is free. It is better than free — the grid's box narrows when its widest models
+come off the edges, so every model ends up two per cent larger. Spreading buys more and
+charges a third to four fifths of every model's size for it. That settled the round before
+a frame was taken, which is the ladder of instruments working: the cheap measurement threw
+out four of the five candidates and left one thing to photograph.
+
+### It is not about the buildings
+
+Run over all seven benches, sorting helps every family whose models differ in height and
+does nothing to the three whose models are all one height. Seventeen of the eighty-two
+models in the seven Generate frames were more than half hidden; eleven still are, and ten
+of those eleven are in the stone, the wood and the stacks — 1.19 to 1, 1.00 to 1 and 1.10
+to 1 in height, where there is no order to put them in that helps. So this went into
+`placeGrid`, where every bench gets it, rather than into the building bench.
+
+Ordering by a cell's *true* depth was measured too, since the camera stands off toward +x
+and +z both and the far cell is a corner rather than a row. It is a wash: a point of mean
+hiding either way, and one family worse rather than better on the count that matters. Row
+order is what shipped, being the one that leaves "fills rows before columns" true.
+
+### The bug the change had in it, which an old test caught
+
+Sorting on the raw box height is wrong, and `adds to a model that carries a lift of its own
+instead of overwriting it` went red on the first run and said so. A box is measured by
+subtracting its floor from its ceiling, and for a metre-tall slab standing 35 mm off the
+turf that subtraction returns 0.9999999999999999. Two identical slabs, and the one that
+bobs reads as the shorter and is dealt the near cell — a settler's walk cycle deciding
+where the settler stands.
+
+The key is rounded to a millimetre now. That is the second float in two rounds to come out
+of this bench, after `((v % w) + w) % w` returning 3.7000000000000455 last week, and the
+difference is worth naming: last week's got through the pins and was caught by a frame;
+this one was caught by a pin written a round before anyone knew it would be needed. The
+pin was about a walking settler's bob. It held a line about float subtraction.
+
+### What the frames say
+
+Every single-model frame is pixel-identical to r31 — the sort is the identity on one model
+— and all seven grids moved. Read back:
+
+- **The buildings.** The gain the round was for. The wall and the door stand along the back
+  and the conduit, the trap and the bed are in front and legible; before, the wall stood in
+  the middle of the crowd and took whatever was behind it with it.
+- **The settlers.** The sleeping pose was half behind a standing one and is now in the near
+  row, whole. This is the family the last round found a bug in and it keeps paying out.
+- **The grass.** Reads as a graded set now, short at the front to tall at the back, which is
+  what a variety frame is supposed to let you see.
+- **The herd.** A wash, and it is written down as one. The box proxy says 31 points to 17,
+  the frame says four animals clear either way — tighter now, with the wolf's rump against
+  the mossback's hind leg where there was turf between them. Its one more-than-half is
+  unchanged, and it would be: four to a row is one row, and a row is all one depth.
+
+That last one is the measurement disagreeing with the frame, in the direction the proxy was
+documented to fail in — bounding boxes are fatter than silhouettes. The frame is the judge
+and the frame says nothing was gained there.
+
+### The pins
+
+Four new tests and a helper. `hiddenBehind` projects each model's box into the frame and
+counts what a nearer box covers, in the idiom `frameFill` and `reach` already use. On top
+of it, the seven-family table of what is more than half hidden, with the seventeen it was
+written in the comment beside the eleven it is.
+
+Then the three that hold the ordering: the tallest into the far cell over four slabs of one
+footprint and four heights; a family of one height coming out in the order it went in, lift
+and all, with the 0.9999999999999999 asserted directly so the test says what it is about;
+and the millimetre from both sides, four tenths under and six tenths over.
+
+Both mutations decisive. Dropping the sort reddens eight, including the table and the
+ordering pin. Dropping the millimetre rounding reddens six, including the two written for
+it and the old lift pin that found it in the first place.
+
+Nine measured pins moved and were rewritten to what they now measure — framing distances,
+reach, fog. Every threshold in them still holds: every family is still between a quarter and
+a third of the picture, every turf is still inside half the plane, and the wood is still the
+one family past the far plane at the top of its sliders. The one that changed meaning rather
+than digits is the herd's, which now gives up a point of picture by shipping at four
+columns instead of three, and that point is written into the test's own comment as the price
+of an animal that used to be half hidden.
+
+### Verified
+
+The full suite green: 2653 passed | 13 skipped over 126 files passed | 2 skipped, in 1108
+seconds — 2649 last round plus the four here. `npx tsc --noEmit` clean. Nothing but
+markdown was touched after the run started, and no test in the repo reads a markdown file.
+
+The r32 sweep: seven of seven models shot, no console errors, `42 of 42 assemblies on the
+bench, 16 with a recipe` unchanged. Every one of the seven single-model frames is
+**pixel-identical** to r31 over the canvas region, and every one of the seven grids moved —
+which is the shape the change should have and the reason to measure it that way round.
+
+Both mutations run and both decisive, then the file restored by copying the keep back
+rather than by `git checkout --`, which is the standing rule in this repo.
+
+### Next target
+
+The eleven that are left, which are a footprint question and not a height one. Ten are in
+the stone, the wood and the stacks, where every model is the same height and what covers
+what is pitch against width; the eleventh is one of four animals standing in a single row.
+`gridPitch` already reads x and z separately — the round that wrote it found the herd
+spaced by its own length — so the thing to measure is whether a grid should step by the
+widest model or by each row's own, and whether a family of four wants a row at all.
+
+---
+
 ## 2026-09-10 — The twenty-six buildings reach the bench, wearing a colour that was never theirs
 
 **Track: the forge.** The last family, and the one the census round named as the only

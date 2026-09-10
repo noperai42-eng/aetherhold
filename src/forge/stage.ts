@@ -112,10 +112,47 @@ export function gridPitch(models: readonly THREE.Object3D[]): { x: number; z: nu
 }
 
 /**
- * Lay these out in rows of `columns`, centred on the origin. Mutates positions.
+ * Lay these out in rows of `columns`, centred on the origin, tallest at the back.
+ * Mutates positions.
  *
  * Returns the pitch it used, because the pitch is the thing a test can hold and
  * the arrangement is the thing a frame shows.
+ *
+ * Tallest at the back because the camera is above the grid and behind row zero,
+ * so a model in a nearer row stands in front of the one behind it and a tall one
+ * blots it out. The twenty-six buildings are what made that unignorable — they
+ * run 47 to 1 in height against 3 to 1 in footprint, and `gridPitch` steps by
+ * footprint, so the door at 2.60 m and the conduit at 0.055 m were dealt the same
+ * cell — but it is not a fact about the buildings. Measured over all seven
+ * benches' own Generate frames, nineteen of the eighty-two models were more than
+ * half hidden behind a nearer neighbour and eleven still are, and the eleven that
+ * remain are the stone, the wood and the stacks: the three families whose models
+ * are all one height, whose overlap is a footprint problem and not this one.
+ *
+ * Free, which is why it is here and spreading the rows apart is not. Standing the
+ * tall ones at the back leaves every model exactly as large on screen — measured,
+ * two per cent larger, because the grid's box narrows slightly — where opening
+ * the rows enough to clear a 2.60 m model at 27 degrees of elevation needs 3.26
+ * times the pitch and costs 79 per cent of every model's apparent size.
+ *
+ * Sorted rather than laid out along the camera's diagonal, though the camera sits
+ * off toward +x and +z both and the far cell is therefore a corner. Ordering by a
+ * cell's true depth was measured too and is a wash: a point of mean hiding either
+ * way, and one family worse rather than better on the count that matters.
+ *
+ * The sort is by height alone and JavaScript's is stable, so a family whose models
+ * are all one height comes out in exactly the order it went in. That is not an
+ * incidental nicety — it is what lets a grid of twelve clones, or a test holding
+ * six identical slabs, still mean what it meant before this line existed.
+ *
+ * Which is why the key is rounded to a millimetre first. A box is measured by
+ * subtracting its floor from its ceiling, and that subtraction is lossy: a slab
+ * one metre tall standing flat measures 1, and the same slab lifted 35 mm measures
+ * 1.035 minus 0.035, which is 0.9999999999999999. Sorted raw, the lift decides
+ * where the model stands — two of a kind swap cells because one of them bobs. A
+ * millimetre is far under anything this can see; the shortest thing the game has
+ * is a conduit at 55 mm, and two models that tie at a millimetre are two models
+ * the stable order should be left to place.
  */
 export function placeGrid(
   models: readonly THREE.Object3D[],
@@ -124,9 +161,18 @@ export function placeGrid(
   const pitch = gridPitch(models);
   const cols = Math.min(columns, models.length);
   const rows = Math.ceil(models.length / cols);
-  models.forEach((m, i) => {
+  const box = new THREE.Box3();
+  const size = new THREE.Vector3();
+  const height = models.map((m) => {
+    box.setFromObject(m);
+    return Math.round(box.getSize(size).y * 1000);
+  });
+  // The models keep their order; it is the cells that get handed out by height.
+  const order = models.map((_, i) => i).sort((a, b) => height[b]! - height[a]!);
+  order.forEach((mi, i) => {
     const col = i % cols;
     const row = Math.floor(i / cols);
+    const m = models[mi]!;
     m.position.x += (col - (cols - 1) / 2) * pitch.x;
     m.position.z += (row - (rows - 1) / 2) * pitch.z;
   });
