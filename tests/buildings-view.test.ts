@@ -24,9 +24,11 @@ import {
   gameStoolsGeometry,
   shellBodyGeometry,
   shellLidGeometry,
+  stoveDoorGeometry,
   stoveFeetGeometry,
   stoveFlueGeometry,
   stovePlateGeometry,
+  stoveVentsGeometry,
   tableLegsGeometry,
   tableTopGeometry,
   wallBodyGeometry,
@@ -870,6 +872,180 @@ describe("a stove's ironwork", () => {
     view.dispose();
   });
 });
+describe("a stove's face", () => {
+  const stove = SHELL_DEFAULT.stove;
+
+  const b3 = (g: THREE.BufferGeometry) => {
+    g.computeBoundingBox();
+    return g.boundingBox!;
+  };
+  const axis = (g: THREE.BufferGeometry, k: number) => {
+    const a = g.attributes.position.array as Float32Array;
+    const set = new Set<number>();
+    for (let i = k; i < a.length; i += 3) set.add(a[i]);
+    return [...set].sort((p, q) => p - q);
+  };
+  const door = (shell = stove, recipe = STOVE_DEFAULT) => stoveDoorGeometry(shell, recipe);
+  const vents = (shell = stove) => stoveVentsGeometry(shell, STOVE_DEFAULT);
+
+  it('stands the door and the vents exactly where the frozen calls stood them', () => {
+    // The calls as they were before they knew where the face was: a surround at
+    // z=0.44, a leaf at 0.475, hinges at 0.46, a handle at 0.5275, a louvre
+    // plate at 0.425. Checked the other way too, before this test existed — the
+    // two merged buffers came out of the recipe byte for byte as they came out
+    // of the literals, 10,116 words with none differing.
+    const d = b3(door());
+    expect([d.min.x, d.max.x]).toEqual([-0.3199999928474426, 0.3199999928474426]);
+    expect([d.min.y, d.max.y]).toEqual([0.33000001311302185, 0.8299999833106995]);
+    expect([d.min.z, d.max.z]).toEqual([0.41999998688697815, 0.5550000071525574]);
+
+    // A box does not see this door. The hinges are inside the surround's span in
+    // all three axes, and so are the leaf and the handle's bar: every one of
+    // them could move without the box changing. So the four planes the chain is
+    // actually built on are asked for by name.
+    const z = axis(door(), 2);
+    expect(z, 'the surround, bedded into the face').toContain(0.41999998688697815);
+    expect(z, 'its front, which the hinges stand on').toContain(0.46000000834465027);
+    expect(z, "the leaf's back, lapped inside that front").toContain(0.44999998807907104);
+    expect(z, "the leaf's front, which the handle starts on").toContain(0.5);
+
+    // The vents are small enough to write out whole, so they are.
+    expect(axis(vents(), 0)).toEqual([
+      -0.25999999046325684, -0.2199999988079071, 0.2199999988079071, 0.25999999046325684,
+    ]);
+    expect(axis(vents(), 1)).toEqual([
+      0.14785748720169067, 0.1599999964237213, 0.17261755466461182, 0.18738245964050293,
+      0.20285747945308685, 0.21214252710342407, 0.227617546916008, 0.2423824518918991,
+      0.25785747170448303, 0.26714253425598145, 0.2826175391674042, 0.2973824441432953,
+      0.3199999928474426, 0.32214251160621643,
+    ]);
+    expect(axis(vents(), 2)).toEqual([
+      0.402643620967865, 0.41499999165534973, 0.41958290338516235, 0.4350000023841858,
+      0.46041712164878845, 0.4773563742637634,
+    ]);
+  });
+
+  it('holds the recipe at the numbers the stove was drawn at', () => {
+    expect(STOVE_DEFAULT.door).toEqual({
+      surround: { width: 0.64, height: 0.5, depth: 0.04 },
+      bed: 0.01,
+      leaf: { width: 0.5, height: 0.38, depth: 0.05 },
+      lap: 0.01,
+      drop: -0.01,
+      round: 0.015,
+      hinge: { radius: 0.032, height: 0.09, x: -0.27, rise: 0.13 },
+      handle: { radius: 0.018, length: 0.055, x: 0.19, barWidth: 0.1, barSize: 0.03, barStand: 0.035 },
+    });
+    expect(STOVE_DEFAULT.vents).toEqual({
+      plate: { width: 0.52, height: 0.16, depth: 0.02 },
+      plateSet: 0.005,
+      plateRise: 0.02,
+      blade: { width: 0.44, height: 0.03, depth: 0.07 },
+      bladeTilt: -0.6,
+      bladeRise: 0.02,
+      bladePitch: 0.055,
+      bladeCount: 3,
+      bladeStand: 0.01,
+    });
+  });
+
+  it('beds the door into the face, wherever the face has got to', () => {
+    // The headline breakage: at 0.44 on a shell grown to 1.06 deep the whole
+    // door is six centimetres inside a box, invisible. It has to straddle the
+    // face — back inside it, front proud of it — at any depth.
+    for (const depth of [0.86, 1.06, 0.6]) {
+      const shell = { ...stove, depth };
+      const front = b3(shellBodyGeometry(shell)).max.z;
+      const d = b3(door(shell));
+      expect(d.min.z, `bedded in at depth ${depth}`).toBeLessThan(front);
+      expect(d.max.z, `and proud at depth ${depth}`).toBeGreaterThan(front);
+      expect(front - d.min.z, `by a centimetre at depth ${depth}`).toBeCloseTo(0.01, 6);
+    }
+    // The vents go with it: the plate's middle sits behind the face and only
+    // its front edge shows, which is what makes it read as recessed.
+    for (const depth of [0.86, 1.06]) {
+      const shell = { ...stove, depth };
+      const front = b3(shellBodyGeometry(shell)).max.z;
+      const v = b3(vents(shell));
+      expect(v.min.z, `plate set back at depth ${depth}`).toBeLessThan(front);
+      expect(v.max.z, `blades proud at depth ${depth}`).toBeGreaterThan(front);
+    }
+  });
+
+  it("hangs the door on the shell's own middle, not on where the middle used to be", () => {
+    for (const shell of [stove, { ...stove, height: 1.4, stand: 0.22 }, { ...stove, stand: 0.31 }]) {
+      const body = b3(shellBodyGeometry(shell));
+      const d = b3(door(shell));
+      const middle = (body.min.y + body.max.y) / 2;
+      expect(middle - (d.min.y + d.max.y) / 2, 'a centimetre low').toBeCloseTo(0.01, 6);
+    }
+  });
+
+  it("hangs the louvres off the shell's own floor", () => {
+    // The plate is seated two centimetres up from the floor, and the lowest
+    // blade hangs below its own seat, because a blade is tipped and its front
+    // corner drops under the line it sits on. That overhang is the shadow the
+    // louvre is drawn for, so the assembly's lowest word is a blade corner and
+    // not the plate at all — which is why this asks for the seat by the floor
+    // it is measured from rather than by picking the first height off the list.
+    const seats = [];
+    const drops = [];
+    for (const stand of [0.14, 0.22, 0.31]) {
+      const shell = { ...stove, stand };
+      const floor = b3(shellBodyGeometry(shell)).min.y;
+      const v = axis(vents(shell), 1);
+      seats.push(v.some((h) => Math.abs(h - (floor + 0.02)) < 2e-7));
+      drops.push(v[0] - floor);
+    }
+    expect(seats, 'a plate seat a plateRise above the floor at every stand').toEqual([true, true, true]);
+    // And the overhang below that floor is the same overhang wherever the floor
+    // has got to. A plate written at an absolute 0.16 would keep this constant
+    // at one stand and break it at the other two.
+    expect(drops[1]).toBeCloseTo(drops[0], 6);
+    expect(drops[2]).toBeCloseTo(drops[0], 6);
+    expect(drops[0], 'and the lowest blade hangs under the seat').toBeLessThan(0.02);
+  });
+
+  it('carries the leaf, the hinges and the handle out with the surround they hang on', () => {
+    // The chain, asserted as a chain. Thicken the surround by two centimetres
+    // and its front moves out by one; everything hung on that front has to move
+    // out by one with it, so the door's outermost word — the tip of the handle,
+    // three links downstream — moves by exactly that. A leaf written at an
+    // absolute 0.475 would not budge.
+    const D = STOVE_DEFAULT.door;
+    const thicker = {
+      ...STOVE_DEFAULT,
+      door: { ...D, surround: { ...D.surround, depth: D.surround.depth + 0.02 } },
+    };
+    const before = b3(door());
+    const after = b3(door(stove, thicker));
+    expect(after.max.z - before.max.z, 'the handle rode out with it').toBeCloseTo(0.01, 6);
+    expect(after.min.z - before.min.z, 'and the surround grew inwards too').toBeCloseTo(-0.01, 6);
+  });
+
+  it('moves only what is downstream of the lap', () => {
+    // The other half of the same claim. Lap the leaf a centimetre deeper into
+    // the surround and the leaf and the handle come back with it, while the
+    // surround and the hinges — which are upstream — do not move at all.
+    const D = STOVE_DEFAULT.door;
+    const lapped = { ...STOVE_DEFAULT, door: { ...D, lap: D.lap + 0.01 } };
+    const before = b3(door());
+    const after = b3(door(stove, lapped));
+    expect(after.max.z - before.max.z, 'the handle came back').toBeCloseTo(-0.01, 6);
+    expect(after.min.z, 'the surround did not move').toBe(before.min.z);
+  });
+
+  it('still pools a door and vents', () => {
+    const view = new BuildingsView();
+    for (const key of ['stove.door', 'stove.vents']) {
+      const g = partGeometry(view, key);
+      g.computeBoundingBox();
+      expect(g.boundingBox!.max.y, `${key} has height`).toBeGreaterThan(0);
+    }
+    view.dispose();
+  });
+});
+
 describe('a machine', () => {
   it('stands on feet, because a shell run into the turf is a box somebody dropped', () => {
     // The one thing every machine in the colony had in common from the manager

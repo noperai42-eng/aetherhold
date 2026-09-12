@@ -397,7 +397,7 @@ to be overruled by the photographs:
 | Trees | 2 | Variation already exists and is unaddressable; making it addressable is nearly free. |
 | Piles | 8 | Eight objects sharing a prefix, seen constantly, each small. |
 | People and fauna | 5 | The heaviest models and the most looked-at, but also the ones with the most existing look-loop rounds behind them — least likely to be wrong. |
-| Buildings | 26 | Largest surface (3,451 lines) and least varied per instance; a stove is one stove. Last on purpose. On the bench since 2026-09-10, with one field and no recipe. Five of the twenty-six — the machine shells — build from `ShellRecipe` as of 2026-09-10, the two tables from `TableRecipe` and the two walls from `WallRecipe` as of 2026-09-12, the games table's trim follows its own top as of the same day — the first building whose parts would survive a knob being turned — and the stove's feet, flue and hotplates follow its shell, which is the first machine to do so. The bench still has no knob, so the census still reads no recipe here. |
+| Buildings | 26 | Largest surface (3,451 lines) and least varied per instance; a stove is one stove. Last on purpose. On the bench since 2026-09-10, with one field and no recipe. Five of the twenty-six — the machine shells — build from `ShellRecipe` as of 2026-09-10, the two tables from `TableRecipe` and the two walls from `WallRecipe` as of 2026-09-12, the games table's trim follows its own top as of the same day — the first building whose parts would survive a knob being turned — and the stove's feet, flue and hotplates follow its shell, which is the first machine to do so, its door and vents following the face they are cut into as a four-link chain. The bench still has no knob, so the census still reads no recipe here. |
 
 Grass is a special case worth naming: it cannot be exported to `.glb`, so the bench
 is the *only* place its shader sway can ever be judged in isolation. That makes it a
@@ -912,6 +912,25 @@ is the right shape for a game drawing flat polygons where a material is a palett
 Aetherhold's materials are `MeshStandardMaterial` with an ambient-occlusion bake
 living in vertex colours, so the split is not free and is not obviously worth
 paying for. Revisit if the recipe work makes it cheap.
+
+**Built — a stove whose door is hung on the face it is cut into, 2026-09-12.** The
+other half of the same stove, and the first trim anywhere here that is a *chain*
+rather than an anchor. The plinth's parts each answer to the shell directly; the
+face's do not. The surround is bedded into the shell, the leaf is lapped into the
+surround's front, the hinge knuckles stand on that same front, and the handle's stem
+begins on the leaf's front — four links, only the first touching the shell, every join
+already exact in the literals and not one of the four knowing it. Turn `depth` to 1.06
+and the whole door sat six centimetres inside a solid box, invisible. The finding is
+the form of the chain pin: thicken the surround by 0.02 and its front moves out by
+0.01, so the handle's tip three links downstream must move by exactly 0.01; lap the
+leaf 0.01 deeper and the leaf and handle come back while the surround and hinges,
+upstream of the lap, do not move at all. Those two together say each link follows the
+one before it and only what is downstream moves — a claim no bounding-box golden can
+make, and the box is blinder here than on the feet, since the hinges, the leaf and the
+handle's bar all sit inside the surround's span in every axis. The float came out
+better than the plinth round predicted: work `leafFront` out first instead of folding
+through the leaf's middle and the whole z chain is exact to the last bit. Step through
+the surface two parts actually meet on; do not fold through a middle nothing touches.
 
 **Built — a stove that stands on its own plinth, 2026-09-12.** The first trim in a
 machine to follow the shell it is bolted to, and the round that shows the goldens

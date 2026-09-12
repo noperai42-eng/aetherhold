@@ -4,6 +4,89 @@ One round, one measured gap, one fix. Newest first.
 
 ---
 
+## 2026-09-12 — A stove whose door is hung on the face it is cut into
+
+**The gap.** The other half of the same stove. Turn the shell's `depth` from
+0.86 to 1.06 and the face moves out ten centimetres while the firebox door stays
+at 0.44 — the whole door, surround and leaf and hinges and handle, is six
+centimetres inside a solid box and cannot be seen at all. Turn `height` or
+`stand` and the door hangs at 0.58 whatever the shell's middle has become, and
+the louvre plate sits at 0.16 whatever its floor has become. The last round took
+the trim that rests on horizontal surfaces; this is the trim that stands proud
+of a vertical one.
+
+**A chain, not an anchor.** This is what makes the face a different problem from
+the plinth. The plinth's parts each answer to the shell directly. The face's do
+not: the surround is bedded into the shell, the leaf is lapped into the
+*surround's* front, the two hinge knuckles stand on that same front, and the
+handle's stem begins on the *leaf's* front, with the bar standing off that. Four
+links, and only the first of them touches the shell. Every one of those joins
+was already exact in the literals — the hinges' 0.46 is the surround's front to
+the last bit, the handle's 0.5 is the leaf's front — and not one of the four
+knew it. That is what a chain written in world coordinates looks like: correct,
+and correct by coincidence, so the first knob turned breaks all of it at once.
+
+**The float, and a prediction that came out better than it was made.** The last
+note flagged that the handle's base derives to 0.49999999999999994 against the
+leaf's front of 0.5, and guessed it would round away harmlessly. It does not
+have to: the leftover is an artefact of folding through the leaf's *middle*,
+which nothing touches. Work `leafFront` out first — surround front, less the
+lap, plus the leaf's depth — and put the leaf's centre half a depth back from
+it, and the whole z chain is exact to the last bit, 0.46 and 0.5 and 0.555 all
+landing on the nose. It is the same lesson the table's slab taught in the other
+axis: step through the surface two parts actually meet on, and the arithmetic is
+exact; fold through a middle nothing touches, and it is not. Three heights still
+drift — the door's middle is 0.5800000000000001 because 0.14 + 0.45 is already
+0.5900000000000001 — and they are kept, measured, and far from the origin: the
+door's parts live between 0.33 and 0.83, where a float32 step is a hundred
+million times the leftover. Byte-identical out of the recipe as out of the
+literals, 10,116 words, none differing.
+
+**A bounding box is blind to almost this entire door.** Worse here than on the
+feet. The hinges are inside the surround's span in all three axes; so is the
+leaf; so is the handle's bar. Only the surround's own back and the stem's tip
+touch the box at all, so four of the six parts could move anywhere inside it
+without the box changing. The golden is therefore the four *planes the chain is
+built on*, asked for by name in the buffer's set of distinct z values: the
+surround's back where it beds into the face, its front where the hinges stand,
+the leaf's back lapped inside that front, and the leaf's front where the handle
+begins. The vents are small enough to write out whole — four x values, fourteen
+heights, six depths — so they are.
+
+**The chain asserted as a chain.** Two pins do this, and they are the round's
+real content. Thicken the surround by two centimetres and its front moves out by
+one; the leaf, both hinges and the handle must ride out with it, so the door's
+outermost word — the handle's tip, three links downstream — moves by exactly
+that one centimetre. Then lap the leaf a centimetre deeper and the opposite must
+happen: the leaf and handle come back, while the surround and hinges, which are
+*upstream* of the lap, do not move at all. Together they say each link follows
+the one before it and only what is downstream moves. Neither is a claim a bbox
+golden could make, and neither mentions the shell.
+
+**Verified.** Four mutations, each red and restored green, and each one is
+*exactly the state the code was in before this round*: the surround back at
+0.44, the door's middle at 0.58, the leaf at 0.475, the louvre plate at 0.16.
+All four leave every golden in the file green. Restoring the leaf to its
+absolute 0.475 is the sharpest of them — the default geometry is unchanged to
+the bit, and all three chain-aware pins go red at once. `tsc --noEmit` clean.
+Full suite 2685 passed | 13 skipped.
+
+**A thing found while measuring, not fixed.** The louvre assembly's lowest word
+is not the plate's seat but a blade's front corner, hanging below the line it
+sits on, because the blades are tipped six-tenths of a radian. That overhang is
+the shadow the louvre is drawn for, so it is correct — but it means a test that
+reaches for "the lowest height above the floor" gets a blade and not the plate,
+which is how the first draft of that pin failed. It is written down here because
+the next louvre will have the same trap in it.
+
+**Next target.** The remaining four machines — cooler, heat, gen, batt — whose
+trim is these same two relations in different proportions, with no new kind of
+join in any of them. The stove was the one worth taking slowly because it had
+both relations and the only chain; the rest should go faster, and if they do not,
+that is itself the finding.
+
+---
+
 ## 2026-09-12 — A stove that stands on its own plinth and vents through its own roof
 
 **The gap.** `SHELL_DEFAULT.stove` has had knobs since the shells got a recipe,

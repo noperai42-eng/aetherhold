@@ -1581,6 +1581,8 @@ export interface StoveRecipe {
   readonly feet: StoveFeet;
   readonly flue: StoveFlue;
   readonly plate: StovePlate;
+  readonly door: StoveDoor;
+  readonly vents: StoveVents;
 }
 
 /**
@@ -1638,6 +1640,83 @@ export interface StovePlate {
   readonly spread: number;
   readonly forward: number;
 }
+/**
+ * The firebox door, which is four things in a chain and not one panel.
+ *
+ * A surround bedded into the shell's face, a leaf lapped into the surround's
+ * front, two hinge knuckles standing on that same front, and a handle whose stem
+ * begins on the leaf's front. Every link was already exact in the literals —
+ * the hinge's 0.46 is the surround's front face to the last bit, the handle's
+ * stem starts at the leaf's 0.5 — and none of the four knew it. That is what a
+ * chain written in world coordinates looks like: correct, and correct by
+ * coincidence, so the first knob turned breaks all of it at once.
+ */
+export interface StoveDoor {
+  readonly surround: StovePanel;
+  /** The surround's middle, out from the face. Less than half its own depth, so it is bedded in. */
+  readonly bed: number;
+  readonly leaf: StovePanel;
+  /** How far the leaf's back lies inside the surround's front. */
+  readonly lap: number;
+  /** The door's middle, against the shell's own. Negative sits it low. */
+  readonly drop: number;
+  readonly round: number;
+  readonly hinge: StoveHinge;
+  readonly handle: StoveHandle;
+}
+
+/** A flat panel on the face, given its own three sizes. */
+export interface StovePanel {
+  readonly width: number;
+  readonly height: number;
+  readonly depth: number;
+}
+
+/** Two knuckles down one stile, on the surround's front. */
+export interface StoveHinge {
+  readonly radius: number;
+  readonly height: number;
+  /** Down the hanging stile: negative is the left of the face. */
+  readonly x: number;
+  /** Above and below the door's middle by the same amount. */
+  readonly rise: number;
+}
+
+/** A lever on the other stile: a stem out of the leaf, and a bar across it. */
+export interface StoveHandle {
+  readonly radius: number;
+  readonly length: number;
+  readonly x: number;
+  readonly barWidth: number;
+  /** The bar is square in section. */
+  readonly barSize: number;
+  /** The bar's middle, out from the leaf's front. */
+  readonly barStand: number;
+}
+
+/**
+ * The air intake: a recessed plate with blades tipped down out of it.
+ *
+ * The blades are what makes this an opening rather than a dark rectangle, so
+ * their tilt is a field and not a constant — it is the one number here the light
+ * actually reads.
+ */
+export interface StoveVents {
+  readonly plate: StovePanel;
+  /** The plate's middle, set back from the face rather than out from it. */
+  readonly plateSet: number;
+  /** The plate's bottom edge, above the shell's floor. */
+  readonly plateRise: number;
+  readonly blade: StovePanel;
+  /** Radians, negative tipping the blade's front edge down. */
+  readonly bladeTilt: number;
+  /** The lowest blade, above the plate's bottom edge. */
+  readonly bladeRise: number;
+  readonly bladePitch: number;
+  readonly bladeCount: number;
+  /** Proud of the face, where the plate is set back into it. */
+  readonly bladeStand: number;
+}
 
 /** The one stove the colony builds, at the numbers it was drawn at. */
 export const STOVE_DEFAULT: StoveRecipe = {
@@ -1659,6 +1738,27 @@ export const STOVE_DEFAULT: StoveRecipe = {
     capRise: 0.02,
   },
   plate: { radius: 0.14, thickness: 0.025, rise: 0.01, spread: 0.2, forward: 0.1 },
+  door: {
+    surround: { width: 0.64, height: 0.5, depth: 0.04 },
+    bed: 0.01,
+    leaf: { width: 0.5, height: 0.38, depth: 0.05 },
+    lap: 0.01,
+    drop: -0.01,
+    round: 0.015,
+    hinge: { radius: 0.032, height: 0.09, x: -0.27, rise: 0.13 },
+    handle: { radius: 0.018, length: 0.055, x: 0.19, barWidth: 0.1, barSize: 0.03, barStand: 0.035 },
+  },
+  vents: {
+    plate: { width: 0.52, height: 0.16, depth: 0.02 },
+    plateSet: 0.005,
+    plateRise: 0.02,
+    blade: { width: 0.44, height: 0.03, depth: 0.07 },
+    bladeTilt: -0.6,
+    bladeRise: 0.02,
+    bladePitch: 0.055,
+    bladeCount: 3,
+    bladeStand: 0.01,
+  },
 };
 
 /**
@@ -1710,6 +1810,59 @@ export function stovePlateGeometry(s: ShellRecipe, r: StoveRecipe): THREE.Buffer
   const one = (at: number) =>
     cylinder(plate.radius, plate.radius, plate.thickness, y, 20).translate(at, 0, plate.forward);
   return merge(one(-plate.spread), one(plate.spread));
+}
+/**
+ * The door, built as the chain it is.
+ *
+ * `leafFront` is worked out before `leafZ` and not folded into it. Going
+ * straight to the middle — the surround's front, less the lap, plus half the
+ * leaf — lands on 0.47500000000000003 where stepping through the front face
+ * lands on 0.475 exactly. It is the table's slab again, and the same rule holds:
+ * a derivation that goes through the surface two parts actually meet on is exact
+ * where one that goes through a middle nothing touches is not.
+ *
+ * The door's height does not come out exactly and cannot be made to:
+ * `stand + height / 2 + drop` is 0.5800000000000001, because 0.14 + 0.45 is
+ * already 0.5900000000000001. It is kept and was measured before it was kept —
+ * the door's parts live between 0.33 and 0.83 and the hinges between 0.405 and
+ * 0.755, nowhere near the origin where a last bit can show.
+ */
+export function stoveDoorGeometry(s: ShellRecipe, r: StoveRecipe): THREE.BufferGeometry {
+  const { surround, leaf, hinge, handle } = r.door;
+  const face = s.depth / 2;
+  const y = s.stand + s.height / 2 + r.door.drop;
+  const surroundZ = face + r.door.bed;
+  const surroundFront = surroundZ + surround.depth / 2;
+  const leafFront = surroundFront - r.door.lap + leaf.depth;
+  const knuckle = (at: number) =>
+    cylinder(hinge.radius, hinge.radius, hinge.height, at, 12).translate(hinge.x, 0, surroundFront);
+  return merge(
+    rbox(surround.width, surround.height, surround.depth, y, 0, surroundZ, r.door.round, 1),
+    rbox(leaf.width, leaf.height, leaf.depth, y, 0, leafFront - leaf.depth / 2, r.door.round, 1),
+    knuckle(y - hinge.rise),
+    knuckle(y + hinge.rise),
+    cylinder(handle.radius, handle.radius, handle.length, 0, 10)
+      .rotateX(Math.PI / 2)
+      .translate(handle.x, y, leafFront + handle.length / 2),
+    box(handle.barWidth, handle.barSize, handle.barSize, y, handle.x, leafFront + handle.barStand),
+  );
+}
+
+/** The louvres under the firebox, set into the face with their blades proud of it. */
+export function stoveVentsGeometry(s: ShellRecipe, r: StoveRecipe): THREE.BufferGeometry {
+  const v = r.vents;
+  const face = s.depth / 2;
+  const bottom = s.stand + v.plateRise;
+  const parts: THREE.BufferGeometry[] = [
+    box(v.plate.width, v.plate.height, v.plate.depth, bottom + v.plate.height / 2, 0, face - v.plateSet),
+  ];
+  for (let i = 0; i < v.bladeCount; i++) {
+    const blade = box(v.blade.width, v.blade.height, v.blade.depth, 0, 0, 0);
+    blade.rotateX(v.bladeTilt);
+    blade.translate(0, bottom + v.bladeRise + i * v.bladePitch, face + v.bladeStand);
+    parts.push(blade);
+  }
+  return merge(...parts);
 }
 
 /**
@@ -2214,14 +2367,7 @@ export class BuildingsView {
     // it either side of the joint.
     this.pool(
       'stove.door',
-      merge(
-        rbox(0.64, 0.5, 0.04, 0.58, 0, 0.44, 0.015, 1),
-        rbox(0.5, 0.38, 0.05, 0.58, 0, 0.475, 0.015, 1),
-        cylinder(0.032, 0.032, 0.09, 0.45, 12).translate(-0.27, 0, 0.46),
-        cylinder(0.032, 0.032, 0.09, 0.71, 12).translate(-0.27, 0, 0.46),
-        cylinder(0.018, 0.018, 0.055, 0, 10).rotateX(Math.PI / 2).translate(0.19, 0.58, 0.5275),
-        box(0.1, 0.03, 0.03, 0.58, 0.19, 0.535),
-      ),
+      stoveDoorGeometry(SHELL_DEFAULT.stove, STOVE_DEFAULT),
       paint('stove', 0x4a4a51, 0.4, 0.28),
       16,
     );
@@ -2232,16 +2378,7 @@ export class BuildingsView {
     // from any angle.
     this.pool(
       'stove.vents',
-      (() => {
-        const parts: THREE.BufferGeometry[] = [box(0.52, 0.16, 0.02, 0.24, 0, 0.425)];
-        for (let i = 0; i < 3; i++) {
-          const blade = box(0.44, 0.03, 0.07, 0, 0, 0);
-          blade.rotateX(-0.6);
-          blade.translate(0, 0.18 + i * 0.055, 0.44);
-          parts.push(blade);
-        }
-        return merge(...parts);
-      })(),
+      stoveVentsGeometry(SHELL_DEFAULT.stove, STOVE_DEFAULT),
       paint('stove', 0x44444a, 0.6, 0.25),
       16,
     );
