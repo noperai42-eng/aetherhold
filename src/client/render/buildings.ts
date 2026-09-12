@@ -1666,6 +1666,103 @@ export function tableLegsGeometry(r: TableRecipe): THREE.BufferGeometry {
   return legs(r.width / 2 - r.inset, tableMid(r) - r.thickness / 2, r.legTop, r.legFoot);
 }
 
+/**
+ * What stands on and beside a games table: the board, the pieces on it and the
+ * two stools.
+ *
+ * This is the first trim in the buildings that knows where its own body is, and
+ * that is the whole point of it. Every other decorated building in this file
+ * places its trim in world coordinates that happen to line up with the shell it
+ * sits on — the stove's firebox door is at z = 0.44 because the stove's body
+ * half-depth is 0.43, and nothing in the code says so. That is why no building
+ * can be given a knob yet: drag a width and the trim stays where it was and the
+ * object comes apart. Here the board rests on `TableRecipe.surface`, the pieces
+ * rest on the board, and the stools stand clear of the top's edge, so all three
+ * follow when the table underneath them changes.
+ *
+ * The pieces are held as fractions of the board's half-width rather than as
+ * offsets, because a piece is only ever on the board and has to move with it.
+ * The six sit on ±0.6 and ±0.2, which is exact both ways — a clean grid the
+ * absolute numbers had been hiding.
+ *
+ * `board.width` stays absolute at 0.5, on a top of 0.74. Whether a board ought
+ * to grow with the table it is played on is a judgement about how the thing
+ * looks and not something the code can settle, so it is pinned as it is and
+ * written up as a brief rather than quietly changed here.
+ */
+export interface GameRecipe {
+  readonly board: GameBoard;
+  readonly piece: GamePiece;
+  readonly stool: GameStool;
+}
+
+export interface GameBoard {
+  /** Square, and its own size rather than a share of the table's. */
+  readonly width: number;
+  readonly thickness: number;
+  readonly round: number;
+}
+
+export interface GamePiece {
+  readonly radius: number;
+  readonly height: number;
+  /** Where each piece stands, as a fraction of the board's half-width. */
+  readonly spots: readonly (readonly [number, number])[];
+}
+
+export interface GameStool {
+  readonly radiusTop: number;
+  readonly radiusFoot: number;
+  readonly height: number;
+  /** How far the stool's centre stands outside the top's edge. */
+  readonly clear: number;
+}
+
+export const GAME_DEFAULT: GameRecipe = {
+  board: { width: 0.5, thickness: 0.03, round: 0.01 },
+  piece: {
+    radius: 0.035,
+    height: 0.024,
+    spots: [
+      [-0.6, -0.6],
+      [0.2, -0.6],
+      [0.6, 0.2],
+      [-0.2, 0.2],
+      [-0.6, 0.6],
+      [0.6, -0.2],
+    ],
+  },
+  stool: { radiusTop: 0.13, radiusFoot: 0.11, height: 0.34, clear: 0.01 },
+};
+
+export function gameBoardGeometry(t: TableRecipe, g: GameRecipe): THREE.BufferGeometry {
+  const board = g.board;
+  return rbox(board.width, board.thickness, board.width, t.surface + board.thickness / 2, 0, 0, board.round, 1);
+}
+
+export function gamePiecesGeometry(t: TableRecipe, g: GameRecipe): THREE.BufferGeometry {
+  const { board, piece } = g;
+  const rest = t.surface + board.thickness;
+  const half = board.width / 2;
+  return merge(
+    ...piece.spots.map(([fx, fz]) =>
+      cylinder(piece.radius, piece.radius, piece.height, rest + piece.height / 2, 12).translate(
+        fx * half,
+        0,
+        fz * half,
+      ),
+    ),
+  );
+}
+
+export function gameStoolsGeometry(t: TableRecipe, g: GameRecipe): THREE.BufferGeometry {
+  const stool = g.stool;
+  const x = t.width / 2 + stool.clear;
+  const one = (at: number) =>
+    cylinder(stool.radiusTop, stool.radiusFoot, stool.height, stool.height / 2, 16).translate(at, 0, 0);
+  return merge(one(-x), one(x));
+}
+
 /** A sandbag: a squashed capsule lying along x, at rest on `y`. */
 function bag(y: number, x: number, z: number, alongZ: boolean): THREE.BufferGeometry {
   const g = new THREE.CapsuleGeometry(0.15, 0.36, 3, 10);
@@ -1920,32 +2017,9 @@ export class BuildingsView {
     // tint, the same trick the grave uses to get two tones from one entry.
     this.pool('game.top', tableTopGeometry(TABLE_DEFAULT.game), solidMat(0.7), 24);
     this.pool('game.legs', tableLegsGeometry(TABLE_DEFAULT.game), solidMat(0.8), 24);
-    this.pool('game.board', rbox(0.5, 0.03, 0.5, 0.825, 0, 0, 0.01, 1), tone(0x4e6b46, 0.95), 24);
-    this.pool(
-      'game.pieces',
-      (() => {
-        const parts: THREE.BufferGeometry[] = [];
-        for (const [x, z] of [
-          [-0.15, -0.15],
-          [0.05, -0.15],
-          [0.15, 0.05],
-          [-0.05, 0.05],
-          [-0.15, 0.15],
-          [0.15, -0.05],
-        ]) {
-          parts.push(cylinder(0.035, 0.035, 0.024, 0.852, 12).translate(x, 0, z));
-        }
-        return merge(...parts);
-      })(),
-      tone(0xf3ead6, 0.6),
-      24,
-    );
-    this.pool(
-      'game.stools',
-      merge(cylinder(0.13, 0.11, 0.34, 0.17, 16).translate(-0.38, 0, 0), cylinder(0.13, 0.11, 0.34, 0.17, 16).translate(0.38, 0, 0)),
-      solidMat(0.85),
-      24,
-    );
+    this.pool('game.board', gameBoardGeometry(TABLE_DEFAULT.game, GAME_DEFAULT), tone(0x4e6b46, 0.95), 24);
+    this.pool('game.pieces', gamePiecesGeometry(TABLE_DEFAULT.game, GAME_DEFAULT), tone(0xf3ead6, 0.6), 24);
+    this.pool('game.stools', gameStoolsGeometry(TABLE_DEFAULT.game, GAME_DEFAULT), solidMat(0.85), 24);
 
     // Stove: a rounded cast body with a firebox door on the front, two hobs on
     // the top and a flue up the back corner. The hobs glow; they are the part

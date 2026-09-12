@@ -15,8 +15,12 @@ import { describe, expect, it } from 'vitest';
 import {
   BuildingsView,
   SHELL_DEFAULT,
+  GAME_DEFAULT,
   TABLE_DEFAULT,
   WALL_DEFAULT,
+  gameBoardGeometry,
+  gamePiecesGeometry,
+  gameStoolsGeometry,
   shellBodyGeometry,
   shellLidGeometry,
   tableLegsGeometry,
@@ -602,6 +606,116 @@ describe('a table', () => {
     // table top floating over nothing and nothing would throw.
     const view = new BuildingsView();
     for (const key of ['table.top', 'table.legs', 'game.top', 'game.legs']) {
+      const g = partGeometry(view, key);
+      g.computeBoundingBox();
+      expect(g.boundingBox!.max.y, `${key} has height`).toBeGreaterThan(0);
+    }
+    view.dispose();
+  });
+});
+
+describe("the games table's trim", () => {
+  const box3 = (g: THREE.BufferGeometry) => {
+    g.computeBoundingBox();
+    return g.boundingBox!;
+  };
+
+  it('stands all three exactly where the frozen calls stood them', () => {
+    // The three parts as they were written before they knew where the table
+    // was: a board at 0.825, a piece at 0.852, the stools at 0.38. `merge` and
+    // `cylinder` are private, so there is no golden buffer to build here the
+    // way there is for a top; the box each part occupies pins every number the
+    // recipe hands over, and it is asked for as words rather than as closeness
+    // for the same reason the table legs are — a lift that claims to have moved
+    // nothing should be made to say so exactly.
+    const WANT: Record<string, [number, number, number]> = {
+      // max x, min y, max y
+      board: [0.25, 0.8100000023841858, 0.8399999737739563],
+      pieces: [0.1850000023841858, 0.8399999737739563, 0.8640000224113464],
+      stools: [0.5099999904632568, -1.7881393032936899e-9, 0.3400000035762787],
+    };
+    const built: Record<string, THREE.Box3> = {
+      board: box3(gameBoardGeometry(TABLE_DEFAULT.game, GAME_DEFAULT)),
+      pieces: box3(gamePiecesGeometry(TABLE_DEFAULT.game, GAME_DEFAULT)),
+      stools: box3(gameStoolsGeometry(TABLE_DEFAULT.game, GAME_DEFAULT)),
+    };
+    for (const [part, [maxX, minY, maxY]] of Object.entries(WANT)) {
+      const b = built[part]!;
+      expect(b.max.x, `${part} reaches x`).toBe(maxX);
+      expect(b.min.x, `${part} reaches -x`).toBe(-maxX);
+      expect(b.min.y, `${part} sits at`).toBe(minY);
+      expect(b.max.y, `${part} reaches up to`).toBe(maxY);
+    }
+    // And the one relation that survives float32 exactly: a piece's underside
+    // is the same word as the top of the board it stands on.
+    expect(built.pieces!.min.y, 'a piece stands on the board and not above it').toBe(built.board!.max.y);
+  });
+
+  it('holds the recipe at the numbers the games table was drawn at', () => {
+    // Literal numbers, and the six spots are the finding: they were written
+    // -0.15, 0.05, 0.15 and -0.05 on a board half a metre across, which is
+    // exactly six tenths and two tenths of its half-width, both ways round.
+    expect(GAME_DEFAULT).toEqual({
+      board: { width: 0.5, thickness: 0.03, round: 0.01 },
+      piece: {
+        radius: 0.035,
+        height: 0.024,
+        spots: [
+          [-0.6, -0.6],
+          [0.2, -0.6],
+          [0.6, 0.2],
+          [-0.2, 0.2],
+          [-0.6, 0.6],
+          [0.6, -0.2],
+        ],
+      },
+      stool: { radiusTop: 0.13, radiusFoot: 0.11, height: 0.34, clear: 0.01 },
+    });
+  });
+
+  it('keeps the table together when the table is a different table', () => {
+    // The reason this recipe exists. Every other decorated building in the file
+    // places its trim in world coordinates that merely happen to line up with
+    // the body underneath — the stove's firebox door sits at z = 0.44 because
+    // the stove's body half-depth is 0.43, and nothing says so. Drag a width on
+    // one of those and the trim stays put while the body moves out from under
+    // it. That is what stops a building being given a bench knob.
+    //
+    // So this is the pin that a golden cannot be: not "the parts are where they
+    // were", which the test above already says, but "the parts still meet each
+    // other on a table that was never drawn". A taller, wider table with a
+    // thicker slab, none of whose numbers appear anywhere in the trim.
+    const turned = { ...TABLE_DEFAULT.game, width: 1.16, surface: 1.05, thickness: 0.12 };
+    const board = box3(gameBoardGeometry(turned, GAME_DEFAULT));
+    const pieces = box3(gamePiecesGeometry(turned, GAME_DEFAULT));
+    const stools = box3(gameStoolsGeometry(turned, GAME_DEFAULT));
+
+    expect(board.min.y, 'the board lies on the new surface').toBeCloseTo(turned.surface, 6);
+    expect(pieces.min.y, 'the pieces stand on the board').toBeCloseTo(board.max.y, 6);
+    expect(pieces.max.x, 'no piece hangs off the board').toBeLessThanOrEqual(board.max.x);
+    expect(pieces.min.x, 'no piece hangs off the board').toBeGreaterThanOrEqual(board.min.x);
+    expect(stools.min.y, 'the stools still stand on the ground').toBeCloseTo(0, 6);
+    expect(stools.max.x - GAME_DEFAULT.stool.radiusTop, 'a stool clears the wider top').toBeCloseTo(
+      turned.width / 2 + GAME_DEFAULT.stool.clear,
+      6,
+    );
+  });
+
+  it('moves the pieces with the board, because a piece is only ever on the board', () => {
+    // The spots are fractions for this reason alone. Held as the offsets they
+    // used to be, a board twice the size would leave all six huddled in the
+    // middle of it.
+    const wide = { ...GAME_DEFAULT, board: { ...GAME_DEFAULT.board, width: 1 } };
+    const board = box3(gameBoardGeometry(TABLE_DEFAULT.game, wide));
+    const pieces = box3(gamePiecesGeometry(TABLE_DEFAULT.game, wide));
+    expect(board.max.x).toBeCloseTo(0.5, 6);
+    // 0.6 of the new half-width, plus the piece's own radius.
+    expect(pieces.max.x).toBeCloseTo(0.6 * 0.5 + GAME_DEFAULT.piece.radius, 6);
+  });
+
+  it('still pools a board, pieces and stools', () => {
+    const view = new BuildingsView();
+    for (const key of ['game.board', 'game.pieces', 'game.stools']) {
       const g = partGeometry(view, key);
       g.computeBoundingBox();
       expect(g.boundingBox!.max.y, `${key} has height`).toBeGreaterThan(0);

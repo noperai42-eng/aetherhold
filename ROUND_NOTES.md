@@ -4,6 +4,70 @@ One round, one measured gap, one fix. Newest first.
 
 ---
 
+## 2026-09-12 — Trim that knows where its own table is
+
+**The gap, and why it is the one that matters.** Three rounds have now lifted
+buildings out of their literals — the machine shells, the two tables, the two
+walls — and not one of them moved the bench any closer to having a knob. This is
+why. Every decorated building in `buildings.ts` places its trim in world
+coordinates that merely *happen* to line up with the body underneath it. The
+stove's firebox door sits at z = 0.44 because the stove's body half-depth is
+0.43, and nothing in the code says so. Drag a width and the body moves out from
+under its own trim. A recipe whose knob produces a broken model is not a knob.
+
+**The smallest complete case.** The games table: a top, and three parts standing
+on and beside it. Measured, the chain is already there in the numbers and only
+the numbers know it — the board's underside is exactly the table's 0.81 surface,
+a piece's underside is exactly the board's top, and a stool's centre is exactly
+a centimetre outside the top's edge. Three anchors: on the surface, on the part
+below, beside the edge. `GameRecipe`, `GAME_DEFAULT` and three geometry
+functions that take the `TableRecipe` they sit on.
+
+**The pieces turned out to be on a grid.** Their six spots were written as
+-0.15, 0.05, 0.15 and -0.05 on a board half a metre across, which is exactly six
+tenths and two tenths of its half-width, exact in both directions. They are held
+as fractions now, because a piece is only ever on the board and has to move with
+it; held as offsets, doubling the board would leave all six huddled in the
+middle of it.
+
+**A pin a golden cannot be.** The last three rounds were all guarded by goldens:
+*the parts are where they were*. That is necessary and it is not sufficient
+here, because the whole defect this round fixes is invisible at the default —
+a literal 0.825 and a derived `surface + thickness / 2` are the same number
+until something moves. So there is a second kind of pin: the parts still meet
+each other **on a table that was never drawn**, wider and taller with a thicker
+slab, none of whose numbers appear anywhere in the trim. The mutation drill is
+what proves the two pins do different work. Reverting the board to its literal
+0.825, and the spots to their absolute 0.25, each leaves every golden green and
+is caught by the new pin alone.
+
+**What did not change.** No vertex. All three parts sit in exactly the box the
+frozen calls put them in, asserted as words. A piece's underside comes out the
+same float32 word as the top of the board it stands on, which is pinned too.
+
+**Verified.** Four mutations, each red and restored green: the board reverted to
+its literal; the spots reverted to absolute; the stool's clearance doubled; the
+`game.stools` pool deleted. `tsc --noEmit` clean. Full suite 2671 passed | 13
+skipped.
+
+**A brief, not a change.** `board.width` stays absolute at 0.5 on a top of 0.74
+— pinned as it is, because whether a board ought to grow with the table it is
+played on is a judgement about how the thing looks and the code cannot settle
+it. The brief: photograph the games table at three table widths with a fixed
+board and with a proportional one, and see which of the two still reads as a
+game from the manager camera.
+
+**Next target.** The same treatment for the five machines' trim, which is the
+19 remaining `pool` calls in that family and the thing standing between the
+buildings and a bench knob. The anchors will be different — a machine's trim is
+mostly *proud of a face* rather than *resting on a top* — and the first
+measurement says about a hundred of the trim literals sit within two centimetres
+of a shell landmark, which is that relation waiting to be named. Once one
+machine follows its shell, the bench question becomes the `covers` partition
+alone, which is mechanical.
+
+---
+
 ## 2026-09-12 — Two walls that already said they were the same wall
 
 **The gap.** The round before this one lifted the two tables. Picking the next

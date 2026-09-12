@@ -397,7 +397,7 @@ to be overruled by the photographs:
 | Trees | 2 | Variation already exists and is unaddressable; making it addressable is nearly free. |
 | Piles | 8 | Eight objects sharing a prefix, seen constantly, each small. |
 | People and fauna | 5 | The heaviest models and the most looked-at, but also the ones with the most existing look-loop rounds behind them — least likely to be wrong. |
-| Buildings | 26 | Largest surface (3,451 lines) and least varied per instance; a stove is one stove. Last on purpose. On the bench since 2026-09-10, with one field and no recipe. Five of the twenty-six — the machine shells — build from `ShellRecipe` as of 2026-09-10, the two tables from `TableRecipe` and the two walls from `WallRecipe` as of 2026-09-12; the bench still has no knob to turn, so the census still reads no recipe here. |
+| Buildings | 26 | Largest surface (3,451 lines) and least varied per instance; a stove is one stove. Last on purpose. On the bench since 2026-09-10, with one field and no recipe. Five of the twenty-six — the machine shells — build from `ShellRecipe` as of 2026-09-10, the two tables from `TableRecipe` and the two walls from `WallRecipe` as of 2026-09-12, and the games table's trim follows its own top as of the same day — the first building whose parts would survive a knob being turned. The bench still has no knob, so the census still reads no recipe here. |
 
 Grass is a special case worth naming: it cannot be exported to `.glb`, so the bench
 is the *only* place its shader sway can ever be judged in isolation. That makes it a
@@ -912,6 +912,31 @@ is the right shape for a game drawing flat polygons where a material is a palett
 Aetherhold's materials are `MeshStandardMaterial` with an ambient-occlusion bake
 living in vertex colours, so the split is not free and is not obviously worth
 paying for. Revisit if the recipe work makes it cheap.
+
+**Built — trim that knows where its own table is, 2026-09-12.** The first trim in the
+buildings to follow the body it sits on, and the round that says why three lifts had not
+moved the bench any nearer a knob. Every decorated building here places its trim in world
+coordinates that merely happen to line up with the shell underneath — the stove's firebox
+door is at z = 0.44 because the stove's body half-depth is 0.43, and nothing in the code
+says so. Drag a width and the body moves out from under its own trim. A recipe whose knob
+produces a broken model is not a knob.
+
+The games table is the smallest complete case: a top with three things standing on and
+beside it. The chain was already in the numbers — the board's underside is exactly the
+table's surface, a piece's underside exactly the board's top, a stool's centre exactly a
+centimetre outside the top's edge. `GameRecipe`, `GAME_DEFAULT`, three geometry functions
+that take the `TableRecipe` they stand on. The six pieces turned out to sit on a grid: their
+spots are exactly six tenths and two tenths of the board's half-width, so they are held as
+fractions and move with the board.
+
+This round also needed a **new kind of pin**, and the distinction matters for every trim
+round after it. A golden says *the parts are where they were*, which is necessary and not
+sufficient, because the defect being fixed is invisible at the default — a literal 0.825 and
+a derived `surface + thickness / 2` are the same number until something moves. So the parts
+are also asserted to still meet each other on a table that was never drawn, none of whose
+numbers appear in the trim. The mutation drill proves the two pins do different work:
+reverting the board to its literal, or the spots to absolute, leaves every golden green and
+is caught by the new pin alone.
 
 **Built — the two walls, 2026-09-12.** Picked by counting rather than by guessing: 98
 `pool` calls remain in `buildings.ts`, and the timber wall and the stone wall are five of
