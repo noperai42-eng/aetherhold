@@ -4,6 +4,73 @@ One round, one measured gap, one fix. Newest first.
 
 ---
 
+## 2026-09-12 — Two walls that already said they were the same wall
+
+**The gap.** The round before this one lifted the two tables. Picking the next
+group by counting rather than by guessing: 98 `pool` calls remain in
+`buildings.ts`, and the timber wall and the stone wall are five of them with the
+same composition — a square column with a coping slab lapped over the top.
+
+**The file had already said so.** The stone wall's own note has it as "the same
+silhouette as timber so a mixed perimeter still reads as one wall", written long
+before any recipe existed. The numbers agree with the note. Both columns are
+square in plan. Both copings overhang equally in width and depth. And both seat
+their coping at exactly minus two centimetres — lapped down into the top of the
+column rather than set on it, which is what keeps a joint from opening at the one
+height a wall is seen against the sky. The two walls agree on nothing else:
+different widths, different heights, overhangs of 0.06 against 0.16, one with a
+plinth and one without. Two objects drawn apart from one another arriving at the
+same two centimetres is what makes this a family.
+
+**One field doing two jobs.** The stone wall's plinth is exactly the height its
+body is lifted by — 0.34, and the body's centre is 0.34 + 2.2 / 2 — so `stand`
+is both. The timber wall stands at zero and draws nothing, which is the same
+field saying no. What `plinth` adds is only whether that height is drawn and how
+far it juts out, which is a different number from the coping's overhang.
+
+**Why this is not `ShellRecipe`.** The two recipes are nearly the same shape, and
+it was tempting. A machine's body is an `rbox` and a wall's is a plain `box`,
+because the wall body keeps the exact box the sim collides with and easing it
+would round off a silhouette the sim reads as square. A flag on the shell recipe
+to switch the primitive would put a knob on the five machines that nothing should
+ever turn, so the walls got their own.
+
+**What did not change.** No vertex. The stone body's centre comes out
+1.4400000000000002 against the 1.44 that was written down, and unlike the table
+legs of the last round — whose foot sits at zero, where a float32's steps are
+fine enough for that last bit to show — nothing on a wall is near the origin.
+Checked with a probe before the lift rather than reasoned about, which is the
+only reason it can be said. The planking, the closers, the corner post and the
+masonry courses are cladding and were left where they were.
+
+**The pins.** Five, in a new `the two walls` block: all five parts byte-identical
+to goldens built from the frozen calls, including the timber wall returning null
+for a plinth it does not have; both copings lapping two centimetres, measured off
+the built geometry and asked for as a distance rather than as words, because that
+is what it is; the stone body standing on exactly the plinth it draws; the two
+recipes at literal numbers; and all five parts still pooled. A `goldenBox` helper
+joined `golden` at module scope, for the parts that are not eased.
+
+**Verified.** Four mutations, each red and restored green: resting the stone
+coping flush instead of lapping it; making the plinth a centimetre shorter than
+the stand; easing the wall body into an `rbox`, which only the byte-identity pin
+catches and is exactly what that pin is for; and deleting the `stone.plinth`
+pool. `tsc --noEmit` clean. Full suite 2666 passed | 13 skipped.
+
+**Next target.** Measured this round and worth writing down, because the last
+round guessed wrong about it: the three beds are **not** the next lift. `bedSet`
+is already a single parameterised builder with every geometry number written
+once, so there is no duplication left in them — what they lack is the recipe
+*form*, a named type and a defaults table, which is a smaller and different job.
+The larger prize is the machine trim: 19 `pool` calls across the five shells, and
+the thing that blocks the machine bench from getting a knob. A first measurement
+says it is not a lift but a vocabulary — of 483 trim literals only 36 sit exactly
+on a shell landmark and about a hundred sit within two centimetres of one, which
+is trim positioned proud of a face. The rest are the trim's own shapes and
+rightly have nothing to do with the shell.
+
+---
+
 ## 2026-09-12 — Two tables that were the same table, and a leg that moved at the foot
 
 **The gap.** The round before this one lifted the five machine shells out of the

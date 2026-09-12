@@ -1459,6 +1459,100 @@ export function shellLidGeometry(r: ShellRecipe): THREE.BufferGeometry | null {
 }
 
 /**
+ * A wall: a square column with a coping stone lapped over the top of it, which
+ * is the timber wall and the stone wall both.
+ *
+ * The file said so before this recipe existed. The stone wall's own note has it
+ * as "the same silhouette as timber so a mixed perimeter still reads as one
+ * wall", and the numbers agree: both are square in plan, both cap the column
+ * with a slab that overhangs equally in width and depth, and both seat that
+ * slab at exactly minus two centimetres — lapped down over the body's top
+ * rather than resting on it, so there is no open joint to catch the light at
+ * the one height a wall is seen against the sky. Two walls drawn apart from one
+ * another arriving at the same two centimetres is what makes this a family
+ * rather than two columns that both happen to have hats.
+ *
+ * This is deliberately not `ShellRecipe`, close as the two are. A machine's
+ * body is an `rbox` and a wall's is a plain `box`, because the wall body "keeps
+ * the exact box the sim collides with" — easing its edges would round off a
+ * silhouette the sim reads as square. The primitive is the difference, and a
+ * flag on the shell recipe to switch it would put a knob on the machines that
+ * nothing should ever turn.
+ *
+ * `stand` is the plinth, and it is one field doing two jobs honestly: the
+ * stone wall's plinth is exactly the height its body is lifted by, and the
+ * timber wall has no plinth and stands at zero. What `plinth` adds is only
+ * whether that height is drawn and how far it juts out, which is not the same
+ * number as the coping's overhang — 0.10 against 0.16.
+ */
+export interface WallRecipe {
+  /** Square in plan, so there is one width and no depth. */
+  readonly width: number;
+  /** Of the body alone, above whatever the plinth lifts it by. */
+  readonly height: number;
+  /** How high the plinth holds the body off the ground; zero for no plinth. */
+  readonly stand: number;
+  readonly cap: WallCap;
+  /** Null when nothing is drawn at the base, which is the timber wall. */
+  readonly plinth: WallPlinth | null;
+}
+
+export interface WallCap {
+  readonly height: number;
+  /** Wider and deeper by the same amount, since the column is square. */
+  readonly overhang: number;
+  /** Against the body's top. Negative laps the coping down over it. */
+  readonly seat: number;
+  readonly round: number;
+}
+
+export interface WallPlinth {
+  readonly overhang: number;
+  readonly round: number;
+}
+
+export const WALL_DEFAULT: Readonly<Record<string, WallRecipe>> = {
+  wall: {
+    width: 1,
+    height: 2.44,
+    stand: 0,
+    cap: { height: 0.18, overhang: 0.06, seat: -0.02, round: 0.06 },
+    plinth: null,
+  },
+  stone: {
+    width: 0.94,
+    height: 2.2,
+    stand: 0.34,
+    cap: { height: 0.2, overhang: 0.16, seat: -0.02, round: 0.05 },
+    plinth: { overhang: 0.1, round: 0.03 },
+  },
+};
+
+export function wallBodyGeometry(r: WallRecipe): THREE.BufferGeometry {
+  return box(r.width, r.height, r.width, r.stand + r.height / 2);
+}
+
+export function wallCapGeometry(r: WallRecipe): THREE.BufferGeometry {
+  const cap = r.cap;
+  return rbox(
+    r.width + cap.overhang,
+    cap.height,
+    r.width + cap.overhang,
+    r.stand + r.height + cap.seat + cap.height / 2,
+    0,
+    0,
+    cap.round,
+  );
+}
+
+export function wallPlinthGeometry(r: WallRecipe): THREE.BufferGeometry | null {
+  const plinth = r.plinth;
+  if (!plinth) return null;
+  const w = r.width + plinth.overhang;
+  return rbox(w, r.stand, w, r.stand / 2, 0, 0, plinth.round);
+}
+
+/**
  * How high off y = 0 a loose stack sits on this cell: on the furniture there,
  * or else on the drawn ground. The ground is not the plane — a snowpack lifts
  * it and a lake bed sinks it (`groundLiftAt`) — and a stack drawn at zero
@@ -1622,10 +1716,10 @@ export class BuildingsView {
     // Walls read as a timber-framed plank wall with a stone coping line along the
     // top. The body keeps the exact box the sim collides with; the planking and
     // the coping are thin parts laid over it.
-    this.pool('wall.body', box(1, 2.44, 1, 1.22), solidMat(0.92), 256);
+    this.pool('wall.body', wallBodyGeometry(WALL_DEFAULT.wall), solidMat(0.92), 256);
     this.pool('wall.planks', planks(), plankMat(), 256);
     this.pool('wall.closer', closers(), plankMat(), 256);
-    this.pool('wall.cap', rbox(1.06, 0.18, 1.06, 2.51, 0, 0, 0.06), solidMat(0.8), 256);
+    this.pool('wall.cap', wallCapGeometry(WALL_DEFAULT.wall), solidMat(0.8), 256);
     // A square post standing proud at a corner of the wall — pushed once per
     // outside corner, which the draw works out from the neighbours, so a
     // cabin gets a post at each of its four corners and a run of wall gets
@@ -1641,11 +1735,11 @@ export class BuildingsView {
     // a heavier coping. It is the colour that carries the difference — see
     // BUILDING_COLOR.stonewall. The courses are two pools of one bond: see
     // `masonry` for why.
-    this.pool('stone.plinth', rbox(1.04, 0.34, 1.04, 0.17), solidMat(0.95), 256);
-    this.pool('stone.body', box(0.94, 2.2, 0.94, 1.44), solidMat(0.95), 256);
+    this.pool('stone.plinth', wallPlinthGeometry(WALL_DEFAULT.stone)!, solidMat(0.95), 256);
+    this.pool('stone.body', wallBodyGeometry(WALL_DEFAULT.stone), solidMat(0.95), 256);
     this.pool('stone.courses', masonry(0), tone(0xb4b4b0, 0.9), 256);
     this.pool('stone.bond', masonry(1), tone(0xa8a8a4, 0.9), 256);
-    this.pool('stone.cap', rbox(1.1, 0.2, 1.1, 2.62, 0, 0, 0.05), solidMat(0.85), 256);
+    this.pool('stone.cap', wallCapGeometry(WALL_DEFAULT.stone), solidMat(0.85), 256);
 
     // Research bench: a desk with glassware on it and a small brass lamp over
     // it, so it reads as thinking-work rather than another workbench from across

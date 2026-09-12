@@ -397,7 +397,7 @@ to be overruled by the photographs:
 | Trees | 2 | Variation already exists and is unaddressable; making it addressable is nearly free. |
 | Piles | 8 | Eight objects sharing a prefix, seen constantly, each small. |
 | People and fauna | 5 | The heaviest models and the most looked-at, but also the ones with the most existing look-loop rounds behind them — least likely to be wrong. |
-| Buildings | 26 | Largest surface (3,451 lines) and least varied per instance; a stove is one stove. Last on purpose. On the bench since 2026-09-10, with one field and no recipe. Five of the twenty-six — the machine shells — build from `ShellRecipe` as of 2026-09-10, and the two tables from `TableRecipe` as of 2026-09-12; the bench still has no knob to turn, so the census still reads no recipe here. |
+| Buildings | 26 | Largest surface (3,451 lines) and least varied per instance; a stove is one stove. Last on purpose. On the bench since 2026-09-10, with one field and no recipe. Five of the twenty-six — the machine shells — build from `ShellRecipe` as of 2026-09-10, the two tables from `TableRecipe` and the two walls from `WallRecipe` as of 2026-09-12; the bench still has no knob to turn, so the census still reads no recipe here. |
 
 Grass is a special case worth naming: it cannot be exported to `.glb`, so the bench
 is the *only* place its shader sway can ever be judged in isolation. That makes it a
@@ -912,6 +912,25 @@ is the right shape for a game drawing flat polygons where a material is a palett
 Aetherhold's materials are `MeshStandardMaterial` with an ambient-occlusion bake
 living in vertex colours, so the split is not free and is not obviously worth
 paying for. Revisit if the recipe work makes it cheap.
+
+**Built — the two walls, 2026-09-12.** Picked by counting rather than by guessing: 98
+`pool` calls remain in `buildings.ts`, and the timber wall and the stone wall are five of
+them with one composition — a square column with a coping slab lapped over the top. The
+file had already said so; the stone wall's note has it as "the same silhouette as timber so
+a mixed perimeter still reads as one wall". Both columns are square in plan, both copings
+overhang equally in width and depth, and both seat the coping at exactly minus two
+centimetres, lapped into the top of the column rather than set on it. They agree on nothing
+else — 0.06 of overhang against 0.16, one with a plinth and one without — which is what
+makes the two centimetres a family rather than a coincidence. `WallRecipe`, `WALL_DEFAULT`
+and three geometry functions.
+
+`stand` does two jobs: the stone wall's plinth is exactly the height its body is lifted by,
+and the timber wall stands at zero and draws nothing. This is deliberately not
+`ShellRecipe`, close as the two are — a machine's body is an `rbox` and a wall's is a plain
+`box`, because the wall body keeps the exact box the sim collides with, and a flag to switch
+the primitive would put a knob on the machines that nothing should ever turn. Nothing a
+player sees moved; the cladding, the corner post and the masonry courses were left where
+they were.
 
 **Built — the two tables, 2026-09-12.** The second group out of its literals, chosen the
 way the first was: the dining table and the games table were drawn eleven months apart, and

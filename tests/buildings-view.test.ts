@@ -16,10 +16,14 @@ import {
   BuildingsView,
   SHELL_DEFAULT,
   TABLE_DEFAULT,
+  WALL_DEFAULT,
   shellBodyGeometry,
   shellLidGeometry,
   tableLegsGeometry,
   tableTopGeometry,
+  wallBodyGeometry,
+  wallCapGeometry,
+  wallPlinthGeometry,
 } from '../src/client/render/buildings';
 import { AO_FLOOR } from '../src/client/render/occlusion';
 import { BUILDING_COLOR, RESOURCE_COLOR } from '../src/client/render/palette';
@@ -471,6 +475,13 @@ describe('a bed', () => {
     view.dispose();
   });
 });
+
+/** `box` as `buildings.ts` writes it, for the parts that are not eased. */
+function goldenBox(w: number, h: number, d: number, y: number): THREE.BufferGeometry {
+  const g = new THREE.BoxGeometry(w, h, d);
+  g.translate(0, y, 0);
+  return g;
+}
 
 /** `rbox` as `buildings.ts` writes it, so a golden is built the same way. */
 function golden(w: number, h: number, d: number, y: number, r: number): THREE.BufferGeometry {
@@ -1276,6 +1287,131 @@ function partsAt(view: BuildingsView, key: string, x: number, y: number): number
   }
   return n;
 }
+
+describe('the two walls', () => {
+  /**
+   * The five calls the walls were lifted out of, copied by hand and frozen. A
+   * body is a plain box (width, height, depth, centre); a coping and a plinth
+   * are eased, and carry their radius last.
+   */
+  type BoxArgs = [number, number, number, number];
+  type RboxArgs = [number, number, number, number, number];
+  const BEFORE: Record<string, { body: BoxArgs; cap: RboxArgs; plinth: RboxArgs | null }> = {
+    wall: {
+      body: [1, 2.44, 1, 1.22],
+      cap: [1.06, 0.18, 1.06, 2.51, 0.06],
+      plinth: null,
+    },
+    stone: {
+      body: [0.94, 2.2, 0.94, 1.44],
+      cap: [1.1, 0.2, 1.1, 2.62, 0.05],
+      plinth: [1.04, 0.34, 1.04, 0.17, 0.03],
+    },
+  };
+
+  it('builds both walls byte-identical to the calls they were lifted out of', () => {
+    // The timber wall and the stone wall are one column with two hats, and the
+    // whole value of saying so in a recipe is that it changed nothing. The
+    // recipe reaches the stone body's centre as `stand + height / 2`, which is
+    // 1.4400000000000002 in a double against the 1.44 that was written down —
+    // and unlike the table legs, whose foot sits at zero where a float32's
+    // steps are tiny, nothing on a wall is near the origin, so that last bit
+    // has nowhere to show. Checked rather than assumed, which is the only
+    // reason it can be said.
+    for (const [kind, want] of Object.entries(BEFORE)) {
+      const r = WALL_DEFAULT[kind]!;
+      const pairs: [string, THREE.BufferGeometry, THREE.BufferGeometry | null][] = [
+        [`${kind}.body`, goldenBox(...want.body), wallBodyGeometry(r)],
+        [`${kind}.cap`, golden(...want.cap), wallCapGeometry(r)],
+      ];
+      if (want.plinth) {
+        pairs.push([`${kind}.plinth`, golden(...want.plinth), wallPlinthGeometry(r)]);
+      } else {
+        expect(wallPlinthGeometry(r), `${kind} draws no plinth`).toBeNull();
+      }
+      for (const [name, a, b] of pairs) {
+        const pa = a.attributes.position.array as Float32Array;
+        const pb = b!.attributes.position.array as Float32Array;
+        expect(pb.length, `${name} vertex count`).toBe(pa.length);
+        let differing = 0;
+        for (let j = 0; j < pa.length; j++) if (pa[j] !== pb[j]) differing++;
+        expect(differing, `${name} words differing from the shipped buffer`).toBe(0);
+      }
+    }
+  });
+
+  it('laps both copings two centimetres down over the body rather than resting them on it', () => {
+    // This is the measurement that says the two are a family and not two
+    // columns that happen to have hats. They were drawn separately, they agree
+    // on nothing else — different widths, different heights, one with a plinth
+    // and one without, copings that overhang by 0.06 and 0.16 — and both bury
+    // the coping exactly two centimetres into the top of the column. A coping
+    // set down flush would leave a joint at the one height a wall is seen
+    // against the sky.
+    //
+    // Read off the built geometry rather than off the field, because the field
+    // agreeing with itself proves nothing; and asked for closeness rather than
+    // for words, because this is a distance between two float32 buffers and not
+    // a claim that a buffer did not move.
+    for (const kind of ['wall', 'stone']) {
+      const body = wallBodyGeometry(WALL_DEFAULT[kind]!);
+      const cap = wallCapGeometry(WALL_DEFAULT[kind]!);
+      body.computeBoundingBox();
+      cap.computeBoundingBox();
+      const lap = body.boundingBox!.max.y - cap.boundingBox!.min.y;
+      expect(lap, `${kind} laps its coping`).toBeCloseTo(0.02, 6);
+      expect(cap.boundingBox!.max.y, `${kind} coping clears the body`).toBeGreaterThan(body.boundingBox!.max.y);
+    }
+  });
+
+  it('stands the stone body on exactly the plinth it draws, and the timber body on the ground', () => {
+    // `stand` is one field doing two jobs: it is how high the body is lifted,
+    // and it is the plinth's height. The two cannot drift apart because there
+    // is only one of them — which is worth a test precisely because it would be
+    // so easy to add a second number later and not notice the day they stop
+    // agreeing.
+    const stone = wallPlinthGeometry(WALL_DEFAULT.stone)!;
+    const stoneBody = wallBodyGeometry(WALL_DEFAULT.stone);
+    stone.computeBoundingBox();
+    stoneBody.computeBoundingBox();
+    expect(stone.boundingBox!.min.y, 'the plinth starts at the ground').toBeCloseTo(0, 6);
+    expect(stone.boundingBox!.max.y, 'the plinth reaches the underside of the body').toBeCloseTo(
+      stoneBody.boundingBox!.min.y,
+      6,
+    );
+    const timber = wallBodyGeometry(WALL_DEFAULT.wall);
+    timber.computeBoundingBox();
+    expect(timber.boundingBox!.min.y, 'the timber wall stands on the ground').toBeCloseTo(0, 6);
+  });
+
+  it('holds the two recipes at the numbers the two walls were drawn at', () => {
+    // Literal numbers, because a table checked against itself is not a check.
+    expect(WALL_DEFAULT.wall).toEqual({
+      width: 1, height: 2.44, stand: 0,
+      cap: { height: 0.18, overhang: 0.06, seat: -0.02, round: 0.06 },
+      plinth: null,
+    });
+    expect(WALL_DEFAULT.stone).toEqual({
+      width: 0.94, height: 2.2, stand: 0.34,
+      cap: { height: 0.2, overhang: 0.16, seat: -0.02, round: 0.05 },
+      plinth: { overhang: 0.1, round: 0.03 },
+    });
+    expect(Object.keys(WALL_DEFAULT).sort()).toEqual(['stone', 'wall']);
+  });
+
+  it('still pools a body and a coping for both walls, and a plinth for the stone', () => {
+    // Five `pool` calls rewired, and the way that goes wrong unnoticed is a
+    // part quietly ceasing to be pooled: a perimeter would lose its coping line
+    // and nothing would throw.
+    const view = new BuildingsView();
+    for (const key of ['wall.body', 'wall.cap', 'stone.plinth', 'stone.body', 'stone.cap']) {
+      const g = partGeometry(view, key);
+      g.computeBoundingBox();
+      expect(g.boundingBox!.max.y, `${key} has height`).toBeGreaterThan(0);
+    }
+    view.dispose();
+  });
+});
 
 describe('a wall', () => {
   it('posts its outside corners and not its length', () => {
