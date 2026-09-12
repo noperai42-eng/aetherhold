@@ -1927,10 +1927,40 @@ export function backOutletGeometry(s: ShellRecipe, r: BackOutlet): THREE.BufferG
  * agreeing rather than a relation the code holds — move the terminals apart and
  * the bar stays the width it was — which is the same shape of gap the cooler's
  * cable has. Measured and logged as a brief rather than closed here.
+ *
+ * Under it is the rack, and the rack is the other end of the same argument.
+ * Cells are never stood on the ground, so the crate is held off it — and the
+ * two members doing the holding answer to different things. The cross runners
+ * FILL the plinth: they take their height from it, so the crate rests on them
+ * at whatever height it is standing. The side rails stand on the GROUND with a
+ * height of their own and stop two centimetres short of the floor, which is
+ * right for a rack member and is also the cooler's cable lesson upside down —
+ * raise the plinth far enough and the rails stay where they are lying while the
+ * machine walks up off them. Measured at two centimetres of daylight and logged
+ * as a brief rather than closed.
+ *
+ * One length down here is derived: a rail runs from the front runner's axis to
+ * the back one's, so it takes the runners' own spread rather than a number.
+ * Lapping to the centre line of the member you cross is what a rail does, and
+ * a rack whose rails did not follow its runners would be a broken rack whatever
+ * the drawing had meant.
  */
 export interface BattRecipe {
+  readonly rack: BattRack;
   readonly terminals: BattTerminals;
   readonly straps: BattStraps;
+}
+
+export interface BattRack {
+  /** The cross runners, which fill the gap between the ground and the floor. */
+  readonly runnerAcross: number;
+  readonly runnerThick: number;
+  /** Their axes, either side of the machine's middle. */
+  readonly runnerSpread: number;
+  readonly railWidth: number;
+  /** The rails stand on the ground, so this is all of them there is. */
+  readonly railHeight: number;
+  readonly railSpread: number;
 }
 
 export interface BattTerminals {
@@ -1963,6 +1993,10 @@ export interface BattStraps {
 
 /** The one battery bank the colony builds, at the numbers it was drawn at. */
 export const BATT_DEFAULT: BattRecipe = {
+  rack: {
+    runnerAcross: 0.9, runnerThick: 0.12, runnerSpread: 0.28,
+    railWidth: 0.12, railHeight: 0.08, railSpread: 0.33,
+  },
   terminals: {
     postRadius: 0.05, postHeight: 0.14, postSeg: 16,
     baseRadius: 0.08, baseHeight: 0.03, baseSeg: 20, baseBed: 0.003,
@@ -1971,6 +2005,26 @@ export const BATT_DEFAULT: BattRecipe = {
   },
   straps: { width: 0.07, thickness: 0.025, spread: 0.32, bed: 0.0025, round: 0.01 },
 };
+
+/** The rack, filling whatever gap the shell recipe leaves under the crate. */
+export function battRackGeometry(s: ShellRecipe, r: BattRecipe): THREE.BufferGeometry {
+  const { rack } = r;
+  return merge(
+    ...[-1, 1].map((side) =>
+      box(rack.runnerAcross, s.stand, rack.runnerThick, s.stand / 2, 0, side * rack.runnerSpread),
+    ),
+    ...[-1, 1].map((side) =>
+      box(
+        rack.railWidth,
+        rack.railHeight,
+        rack.runnerSpread * 2,
+        rack.railHeight / 2,
+        side * rack.railSpread,
+        0,
+      ),
+    ),
+  );
+}
 
 /** That ironwork, hung on whatever lid the shell recipe actually gives it. */
 export function battLidGeometry(s: ShellRecipe, r: BattRecipe): THREE.BufferGeometry {
@@ -3752,12 +3806,7 @@ export class BuildingsView {
     // under it is also what stops it reading as a slab laid on the grass.
     this.pool(
       'batt.rack',
-      merge(
-        box(0.9, 0.1, 0.12, 0.05, 0, -0.28),
-        box(0.9, 0.1, 0.12, 0.05, 0, 0.28),
-        box(0.12, 0.08, 0.56, 0.04, -0.33, 0),
-        box(0.12, 0.08, 0.56, 0.04, 0.33, 0),
-      ),
+      battRackGeometry(SHELL_DEFAULT.batt, BATT_DEFAULT),
       paint('battery', 0x515a51, 0.6, 0.3),
       16,
     );

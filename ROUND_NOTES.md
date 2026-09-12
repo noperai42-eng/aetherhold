@@ -4,6 +4,111 @@ One round, one measured gap, one fix. Newest first.
 
 ---
 
+## 2026-09-12 — The rack, which does not follow the machine it carries
+
+**The gap.** `batt.rack` was four boxes in world coordinates under the battery
+bank: two cross runners 0.9 across at z = ±0.28, running from the ground to
+y = 0.1, and two side rails at x = ±0.33 standing 0.08 off the ground and
+reaching z = ±0.28. Every one of those numbers was a literal, and the one that
+matters most — the runners' height — happens to equal the bank's plinth, so the
+crate rested on its rack by coincidence rather than by construction.
+
+**The first thing under a shell rather than on one.** Every trim lifted before
+this hangs off a shell, a lid, or a face: the anchor is somewhere on the machine
+and the part is measured from it. A rack is the other case. It touches the
+ground, and the ground is not a field of `ShellRecipe`; it is y = 0 and it does
+not move. So the two halves of this one assembly answer to different things, and
+which one each half answers to is the whole of the round.
+
+The runners *fill* the plinth. Their height is `s.stand` and their middle is
+half of it, so they reach from the ground to the crate's floor at whatever
+height the crate is standing — a taller bank grows its own runners and still
+rests on them. The rails *stand on* the ground with a height of their own and
+stop two centimetres short of the floor. That daylight is right for a rack
+member, and it is also the cooler's cable lesson upside down: raise the plinth
+and the rails do not follow, they are simply left further below. Raise it far
+enough and the machine walks up off its rack, exactly as a tall enough plinth
+parts the cooler from its cable.
+
+**And at the other end it breaks the other way.** Below a plinth of the rails'
+own height the daylight runs out and the rails come up *through* the floor they
+were meant to lie under. That is the sharp end of the same fact, and it was
+found by asking the fill-the-plinth pin at a stand of 0.04 and watching two
+tests fail. The colony never stands a bank that low, and whether a rack should
+grow with its machine is a frame question rather than an arithmetic one, so both
+ends are measured and pinned as they are — the two centimetres at the drawn
+plinth, and the rails' own height as the floor below which the rack stops being
+a rack. Neither is guarded against. The brief is below.
+
+**One length is derived.** A rail runs from the front runner's axis to the back
+one's, so it takes `runnerSpread * 2` rather than the 0.56 it was drawn with.
+Lapping to the centre line of the member you cross is what a rail does, and a
+rack whose rails did not follow its runners would be a broken rack whatever the
+drawing had meant — so unlike the proud runners below, this one is closed rather
+than logged.
+
+**The half-read field again, one round later, on a number.** Last round's result
+was that a field *half* an assembly reads passes every test that a fully-read
+field passes. It appeared here immediately and in a harder form. `railHeight` is
+read twice inside one call: once as the rail's own thickness, and once, halved,
+as the middle it is drawn about. At the drawn eight centimetres those two agree
+to the bit. So freezing the thickness at 0.08 while the middle keeps reading the
+field, or freezing the middle at 0.04 while the thickness keeps reading it,
+leaves the goldens green (nothing moved at the drawn numbers), the lap pin green
+(it turns `runnerSpread`, not this), the daylight pin green (it turns `s.stand`,
+not this) and the dead-knob pin green — because *something* still reads the
+name, and that is all a dead-knob pin asks.
+
+Both were found by the drill and both are closed by one pin, which asks the
+rails for the ground at heights the rack was never cut to: the rails' underside
+is at zero and their top is at `railHeight`, at three of them. The transferable
+result is the limit of the instrument from two rounds ago. **A dead-knob pin
+proves a field is read by something. It says nothing about how many of its
+readers are left**, and when two readers agree at the drawn numbers, only a
+setting the model was never drawn at can tell them apart.
+
+**Reaching the rails.** They are interior in all three axes to the runners' box
+— shorter, narrower and shallower — so no bounding box over the assembly speaks
+for any face of theirs. Unlike the battery's bar they do have a window: a
+runner is a plain box 0.9 across, so its only x values are ±0.45, and the rails
+at ±0.39 and ±0.27 sit inside it. Both the lap and the ground are asked through
+that window.
+
+**Two things measured and left alone.** The runners are a flat 0.9 against a
+crate 0.86 wide — four centimetres of proud, which is two literals landing well
+and not a relation the code holds, so widening the shell parts them. Pinned as
+it is, in the shape the battery bar's ends were. And the golden's list of
+heights has four values in it rather than three: a centre minus half a height
+does not come back to zero in float32, so the runners' underside sits at
+-7.5e-10 and the rails' at +8.9e-10. Both are on the ground to any tolerance an
+eye or a window has, and to none finer. Written into the golden with the reason,
+because a list of four where three were expected is the kind of thing a later
+round corrects by accident.
+
+**Verified.** 432 position words byte-identical to the literals, probed in the
+module before the lift and the probe deleted after. The pool is byte-identical
+too — 432 words dumped from the old file and the new and compared rather than
+argued about. Ten mutations, all red; five are caught by exactly one pin each,
+and two of those five are the halves of `railHeight` that were green before the
+last pin existed. `tests/buildings-view.test.ts` goes from 120 to 128 tests, the
+suite from 2,729 to 2,737. No frames: no vertex moved.
+
+**Briefs.** The rails do not follow the plinth — two centimetres of daylight at
+the drawn stand, more at a taller one, and none at all below their own height,
+where they come through the floor. Whether a rack should grow with its machine
+is a look judgement. The runners' four centimetres of proud is two literals
+agreeing, and widening the crate parts them. Both are the same shape as the
+cooler's cable and the battery bar's ends, which is now four of them.
+
+**Next.** `batt.caps` and `batt.band`, which are the last two pools on this
+machine. The caps are six cells bedded 2.5 mm into the lid's top — the straps'
+exact bed, measured, which is the first number on this machine that two separate
+assemblies might actually share. The band is the charge readout, the only part
+of the bank with a material that moves, bedded two centimetres into the front
+plane and standing four proud of it.
+
+---
+
 ## 2026-09-12 — The third machine, which settled who the family is
 
 **The gap.** `batt.trim` was the last pool on the battery bank still in world

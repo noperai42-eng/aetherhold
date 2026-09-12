@@ -397,7 +397,7 @@ to be overruled by the photographs:
 | Trees | 2 | Variation already exists and is unaddressable; making it addressable is nearly free. |
 | Piles | 8 | Eight objects sharing a prefix, seen constantly, each small. |
 | People and fauna | 5 | The heaviest models and the most looked-at, but also the ones with the most existing look-loop rounds behind them — least likely to be wrong. |
-| Buildings | 26 | Largest surface (3,451 lines) and least varied per instance; a stove is one stove. Last on purpose. On the bench since 2026-09-10, with one field and no recipe. Five of the twenty-six — the machine shells — build from `ShellRecipe` as of 2026-09-10, the two tables from `TableRecipe` and the two walls from `WallRecipe` as of 2026-09-12, the games table's trim follows its own top as of the same day — the first building whose parts would survive a knob being turned — and the stove's feet, flue and hotplates follow its shell, which is the first machine to do so, its door following the face it is cut into as a four-link chain, and the louvre it shares with the cooler, the generator and the battery bank lifted out of all four, the cooler's lid furniture following the lid rather than the world, and its compressor, fins and cable following the face behind it, and the generator's stacks from `GenStacks`, and the battery bank's terminals and straps from `BattRecipe` over a `BackOutlet` the generator and the bank now share — leaving `cooler.vent` and `gen.trim` built out of three recipes each and `batt.trim` out of four, and nothing else. The bench still has no knob, so the census still reads no recipe here. |
+| Buildings | 26 | Largest surface (3,451 lines) and least varied per instance; a stove is one stove. Last on purpose. On the bench since 2026-09-10, with one field and no recipe. Five of the twenty-six — the machine shells — build from `ShellRecipe` as of 2026-09-10, the two tables from `TableRecipe` and the two walls from `WallRecipe` as of 2026-09-12, the games table's trim follows its own top as of the same day — the first building whose parts would survive a knob being turned — and the stove's feet, flue and hotplates follow its shell, which is the first machine to do so, its door following the face it is cut into as a four-link chain, and the louvre it shares with the cooler, the generator and the battery bank lifted out of all four, the cooler's lid furniture following the lid rather than the world, and its compressor, fins and cable following the face behind it, and the generator's stacks from `GenStacks`, and the battery bank's terminals and straps from `BattRecipe` over a `BackOutlet` the generator and the bank now share, and the bank's rack under all of it — leaving `cooler.vent` and `gen.trim` built out of three recipes each, `batt.trim` out of four and `batt.rack` out of one, and nothing else. The bench still has no knob, so the census still reads no recipe here. |
 
 Grass is a special case worth naming: it cannot be exported to `.glb`, so the bench
 is the *only* place its shader sway can ever be judged in isolation. That makes it a
@@ -912,6 +912,27 @@ is the right shape for a game drawing flat polygons where a material is a palett
 Aetherhold's materials are `MeshStandardMaterial` with an ambient-occlusion bake
 living in vertex colours, so the split is not free and is not obviously worth
 paying for. Revisit if the recipe work makes it cheap.
+
+**Built — the rack, which does not follow the machine it carries, 2026-09-12.**
+`batt.rack`, the two cross runners and two side rails under the battery bank,
+lifted into `BattRack`. The first member in this file that answers to the ground
+rather than to a shell or a lid — and it turns out to answer to both, in two
+different ways, which is the whole of the round. The runners *fill* the plinth:
+their height is `s.stand` and their middle is half of it, so the crate rests on
+them at whatever height it stands. The rails *stand on* the ground with a height
+of their own and stop two centimetres short of the floor. That is right for a
+rack member and it is also the cooler's cable lesson upside down — raise the
+plinth and the rails are simply left further below, and below a plinth of their
+own height they come up through the floor they were meant to lie under. Measured
+at both ends and pinned as it is, because whether a rack should grow with its
+machine is a frame question. One length is derived: a rail laps to the runners'
+axes, so it is their spread doubled. And the half-read field from last round
+turns up again on a number rather than an axis — `railHeight` is read once as
+the rail's thickness and once, halved, as the middle it is drawn about, and at
+the drawn eight centimetres the two agree, so freezing either half leaves the
+goldens, the lap and the dead-knob pin all green. Found by mutation, closed by
+asking the rails for the ground at heights the rack was never cut to. Ten
+mutations, all red.
 
 **Built — the third machine, which settled who the family is, 2026-09-12.**
 `batt.trim`, the battery bank's terminals, straps and back, lifted into

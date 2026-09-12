@@ -32,6 +32,7 @@ import {
   coolerLidGeometry,
   backOutletGeometry,
   battLidGeometry,
+  battRackGeometry,
   genStacksGeometry,
   louvreGeometry,
   shellBodyGeometry,
@@ -1906,6 +1907,14 @@ describe("a battery bank's terminals, straps and back", () => {
 
   it("holds the battery bank's ironwork at the numbers it was drawn at", () => {
     expect(BATT_DEFAULT).toEqual({
+      rack: {
+        runnerAcross: 0.9,
+        runnerThick: 0.12,
+        runnerSpread: 0.28,
+        railWidth: 0.12,
+        railHeight: 0.08,
+        railSpread: 0.33,
+      },
       terminals: {
         postRadius: 0.05,
         postHeight: 0.14,
@@ -2064,7 +2073,11 @@ describe("a battery bank's terminals, straps and back", () => {
     // depth of the lid and are therefore inside every band this could use, so
     // they are sent out of the way rather than worked around.
     for (const back of [t.back, 0.3, 0.05]) {
-      const g = battLidGeometry(shell, { terminals: { ...t, back }, straps: { ...straps, spread: 4 } });
+      const g = battLidGeometry(shell, {
+        ...BATT_DEFAULT,
+        terminals: { ...t, back },
+        straps: { ...straps, spread: 4 },
+      });
       const a = g.attributes.position.array as Float32Array;
       let lo = Infinity;
       let hi = -Infinity;
@@ -2155,6 +2168,223 @@ describe("a battery bank's terminals, straps and back", () => {
     g.computeBoundingBox();
     expect(g.boundingBox!.max.y, 'the terminals stand above the lid').toBeGreaterThan(0.95);
     expect(g.boundingBox!.min.z, 'the lead reaches out behind the bank').toBeLessThan(-0.5);
+    view.dispose();
+  });
+});
+
+/**
+ * The rack under the battery bank, which is the first member in this file that
+ * answers to the ground rather than to a shell or a lid — and which answers to
+ * both, in two different ways, because its two halves do different jobs.
+ *
+ * The cross runners FILL the plinth. Their height is the shell's stand and
+ * their middle is half of it, so they reach from the ground to the crate's
+ * floor whatever height the crate is standing at. Freeze that at the drawn ten
+ * centimetres and a taller machine floats off its own rack.
+ *
+ * The side rails STAND ON the ground with a height of their own and stop two
+ * centimetres short of the floor. That daylight is right for a rack member and
+ * it is also the cooler's cable lesson upside down: raise the plinth and the
+ * rails do not follow, they are simply left further below. Measured and logged
+ * as a brief rather than closed, because whether a rack should grow with its
+ * machine is a look judgement and not a broken contract.
+ *
+ * Every one of those four faces is interior in y, and the rails are interior in
+ * all three axes to the runners' box — but unlike the battery's bar the rails
+ * are windowed, because a runner's only x values are the ends of a nine-tenths
+ * span and the rails sit inside it.
+ */
+describe("a battery bank's rack", () => {
+  const shell = SHELL_DEFAULT.batt;
+  const { rack } = BATT_DEFAULT;
+  const bounds = (g: THREE.BufferGeometry) => {
+    g.computeBoundingBox();
+    return g.boundingBox!;
+  };
+  const rackAt = (s = shell, r = BATT_DEFAULT) => bounds(battRackGeometry(s, r));
+  const values = (g: THREE.BufferGeometry, k: number) => {
+    const a = g.attributes.position.array as Float32Array;
+    const set = new Set<number>();
+    for (let i = k; i < a.length; i += 3) set.add(a[i]);
+    return [...set].sort((p, q) => p - q);
+  };
+  /**
+   * The rails, asked for by the one axis that holds them alone: inboard of the
+   * runners' ends and off the middle. Everything else about them is interior,
+   * so this window is how both the length they lap to and the ground they
+   * stand on are reached.
+   */
+  const railsOnly = (s = shell, r = BATT_DEFAULT) => {
+    const a = battRackGeometry(s, r).attributes.position.array as Float32Array;
+    const span = { loY: Infinity, hiY: -Infinity, lo: Infinity, hi: -Infinity };
+    for (let i = 0; i < a.length; i += 3) {
+      const x = Math.abs(a[i]);
+      if (x < 1e-6 || x > r.rack.runnerAcross / 2 - 1e-6) continue;
+      span.loY = Math.min(span.loY, a[i + 1]);
+      span.hiY = Math.max(span.hiY, a[i + 1]);
+      span.lo = Math.min(span.lo, a[i + 2]);
+      span.hi = Math.max(span.hi, a[i + 2]);
+    }
+    return span;
+  };
+
+  it('stands every member exactly where the frozen calls stood them', () => {
+    const b = rackAt();
+    expect([b.min.x, b.max.x]).toEqual([-0.44999998807907104, 0.44999998807907104]);
+    expect([b.min.y, b.max.y]).toEqual([-7.450580707946131e-10, 0.10000000149011612]);
+    expect([b.min.z, b.max.z]).toEqual([-0.3400000035762787, 0.3400000035762787]);
+
+    const g = battRackGeometry(shell, BATT_DEFAULT);
+    expect(values(g, 0)).toEqual([
+      -0.44999998807907104, -0.38999998569488525, -0.27000001072883606,
+      0.27000001072883606, 0.38999998569488525, 0.44999998807907104,
+    ]);
+    // Four heights, not three: the two undersides are a sixth of a micron
+    // either side of the ground rather than on it, because a centre minus half
+    // a height does not come back to zero in float32. Both members sit on the
+    // ground to any tolerance an eye or a window has, and to none finer.
+    expect(values(g, 1)).toEqual([
+      -7.450580707946131e-10, 8.940696516468449e-10, 0.07999999821186066,
+      0.10000000149011612,
+    ]);
+    expect(values(g, 2)).toEqual([
+      -0.3400000035762787, -0.2800000011920929, -0.2199999988079071,
+      0.2199999988079071, 0.2800000011920929, 0.3400000035762787,
+    ]);
+  });
+
+  it('fills whatever plinth the shell leaves, so the crate always rests on it', () => {
+    // The runners are the tallest thing down here, so the top of the box is
+    // their top, and it has to be the shell's floor at every stand — including
+    // stands the machine was never drawn at. Before this lift it was ten
+    // centimetres through all of them.
+    for (const stand of [shell.stand, 0.3, 0.42, 0.09]) {
+      const b = rackAt({ ...shell, stand });
+      expect(b.max.y, `the crate floats above its rack at a stand of ${stand}`).toBeCloseTo(
+        stand,
+        6,
+      );
+      expect(b.min.y, `the rack has left the ground at a stand of ${stand}`).toBeCloseTo(0, 6);
+    }
+  });
+
+  it('leaves the rails their own height and their own daylight under the floor', () => {
+    // The other half of the same argument, and the one no box can see: a rail's
+    // top is interior in y under the runners and interior in x and z inside
+    // them. The list of heights holds it, though — between the ground and the
+    // floor there is exactly one face, and it is the rails'. A rail that had
+    // been made to fill the plinth like a runner would put nothing in that gap;
+    // a rail whose middle had been frozen while its height moved would put its
+    // underside there too and make it two.
+    for (const stand of [shell.stand, 0.3, 0.09]) {
+      const ys = values(battRackGeometry({ ...shell, stand }, BATT_DEFAULT), 1);
+      const gap = ys.filter((y) => y > 1e-6 && y < stand - 1e-6);
+      expect(gap.length, `the rails are not one face below the floor at a stand of ${stand}`).toBe(
+        1,
+      );
+      expect(gap[0], `the rails grew with the plinth at a stand of ${stand}`).toBeCloseTo(
+        rack.railHeight,
+        6,
+      );
+    }
+
+    // And the daylight is the leftover, which is what makes this a brief: at
+    // the drawn plinth it is two centimetres, and at a tall one it is however
+    // much taller the plinth got. Below a plinth of the rails' own height it
+    // runs out, and the rails come up through the floor they were meant to lie
+    // under — which is where a rack that does not follow its machine ends. The
+    // colony never stands a bank that low, so it is measured here rather than
+    // guarded against, and it is the sharp end of the brief above.
+    expect(shell.stand - rack.railHeight).toBeCloseTo(0.02, 6);
+    const squat = rackAt({ ...shell, stand: 0.04 });
+    expect(squat.max.y, 'the rails no longer come through a squat crate').toBeCloseTo(
+      rack.railHeight,
+      6,
+    );
+  });
+
+  it('keeps the rails on the ground at whatever height they are cut to', () => {
+    // The height is read twice — once as the rail's own thickness and once,
+    // halved, as the middle it is drawn about — and at the drawn eight
+    // centimetres the two agree, so freezing either half leaves every other pin
+    // in this block green. It is the battery bar's half-read field again, on a
+    // number rather than an axis. Asked at heights the rack was never cut to,
+    // where a frozen thickness or a frozen middle lifts the rails off the
+    // ground or buries them in it.
+    for (const railHeight of [rack.railHeight, 0.05, 0.09]) {
+      const r = { ...BATT_DEFAULT, rack: { ...rack, railHeight } };
+      const span = railsOnly(shell, r);
+      expect(span.loY, `the rails have left the ground at a height of ${railHeight}`).toBeCloseTo(
+        0,
+        6,
+      );
+      expect(span.hiY, `the rails are not the height they were cut to at ${railHeight}`).toBeCloseTo(
+        railHeight,
+        6,
+      );
+    }
+  });
+
+  it('laps the rails to the runners they cross rather than to a length of their own', () => {
+    // The one derived length down here. A rail runs from the front runner's
+    // axis to the back one's, so it is the runners' spread doubled and nothing
+    // else. Asked at spreads the rack was never built at, where a frozen
+    // fifty-six centimetres would either fall short of the runners or hang out
+    // past them.
+    for (const runnerSpread of [rack.runnerSpread, 0.19, 0.37]) {
+      const r = { ...BATT_DEFAULT, rack: { ...rack, runnerSpread } };
+      const span = railsOnly(shell, r);
+      expect(span.hi - span.lo, `the rails miss the runners at a spread of ${runnerSpread}`)
+        .toBeCloseTo(runnerSpread * 2, 6);
+      expect(span.lo + span.hi, `the rails have slid off the middle`).toBeCloseTo(0, 6);
+    }
+  });
+
+  it('stands the runners proud of the crate they carry, by two centimetres a side', () => {
+    // Measured rather than derived: the runners are a flat nine tenths and the
+    // crate is eighty-six hundredths, and the two agreeing to four centimetres
+    // is two literals landing well rather than a relation the code holds. Widen
+    // the shell and they part. Pinned as it is, and logged as a brief.
+    const b = rackAt();
+    expect(b.max.x - b.min.x).toBeCloseTo(rack.runnerAcross, 6);
+    expect(rack.runnerAcross - shell.width).toBeCloseTo(0.04, 6);
+
+    const wider = rackAt({ ...shell, width: shell.width + 0.2 });
+    expect(wider.max.x - wider.min.x, 'the runners followed the crate out').toBeCloseTo(
+      rack.runnerAcross,
+      6,
+    );
+  });
+
+  it('turns every number the rack exposes, so the bench has no dead knob', () => {
+    // Six leaves, each moved on its own, and the buffer has to notice. Two of
+    // them are read twice over — a runner's spread is also a rail's length, and
+    // a rail's height is also its own middle — so this pin alone passes on a
+    // half-read field and proves only that something reads the name. The lap
+    // and the ground above are what hold the halves apart.
+    const before = [...(battRackGeometry(shell, BATT_DEFAULT).attributes.position.array as Float32Array)];
+    for (const key of Object.keys(rack) as (keyof typeof rack)[]) {
+      const r = { ...BATT_DEFAULT, rack: { ...rack, [key]: rack[key] + 0.05 } };
+      const after = [...(battRackGeometry(shell, r).attributes.position.array as Float32Array)];
+      expect(after.length, `${key} changed the shape of the buffer`).toBe(before.length);
+      expect(
+        after.some((v, i) => v !== before[i]),
+        `nothing reads rack.${key}`,
+      ).toBe(true);
+    }
+  });
+
+  it("still pools the battery bank's rack", () => {
+    const view = new BuildingsView();
+    const g = partGeometry(view, 'batt.rack');
+    g.computeBoundingBox();
+    expect(g.boundingBox!.max.y, 'the rack has grown up into the crate').toBeCloseTo(
+      shell.stand,
+      6,
+    );
+    expect(g.boundingBox!.max.x, 'the runners no longer reach past the crate').toBeGreaterThan(
+      shell.width / 2,
+    );
     view.dispose();
   });
 });
