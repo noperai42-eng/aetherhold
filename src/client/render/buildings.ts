@@ -1675,6 +1675,104 @@ export function coolerLidGeometry(s: ShellRecipe, r: CoolerRecipe): THREE.Buffer
 }
 
 /**
+ * The ironwork behind the cooler: a compressor bedded into the machine's back
+ * face, three cooling fins straddling the compressor's own back, and a cable
+ * running down beside it and out across the ground.
+ *
+ * This is the first trim in the file to hang off the face *behind* a machine,
+ * and the back wants a different anchor from the front. The compressor answers
+ * to the shell and the fins answer to the compressor, which is the two-link
+ * chain the firebox door already has. The cable answers to neither: both its
+ * runs are measured from the ground, because the ground is what they touch.
+ * It reaches the compressor by overlapping it rather than by meeting it at a
+ * face — measured, not assumed — so a taller plinth would lift the compressor
+ * off its own cable. Closing that is a look judgement and the brief is logged;
+ * the numbers here are held as they were drawn.
+ */
+export interface CompressorRecipe {
+  readonly body: CompressorBody;
+  readonly fins: CompressorFins;
+  readonly cable: CompressorCable;
+}
+
+export interface CompressorBody {
+  readonly across: number;
+  readonly height: number;
+  readonly thick: number;
+  readonly round: number;
+  /** How far the body's front face is buried inside the shell's back plane. */
+  readonly bed: number;
+  /** The body's bottom edge, above the shell's floor. */
+  readonly rise: number;
+}
+
+export interface CompressorFins {
+  readonly across: number;
+  readonly height: number;
+  /** Straddling the body's back face, half buried in it and half proud of it. */
+  readonly thick: number;
+  readonly pitch: number;
+  readonly count: number;
+}
+
+export interface CompressorCable {
+  /** Clear of the body's own side, which is the only reason it is visible. */
+  readonly flank: number;
+  readonly downRadius: number;
+  readonly downLength: number;
+  /** The vertical run's middle, above the ground rather than the shell's floor. */
+  readonly downRise: number;
+  /** Its axis, in front of the body's back face. */
+  readonly downSet: number;
+  readonly runRadius: number;
+  readonly runLength: number;
+  /** The ground run's axis, above the ground it lies on. */
+  readonly runLift: number;
+}
+
+export const COMPRESSOR_DEFAULT: CompressorRecipe = {
+  body: { across: 0.5, height: 0.32, thick: 0.1, round: 0.03, bed: 0.03, rise: 0.12 },
+  fins: { across: 0.42, height: 0.02, thick: 0.04, pitch: 0.08, count: 3 },
+  cable: {
+    flank: 0.01,
+    downRadius: 0.028,
+    downLength: 0.22,
+    downRise: 0.17,
+    downSet: 0.03,
+    runRadius: 0.026,
+    runLength: 0.14,
+    runLift: 0.03,
+  },
+};
+
+export function compressorGeometry(s: ShellRecipe, r: CompressorRecipe): THREE.BufferGeometry {
+  const { body, fins, cable } = r;
+  // The surface the compressor and the shell actually meet on is the body's
+  // front face, buried inside the shell's back plane. Stepping through it
+  // rather than folding past the body's middle is what keeps the whole z chain
+  // exact to the last bit — the same lesson the firebox door's leaf taught on
+  // the opposite face of a different machine.
+  const face = -s.depth / 2 + body.bed;
+  const back = face - body.thick;
+  const spine = s.stand + body.rise + body.height / 2;
+  const beside = body.across / 2 + cable.flank;
+
+  const parts = [rbox(body.across, body.height, body.thick, spine, 0, face - body.thick / 2, body.round, 1)];
+  for (let i = 0; i < fins.count; i++) {
+    const y = spine + (i - (fins.count - 1) / 2) * fins.pitch;
+    parts.push(box(fins.across, fins.height, fins.thick, y, 0, back));
+  }
+  parts.push(
+    new THREE.CapsuleGeometry(cable.downRadius, cable.downLength, 2, 8)
+      .translate(beside, cable.downRise, back + cable.downSet),
+    new THREE.CapsuleGeometry(cable.runRadius, cable.runLength, 2, 8)
+      .rotateX(Math.PI / 2)
+      .translate(beside, cable.runLift, -s.depth / 2),
+  );
+  return merge(...parts);
+}
+
+/**
  * A wall: a square column with a coping stone lapped over the top of it, which
  * is the timber wall and the stone wall both.
  *
@@ -2792,12 +2890,7 @@ export class BuildingsView {
       merge(
         louvreGeometry(SHELL_DEFAULT.cooler, LOUVRE_DEFAULT.cooler, 'front'),
         coolerLidGeometry(SHELL_DEFAULT.cooler, COOLER_DEFAULT),
-        rbox(0.5, 0.32, 0.1, 0.38, 0, -0.45, 0.03, 1),
-        box(0.42, 0.02, 0.04, 0.3, 0, -0.5),
-        box(0.42, 0.02, 0.04, 0.38, 0, -0.5),
-        box(0.42, 0.02, 0.04, 0.46, 0, -0.5),
-        new THREE.CapsuleGeometry(0.028, 0.22, 2, 8).translate(0.26, 0.17, -0.47),
-        new THREE.CapsuleGeometry(0.026, 0.14, 2, 8).rotateX(Math.PI / 2).translate(0.26, 0.03, -0.43),
+        compressorGeometry(SHELL_DEFAULT.cooler, COMPRESSOR_DEFAULT),
       ),
       paint('cooler', 0x5e696f, 0.5, 0.28),
       16,

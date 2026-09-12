@@ -14,6 +14,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   BuildingsView,
+  COMPRESSOR_DEFAULT,
   COOLER_DEFAULT,
   LOUVRE_DEFAULT,
   SHELL_DEFAULT,
@@ -24,6 +25,7 @@ import {
   gameBoardGeometry,
   gamePiecesGeometry,
   gameStoolsGeometry,
+  compressorGeometry,
   coolerLidGeometry,
   louvreGeometry,
   shellBodyGeometry,
@@ -1482,6 +1484,176 @@ describe("a cooler's lid", () => {
     const g = partGeometry(view, 'cooler.vent');
     g.computeBoundingBox();
     expect(g.boundingBox!.max.y, 'the handle stands above the lid').toBeGreaterThan(1.4);
+    view.dispose();
+  });
+});
+
+describe("a cooler's back", () => {
+  // The first trim in this file to hang off the face *behind* a machine. Every
+  // anchor before it has been a front or a flank, and the back turns out to
+  // want a different one: the compressor and its fins answer to the shell, and
+  // the cable answers to the ground.
+  const shell = SHELL_DEFAULT.cooler;
+  const body = COMPRESSOR_DEFAULT.body;
+  const iron = (s = shell, r = COMPRESSOR_DEFAULT) => compressorGeometry(s, r);
+  const bounds = (g: THREE.BufferGeometry) => {
+    g.computeBoundingBox();
+    return g.boundingBox!;
+  };
+  const spine = shell.stand + body.rise + body.height / 2;
+  /**
+   * The furthest-back word above the body's middle. No cable reaches that high
+   * — the vertical run tops out well below it — so this sees the fins when
+   * there are fins and the body's own back face when there are none, which is
+   * what lets the straddle be asked without a number.
+   */
+  const behind = (s = shell, r = COMPRESSOR_DEFAULT) => {
+    const a = iron(s, r).attributes.position.array as Float32Array;
+    let z = Infinity;
+    const middle = s.stand + r.body.rise + r.body.height / 2;
+    for (let i = 0; i < a.length; i += 3) if (a[i + 1] > middle && a[i + 2] < z) z = a[i + 2];
+    return z;
+  };
+  const finless = (r = COMPRESSOR_DEFAULT) => ({ ...r, fins: { ...r.fins, count: 0 } });
+
+  it('holds the compressor at the numbers it was drawn at', () => {
+    expect(COMPRESSOR_DEFAULT).toEqual({
+      body: { across: 0.5, height: 0.32, thick: 0.1, round: 0.03, bed: 0.03, rise: 0.12 },
+      fins: { across: 0.42, height: 0.02, thick: 0.04, pitch: 0.08, count: 3 },
+      cable: {
+        flank: 0.01,
+        downRadius: 0.028,
+        downLength: 0.22,
+        downRise: 0.17,
+        downSet: 0.03,
+        runRadius: 0.026,
+        runLength: 0.14,
+        runLift: 0.03,
+      },
+    });
+  });
+
+  it('stands every piece exactly where the frozen calls stood it', () => {
+    const b = bounds(iron());
+    expect([b.min.x, b.max.x]).toEqual([-0.25, 0.2879999876022339]);
+    expect([b.min.y, b.max.y]).toEqual([0.003999999258667231, 0.5400000214576721]);
+    expect([b.min.z, b.max.z]).toEqual([-0.5260000228881836, -0.33399999141693115]);
+
+    // The body is interior in z — the cable's ground run reaches further back
+    // and further forward than any of it — so the box above cannot see the one
+    // face that matters most, the front one buried in the shell. Every plane
+    // the assembly is built on is written out instead.
+    const a = iron().attributes.position.array as Float32Array;
+    const zs = new Set<number>();
+    for (let i = 2; i < a.length; i += 3) zs.add(a[i]);
+    expect([...zs].sort((p, q) => p - q)).toEqual([
+      -0.5260000228881836, -0.5199999809265137, -0.5183847546577454, -0.5,
+      -0.49799999594688416, -0.49121320247650146, -0.48979899287223816,
+      -0.48732051253318787, -0.48399999737739563, -0.47999998927116394,
+      -0.4699999988079071, -0.4560000002384186, -0.45020100474357605,
+      -0.44200000166893005, -0.4300000071525574, -0.4126794934272766,
+      -0.408786803483963, -0.4000000059604645, -0.36000001430511475,
+      -0.341615229845047, -0.33399999141693115,
+    ]);
+  });
+
+  it('beds the compressor into whatever back face its shell actually has', () => {
+    // Turn the depth and the whole of it walks back by half of it — the cable's
+    // ground run included, because that run lies on the shell's own back plane
+    // and is the only piece here that touches it exactly.
+    const b = bounds(iron());
+    const deep = bounds(iron({ ...shell, depth: shell.depth + 0.2 }));
+    expect(deep.min.z - b.min.z).toBeCloseTo(-0.1, 6);
+    expect(deep.max.z - b.max.z).toBeCloseTo(-0.1, 6);
+
+    // And the body's front face is buried by the bed it was given, asked of a
+    // shell that was never drawn so no world coordinate can satisfy it.
+    const other = { ...shell, depth: 1.3 };
+    const front = (s: typeof shell) => {
+      const a = iron(s, finless()).attributes.position.array as Float32Array;
+      let z = -Infinity;
+      const middle = s.stand + body.rise + body.height / 2;
+      for (let i = 0; i < a.length; i += 3) if (a[i + 1] > middle && a[i + 2] > z) z = a[i + 2];
+      return z;
+    };
+    expect(front(other) - -other.depth / 2).toBeCloseTo(body.bed, 6);
+  });
+
+  it('straddles every fin on the compressor’s own back, half in and half out', () => {
+    // Literal-free both ways: the fins reach exactly half their thickness
+    // behind the back face of a body built without them, and when that body
+    // gets thicker they follow it back by the whole of the change. A version
+    // that sat the fins *on* the back instead of across it passes neither.
+    expect(behind(shell, finless()) - behind()).toBeCloseTo(COMPRESSOR_DEFAULT.fins.thick / 2, 6);
+
+    const thick = {
+      ...COMPRESSOR_DEFAULT,
+      body: { ...body, thick: body.thick + 0.06 },
+    };
+    expect(behind(shell, thick) - behind()).toBeCloseTo(-0.06, 6);
+    expect(behind(shell, finless(thick)) - behind(shell, finless())).toBeCloseTo(-0.06, 6);
+  });
+
+  it('centres the fins on the compressor’s own middle', () => {
+    // The band of heights behind the body's back face and above everything the
+    // cable reaches: with three fins it is the outer two, with one it is that
+    // one, and either way it is centred on the body's middle rather than on a
+    // height somebody typed.
+    const band = (r = COMPRESSOR_DEFAULT) => {
+      const a = iron(shell, r).attributes.position.array as Float32Array;
+      const floor = behind(shell, finless(r));
+      let lo = Infinity;
+      let hi = -Infinity;
+      for (let i = 0; i < a.length; i += 3) {
+        if (a[i + 2] < floor && a[i + 1] > r.cable.runLift + r.cable.runRadius) {
+          lo = Math.min(lo, a[i + 1]);
+          hi = Math.max(hi, a[i + 1]);
+        }
+      }
+      return [lo, hi];
+    };
+    const { fins } = COMPRESSOR_DEFAULT;
+    const [lo, hi] = band();
+    expect((lo + hi) / 2).toBeCloseTo(spine, 6);
+    expect(hi - lo).toBeCloseTo((fins.count - 1) * fins.pitch + fins.height, 6);
+
+    const [one, onetop] = band({ ...COMPRESSOR_DEFAULT, fins: { ...fins, count: 1 } });
+    expect((one + onetop) / 2).toBeCloseTo(spine, 6);
+    expect(onetop - one).toBeCloseTo(fins.height, 6);
+  });
+
+  it('lifts the compressor with the plinth and leaves the cable on the ground', () => {
+    // The finding this round exists for. Every other piece of trim in this file
+    // answers to the shell all the way down; the cable does not, because both
+    // its runs are measured from the ground they lie on. Raise the plinth and
+    // the compressor climbs while the cable stays exactly where it was — which
+    // is also why a tall enough plinth would lift the machine off its own lead,
+    // and that is a look judgement rather than a broken contract.
+    const b = bounds(iron());
+    const tall = bounds(iron({ ...shell, stand: shell.stand + 0.3 }));
+    expect(tall.max.y - b.max.y, 'the compressor rides the plinth').toBeCloseTo(0.3, 6);
+    expect(tall.min.y, 'the cable stays on the ground').toBe(b.min.y);
+
+    // And nothing back here answers to the roof, only to the floor.
+    const high = bounds(iron({ ...shell, height: shell.height + 0.4 }));
+    expect([high.min.y, high.max.y]).toEqual([b.min.y, b.max.y]);
+  });
+
+  it('runs the cable clear of the flank, and only down one of them', () => {
+    // The body reaches the same distance either side; the cable stands outside
+    // it on the right and nothing balances it on the left, which is deliberate
+    // and is the kind of asymmetry a symmetric golden would happily lose.
+    const b = bounds(iron());
+    const { cable } = COMPRESSOR_DEFAULT;
+    expect(b.max.x - body.across / 2).toBeCloseTo(cable.flank + cable.downRadius, 6);
+    expect(b.min.x).toBeCloseTo(-body.across / 2, 6);
+  });
+
+  it("still pools the cooler's compressor", () => {
+    const view = new BuildingsView();
+    const g = partGeometry(view, 'cooler.vent');
+    g.computeBoundingBox();
+    expect(g.boundingBox!.min.z, 'the cable reaches out behind the machine').toBeLessThan(-0.5);
     view.dispose();
   });
 });

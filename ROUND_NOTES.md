@@ -4,6 +4,78 @@ One round, one measured gap, one fix. Newest first.
 
 ---
 
+## 2026-09-12 — The face behind the machine, and the one part that answers to the ground
+
+**The gap.** The last of `cooler.vent`: a compressor bedded into the machine's
+back, three cooling fins across it, and a cable running down beside it and out
+along the floor. All of it in world coordinates — the compressor at z = -0.45
+because the cooler's half-depth happens to be 0.43 and it happens to be bedded
+three centimetres in, the fins at -0.5 because that happens to be where the
+compressor's back landed. Every trim lifted in this file so far has hung off a
+front or a flank. This is the first that hangs off the face behind a machine,
+and the back wants a different anchor from the front.
+
+**The exact chain, on the opposite face.** The stove's door taught that you step
+through the surface two parts actually meet on and do not fold through a middle
+nothing touches. The same lesson holds here and it is worth recording that it
+transfers: fold through the compressor's middle and the whole z chain drifts
+(`-(0.86/2 + 0.1/2 - 0.03)` is -0.44999999999999996); step through its front
+face, which is the surface buried in the shell's back plane, and every plane
+behind the machine comes out exact to the last bit — the middle at -0.45, the
+back at -0.5, the cable's vertical run at -0.47. The drift was five parts in
+ten quintillion and float32 would have swallowed it either way; taking the exact
+path anyway is what keeps the next round from having to think about it.
+
+**The finding: one part does not answer to the shell at all.** The compressor
+answers to the shell and the fins answer to the compressor, which is the
+two-link chain the firebox door already has. The cable answers to neither.
+Both its runs are measured from the ground, because the ground is what they
+touch — the lead lies along the floor and the vertical run comes down to meet
+it. Raise the plinth and the compressor climbs while the cable stays exactly
+where it was, which is right, and which also means a tall enough plinth would
+lift the machine off its own lead. The cable reaches the compressor by
+overlapping it rather than by meeting it at a face, and that was measured
+rather than assumed: the vertical run's tip is at 0.032 and the ground run's
+axis at 0.03, two millimetres apart and not a joint. So it is pinned as it is,
+written into the recipe's doc comment, and the retune is a brief.
+
+**Pins that carry no number.** Three of the eight are literal-free and two of
+those needed a way to see a part that no bounding box can. The fins are interior
+in z — the cable's ground run reaches further back and further forward than any
+of them — so the straddle is asked by building the body *without* its fins and
+measuring how far past that back face the fins reach: exactly half their own
+thickness, in and out. The centring is asked the same way, over the band of
+heights behind that back face and above everything the cable reaches, which is
+the outer two fins with three and the single fin with one, centred on the body's
+middle either way. And the compressor's bed is asked of a shell 1.3 deep that
+was never drawn, so no world coordinate can satisfy it.
+
+**Identical, and the pool with it.** 2,736 words out of the recipe as they came
+out of the literals, none differing, probed before the lift and then deleted.
+The six pieces were the last six in `cooler.vent`'s merge and contiguous, so the
+pool came out byte-identical too — 7,344 position words, dumped from the old
+file and the new one and compared rather than argued about. `cooler.vent` is now
+three recipes and nothing else, which is the first pool in the file built
+entirely out of them.
+
+**Six mutations red, three of them the pre-round state exactly.** The compressor
+frozen to -0.45/0.38, the fins to -0.5, and the cable's ground run to -0.43 are
+each precisely what the code said before this round, and each leaves the golden
+green: caught by three relation pins, by the straddle alone, and by the bed
+alone. The other three are mistakes a careless lift would make — the cable hung
+off the shell's floor like everything else, the fins sat on the back face rather
+than across it, and the fins pitched up from the middle instead of centred on
+it. 2,709 tests passing, up from 2,701 by
+exactly the eight pins this round adds. No frames: no vertex moved.
+
+**Next.** The generator's exhaust stacks, then the battery bank's terminals and
+straps. Open brief from this round, deliberately not acted on: the cable is a
+fixed-length capsule with one end on the ground and the other merely overlapping
+the compressor, so raising the plinth parts them. Whether the lead should stretch
+to keep both ends is a look judgement and the frames are the judge.
+
+---
+
 ## 2026-09-12 — A lid's furniture, hung off the lid and not off the world
 
 **The gap.** The cooler carries more ironwork than any other machine: a seal

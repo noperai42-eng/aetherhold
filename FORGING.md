@@ -397,7 +397,7 @@ to be overruled by the photographs:
 | Trees | 2 | Variation already exists and is unaddressable; making it addressable is nearly free. |
 | Piles | 8 | Eight objects sharing a prefix, seen constantly, each small. |
 | People and fauna | 5 | The heaviest models and the most looked-at, but also the ones with the most existing look-loop rounds behind them — least likely to be wrong. |
-| Buildings | 26 | Largest surface (3,451 lines) and least varied per instance; a stove is one stove. Last on purpose. On the bench since 2026-09-10, with one field and no recipe. Five of the twenty-six — the machine shells — build from `ShellRecipe` as of 2026-09-10, the two tables from `TableRecipe` and the two walls from `WallRecipe` as of 2026-09-12, the games table's trim follows its own top as of the same day — the first building whose parts would survive a knob being turned — and the stove's feet, flue and hotplates follow its shell, which is the first machine to do so, its door following the face it is cut into as a four-link chain, and the louvre it shares with the cooler, the generator and the battery bank lifted out of all four, and the cooler's lid furniture following the lid rather than the world. The bench still has no knob, so the census still reads no recipe here. |
+| Buildings | 26 | Largest surface (3,451 lines) and least varied per instance; a stove is one stove. Last on purpose. On the bench since 2026-09-10, with one field and no recipe. Five of the twenty-six — the machine shells — build from `ShellRecipe` as of 2026-09-10, the two tables from `TableRecipe` and the two walls from `WallRecipe` as of 2026-09-12, the games table's trim follows its own top as of the same day — the first building whose parts would survive a knob being turned — and the stove's feet, flue and hotplates follow its shell, which is the first machine to do so, its door following the face it is cut into as a four-link chain, and the louvre it shares with the cooler, the generator and the battery bank lifted out of all four, the cooler's lid furniture following the lid rather than the world, and its compressor, fins and cable following the face behind it — leaving `cooler.vent` built out of three recipes and nothing else. The bench still has no knob, so the census still reads no recipe here. |
 
 Grass is a special case worth naming: it cannot be exported to `.glb`, so the bench
 is the *only* place its shader sway can ever be judged in isolation. That makes it a
@@ -912,6 +912,22 @@ is the right shape for a game drawing flat polygons where a material is a palett
 Aetherhold's materials are `MeshStandardMaterial` with an ambient-occlusion bake
 living in vertex colours, so the split is not free and is not obviously worth
 paying for. Revisit if the recipe work makes it cheap.
+
+**Built — the face behind the machine, 2026-09-12.** The last of `cooler.vent`:
+a compressor bedded into the cooler's back, three cooling fins across it and a
+cable running down beside it and out along the ground, lifted into
+`CompressorRecipe`. The first trim here to hang off the face *behind* a machine
+— every anchor before it was a front or a flank — and the back wants a different
+one. The compressor answers to the shell and the fins answer to the compressor,
+which is the firebox door's two-link chain again; the cable answers to neither,
+because both its runs are measured from the ground they lie on. Raise the plinth
+and the compressor climbs while the cable stays put, which is right and which
+also means a tall enough plinth parts them, so the retune is a brief rather than
+a fix. The stove door's exactness lesson transfers to the opposite face: fold
+through the compressor's middle and the z chain drifts, step through its front
+face — the surface actually buried in the shell — and every plane behind the
+machine is exact to the last bit. `cooler.vent` is now three recipes and nothing
+else, the first pool in the file built entirely out of them.
 
 **Built — a lid's furniture, hung off the lid and not off the world, 2026-09-12.**
 The cooler's seal, latch, handle and pipe stubs, lifted into `CoolerRecipe` as
