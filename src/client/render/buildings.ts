@@ -1562,6 +1562,119 @@ export function louvreGeometry(s: ShellRecipe, r: LouvreRecipe, face: LouvreFace
 }
 
 /**
+ * The ironwork above the cooler's body: a seal bridging the joint, a latch on
+ * the lid's front, a handle standing on its top, and two pipe stubs at its back.
+ *
+ * Everything here answers to the *lid*, which is itself derived from the shell —
+ * so this is a two-step chain like the firebox door's, with one difference worth
+ * naming. The stubs take their height from the lid and their depth from the
+ * body, because that is where they were drawn: a centimetre behind the body's
+ * back face, at a height that only the lid has. A mixed anchor is not a mistake
+ * here, but it is the kind of thing that reads as one later, so it is written
+ * down rather than tidied into a consistency the drawing never had.
+ */
+export interface CoolerRecipe {
+  readonly seal: CoolerSeal;
+  readonly latch: CoolerLatch;
+  readonly handle: CoolerHandle;
+  readonly stubs: CoolerStubs;
+}
+
+export interface CoolerSeal {
+  /** Drawn in from the body's own sides, the same on every one of them. */
+  readonly inset: number;
+  /** Thicker than the seat it bridges, so it beds into both body and lid. */
+  readonly thickness: number;
+  readonly round: number;
+}
+
+export interface CoolerLatch {
+  readonly width: number;
+  readonly height: number;
+  readonly depth: number;
+  /** Below the lid's own middle. */
+  readonly drop: number;
+  /** Its middle, out from the lid's front face. */
+  readonly stand: number;
+}
+
+export interface CoolerHandle {
+  readonly postRadius: number;
+  readonly postHeight: number;
+  /** Either side of centre, and both the same distance forward of it. */
+  readonly postSpread: number;
+  readonly postForward: number;
+  /** How far a post's foot sits below the lid's top, rather than on it. */
+  readonly postBed: number;
+  readonly barWidth: number;
+  readonly barHeight: number;
+  readonly barDepth: number;
+  /** The bar's middle, above the lid's top. */
+  readonly barRise: number;
+  readonly barRound: number;
+}
+
+export interface CoolerStubs {
+  readonly radius: number;
+  readonly length: number;
+  readonly spread: number;
+  /** Below the lid's top. */
+  readonly drop: number;
+  /** The axis, behind the *body's* back face and not the lid's. */
+  readonly behind: number;
+}
+
+/** The one cooler the colony builds, at the numbers it was drawn at. */
+export const COOLER_DEFAULT: CoolerRecipe = {
+  seal: { inset: 0.01, thickness: 0.05, round: 0.01 },
+  latch: { width: 0.16, height: 0.05, depth: 0.04, drop: 0.02, stand: 0.01 },
+  handle: {
+    postRadius: 0.025, postHeight: 0.06, postSpread: 0.18, postForward: 0.16, postBed: 0.01,
+    barWidth: 0.44, barHeight: 0.05, barDepth: 0.07, barRise: 0.055, barRound: 0.02,
+  },
+  stubs: { radius: 0.035, length: 0.18, spread: 0.26, drop: 0.01, behind: 0.01 },
+};
+
+/** That ironwork, hung on whatever lid the shell recipe actually gives it. */
+export function coolerLidGeometry(s: ShellRecipe, r: CoolerRecipe): THREE.BufferGeometry {
+  const lid = s.lid!;
+  // Worked out through the lid's own faces, in the shapes shellLidGeometry uses,
+  // so the furniture and the lid agree to the last bit rather than nearly.
+  const seat = s.stand + s.height;
+  const middle = seat + lid.seat + lid.height / 2;
+  const top = seat + lid.seat + lid.height;
+  const front = (s.depth + lid.overhang) / 2;
+  const { latch, handle, stubs } = r;
+
+  const post = (x: number) =>
+    cylinder(handle.postRadius, handle.postRadius, handle.postHeight, top - handle.postBed + handle.postHeight / 2, 12)
+      .translate(x, 0, handle.postForward);
+  const stub = (x: number) =>
+    cylinder(stubs.radius, stubs.radius, stubs.length, 0, 16)
+      .rotateZ(Math.PI / 2)
+      .translate(x, top - stubs.drop, -(s.depth / 2 + stubs.behind));
+
+  return merge(
+    box(latch.width, latch.height, latch.depth, middle - latch.drop, 0, front + latch.stand),
+    rbox(
+      s.width - r.seal.inset * 2,
+      r.seal.thickness,
+      s.depth - r.seal.inset * 2,
+      seat + lid.seat / 2,
+      0,
+      0,
+      r.seal.round,
+      1,
+    ),
+    rbox(handle.barWidth, handle.barHeight, handle.barDepth, top + handle.barRise, 0, handle.postForward, handle.barRound, 1),
+    post(-handle.postSpread),
+    post(handle.postSpread),
+    stub(-stubs.spread),
+    stub(stubs.spread),
+  );
+}
+
+/**
  * A wall: a square column with a coping stone lapped over the top of it, which
  * is the timber wall and the stone wall both.
  *
@@ -2678,13 +2791,7 @@ export class BuildingsView {
       'cooler.vent',
       merge(
         louvreGeometry(SHELL_DEFAULT.cooler, LOUVRE_DEFAULT.cooler, 'front'),
-        box(0.16, 0.05, 0.04, 1.3, 0, 0.47),
-        rbox(0.9, 0.05, 0.84, 1.21, 0, 0, 0.01, 1),
-        rbox(0.44, 0.05, 0.07, 1.475, 0, 0.16, 0.02, 1),
-        cylinder(0.025, 0.025, 0.06, 1.44, 12).translate(-0.18, 0, 0.16),
-        cylinder(0.025, 0.025, 0.06, 1.44, 12).translate(0.18, 0, 0.16),
-        cylinder(0.035, 0.035, 0.18, 0, 16).rotateZ(Math.PI / 2).translate(-0.26, 1.41, -0.44),
-        cylinder(0.035, 0.035, 0.18, 0, 16).rotateZ(Math.PI / 2).translate(0.26, 1.41, -0.44),
+        coolerLidGeometry(SHELL_DEFAULT.cooler, COOLER_DEFAULT),
         rbox(0.5, 0.32, 0.1, 0.38, 0, -0.45, 0.03, 1),
         box(0.42, 0.02, 0.04, 0.3, 0, -0.5),
         box(0.42, 0.02, 0.04, 0.38, 0, -0.5),

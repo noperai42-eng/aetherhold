@@ -397,7 +397,7 @@ to be overruled by the photographs:
 | Trees | 2 | Variation already exists and is unaddressable; making it addressable is nearly free. |
 | Piles | 8 | Eight objects sharing a prefix, seen constantly, each small. |
 | People and fauna | 5 | The heaviest models and the most looked-at, but also the ones with the most existing look-loop rounds behind them — least likely to be wrong. |
-| Buildings | 26 | Largest surface (3,451 lines) and least varied per instance; a stove is one stove. Last on purpose. On the bench since 2026-09-10, with one field and no recipe. Five of the twenty-six — the machine shells — build from `ShellRecipe` as of 2026-09-10, the two tables from `TableRecipe` and the two walls from `WallRecipe` as of 2026-09-12, the games table's trim follows its own top as of the same day — the first building whose parts would survive a knob being turned — and the stove's feet, flue and hotplates follow its shell, which is the first machine to do so, its door following the face it is cut into as a four-link chain, and the louvre it shares with the cooler, the generator and the battery bank lifted out of all four. The bench still has no knob, so the census still reads no recipe here. |
+| Buildings | 26 | Largest surface (3,451 lines) and least varied per instance; a stove is one stove. Last on purpose. On the bench since 2026-09-10, with one field and no recipe. Five of the twenty-six — the machine shells — build from `ShellRecipe` as of 2026-09-10, the two tables from `TableRecipe` and the two walls from `WallRecipe` as of 2026-09-12, the games table's trim follows its own top as of the same day — the first building whose parts would survive a knob being turned — and the stove's feet, flue and hotplates follow its shell, which is the first machine to do so, its door following the face it is cut into as a four-link chain, and the louvre it shares with the cooler, the generator and the battery bank lifted out of all four, and the cooler's lid furniture following the lid rather than the world. The bench still has no knob, so the census still reads no recipe here. |
 
 Grass is a special case worth naming: it cannot be exported to `.glb`, so the bench
 is the *only* place its shader sway can ever be judged in isolation. That makes it a
@@ -912,6 +912,23 @@ is the right shape for a game drawing flat polygons where a material is a palett
 Aetherhold's materials are `MeshStandardMaterial` with an ambient-occlusion bake
 living in vertex colours, so the split is not free and is not obviously worth
 paying for. Revisit if the recipe work makes it cheap.
+
+**Built — a lid's furniture, hung off the lid and not off the world, 2026-09-12.**
+The cooler's seal, latch, handle and pipe stubs, lifted into `CoolerRecipe` as
+functions of the lid they are bolted to. The first chain here whose anchor is
+itself derived — the lid is a function of the shell and these six pieces are
+functions of the lid — and the first that keeps a deliberate inconsistency: the
+stubs take their height from the lid and their depth from the body, because the
+pipes leave the machine at the back where the lid's overhang has nothing to do
+with anything. That mixed anchor is written into the recipe and pinned as it is,
+using the overhang to tell the two apart. The finding is a third kind of
+blindness the drill turned up: freeze the handle's posts at the world coordinate
+they were drawn at and every test passes, because the frozen literal and the
+derivation agree to the bit at the default shell (so no golden can see it) and
+the posts live wholly inside the bar's and the stubs' height (so no bounding-box
+differential can either). What sees it is a window in z holding the handle and
+nothing else, and the lowest word in it — a post's foot, bedded below the lid's
+top rather than perched on it.
 
 **Built — the same louvre, cut into four different machines, 2026-09-12.** The
 first lift here that removes duplication rather than only adding a knob, and the

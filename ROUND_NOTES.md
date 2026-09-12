@@ -4,6 +4,83 @@ One round, one measured gap, one fix. Newest first.
 
 ---
 
+## 2026-09-12 — A lid's furniture, hung off the lid and not off the world
+
+**The gap.** The cooler carries more ironwork than any other machine: a seal
+bridging the joint between body and lid, a latch on the lid's front, a handle
+standing on its top, and two pipe stubs at its back. All of it was written in
+world coordinates. The seal sat at y = 1.21 because the body's top happens to be
+1.20 and the seat gap happens to be two centimetres; the handle's posts sat at
+1.44 because the lid's top happens to be 1.42. Turn `lid.height` and the seal
+stays put while the lid it seals climbs away from it. Turn `height` and every
+piece of it stays where it was while the machine underneath grows out of it.
+
+**A two-step chain.** The stove's door was the first chain in this file and each
+of its links answered to the one before it. This is the first that answers to
+something which is itself derived: the lid is a function of the shell, and all
+six pieces here are functions of the lid. Nothing in `coolerLidGeometry` reads a
+shell number directly except through the seat the lid sits on — with one
+exception, which is the round's finding.
+
+**The mixed anchor, pinned as it is and not as it should be.** The stubs take
+their height from the lid and their depth from the *body*. That is where they
+were drawn: a centimetre behind the body's back face, at a height only the lid
+has. It is not a mistake — the pipes leave the machine at the back, where the
+lid's overhang has nothing to do with anything — but it is exactly the kind of
+thing that reads as one later, so it is written into the recipe's doc comment
+and pinned rather than tidied into a consistency the drawing never had. The
+overhang is what tells the two apart, and the pin uses it: widen it and the
+latch walks forward with the lid's front while the stubs do not move at all.
+The mutation that hangs the stubs off the lid like everything else — which is
+precisely what a careless lift would do — goes red on that line and on the
+golden.
+
+**What the drill found this time.** Freeze the handle's posts at the world
+coordinate they were drawn at and *every test passed*. The reason is a third
+kind of blindness, distinct from the two earlier rounds found. The golden cannot
+see it because nothing moved: at the default shell `top - postBed + postHeight/2`
+is 1.44 exactly, so the frozen literal and the derivation produce the same
+buffer to the bit, which is the whole point of a lift. And the differential pins
+cannot see it either, because they are asked of a bounding box and the posts
+live *wholly inside* the bar's and the stubs' height — 1.41 to 1.47, against a
+bar from 1.45 to 1.50 and stubs from 1.375 to 1.445. A part that is interior in
+the axis a knob moves is invisible to every box in the block.
+
+What sees it is a window in z that holds the handle and nothing else: the latch
+is further forward, the seal and the stubs further back. The lowest word in that
+window is a post's foot, and it is *below* the lid's top, because a post that
+merely touched the lid would show daylight under it. That foot is asked to
+follow a thicker lid and a deeper seat, and the bar is asked to stay the same
+distance above it however the lid is turned.
+
+**Identical, and the pool with it.** Ten thousand eight hundred and forty-eight
+words came out of the recipe as they came out of the literals, none differing,
+proved with a throwaway probe before the lift was written and then deleted. The
+six pieces were contiguous in `cooler.vent`'s merge, so unlike the generator's
+louvre last round this one is not even a permutation — the pool is byte-identical.
+
+**A correction worth naming.** The first draft of the differential pins asked
+`toBeCloseTo(0.2, 12)` and failed. A vertex is a float32 and these sit at y
+around 1.4, where one unit in the last place is about 1.2e-7; twelve digits is
+five orders tighter than the number can hold. They ask for six. This is the
+same arithmetic that decided three earlier rounds and it still caught the author
+out on the first try.
+
+**Six mutations red, one green until the pin was written.** The latch, the seal
+and the stubs each frozen back to exactly their pre-round world coordinates; the
+naive lift that anchors the stubs on the lid; the latch lifted above the lid's
+middle instead of dropped below it, caught by the golden alone; and the posts,
+caught by nothing at all until the handle-window pin existed. 2,701 tests
+passing, up from 2,693 by exactly the eight pins this round adds. No frames: no vertex moved, so none could have.
+
+**Next.** The rest of `cooler.vent` — the compressor bedded into the machine's
+**back** face, its three cooling fins and its cable. That is a relation the
+buildings have not had yet: trim on the face behind the machine, where every
+anchor so far has been the front. After it, the generator's exhaust stacks and
+the battery bank's terminals and straps.
+
+---
+
 ## 2026-09-12 — The same louvre, cut into four different machines
 
 **The gap.** Four machines have an air intake: the stove under its firebox, the

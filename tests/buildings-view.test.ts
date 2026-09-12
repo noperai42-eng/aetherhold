@@ -14,6 +14,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   BuildingsView,
+  COOLER_DEFAULT,
   LOUVRE_DEFAULT,
   SHELL_DEFAULT,
   GAME_DEFAULT,
@@ -23,6 +24,7 @@ import {
   gameBoardGeometry,
   gamePiecesGeometry,
   gameStoolsGeometry,
+  coolerLidGeometry,
   louvreGeometry,
   shellBodyGeometry,
   shellLidGeometry,
@@ -1291,6 +1293,195 @@ describe('a louvre', () => {
       g.computeBoundingBox();
       expect(g.boundingBox!.max.y, `${key} has height`).toBeGreaterThan(0);
     }
+    view.dispose();
+  });
+});
+
+describe("a cooler's lid", () => {
+  // The louvre above answers to the shell. This answers to the *lid*, which
+  // itself answers to the shell — so every number here is two steps from
+  // anything a bench could turn, and until it was lifted all of it was written
+  // in world coordinates that had quietly agreed with a lid nobody consulted.
+  const shell = SHELL_DEFAULT.cooler;
+  const lid = shell.lid!;
+  const iron = (s = shell, r = COOLER_DEFAULT) => coolerLidGeometry(s, r);
+  const bounds = (g: THREE.BufferGeometry) => {
+    g.computeBoundingBox();
+    return g.boundingBox!;
+  };
+  const axis = (g: THREE.BufferGeometry, k: number) => {
+    const a = g.attributes.position.array as Float32Array;
+    const s = new Set<number>();
+    for (let i = k; i < a.length; i += 3) s.add(a[i]);
+    return [...s].sort((p, q) => p - q);
+  };
+
+  it("holds the cooler's ironwork at the numbers it was drawn at", () => {
+    expect(COOLER_DEFAULT).toEqual({
+      seal: { inset: 0.01, thickness: 0.05, round: 0.01 },
+      latch: { width: 0.16, height: 0.05, depth: 0.04, drop: 0.02, stand: 0.01 },
+      handle: {
+        postRadius: 0.025,
+        postHeight: 0.06,
+        postSpread: 0.18,
+        postForward: 0.16,
+        postBed: 0.01,
+        barWidth: 0.44,
+        barHeight: 0.05,
+        barDepth: 0.07,
+        barRise: 0.055,
+        barRound: 0.02,
+      },
+      stubs: { radius: 0.035, length: 0.18, spread: 0.26, drop: 0.01, behind: 0.01 },
+    });
+  });
+
+  it('stands every piece exactly where the frozen calls stood it', () => {
+    const b = bounds(iron());
+    expect([b.min.x, b.max.x]).toEqual([-0.44999998807907104, 0.44999998807907104]);
+    expect([b.min.y, b.max.y]).toEqual([1.184999942779541, 1.5]);
+    expect([b.min.z, b.max.z]).toEqual([-0.4749999940395355, 0.49000000953674316]);
+
+    // Six pieces sit inside each other's envelope in at least one axis, so the
+    // box above sees almost none of them move. The height of every word in the
+    // assembly does, and height is the axis all four of the lid's knobs turn.
+    expect(axis(iron(), 1)).toEqual([
+      1.184999942779541, 1.1879289150238037, 1.189226508140564, 1.1950000524520874,
+      1.225000023841858, 1.2307734489440918, 1.232071042060852, 1.2350000143051147,
+      1.274999976158142, 1.3250000476837158, 1.375, 1.3776642084121704,
+      1.3852512836456299, 1.3966060876846313, 1.409999966621399, 1.423393964767456,
+      1.4347487688064575, 1.4423357248306274, 1.4450000524520874, 1.4500000476837158,
+      1.4558578729629517, 1.4584529399871826, 1.4700000286102295, 1.4800000190734863,
+      1.4915469884872437, 1.4941421747207642, 1.5,
+    ]);
+
+    // And the four faces the box cannot reach, because something else in the
+    // merge stands further out on the same axis.
+    const xs = new Set(axis(iron(), 0));
+    const zs = new Set(axis(iron(), 2));
+    expect(zs.has(0.44999998807907104), "the latch's back, bedded into the lid's front").toBe(true);
+    expect(xs.has(0.3499999940395355), "a stub's outer end").toBe(true);
+    expect(zs.has(0.125) && zs.has(0.19499999284744263), "the bar's two faces").toBe(true);
+    expect(zs.has(0.13500000536441803) && zs.has(0.1850000023841858), "a post's two faces").toBe(true);
+  });
+
+  it('carries all of it up when the shell it stands on grows taller', () => {
+    // The whole assembly is furniture on a lid, and the lid rides the body's
+    // top. Nothing here should know how tall the body is except through that.
+    const base = bounds(iron());
+    const taller = bounds(iron({ ...shell, height: shell.height + 0.2 }));
+    expect(taller.min.y - base.min.y).toBeCloseTo(0.2, 6);
+    expect(taller.max.y - base.max.y).toBeCloseTo(0.2, 6);
+    expect([taller.min.z, taller.max.z]).toEqual([base.min.z, base.max.z]);
+  });
+
+  it('raises only what stands on the lid when the lid gets thicker', () => {
+    // The other half of the same relation, and the one a single golden would
+    // miss: the seal bridges the joint *below* the lid, so a taller lid lifts
+    // the handle and leaves the seal exactly where it was. A version that hung
+    // everything off the lid's top would pass the test above and fail this one.
+    const base = bounds(iron());
+    const thick = bounds(iron({ ...shell, lid: { ...lid, height: lid.height + 0.1 } }));
+    expect(thick.max.y - base.max.y).toBeCloseTo(0.1, 6);
+    expect(thick.min.y).toBe(base.min.y);
+
+    // A deeper seat lifts the lid bodily, so the handle takes the whole of it
+    // while the seal — sitting in the middle of that gap — takes half.
+    const seated = bounds(iron({ ...shell, lid: { ...lid, seat: lid.seat + 0.03 } }));
+    expect(seated.max.y - base.max.y).toBeCloseTo(0.03, 6);
+    expect(seated.min.y - base.min.y).toBeCloseTo(0.015, 6);
+  });
+
+  it('beds the seal into both the body and the lid it bridges', () => {
+    // Literal-free, because what matters is not where the seal is but that it
+    // is thicker than the gap it covers and centred on it. A seal exactly as
+    // thick as the seat would be flush with both and would show a seam.
+    const g = iron();
+    const ys = axis(g, 1);
+    const seat = shell.stand + shell.height;
+    const gap = lid.seat;
+    const middle = seat + gap / 2;
+    expect(ys[0], 'the seal reaches below the body top it beds into').toBeLessThan(seat);
+
+    // Its far face is asked for as the reflection of its near one, which is
+    // both the centring and the thickness in one line and needs no number of
+    // its own. Reached for by name rather than by picking the first word above
+    // the joint: the seal's corners are eased, so several words sit between
+    // its two faces and the lowest of them is an arc and not the face.
+    const far = 2 * middle - ys[0];
+    expect(ys.some((y) => Math.abs(y - far) < 1e-6), 'the seal is not centred on the seat').toBe(true);
+    expect(far, 'the seal reaches above the lid underside it beds into').toBeGreaterThan(seat + gap);
+  });
+
+  it('beds the handle posts into the lid rather than perching them on it', () => {
+    // The posts live wholly inside the bar's and the stubs' height, so every
+    // box in this block is blind to them: a mutation freezing them at the world
+    // coordinate they were drawn at was caught by nothing above. What sees them
+    // is a window in z that holds the handle and nothing else — the latch is
+    // further forward, the seal and the stubs are further back — and the lowest
+    // word in it, which is a post's foot and is *below* the lid's top, because
+    // a post that merely touched the lid would show daylight under it.
+    const foot = (s = shell) => {
+      const g = iron(s);
+      const a = g.attributes.position.array as Float32Array;
+      let y = Infinity;
+      for (let i = 0; i < a.length; i += 3) {
+        if (a[i + 2] > 0.1 && a[i + 2] < 0.2 && a[i + 1] < y) y = a[i + 1];
+      }
+      return y;
+    };
+    const top = shell.stand + shell.height + lid.seat + lid.height;
+    expect(foot(), 'the posts stand on the lid instead of biting into it').toBeLessThan(top);
+
+    const thick = { ...shell, lid: { ...lid, height: lid.height + 0.1 } };
+    const seated = { ...shell, lid: { ...lid, seat: lid.seat + 0.03 } };
+    expect(foot(thick) - foot(), 'a thicker lid leaves the posts behind').toBeCloseTo(0.1, 6);
+    expect(foot(seated) - foot(), 'a deeper seat leaves the posts behind').toBeCloseTo(0.03, 6);
+
+    // And the bar rides them: the gap between a post's foot and the bar's own
+    // underside is the same however the lid is turned.
+    const under = (s = shell) => {
+      const g = iron(s);
+      const a = g.attributes.position.array as Float32Array;
+      let y = Infinity;
+      for (let i = 0; i < a.length; i += 3) {
+        if (a[i + 2] > 0.12 && a[i + 2] < 0.13 && a[i + 1] < y) y = a[i + 1];
+      }
+      return y;
+    };
+    expect(under(thick) - foot(thick)).toBeCloseTo(under() - foot(), 6);
+  });
+
+  it('takes the stubs from the body behind and the latch from the lid in front', () => {
+    // The mixed anchor the recipe writes down. The stubs were drawn a
+    // centimetre behind the *body's* back face at a height only the lid has,
+    // and the overhang is what tells the two apart: widen it and the latch
+    // walks forward with the lid's front while the stubs do not move at all.
+    const base = bounds(iron());
+    const wide = bounds(iron({ ...shell, lid: { ...lid, overhang: lid.overhang + 0.1 } }));
+    expect(wide.max.z - base.max.z, 'the latch follows the lid it is fixed to').toBeCloseTo(0.05, 6);
+    expect(wide.min.z, 'the stubs stay on the body they were hung off').toBe(base.min.z);
+
+    // And the height they do share, so this is a mixed anchor and not simply
+    // an assembly that ignores the lid.
+    const thick = bounds(iron({ ...shell, lid: { ...lid, height: lid.height + 0.1 } }));
+    const back = (b: THREE.Box3) => b.min.z;
+    expect(back(thick)).toBe(back(base));
+    const stubTop = (s: (typeof SHELL_DEFAULT)[string]) => {
+      const g = iron(s);
+      const a = g.attributes.position.array as Float32Array;
+      let y = -Infinity;
+      for (let i = 0; i < a.length; i += 3) if (a[i + 2] < -shell.depth / 2 && a[i + 1] > y) y = a[i + 1];
+      return y;
+    };
+    expect(stubTop({ ...shell, lid: { ...lid, height: lid.height + 0.1 } }) - stubTop(shell)).toBeCloseTo(0.1, 6);
+  });
+
+  it("still pools the cooler's lid furniture", () => {
+    const view = new BuildingsView();
+    const g = partGeometry(view, 'cooler.vent');
+    g.computeBoundingBox();
+    expect(g.boundingBox!.max.y, 'the handle stands above the lid').toBeGreaterThan(1.4);
     view.dispose();
   });
 });
