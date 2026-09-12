@@ -4,6 +4,91 @@ One round, one measured gap, one fix. Newest first.
 
 ---
 
+## 2026-09-12 — The third machine, which settled who the family is
+
+**The gap.** `batt.trim` was the last pool on the battery bank still in world
+coordinates: two terminals with a bar across them at y = 0.89, two straps over
+the lid at 0.83, and the back — a box at z = -0.42 with a lead down from it and
+a run along the floor. The terminals stood at 0.89 because the plinth, the body
+and the lid happen to add to 0.82; turn any of the four numbers that decide
+where a lid's top lands and the whole of it stays behind.
+
+**The test the last round set up, and how it came out.** The generator's note
+left this: three machines have a box bedded into their back plane with a lead
+down beside it and a run along the ground, and the extract-at-three rule would
+either bite here or be shown not to apply. It bites, on two of the three. The
+generator's builder reproduces the battery's back to the bit, so `GenOutlet`
+became `BackOutlet`, `BACK_OUTLET_DEFAULT` is a record keyed by machine in the
+shape `LOUVRE_DEFAULT` already had, and what was `GEN_DEFAULT` is now just its
+stacks. The cooler cannot join, and the reason is worth stating so nobody tries:
+its box is a *rounded* box with three fins straddling it, and a
+`RoundedBoxGeometry` is not a `BoxGeometry` with square corners — it is a
+different mesh with a different vertex count. Sharing would move vertices, which
+is a look judgement and not a lift. So the family is three shapes and two
+builders, which is the rule biting on the two it can reach.
+
+**Every number in it is signed, and all three use the signs differently.** The
+cooler buries its face three centimetres into the back plane and lays its ground
+run exactly on it; the generator buries two and lays its run a centimetre in
+front; the battery buries *nothing* and lays its run a centimetre behind.
+Reading `bed: 0` as "unset" would be the mistake, so it is pinned as a measured
+zero rather than left to look like a default. And the two shared backs land in
+exactly the same band of depths — both front faces on -0.39, every plane behind
+them agreeing to the bit — from a machine 0.82 deep burying 0.02 and one 0.78
+deep burying nothing. That is a coincidence and it is pinned as one: the proof
+that no number is shared is that deepening either machine parts them.
+
+**A field half an assembly reads.** Last round's dead-knob pin says a recipe
+field nothing reads is worse than a literal. The drill found the sharper version
+of it here. Freeze the posts and collars at z = -0.22 and leave the bar reading
+`terminals.back`, and *every test passes*: the goldens because the literal and
+the field agree at the numbers it was drawn at, and the dead-knob pin because
+the bar on its own still moves the buffer. Half a field is read, the buffer
+notices, and nothing asks whether the three pieces are still on one axis. They
+are now, asked at two settings the machine was never drawn at, with the straps
+sent out of the way because they run the whole depth of the lid and are
+therefore inside every band the pin could otherwise have used.
+
+**And the interior part a third time, twice on one lid.** Everything on a lid
+lives in a hand's width of height and almost all of it is inside something
+else's span. The box over this assembly speaks for four faces out of fourteen.
+The posts' feet and tops, the bar's underside and the straps' undersides are all
+interior, and the bar's is worse than interior: a box has eight vertices and
+they are all at its corners, so there is no window in any axis that holds the
+bar and nothing else. It is asked for by what it sits between — above the
+collars, below the posts' tops, exactly one face in that gap and it is the
+bar's. A bar floating clear of the posts puts nothing in the gap at all. The
+straps did have a window, being the only thing out past the collars' reach in x.
+That is three rounds running where the thing no box could see was a part nested
+inside another's span, and it is now simply what lid furniture is.
+
+**One relation derived, one coincidence left alone.** A strap over a lid runs
+the lid's full depth, flush at both ends, so it takes the shell's depth and the
+lid's overhang rather than a length of its own — the only derived number here,
+and widening the overhang grows the straps with it. The bar is not: at the
+numbers it was drawn at its ends land exactly on the outer edges of the posts it
+crosses, and that is two literals agreeing rather than a relation the code
+holds. Move the terminals apart and the bar stays the width it was. Same shape
+of gap as the cooler's cable, measured and logged rather than closed.
+
+**Twelve mutations red.** The posts frozen to 0.89, the collars perched on the
+lid, a post stood on its collar instead of through it, the bar floated over the
+posts, the straps' depth frozen to 0.9, a strap laid on the lid, the battery
+given the generator's bed, its run laid in front of the plane instead of behind,
+the terminals frozen in z, the straps frozen in x, and the whole furniture hung
+off the body's top instead of the lid's. Three of them leave every golden green;
+one is caught by the dead-knob pin alone, one by the strap-bed pin alone, and
+one by the new axis pin alone. `batt.trim` is now four recipes and nothing else
+— the third such pool — and both pools are byte-identical: 7,056 position words
+for the battery and 2,808 for the generator, dumped from the old file and the
+new one and compared. 2,729 passing. No frames: no vertex moved.
+
+**Next.** `batt.rack`, `batt.caps` and `batt.band`, which are the last three
+pools on this machine and the first time a *rack* rather than a shell or a lid
+is the thing being answered to.
+
+---
+
 ## 2026-09-12 — A machine whose two halves answer to opposite ends of itself
 
 **The gap.** `gen.trim` was the last pool on the generator still in world

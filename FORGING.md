@@ -397,7 +397,7 @@ to be overruled by the photographs:
 | Trees | 2 | Variation already exists and is unaddressable; making it addressable is nearly free. |
 | Piles | 8 | Eight objects sharing a prefix, seen constantly, each small. |
 | People and fauna | 5 | The heaviest models and the most looked-at, but also the ones with the most existing look-loop rounds behind them — least likely to be wrong. |
-| Buildings | 26 | Largest surface (3,451 lines) and least varied per instance; a stove is one stove. Last on purpose. On the bench since 2026-09-10, with one field and no recipe. Five of the twenty-six — the machine shells — build from `ShellRecipe` as of 2026-09-10, the two tables from `TableRecipe` and the two walls from `WallRecipe` as of 2026-09-12, the games table's trim follows its own top as of the same day — the first building whose parts would survive a knob being turned — and the stove's feet, flue and hotplates follow its shell, which is the first machine to do so, its door following the face it is cut into as a four-link chain, and the louvre it shares with the cooler, the generator and the battery bank lifted out of all four, the cooler's lid furniture following the lid rather than the world, and its compressor, fins and cable following the face behind it, and the generator's stacks and back-face outlet from `GenRecipe` — leaving `cooler.vent` and `gen.trim` built out of three recipes each and nothing else. The bench still has no knob, so the census still reads no recipe here. |
+| Buildings | 26 | Largest surface (3,451 lines) and least varied per instance; a stove is one stove. Last on purpose. On the bench since 2026-09-10, with one field and no recipe. Five of the twenty-six — the machine shells — build from `ShellRecipe` as of 2026-09-10, the two tables from `TableRecipe` and the two walls from `WallRecipe` as of 2026-09-12, the games table's trim follows its own top as of the same day — the first building whose parts would survive a knob being turned — and the stove's feet, flue and hotplates follow its shell, which is the first machine to do so, its door following the face it is cut into as a four-link chain, and the louvre it shares with the cooler, the generator and the battery bank lifted out of all four, the cooler's lid furniture following the lid rather than the world, and its compressor, fins and cable following the face behind it, and the generator's stacks from `GenStacks`, and the battery bank's terminals and straps from `BattRecipe` over a `BackOutlet` the generator and the bank now share — leaving `cooler.vent` and `gen.trim` built out of three recipes each and `batt.trim` out of four, and nothing else. The bench still has no knob, so the census still reads no recipe here. |
 
 Grass is a special case worth naming: it cannot be exported to `.glb`, so the bench
 is the *only* place its shader sway can ever be judged in isolation. That makes it a
@@ -912,6 +912,27 @@ is the right shape for a game drawing flat polygons where a material is a palett
 Aetherhold's materials are `MeshStandardMaterial` with an ambient-occlusion bake
 living in vertex colours, so the split is not free and is not obviously worth
 paying for. Revisit if the recipe work makes it cheap.
+
+**Built — the third machine, which settled who the family is, 2026-09-12.**
+`batt.trim`, the battery bank's terminals, straps and back, lifted into
+`BattRecipe` — and the back into a builder it now shares. The generator's note
+left a test: three machines have a box bedded into their back plane with a lead
+down beside it and a run along the ground, and the extract-at-three rule would
+either bite or be shown not to apply. It bites on two of the three. `GenOutlet`
+became `BackOutlet`, `BACK_OUTLET_DEFAULT` is a record keyed by machine in the
+shape `LOUVRE_DEFAULT` already had, and what was `GEN_DEFAULT` is now just its
+stacks. The cooler cannot join: its box is a rounded box with fins across it,
+and a `RoundedBoxGeometry` is not a `BoxGeometry` with square corners but a
+different mesh, so sharing would move vertices — a look judgement, not a lift.
+Three shapes, two builders. The round sharpens last round's dead-knob pin into
+something harder to see: a field that *half* an assembly reads. Freeze the
+posts and collars in z and leave the bar reading `terminals.back` and every
+test passes, because the goldens agree at the drawn numbers and the bar alone
+still moves the buffer. The three pieces are now asked whether they are still
+on one axis, at settings the machine was never drawn at. And the bar's
+underside turned out to be the first face in this file with no window at all in
+any axis — a box has eight vertices and they are all at its corners — so it is
+asked for by what it sits between.
 
 **Built — a machine whose two halves answer to opposite ends of itself,
 2026-09-12.** `gen.trim`, the generator's exhaust stacks and its back-face

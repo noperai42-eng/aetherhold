@@ -1773,39 +1773,13 @@ export function compressorGeometry(s: ShellRecipe, r: CompressorRecipe): THREE.B
 }
 
 /**
- * The generator's own ironwork: two exhaust stacks bedded into its lid, and an
- * outlet on its back face with a lead running down from it and out along the
- * ground.
- *
- * The back repeats the shape the cooler's compressor settled a round earlier —
- * a box bedded into the back plane, a lead down beside it, a run along the
- * floor — and deliberately does not share its recipe. Every number differs, the
- * generator has no fins, and its ground run lies a centimetre in front of the
- * shell's back plane where the cooler's lies exactly on it. Two is not three
- * and this file extracts at three; the battery bank's terminals will be the
- * honest test of whether these are one family or two things that rhyme. What
- * does carry over, and is worth having twice, is that the lead answers to the
- * ground rather than to the machine — the same relation, arrived at from
- * different numbers.
+ * The generator's own ironwork: two exhaust stacks bedded into its lid. What
+ * stands on its back face is a `BackOutlet`, which it no longer owns alone.
  *
  * The stacks are the part that is not like anything else here. They are a pair
  * on the roof's right rather than a pair straddling its middle, so they take a
  * centre of their own; that is how they were drawn and it is held, not tidied.
- *
- * One thing measured and kept: the generator's back plane is at -0.41 and the
- * outlet is bedded 0.02 into it, and 0.41 and 0.02 do not sum exactly in
- * binary, so every z behind this machine is a unit or two in the last place off
- * a round number however the arithmetic is associated — four tries, all of them
- * short. The error is 4e-17 against a float32 step of 3e-8 at that distance, so
- * it is nine orders under anything a vertex can hold and every buffer comes out
- * identical to the literals. The cooler's back happened to land exact; this one
- * does not, and the difference is arithmetic rather than care.
  */
-export interface GenRecipe {
-  readonly stacks: GenStacks;
-  readonly outlet: GenOutlet;
-}
-
 export interface GenStacks {
   readonly radius: number;
   readonly height: number;
@@ -1819,11 +1793,67 @@ export interface GenStacks {
   readonly forward: number;
 }
 
-export interface GenOutlet {
+export const GEN_STACKS_DEFAULT: GenStacks = {
+  radius: 0.04, height: 0.1, seg: 10, bed: 0.01, centre: 0.26, spread: 0.06, forward: 0.25,
+};
+
+export function genStacksGeometry(s: ShellRecipe, r: GenStacks): THREE.BufferGeometry {
+  const top = s.stand + s.height + s.lid!.seat + s.lid!.height;
+  const foot = top - r.bed;
+  return merge(
+    ...[-1, 1].map((side) =>
+      cylinder(r.radius, r.radius, r.height, foot + r.height / 2, r.seg).translate(
+        r.centre + side * r.spread,
+        0,
+        r.forward,
+      ),
+    ),
+  );
+}
+
+/**
+ * The ironwork behind a machine: a box bedded into its back plane, a lead
+ * running down beside it, and a run out along the ground.
+ *
+ * Three machines have this shape and two of them are this code. The cooler's
+ * compressor was the first and named the relations — the box answers to the
+ * back face, the lead answers to the *ground*, because the ground is what its
+ * two runs touch, so raising a plinth lifts the box and leaves the lead lying
+ * where it was. The generator's back repeated it a round later and deliberately
+ * did not share, on the grounds that two is not three and this file extracts at
+ * three. The battery bank's back is the third, and it settles the question:
+ * the generator's builder reproduces it to the bit, so the two of them are one
+ * builder now and the numbers are all that separate them.
+ *
+ * The cooler cannot join, and the reason is worth stating so nobody tries. Its
+ * box is a rounded box and three fins straddle it, and a `RoundedBoxGeometry`
+ * is not a `BoxGeometry` with the corners left square — it is a different mesh
+ * with a different vertex count. Sharing would move vertices, which is a look
+ * judgement and not a lift. So this is a family of three shapes and two
+ * builders, which is the extract-at-three rule biting on the two it can reach.
+ *
+ * Every number here is signed, and all three machines use the signs
+ * differently: the cooler buries its face three centimetres into the back plane
+ * and lays its ground run exactly on it, the generator buries two and lays its
+ * run a centimetre in front, and the battery buries nothing at all and lays its
+ * run a centimetre behind. Reading `bed: 0` as "unset" would be a mistake — it
+ * is a face flush with the plane, measured.
+ *
+ * One thing measured and kept: the generator's back plane is at -0.41 and its
+ * outlet is bedded 0.02 into it, and 0.41 and 0.02 do not sum exactly in
+ * binary, so every z behind that machine is a unit or two in the last place off
+ * a round number however the arithmetic is associated — four tries, all of them
+ * short. The error is 4e-17 against a float32 step of 3e-8 at that distance, so
+ * it is nine orders under anything a vertex can hold and every buffer comes out
+ * identical to the literals. The cooler's back happened to land exact and the
+ * battery's does too, because it beds nothing; the generator's does not, and
+ * the difference is arithmetic rather than care.
+ */
+export interface BackOutlet {
   readonly width: number;
   readonly height: number;
   readonly thick: number;
-  /** How far the outlet's front face is buried inside the shell's back plane. */
+  /** How far the box's front face is buried inside the shell's back plane. */
   readonly bed: number;
   /** Its bottom edge, above the shell's floor. */
   readonly rise: number;
@@ -1833,69 +1863,155 @@ export interface GenOutlet {
   readonly downLength: number;
   /** The lead's middle, above the ground rather than the shell's floor. */
   readonly downRise: number;
-  /** Its axis, in front of the outlet's back face. */
+  /** Its axis, in front of the box's back face. */
   readonly downSet: number;
   readonly runRadius: number;
   readonly runLength: number;
   /** The ground run's axis, above the ground it lies on. */
   readonly runLift: number;
-  /** And in front of the shell's back plane, where the cooler's lies on it. */
+  /** And in front of the shell's back plane, which the battery's lies behind. */
   readonly runSet: number;
 }
 
-export const GEN_DEFAULT: GenRecipe = {
-  stacks: { radius: 0.04, height: 0.1, seg: 10, bed: 0.01, centre: 0.26, spread: 0.06, forward: 0.25 },
-  outlet: {
-    width: 0.14,
-    height: 0.12,
-    thick: 0.06,
-    bed: 0.02,
-    rise: 0.24,
-    beside: 0.28,
-    downRadius: 0.03,
-    downLength: 0.28,
-    downRise: 0.22,
-    downSet: 0.01,
-    runRadius: 0.028,
-    runLength: 0.16,
-    runLift: 0.04,
-    runSet: 0.01,
+/** The back of each machine that has one, at the numbers it was drawn at. */
+export const BACK_OUTLET_DEFAULT: Readonly<Record<string, BackOutlet>> = {
+  gen: {
+    width: 0.14, height: 0.12, thick: 0.06, bed: 0.02, rise: 0.24, beside: 0.28,
+    downRadius: 0.03, downLength: 0.28, downRise: 0.22, downSet: 0.01,
+    runRadius: 0.028, runLength: 0.16, runLift: 0.04, runSet: 0.01,
+  },
+  batt: {
+    width: 0.14, height: 0.1, thick: 0.06, bed: 0, rise: 0.47, beside: 0.2,
+    downRadius: 0.03, downLength: 0.48, downRise: 0.33, downSet: 0.01,
+    runRadius: 0.028, runLength: 0.16, runLift: 0.04, runSet: -0.01,
   },
 };
 
-export function genStacksGeometry(s: ShellRecipe, r: GenRecipe): THREE.BufferGeometry {
-  const { stacks } = r;
-  const top = s.stand + s.height + s.lid!.seat + s.lid!.height;
-  const foot = top - stacks.bed;
+/** That ironwork, hung on whatever back face the shell recipe actually gives it. */
+export function backOutletGeometry(s: ShellRecipe, r: BackOutlet): THREE.BufferGeometry {
+  // The surface the box and the shell actually meet on, taken first for the
+  // same reason the compressor's is, even though on the generator the
+  // arithmetic cannot be made exact whichever way it is associated.
+  const face = -s.depth / 2 + r.bed;
+  const back = face - r.thick;
   return merge(
-    ...[-1, 1].map((side) =>
-      cylinder(stacks.radius, stacks.radius, stacks.height, foot + stacks.height / 2, stacks.seg)
-        .translate(stacks.centre + side * stacks.spread, 0, stacks.forward),
+    box(r.width, r.height, r.thick, s.stand + r.rise + r.height / 2, r.beside, face - r.thick / 2),
+    new THREE.CapsuleGeometry(r.downRadius, r.downLength, 2, 8).translate(
+      r.beside,
+      r.downRise,
+      back + r.downSet,
     ),
+    new THREE.CapsuleGeometry(r.runRadius, r.runLength, 2, 8)
+      .rotateX(Math.PI / 2)
+      .translate(r.beside, r.runLift, -s.depth / 2 + r.runSet),
   );
 }
 
-export function genOutletGeometry(s: ShellRecipe, r: GenRecipe): THREE.BufferGeometry {
-  const { outlet } = r;
-  // The surface the outlet and the shell actually meet on, taken first for the
-  // same reason the compressor's is, even though on this machine the arithmetic
-  // cannot be made exact whichever way it is associated.
-  const face = -s.depth / 2 + outlet.bed;
-  const back = face - outlet.thick;
+/**
+ * The battery bank's own ironwork: two terminals with a bar across them, and
+ * two straps holding the lid down.
+ *
+ * All of it answers to the lid, which is the cooler's chain again on another
+ * machine. One relation is worth naming because it is the only derived length
+ * here: a strap over a lid runs the lid's full depth, flush at both ends, so it
+ * takes the shell's depth and the lid's overhang rather than a number of its
+ * own — widen the overhang and the straps grow with it.
+ *
+ * A terminal is a post standing on the lid's top with a collar bedded three
+ * millimetres into it, so the post and the collar answer to the lid separately
+ * rather than the post standing on the collar. That is how they were drawn and
+ * it is what a terminal is: the post goes through.
+ *
+ * The bar is held as drawn, and at the numbers it was drawn at its ends land
+ * exactly on the outer edges of the posts it crosses. That is two literals
+ * agreeing rather than a relation the code holds — move the terminals apart and
+ * the bar stays the width it was — which is the same shape of gap the cooler's
+ * cable has. Measured and logged as a brief rather than closed here.
+ */
+export interface BattRecipe {
+  readonly terminals: BattTerminals;
+  readonly straps: BattStraps;
+}
+
+export interface BattTerminals {
+  readonly postRadius: number;
+  readonly postHeight: number;
+  readonly postSeg: number;
+  readonly baseRadius: number;
+  readonly baseHeight: number;
+  readonly baseSeg: number;
+  /** How far a collar's underside sits below the lid's top rather than on it. */
+  readonly baseBed: number;
+  /** Either side of the lid's middle, both the same distance behind it. */
+  readonly spread: number;
+  readonly back: number;
+  readonly barWidth: number;
+  readonly barHeight: number;
+  readonly barDepth: number;
+  /** How far the bar's underside sits below the posts' tops. */
+  readonly barBed: number;
+}
+
+export interface BattStraps {
+  readonly width: number;
+  readonly thickness: number;
+  readonly spread: number;
+  /** How far a strap's underside sits below the lid's top. */
+  readonly bed: number;
+  readonly round: number;
+}
+
+/** The one battery bank the colony builds, at the numbers it was drawn at. */
+export const BATT_DEFAULT: BattRecipe = {
+  terminals: {
+    postRadius: 0.05, postHeight: 0.14, postSeg: 16,
+    baseRadius: 0.08, baseHeight: 0.03, baseSeg: 20, baseBed: 0.003,
+    spread: 0.25, back: 0.22,
+    barWidth: 0.6, barHeight: 0.03, barDepth: 0.04, barBed: 0.005,
+  },
+  straps: { width: 0.07, thickness: 0.025, spread: 0.32, bed: 0.0025, round: 0.01 },
+};
+
+/** That ironwork, hung on whatever lid the shell recipe actually gives it. */
+export function battLidGeometry(s: ShellRecipe, r: BattRecipe): THREE.BufferGeometry {
+  const lid = s.lid!;
+  const top = s.stand + s.height + lid.seat + lid.height;
+  const { terminals: t, straps } = r;
+
+  const post = (x: number) =>
+    cylinder(t.postRadius, t.postRadius, t.postHeight, top + t.postHeight / 2, t.postSeg).translate(
+      x,
+      0,
+      -t.back,
+    );
+  const collar = (x: number) =>
+    cylinder(
+      t.baseRadius,
+      t.baseRadius,
+      t.baseHeight,
+      top - t.baseBed + t.baseHeight / 2,
+      t.baseSeg,
+    ).translate(x, 0, -t.back);
+  const strap = (x: number) =>
+    rbox(
+      straps.width,
+      straps.thickness,
+      s.depth + lid.overhang * 2,
+      top - straps.bed + straps.thickness / 2,
+      x,
+      0,
+      straps.round,
+      1,
+    );
+
   return merge(
-    box(
-      outlet.width,
-      outlet.height,
-      outlet.thick,
-      s.stand + outlet.rise + outlet.height / 2,
-      outlet.beside,
-      face - outlet.thick / 2,
-    ),
-    new THREE.CapsuleGeometry(outlet.downRadius, outlet.downLength, 2, 8)
-      .translate(outlet.beside, outlet.downRise, back + outlet.downSet),
-    new THREE.CapsuleGeometry(outlet.runRadius, outlet.runLength, 2, 8)
-      .rotateX(Math.PI / 2)
-      .translate(outlet.beside, outlet.runLift, -s.depth / 2 + outlet.runSet),
+    post(-t.spread),
+    post(t.spread),
+    collar(-t.spread),
+    collar(t.spread),
+    box(t.barWidth, t.barHeight, t.barDepth, top + t.postHeight - t.barBed + t.barHeight / 2, 0, -t.back),
+    strap(-straps.spread),
+    strap(straps.spread),
   );
 }
 
@@ -3566,9 +3682,9 @@ export class BuildingsView {
     this.pool(
       'gen.trim',
       merge(
-        genStacksGeometry(SHELL_DEFAULT.gen, GEN_DEFAULT),
+        genStacksGeometry(SHELL_DEFAULT.gen, GEN_STACKS_DEFAULT),
         louvreGeometry(SHELL_DEFAULT.gen, LOUVRE_DEFAULT.gen, 'front'),
-        genOutletGeometry(SHELL_DEFAULT.gen, GEN_DEFAULT),
+        backOutletGeometry(SHELL_DEFAULT.gen, BACK_OUTLET_DEFAULT.gen),
       ),
       paint('generator', 0x615a50, 0.45, 0.35),
       16,
@@ -3653,24 +3769,12 @@ export class BuildingsView {
     // panel; cells vent, and a vent is blades with light under them.
     this.pool(
       'batt.trim',
-      (() => {
-        const parts: THREE.BufferGeometry[] = [
-          cylinder(0.05, 0.05, 0.14, 0.89, 16).translate(-0.25, 0, -0.22),
-          cylinder(0.05, 0.05, 0.14, 0.89, 16).translate(0.25, 0, -0.22),
-          cylinder(0.08, 0.08, 0.03, 0.832, 20).translate(-0.25, 0, -0.22),
-          cylinder(0.08, 0.08, 0.03, 0.832, 20).translate(0.25, 0, -0.22),
-          box(0.6, 0.03, 0.04, 0.97, 0, -0.22),
-          rbox(0.07, 0.025, 0.9, 0.83, -0.32, 0, 0.01, 1),
-          rbox(0.07, 0.025, 0.9, 0.83, 0.32, 0, 0.01, 1),
-          box(0.14, 0.1, 0.06, 0.62, 0.2, -0.42),
-          new THREE.CapsuleGeometry(0.03, 0.48, 2, 8).translate(0.2, 0.33, -0.44),
-          new THREE.CapsuleGeometry(0.028, 0.16, 2, 8).rotateX(Math.PI / 2).translate(0.2, 0.04, -0.4),
-        ];
-        for (const face of ['left', 'right'] as const) {
-          parts.push(louvreGeometry(SHELL_DEFAULT.batt, LOUVRE_DEFAULT.batt, face));
-        }
-        return merge(...parts);
-      })(),
+      merge(
+        battLidGeometry(SHELL_DEFAULT.batt, BATT_DEFAULT),
+        backOutletGeometry(SHELL_DEFAULT.batt, BACK_OUTLET_DEFAULT.batt),
+        louvreGeometry(SHELL_DEFAULT.batt, LOUVRE_DEFAULT.batt, 'left'),
+        louvreGeometry(SHELL_DEFAULT.batt, LOUVRE_DEFAULT.batt, 'right'),
+      ),
       paint('battery', 0x585f55, 0.45, 0.35),
       16,
     );
@@ -4551,3 +4655,4 @@ function blueprintProgress(b: Building): number {
   const work = b.workLeft <= 0 ? 1 : Math.min(1, b.work / b.workLeft);
   return mats * 0.6 + work * 0.4;
 }
+

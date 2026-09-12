@@ -16,7 +16,9 @@ import {
   BuildingsView,
   COMPRESSOR_DEFAULT,
   COOLER_DEFAULT,
-  GEN_DEFAULT,
+  BACK_OUTLET_DEFAULT,
+  BATT_DEFAULT,
+  GEN_STACKS_DEFAULT,
   LOUVRE_DEFAULT,
   SHELL_DEFAULT,
   GAME_DEFAULT,
@@ -28,7 +30,8 @@ import {
   gameStoolsGeometry,
   compressorGeometry,
   coolerLidGeometry,
-  genOutletGeometry,
+  backOutletGeometry,
+  battLidGeometry,
   genStacksGeometry,
   louvreGeometry,
   shellBodyGeometry,
@@ -1662,18 +1665,20 @@ describe("a cooler's back", () => {
 });
 
 describe("a generator's stacks and outlet", () => {
-  // The last pool on this machine still in world coordinates. Its back repeats
-  // the shape the cooler's compressor settled a round earlier and deliberately
-  // does not share its recipe — two is not three — so what is asked here is
-  // whether the same *relation* holds on different numbers.
+  // Its back is a `BackOutlet`, the shape the cooler's compressor named and the
+  // battery bank's back settled: three machines have it, and the two that are
+  // plain boxes are one builder. So what is asked here is that the relation
+  // holds on this machine's numbers, and the battery's block asks the same of
+  // its own.
   const shell = SHELL_DEFAULT.gen;
-  const { stacks, outlet } = GEN_DEFAULT;
+  const stacks = GEN_STACKS_DEFAULT;
+  const outlet = BACK_OUTLET_DEFAULT.gen;
   const bounds = (g: THREE.BufferGeometry) => {
     g.computeBoundingBox();
     return g.boundingBox!;
   };
-  const stacksAt = (s = shell) => bounds(genStacksGeometry(s, GEN_DEFAULT));
-  const outletAt = (s = shell) => bounds(genOutletGeometry(s, GEN_DEFAULT));
+  const stacksAt = (s = shell) => bounds(genStacksGeometry(s, GEN_STACKS_DEFAULT));
+  const outletAt = (s = shell) => bounds(backOutletGeometry(s, BACK_OUTLET_DEFAULT.gen));
   const values = (g: THREE.BufferGeometry, k: number) => {
     const a = g.attributes.position.array as Float32Array;
     const set = new Set<number>();
@@ -1685,24 +1690,24 @@ describe("a generator's stacks and outlet", () => {
     gs.flatMap((g) => [...(g.attributes.position.array as Float32Array)]);
 
   it("holds the generator's ironwork at the numbers it was drawn at", () => {
-    expect(GEN_DEFAULT).toEqual({
-      stacks: { radius: 0.04, height: 0.1, seg: 10, bed: 0.01, centre: 0.26, spread: 0.06, forward: 0.25 },
-      outlet: {
-        width: 0.14,
-        height: 0.12,
-        thick: 0.06,
-        bed: 0.02,
-        rise: 0.24,
-        beside: 0.28,
-        downRadius: 0.03,
-        downLength: 0.28,
-        downRise: 0.22,
-        downSet: 0.01,
-        runRadius: 0.028,
-        runLength: 0.16,
-        runLift: 0.04,
-        runSet: 0.01,
-      },
+    expect(GEN_STACKS_DEFAULT).toEqual({
+      radius: 0.04, height: 0.1, seg: 10, bed: 0.01, centre: 0.26, spread: 0.06, forward: 0.25,
+    });
+    expect(BACK_OUTLET_DEFAULT.gen).toEqual({
+      width: 0.14,
+      height: 0.12,
+      thick: 0.06,
+      bed: 0.02,
+      rise: 0.24,
+      beside: 0.28,
+      downRadius: 0.03,
+      downLength: 0.28,
+      downRise: 0.22,
+      downSet: 0.01,
+      runRadius: 0.028,
+      runLength: 0.16,
+      runLift: 0.04,
+      runSet: 0.01,
     });
   });
 
@@ -1719,7 +1724,7 @@ describe("a generator's stacks and outlet", () => {
 
     // The outlet box is interior in z between the lead's two runs, exactly as
     // the compressor was, so the box above cannot see the face it is bedded on.
-    expect(values(genOutletGeometry(shell, GEN_DEFAULT), 2)).toEqual([
+    expect(values(backOutletGeometry(shell, BACK_OUTLET_DEFAULT.gen), 2)).toEqual([
       -0.5080000162124634, -0.499798983335495, -0.47999998927116394,
       -0.4699999988079071, -0.46121320128440857, -0.45500001311302185,
       -0.44999998807907104, -0.4399999976158142, -0.42500001192092896,
@@ -1781,7 +1786,7 @@ describe("a generator's stacks and outlet", () => {
     // Reached for by name because the lead runs behind it and in front of it,
     // so the outlet owns neither end of the assembly's own span.
     const other = { ...shell, depth: 1.24 };
-    const a = genOutletGeometry(other, GEN_DEFAULT).attributes.position.array as Float32Array;
+    const a = backOutletGeometry(other, BACK_OUTLET_DEFAULT.gen).attributes.position.array as Float32Array;
     let front = -Infinity;
     for (let i = 0; i < a.length; i += 3) {
       if (a[i + 1] > other.stand + outlet.rise && a[i + 2] > front) front = a[i + 2];
@@ -1817,7 +1822,7 @@ describe("a generator's stacks and outlet", () => {
     // outlet's back face and above everything lying on the floor, which is the
     // lead and nothing else.
     const leadTop = (sh: typeof shell) => {
-      const a = genOutletGeometry(sh, GEN_DEFAULT).attributes.position.array as Float32Array;
+      const a = backOutletGeometry(sh, BACK_OUTLET_DEFAULT.gen).attributes.position.array as Float32Array;
       const behind = -sh.depth / 2 + outlet.bed - outlet.thick;
       let y = -Infinity;
       for (let i = 0; i < a.length; i += 3) {
@@ -1836,21 +1841,18 @@ describe("a generator's stacks and outlet", () => {
     // are two, and freezing them back to 0.26 and 0.06 was invisible to every
     // other test in this block. So each number is turned in turn and the buffer
     // has to notice.
-    const build = (r: typeof GEN_DEFAULT) =>
-      merged(genStacksGeometry(shell, r), genOutletGeometry(shell, r));
-    const before = build(GEN_DEFAULT);
-    for (const group of ['stacks', 'outlet'] as const) {
-      const fields = GEN_DEFAULT[group] as unknown as Record<string, number>;
+    for (const [name, fields, build] of [
+      ['stacks', stacks, (r: typeof stacks) => merged(genStacksGeometry(shell, r))],
+      ['outlet', outlet, (r: typeof outlet) => merged(backOutletGeometry(shell, r))],
+    ] as const) {
+      const was = build(fields as never);
       for (const field of Object.keys(fields)) {
         // A segment count is a whole number and the geometry rounds it, so a
         // fraction of one is not a turn of that knob — it is the test failing
         // to turn it. Integers move by one.
-        const was = fields[field];
-        const turned = {
-          ...GEN_DEFAULT,
-          [group]: { ...fields, [field]: Number.isInteger(was) ? was + 1 : was + 0.017 },
-        };
-        expect(build(turned), `${group}.${field} is a knob that does nothing`).not.toEqual(before);
+        const had = (fields as unknown as Record<string, number>)[field];
+        const turned = { ...fields, [field]: Number.isInteger(had) ? had + 1 : had + 0.017 };
+        expect(build(turned as never), `${name}.${field} is a knob that does nothing`).not.toEqual(was);
       }
     }
   });
@@ -1861,6 +1863,298 @@ describe("a generator's stacks and outlet", () => {
     g.computeBoundingBox();
     expect(g.boundingBox!.max.y, 'the stacks stand above the lid').toBeGreaterThan(1.2);
     expect(g.boundingBox!.min.z, 'the lead reaches out behind the machine').toBeLessThan(-0.5);
+    view.dispose();
+  });
+});
+
+describe("a battery bank's terminals, straps and back", () => {
+  // The last pool on this machine still in world coordinates, and the round
+  // that settles what the generator's left open: three machines have a box
+  // bedded into their back plane with a lead down beside it and a run along the
+  // ground, and the two that are plain boxes are now one builder. The cooler
+  // cannot join — its box is a rounded box with fins across it, which is a
+  // different mesh and so a look judgement rather than a lift.
+  const shell = SHELL_DEFAULT.batt;
+  const { terminals: t, straps } = BATT_DEFAULT;
+  const outlet = BACK_OUTLET_DEFAULT.batt;
+  const bounds = (g: THREE.BufferGeometry) => {
+    g.computeBoundingBox();
+    return g.boundingBox!;
+  };
+  const lidAt = (s = shell) => bounds(battLidGeometry(s, BATT_DEFAULT));
+  const backAt = (s = shell) => bounds(backOutletGeometry(s, outlet));
+  const values = (g: THREE.BufferGeometry, k: number) => {
+    const a = g.attributes.position.array as Float32Array;
+    const set = new Set<number>();
+    for (let i = k; i < a.length; i += 3) set.add(a[i]);
+    return [...set].sort((p, q) => p - q);
+  };
+  /**
+   * Nothing on this lid can be reached by a window in x or z. The straps run
+   * the whole depth so they are in every z band; the bar is a plain box, whose
+   * only vertices are its eight corners, so a window inboard of the terminals
+   * catches nothing at all. What is left is to ask the list of heights for a
+   * word by name, which is what these two do.
+   */
+  const heights = (s = shell) => values(battLidGeometry(s, BATT_DEFAULT), 1);
+  const has = (ys: readonly number[], want: number, why: string) =>
+    expect(ys.some((y) => Math.abs(y - want) < 1e-6), `${why} — no face at ${want}`).toBe(true);
+  const between = (ys: readonly number[], lo: number, hi: number) =>
+    ys.filter((y) => y > lo + 1e-6 && y < hi - 1e-6);
+  const merged = (...gs: THREE.BufferGeometry[]) =>
+    gs.flatMap((g) => [...(g.attributes.position.array as Float32Array)]);
+
+  it("holds the battery bank's ironwork at the numbers it was drawn at", () => {
+    expect(BATT_DEFAULT).toEqual({
+      terminals: {
+        postRadius: 0.05,
+        postHeight: 0.14,
+        postSeg: 16,
+        baseRadius: 0.08,
+        baseHeight: 0.03,
+        baseSeg: 20,
+        baseBed: 0.003,
+        spread: 0.25,
+        back: 0.22,
+        barWidth: 0.6,
+        barHeight: 0.03,
+        barDepth: 0.04,
+        barBed: 0.005,
+      },
+      straps: { width: 0.07, thickness: 0.025, spread: 0.32, bed: 0.0025, round: 0.01 },
+    });
+    expect(BACK_OUTLET_DEFAULT.batt).toEqual({
+      width: 0.14,
+      height: 0.1,
+      thick: 0.06,
+      bed: 0,
+      rise: 0.47,
+      beside: 0.2,
+      downRadius: 0.03,
+      downLength: 0.48,
+      downRise: 0.33,
+      downSet: 0.01,
+      runRadius: 0.028,
+      runLength: 0.16,
+      runLift: 0.04,
+      runSet: -0.01,
+    });
+  });
+
+  it('stands every piece exactly where the frozen calls stood them', () => {
+    const l = lidAt();
+    expect([l.min.x, l.max.x]).toEqual([-0.35499998927116394, 0.35499998927116394]);
+    expect([l.min.y, l.max.y]).toEqual([0.8169999718666077, 0.9850000143051147]);
+    expect([l.min.z, l.max.z]).toEqual([-0.44999998807907104, 0.44999998807907104]);
+
+    const o = backAt();
+    expect([o.min.x, o.max.x]).toEqual([0.12999999523162842, 0.27000001072883606]);
+    expect([o.min.y, o.max.y]).toEqual([0.011999999172985554, 0.6700000166893005]);
+    expect([o.min.z, o.max.z]).toEqual([-0.5080000162124634, -0.2919999957084656]);
+
+    // Everything on a lid lives in a hand's width of height and most of it is
+    // interior to something else, so the box above speaks for four faces out of
+    // fourteen. This is the whole list.
+    expect(values(battLidGeometry(shell, BATT_DEFAULT), 1)).toEqual([
+      0.8169999718666077, 0.8174999952316284, 0.8199999928474426,
+      0.8204289078712463, 0.8217265009880066, 0.8274999856948853,
+      0.8324999809265137, 0.8382735252380371, 0.8395710587501526,
+      0.8424999713897705, 0.847000002861023, 0.9549999833106995,
+      0.9599999785423279, 0.9850000143051147,
+    ]);
+  });
+
+  it('carries the whole lid furniture up when the lid it sits on moves', () => {
+    // All four of the numbers that decide where a lid's top ends up, and by the
+    // whole of the change. Before this lift the terminals stood at 0.89 and the
+    // straps at 0.83 through every one of them.
+    const b = lidAt();
+    for (const [name, s, want] of [
+      ['a taller body', { ...shell, height: shell.height + 0.3 }, 0.3],
+      ['a thicker lid', { ...shell, lid: { ...shell.lid!, height: shell.lid!.height + 0.1 } }, 0.1],
+      ['a taller plinth', { ...shell, stand: shell.stand + 0.2 }, 0.2],
+      ['a deeper seat', { ...shell, lid: { ...shell.lid!, seat: shell.lid!.seat + 0.05 } }, 0.05],
+    ] as const) {
+      const l = lidAt(s);
+      expect(l.min.y - b.min.y, `${name} leaves the furniture behind`).toBeCloseTo(want, 6);
+      expect(l.max.y - b.max.y, `${name} stretches the furniture`).toBeCloseTo(want, 6);
+    }
+  });
+
+  it('runs the straps the full depth of whatever lid the shell makes', () => {
+    // The one derived length here: a strap over a lid is as long as the lid,
+    // flush at both ends, so it takes the shell's depth and the lid's overhang
+    // rather than a number of its own. The straps own the whole span in z, the
+    // terminals sitting well inside them.
+    const b = lidAt();
+    expect(b.max.z - b.min.z).toBeCloseTo(shell.depth + shell.lid!.overhang * 2, 6);
+
+    const deeper = lidAt({ ...shell, depth: shell.depth + 0.2 });
+    expect(deeper.max.z - deeper.min.z - (b.max.z - b.min.z)).toBeCloseTo(0.2, 6);
+    const wider = lidAt({ ...shell, lid: { ...shell.lid!, overhang: shell.lid!.overhang + 0.05 } });
+    expect(wider.max.z - wider.min.z - (b.max.z - b.min.z)).toBeCloseTo(0.1, 6);
+
+    // Asked of a machine that was never drawn, so no frozen length satisfies
+    // it, and centred on the lid rather than merely as long as it.
+    const other = { ...shell, depth: 1.32, lid: { ...shell.lid!, overhang: 0.11 } };
+    const l = lidAt(other);
+    expect(l.max.z - l.min.z).toBeCloseTo(other.depth + other.lid.overhang * 2, 6);
+    expect(l.min.z + l.max.z).toBeCloseTo(0, 6);
+  });
+
+  it('beds the straps into the lid rather than laying them across it', () => {
+    // A strap lying on a lid shows a line of daylight under it from twenty
+    // cells up, so it is sunk a couple of millimetres in — and that underside
+    // is interior too, half a millimetre above the collars' and invisible to
+    // every box over the assembly. The straps are the only thing out past the
+    // collars' reach in x, though, so unlike the bar they have a window.
+    for (const s of [shell, { ...shell, stand: 0.26, lid: { ...shell.lid!, height: 0.19 } }]) {
+      const top = s.stand + s.height + s.lid!.seat + s.lid!.height;
+      const a = battLidGeometry(s, BATT_DEFAULT).attributes.position.array as Float32Array;
+      let lo = Infinity;
+      for (let i = 0; i < a.length; i += 3) {
+        if (Math.abs(a[i]) > t.spread + t.baseRadius) lo = Math.min(lo, a[i + 1]);
+      }
+      expect(top - lo, 'the strap is laid on the lid rather than bedded into it').toBeCloseTo(straps.bed, 6);
+    }
+  });
+
+  it('beds the collars into the lid and stands the posts on top of it', () => {
+    // A terminal is a post going through a collar, not a post standing on one,
+    // so the two answer to the lid separately. Only the collar's underside is
+    // an extreme of anything: the post's foot is a quarter-centimetre above it
+    // and its top is under the bar, both interior, both invisible to a box.
+    for (const s of [shell, { ...shell, height: 1.44, lid: { ...shell.lid!, height: 0.27, seat: 0.03 } }]) {
+      const top = s.stand + s.height + s.lid!.seat + s.lid!.height;
+      const ys = heights(s);
+      expect(top - ys[0], 'the collar is perched on the lid rather than bedded into it').toBeCloseTo(
+        t.baseBed,
+        6,
+      );
+      has(ys, top, 'the post no longer stands on the lid');
+      has(ys, top + t.postHeight, 'the post is not its own height above the lid');
+    }
+  });
+
+  it('rests the bar on the posts rather than floating it over them', () => {
+    // The bar's underside is the one face on this lid that no window can reach
+    // — a box has eight vertices and they are all at its corners — so it is
+    // asked for by what it sits between. Above the collars and below the posts'
+    // tops there is one face and it is the bar's, sunk into them by its bed. A
+    // bar floating clear of the posts puts nothing in that gap at all.
+    for (const s of [shell, { ...shell, stand: 0.31, lid: { ...shell.lid!, height: 0.2 } }]) {
+      const top = s.stand + s.height + s.lid!.seat + s.lid!.height;
+      const ys = heights(s);
+      const gap = between(ys, top - t.baseBed + t.baseHeight, top + t.postHeight);
+      expect(gap.length, 'the bar has left the posts it crosses').toBe(1);
+      expect(top + t.postHeight - gap[0], 'the bar floats above the posts').toBeCloseTo(t.barBed, 6);
+      expect(ys[ys.length - 1] - gap[0], 'the bar is not its own thickness').toBeCloseTo(t.barHeight, 6);
+    }
+  });
+
+  it('stands the terminals and their bar on one axis behind the middle', () => {
+    // `terminals.back` is read by three pieces, and the drill found that a
+    // version freezing the posts and collars in z while leaving the bar reading
+    // the recipe passes every other test in this block: the goldens because the
+    // literal and the field agree at the numbers it was drawn at, and the
+    // dead-knob pin because the bar on its own still moves the buffer. A field
+    // half an assembly reads is the same failure as a field nothing reads, and
+    // harder to see. So it is asked of the axis rather than of the buffer, at
+    // two settings the machine was never drawn at. The straps run the whole
+    // depth of the lid and are therefore inside every band this could use, so
+    // they are sent out of the way rather than worked around.
+    for (const back of [t.back, 0.3, 0.05]) {
+      const g = battLidGeometry(shell, { terminals: { ...t, back }, straps: { ...straps, spread: 4 } });
+      const a = g.attributes.position.array as Float32Array;
+      let lo = Infinity;
+      let hi = -Infinity;
+      for (let i = 0; i < a.length; i += 3) {
+        if (Math.abs(a[i]) > 1) continue;
+        lo = Math.min(lo, a[i + 2]);
+        hi = Math.max(hi, a[i + 2]);
+      }
+      expect((lo + hi) / 2, 'the terminals and their bar have parted in z').toBeCloseTo(-back, 6);
+      expect(hi - lo, 'the collars have stopped being the widest thing on the axis').toBeCloseTo(
+        t.baseRadius * 2,
+        6,
+      );
+    }
+  });
+
+  it('beds nothing into the back plane, and lays its run behind it', () => {
+    // Every number in a `BackOutlet` is signed and all three machines use the
+    // signs differently. This one buries nothing — its front face is the back
+    // plane itself — where the generator buries two centimetres, and it lays
+    // its ground run a centimetre behind the plane where the generator's lies a
+    // centimetre in front. Reading `bed: 0` as "unset" would be the mistake.
+    for (const [name, s, r] of [
+      ['the battery bank', { ...shell, depth: 1.18 }, outlet],
+      ['the generator', { ...SHELL_DEFAULT.gen, depth: 1.18 }, BACK_OUTLET_DEFAULT.gen],
+    ] as const) {
+      const a = backOutletGeometry(s, r).attributes.position.array as Float32Array;
+      let front = -Infinity;
+      for (let i = 0; i < a.length; i += 3) {
+        if (a[i + 1] > s.stand + r.rise && a[i + 2] > front) front = a[i + 2];
+      }
+      expect(front - -s.depth / 2, `${name}'s box is not bedded by its own bed`).toBeCloseTo(r.bed, 6);
+
+      // The ground run owns both ends of the assembly in z, so its own axis is
+      // the middle of the span — which is the only part of this that a box can
+      // speak for, the box and the lead both lying inside it.
+      const g = bounds(backOutletGeometry(s, r));
+      expect((g.min.z + g.max.z) / 2 + s.depth / 2, `${name}'s run has left the plane`).toBeCloseTo(r.runSet, 6);
+    }
+    expect(outlet.bed, 'the battery has started burying its box').toBe(0);
+    expect(Math.sign(outlet.runSet), 'the battery run has crossed to the front').toBe(-1);
+    expect(Math.sign(BACK_OUTLET_DEFAULT.gen.runSet), 'the generator run has crossed to the back').toBe(1);
+  });
+
+  it("lands in the same band of depths as the generator's back, by a different route", () => {
+    // Measured, and a coincidence rather than a law: the generator is 0.82 deep
+    // and buries 0.02, the battery is 0.78 deep and buries nothing, so both
+    // front faces land on -0.39 and every plane behind them agrees to the bit.
+    // It is pinned because it is true today and because the way it comes apart
+    // is the proof the two are not sharing a number — deepen either machine and
+    // its back moves while the other's stays.
+    const batt = values(backOutletGeometry(shell, outlet), 2);
+    const gen = values(backOutletGeometry(SHELL_DEFAULT.gen, BACK_OUTLET_DEFAULT.gen), 2);
+    expect(batt).toEqual(gen);
+
+    const deeper = values(
+      backOutletGeometry({ ...SHELL_DEFAULT.gen, depth: SHELL_DEFAULT.gen.depth + 0.2 }, BACK_OUTLET_DEFAULT.gen),
+      2,
+    );
+    expect(deeper, 'the two backs are reading one depth between them').not.toEqual(batt);
+  });
+
+  it('turns every number it exposes, so the bench has no dead knob', () => {
+    // The generator's block found this: a field the shell has no opinion about
+    // is reachable by nothing else in the file, and a field nothing reads is
+    // worse than a literal. The terminals' spread and back, the straps' spread
+    // and every segment count are all of that kind here.
+    for (const [name, fields, build] of [
+      ['terminals', t, (r: typeof t) => merged(battLidGeometry(shell, { ...BATT_DEFAULT, terminals: r }))],
+      ['straps', straps, (r: typeof straps) => merged(battLidGeometry(shell, { ...BATT_DEFAULT, straps: r }))],
+      ['outlet', outlet, (r: typeof outlet) => merged(backOutletGeometry(shell, r))],
+    ] as const) {
+      const was = build(fields as never);
+      for (const field of Object.keys(fields)) {
+        // A segment count is a whole number and the geometry rounds it, so a
+        // fraction of one is not a turn of that knob — it is the test failing
+        // to turn it. Integers move by one.
+        const had = (fields as unknown as Record<string, number>)[field];
+        const turned = { ...fields, [field]: Number.isInteger(had) ? had + 1 : had + 0.017 };
+        expect(build(turned as never), `${name}.${field} is a knob that does nothing`).not.toEqual(was);
+      }
+    }
+  });
+
+  it("still pools the battery bank's trim", () => {
+    const view = new BuildingsView();
+    const g = partGeometry(view, 'batt.trim');
+    g.computeBoundingBox();
+    expect(g.boundingBox!.max.y, 'the terminals stand above the lid').toBeGreaterThan(0.95);
+    expect(g.boundingBox!.min.z, 'the lead reaches out behind the bank').toBeLessThan(-0.5);
     view.dispose();
   });
 });
