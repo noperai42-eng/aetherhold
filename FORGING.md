@@ -397,7 +397,7 @@ to be overruled by the photographs:
 | Trees | 2 | Variation already exists and is unaddressable; making it addressable is nearly free. |
 | Piles | 8 | Eight objects sharing a prefix, seen constantly, each small. |
 | People and fauna | 5 | The heaviest models and the most looked-at, but also the ones with the most existing look-loop rounds behind them — least likely to be wrong. |
-| Buildings | 26 | Largest surface (3,451 lines) and least varied per instance; a stove is one stove. Last on purpose. On the bench since 2026-09-10, with one field and no recipe. Five of the twenty-six — the machine shells — build from `ShellRecipe` as of 2026-09-10, the two tables from `TableRecipe` and the two walls from `WallRecipe` as of 2026-09-12, the games table's trim follows its own top as of the same day — the first building whose parts would survive a knob being turned — and the stove's feet, flue and hotplates follow its shell, which is the first machine to do so, its door and vents following the face they are cut into as a four-link chain. The bench still has no knob, so the census still reads no recipe here. |
+| Buildings | 26 | Largest surface (3,451 lines) and least varied per instance; a stove is one stove. Last on purpose. On the bench since 2026-09-10, with one field and no recipe. Five of the twenty-six — the machine shells — build from `ShellRecipe` as of 2026-09-10, the two tables from `TableRecipe` and the two walls from `WallRecipe` as of 2026-09-12, the games table's trim follows its own top as of the same day — the first building whose parts would survive a knob being turned — and the stove's feet, flue and hotplates follow its shell, which is the first machine to do so, its door following the face it is cut into as a four-link chain, and the louvre it shares with the cooler, the generator and the battery bank lifted out of all four. The bench still has no knob, so the census still reads no recipe here. |
 
 Grass is a special case worth naming: it cannot be exported to `.glb`, so the bench
 is the *only* place its shader sway can ever be judged in isolation. That makes it a
@@ -912,6 +912,25 @@ is the right shape for a game drawing flat polygons where a material is a palett
 Aetherhold's materials are `MeshStandardMaterial` with an ambient-occlusion bake
 living in vertex colours, so the split is not free and is not obviously worth
 paying for. Revisit if the recipe work makes it cheap.
+
+**Built — the same louvre, cut into four different machines, 2026-09-12.** The
+first lift here that removes duplication rather than only adding a knob, and the
+repo's extract-at-three rule biting at four: the stove, the cooler, the generator
+and the battery bank each built their own air intake out of world coordinates,
+and measured against their own shells the four agreed on more than they let on —
+blades standing exactly one centimetre proud of the face in all four, the same
+number written out four times with none of the four knowing it. One
+`louvreGeometry` now serves all four, and the battery's is the interesting case:
+the same louvre turned a quarter onto a flank and, on the left, mirrored, which
+is why a panel is measured in the face's own axes and which world axis each of
+those is became the builder's business. The finding is a negative one and the
+drill found it: turn the right flank's blades the way a naive lift would turn
+them and every test passed. A blade is a symmetric box, so tilting it either way
+leaves its bounding box identical to the bit — and its set of distinct coordinate
+values identical too, which is the strongest golden form this file has. A
+rotation sign is not a thing a frozen position can pin. What pins it is the
+height of the corner reaching furthest out of the face, asked against an
+explicitly flipped twin, carrying no number at all.
 
 **Built — a stove whose door is hung on the face it is cut into, 2026-09-12.** The
 other half of the same stove, and the first trim anywhere here that is a *chain*

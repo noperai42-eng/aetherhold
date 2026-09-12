@@ -14,6 +14,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   BuildingsView,
+  LOUVRE_DEFAULT,
   SHELL_DEFAULT,
   GAME_DEFAULT,
   STOVE_DEFAULT,
@@ -22,13 +23,13 @@ import {
   gameBoardGeometry,
   gamePiecesGeometry,
   gameStoolsGeometry,
+  louvreGeometry,
   shellBodyGeometry,
   shellLidGeometry,
   stoveDoorGeometry,
   stoveFeetGeometry,
   stoveFlueGeometry,
   stovePlateGeometry,
-  stoveVentsGeometry,
   tableLegsGeometry,
   tableTopGeometry,
   wallBodyGeometry,
@@ -886,7 +887,7 @@ describe("a stove's face", () => {
     return [...set].sort((p, q) => p - q);
   };
   const door = (shell = stove, recipe = STOVE_DEFAULT) => stoveDoorGeometry(shell, recipe);
-  const vents = (shell = stove) => stoveVentsGeometry(shell, STOVE_DEFAULT);
+  const vents = (shell = stove) => louvreGeometry(shell, LOUVRE_DEFAULT.stove, 'front');
 
   it('stands the door and the vents exactly where the frozen calls stood them', () => {
     // The calls as they were before they knew where the face was: a surround at
@@ -935,17 +936,6 @@ describe("a stove's face", () => {
       round: 0.015,
       hinge: { radius: 0.032, height: 0.09, x: -0.27, rise: 0.13 },
       handle: { radius: 0.018, length: 0.055, x: 0.19, barWidth: 0.1, barSize: 0.03, barStand: 0.035 },
-    });
-    expect(STOVE_DEFAULT.vents).toEqual({
-      plate: { width: 0.52, height: 0.16, depth: 0.02 },
-      plateSet: 0.005,
-      plateRise: 0.02,
-      blade: { width: 0.44, height: 0.03, depth: 0.07 },
-      bladeTilt: -0.6,
-      bladeRise: 0.02,
-      bladePitch: 0.055,
-      bladeCount: 3,
-      bladeStand: 0.01,
     });
   });
 
@@ -1038,6 +1028,265 @@ describe("a stove's face", () => {
   it('still pools a door and vents', () => {
     const view = new BuildingsView();
     for (const key of ['stove.door', 'stove.vents']) {
+      const g = partGeometry(view, key);
+      g.computeBoundingBox();
+      expect(g.boundingBox!.max.y, `${key} has height`).toBeGreaterThan(0);
+    }
+    view.dispose();
+  });
+});
+
+describe('a louvre', () => {
+  // Four machines have one, and until it was lifted all four built it out of
+  // world coordinates that merely happened to line up with the shell behind
+  // them. Two numbers were the same in all four and none of the four said so.
+  const MACHINES = [
+    ['stove', 'front'],
+    ['cooler', 'front'],
+    ['gen', 'front'],
+    ['batt', 'left'],
+    ['batt', 'right'],
+  ] as const;
+
+  const cut = (name: string, face: 'front' | 'left' | 'right', shell = SHELL_DEFAULT[name]) =>
+    louvreGeometry(shell, LOUVRE_DEFAULT[name], face);
+  const bounds = (g: THREE.BufferGeometry) => {
+    g.computeBoundingBox();
+    return g.boundingBox!;
+  };
+  /** How far out of the face a word stands, with out being out on either flank. */
+  const reach = (g: THREE.BufferGeometry, face: 'front' | 'left' | 'right', plane: number) => {
+    const a = g.attributes.position.array as Float32Array;
+    const k = face === 'front' ? 2 : 0;
+    const sign = face === 'left' ? -1 : 1;
+    let lo = Infinity;
+    let hi = -Infinity;
+    for (let i = 0; i < a.length; i += 3) {
+      const d = sign * a[i + k] - plane;
+      if (d < lo) lo = d;
+      if (d > hi) hi = d;
+    }
+    return [lo, hi];
+  };
+  const planeOf = (s: (typeof SHELL_DEFAULT)[string], face: string) =>
+    face === 'front' ? s.depth / 2 : s.width / 2;
+
+  it('holds the four louvres at the numbers they were drawn at', () => {
+    expect(LOUVRE_DEFAULT.stove).toEqual({
+      plate: { across: 0.52, height: 0.16, thick: 0.02 },
+      plateSet: 0.005,
+      plateRise: 0.02,
+      blade: { across: 0.44, height: 0.03, thick: 0.07 },
+      bladeTilt: -0.6,
+      bladeRise: 0.02,
+      bladePitch: 0.055,
+      bladeCount: 3,
+      bladeStand: 0.01,
+    });
+    expect(LOUVRE_DEFAULT.cooler).toEqual({
+      plate: { across: 0.54, height: 0.3, thick: 0.02 },
+      plateSet: 0.005,
+      plateRise: 0.15,
+      blade: { across: 0.46, height: 0.03, thick: 0.07 },
+      bladeTilt: -0.6,
+      bladeRise: 0.04,
+      bladePitch: 0.075,
+      bladeCount: 4,
+      bladeStand: 0.01,
+    });
+    expect(LOUVRE_DEFAULT.gen).toEqual({
+      plate: { across: 0.5, height: 0.34, thick: 0.02 },
+      plateSet: 0.005,
+      plateRise: 0.54,
+      blade: { across: 0.42, height: 0.028, thick: 0.07 },
+      bladeTilt: -0.6,
+      bladeRise: 0.06,
+      bladePitch: 0.075,
+      bladeCount: 4,
+      bladeStand: 0.01,
+    });
+    expect(LOUVRE_DEFAULT.batt).toEqual({
+      plate: { across: 0.56, height: 0.36, thick: 0.02 },
+      plateSet: 0.01,
+      plateRise: 0.12,
+      blade: { across: 0.52, height: 0.028, thick: 0.06 },
+      bladeTilt: -0.6,
+      bladeRise: 0.08,
+      bladePitch: 0.09,
+      bladeCount: 3,
+      bladeStand: 0.01,
+    });
+
+    // The two numbers that were written out four times over. Asserted against
+    // each other rather than against 0.005 and 0.01, because the claim is that
+    // the four agree, not what they agree on: retune one and this says so.
+    const all = [LOUVRE_DEFAULT.stove, LOUVRE_DEFAULT.cooler, LOUVRE_DEFAULT.gen, LOUVRE_DEFAULT.batt];
+    expect(all.map((r) => r.bladeStand), 'all four stand their blades equally proud').toEqual([
+      all[0].bladeStand, all[0].bladeStand, all[0].bladeStand, all[0].bladeStand,
+    ]);
+    expect(all.map((r) => r.bladeTilt), 'and tip them by the same angle').toEqual([
+      all[0].bladeTilt, all[0].bladeTilt, all[0].bladeTilt, all[0].bladeTilt,
+    ]);
+    // Three of the four; the battery's plate is flush with its flank rather
+    // than proud of it, which is a drawing decision and is pinned as one.
+    expect([LOUVRE_DEFAULT.stove, LOUVRE_DEFAULT.cooler, LOUVRE_DEFAULT.gen].map((r) => r.plateSet)).toEqual([
+      0.005, 0.005, 0.005,
+    ]);
+    expect(LOUVRE_DEFAULT.batt.plateSet).toBe(LOUVRE_DEFAULT.batt.plate.thick / 2);
+  });
+
+  it('stands all five exactly where the frozen calls stood them', () => {
+    // The calls as they were before they knew which face they were cut into.
+    // Checked the other way too, before this test existed: five louvres out of
+    // the recipe byte for byte as they came out of the literals, 6,804 words
+    // with none differing, and the four pools they belong to unchanged except
+    // the generator's, whose plate moved three parts along to sit with its own
+    // blades — a permutation of 936 triangles, not one of them moved.
+    const box = (name: string, face: 'front' | 'left' | 'right') => {
+      const b = bounds(cut(name, face));
+      return [b.min.x, b.max.x, b.min.y, b.max.y, b.min.z, b.max.z];
+    };
+    expect(box('stove', 'front')).toEqual([
+      -0.25999999046325684, 0.25999999046325684, 0.14785748720169067, 0.32214251160621643,
+      0.402643620967865, 0.4773563742637634,
+    ]);
+    expect(box('cooler', 'front')).toEqual([
+      -0.27000001072883606, 0.27000001072883606, 0.25, 0.550000011920929,
+      0.402643620967865, 0.4773563742637634,
+    ]);
+    expect(box('gen', 'front')).toEqual([
+      -0.25, 0.25, 0.6600000262260437, 1, 0.3832082450389862, 0.4567917287349701,
+    ]);
+    expect(box('batt', 'left')).toEqual([
+      -0.47266507148742676, -0.40733492374420166, 0.2199999988079071, 0.5799999833106995,
+      -0.2800000011920929, 0.2800000011920929,
+    ]);
+    expect(box('batt', 'right')).toEqual([
+      0.40733492374420166, 0.47266507148742676, 0.2199999988079071, 0.5799999833106995,
+      -0.2800000011920929, 0.2800000011920929,
+    ]);
+  });
+
+  it('cuts every one of them into the face its own shell actually has', () => {
+    // The headline breakage, and the reason the round exists: the cooler's
+    // grille sat at z = 0.425 because the cooler's half-depth was 0.43, and
+    // nothing in the code said so. Grow the shell and the grille is inside it.
+    for (const [name, face] of MACHINES) {
+      const base = SHELL_DEFAULT[name];
+      const turned = [base, { ...base, depth: base.depth + 0.2 }, { ...base, width: base.width + 0.2 }];
+      const reaches = turned.map((shell) => reach(cut(name, face, shell), face, planeOf(shell, face)));
+      for (const [lo, hi] of reaches) {
+        expect(lo, `${name}.${face} beds into the face`).toBeLessThan(0);
+        expect(hi, `${name}.${face} stands blades proud of it`).toBeGreaterThan(0);
+      }
+      // And by the same amount whatever the shell has become. A louvre written
+      // in world coordinates keeps this at one shell and breaks it at the rest.
+      expect(reaches[1][1], `${name}.${face} follows a deeper shell`).toBeCloseTo(reaches[0][1], 6);
+      expect(reaches[2][1], `${name}.${face} follows a wider shell`).toBeCloseTo(reaches[0][1], 6);
+      expect(reaches[1][0]).toBeCloseTo(reaches[0][0], 6);
+      expect(reaches[2][0]).toBeCloseTo(reaches[0][0], 6);
+    }
+  });
+
+  it('hangs every one of them off the floor its own shell actually stands on', () => {
+    for (const [name, face] of MACHINES) {
+      const base = SHELL_DEFAULT[name];
+      const heights = [base.stand, base.stand + 0.12, base.stand + 0.3].map((stand) => {
+        const shell = { ...base, stand };
+        const floor = bounds(shellBodyGeometry(shell)).min.y;
+        return bounds(cut(name, face, shell)).min.y - floor;
+      });
+      expect(heights[1], `${name}.${face} rides a taller plinth`).toBeCloseTo(heights[0], 6);
+      expect(heights[2]).toBeCloseTo(heights[0], 6);
+    }
+  });
+
+  it('makes the left flank the right one mirrored', () => {
+    // Not vertex for vertex — mirroring reverses a box's winding, so the two
+    // buffers list their corners in different orders. The assembly is the
+    // mirror, and that is what is asked.
+    const l = bounds(cut('batt', 'left'));
+    const r = bounds(cut('batt', 'right'));
+    expect(l.min.x).toBe(-r.max.x);
+    expect(l.max.x).toBe(-r.min.x);
+    expect([l.min.y, l.max.y, l.min.z, l.max.z]).toEqual([r.min.y, r.max.y, r.min.z, r.max.z]);
+  });
+
+  it('tips the blades with their outer edge up', () => {
+    // Written down backwards the first time this louvre was documented, which
+    // is why it is pinned now: a rotation sign is the easiest thing in a file
+    // like this to get wrong and the hardest to see in a frame. On the stove
+    // the blades are what reach highest and lowest, so the assembly's own
+    // extremes answer it — the highest word stands proud of the face and the
+    // lowest lies behind it, which is a blade leaning back and not forward.
+    const shell = SHELL_DEFAULT.stove;
+    const face = shell.depth / 2;
+    const edges = (g: THREE.BufferGeometry) => {
+      const a = g.attributes.position.array as Float32Array;
+      let lo = Infinity;
+      let hi = -Infinity;
+      let loZ = 0;
+      let hiZ = 0;
+      for (let i = 0; i < a.length; i += 3) {
+        if (a[i + 1] < lo) { lo = a[i + 1]; loZ = a[i + 2]; }
+        if (a[i + 1] > hi) { hi = a[i + 1]; hiZ = a[i + 2]; }
+      }
+      return [loZ, hiZ];
+    };
+    const [loZ, hiZ] = edges(cut('stove', 'front'));
+    expect(hiZ, 'the high edge is the outer one').toBeGreaterThan(face);
+    expect(loZ, 'and the low edge the inner one').toBeLessThan(face);
+
+    // Reverse the tilt and the two swap, which is what says the sign is doing
+    // the work rather than the order the corners happen to be listed in.
+    const [loZ2, hiZ2] = edges(louvreGeometry(shell, { ...LOUVRE_DEFAULT.stove, bladeTilt: 0.6 }, 'front'));
+    expect(hiZ2, 'flipped, the high edge is the inner one').toBeLessThan(face);
+    expect(loZ2, 'and the low edge the outer one').toBeGreaterThan(face);
+  });
+
+  it('leans every blade back as it rises, on a flank as much as on a front', () => {
+    // The stove's test above cannot speak for the other four, because on them
+    // the plate reaches higher and lower than any blade and owns both extremes.
+    // Worse, a blade is a symmetric box: tilt it either way and its bounding
+    // box is the same to the bit, so no golden anywhere can see which way a
+    // flank's blades lean. This was found by a mutation that turned the right
+    // flank the way a naive lift would turn it and was caught by nothing.
+    //
+    // What does see it is the height of the corner that reaches furthest out
+    // of the face. Tipping the outer end up swings the blade's outer-bottom
+    // corner forward and lifts it, so the furthest-out word ends up above the
+    // blade's own middle; flip the tilt and it ends up below. That holds on
+    // every face, and it is asked of all five. The direction was measured and
+    // not reasoned out — the first draft of this line asserted the opposite,
+    // which is the same mistake in the same place as the comment that prompted
+    // the test, and is why it is written as a comparison against a flipped
+    // twin rather than as a number somebody has to believe.
+    const furthest = (g: THREE.BufferGeometry, face: 'front' | 'left' | 'right') => {
+      const a = g.attributes.position.array as Float32Array;
+      const k = face === 'front' ? 2 : 0;
+      const sign = face === 'left' ? -1 : 1;
+      let out = -Infinity;
+      let y = 0;
+      for (let i = 0; i < a.length; i += 3) {
+        const d = sign * a[i + k];
+        if (d > out) { out = d; y = a[i + 1]; }
+      }
+      return y;
+    };
+    for (const [name, face] of MACHINES) {
+      const leaning = furthest(cut(name, face), face);
+      const flipped = louvreGeometry(
+        SHELL_DEFAULT[name],
+        { ...LOUVRE_DEFAULT[name], bladeTilt: -LOUVRE_DEFAULT[name].bladeTilt },
+        face,
+      );
+      expect(leaning, `${name}.${face} leads with its lifted edge`).toBeGreaterThan(furthest(flipped, face));
+    }
+  });
+
+  it('still pools a louvre on all four machines', () => {
+    const view = new BuildingsView();
+    for (const key of ['stove.vents', 'cooler.vent', 'gen.trim', 'batt.trim']) {
       const g = partGeometry(view, key);
       g.computeBoundingBox();
       expect(g.boundingBox!.max.y, `${key} has height`).toBeGreaterThan(0);

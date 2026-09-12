@@ -4,6 +4,89 @@ One round, one measured gap, one fix. Newest first.
 
 ---
 
+## 2026-09-12 — The same louvre, cut into four different machines
+
+**The gap.** Four machines have an air intake: the stove under its firebox, the
+cooler and the generator on their fronts, the battery bank on both flanks. All
+four were built out of world coordinates. The cooler's grille sits at z = 0.425
+because the cooler's half-depth is 0.43, and nothing in the code says so —
+grow the shell and the grille is inside it. Measured against their own shells,
+the four agree on more than they let on: a plate bedded five millimetres into
+the face in three of them, and blades standing exactly one centimetre proud of
+it in all four. That is the same number written out four times, and not one of
+the four knew it was the same number.
+
+**Why it is one round and not four.** This is the point at which the repo's own
+rule bites: extract when a pattern repeats three or more times. It repeats four.
+`LouvreRecipe`, `LOUVRE_DEFAULT` and one `louvreGeometry` replace four hand-built
+copies, and the fourth copy is the interesting one — the battery's is the same
+louvre turned a quarter onto a flank and, on the left, mirrored. So the panel is
+measured in the face's own axes, across it and up it and through it, and which
+world axis each of those is becomes the builder's business rather than the call
+site's. That is the whole reason a flank louvre can share a recipe with a front
+one at all.
+
+**Identical, except where it could not be.** Five louvres came out of the recipe
+byte for byte as they came out of the literals — 6,804 words, none differing —
+and three of the four pools they live in are unchanged to the bit. The
+generator's is not, and the reason is worth writing down: its plate was the
+third part in the merge and its blades were the last four, so lifting them into
+one louvre necessarily moves the plate three places along. The buffer is
+therefore a permutation and not a copy. That was checked rather than waved at:
+sorted by triangle, the old pool and the new one are the same multiset of 936
+triangles, so not one of them moved, and a non-indexed opaque soup under one
+material draws the same whatever order its triangles arrive in.
+
+**What no golden in this file can see.** The drill found this, which is what a
+drill is for. Turn the right flank's blades the way a naive lift would turn
+them — `rotateZ(tilt)` instead of `rotateZ(-out * tilt)`, which is correct on
+the left and backwards on the right — and *every test passed*. A blade is a
+symmetric box: tilt it either way and its bounding box is identical to the bit,
+and so is its set of distinct coordinate values, which is the strongest golden
+form this file has. Reversing the tilt on all four machines at once is likewise
+invisible to every golden here. A rotation sign is simply not a thing a frozen
+position can pin, and two rounds of increasingly careful goldens had not noticed.
+
+What does see it is the height of the corner that reaches furthest out of the
+face. Tipping the outer end up swings the blade's outer-bottom corner forward
+and lifts it, so the furthest-out word ends up above the blade's own middle;
+flip the tilt and it ends up below. The pin asks that of all five louvres
+against an explicitly flipped twin, so it carries no number at all.
+
+**A comment corrected, and the same mistake made twice more while correcting
+it.** The stove's `bladeTilt` was documented last round as "negative tipping the
+blade's front edge down". It is the opposite: a negative tilt lifts the outer
+edge, and the assembly's lowest word is a blade's *back* corner, not its front
+one. The comment, the acceptance row and the round note have all been corrected.
+Then, writing the new pin, the first draft asserted that the furthest-out corner
+is the low one — wrong in the same way, in the same place, within the hour. It
+failed on the stove and was corrected against the measurement. That is three
+sign errors on one rotation, which is the argument for the pin: a rotation sign
+is the easiest thing in a file like this to get backwards and the hardest to see
+in a frame.
+
+**Verified.** Four mutations, each red and restored green. M1 pins the face back
+to the constant 0.43 that three of the four happened to be, and the stove's,
+cooler's and battery's goldens stay green through it. M2 pins the floor back to
+the battery's 0.22, and the battery's golden stays green. M3 is the flank
+rotation above, caught by nothing until the pin was strengthened and now caught
+by that pin alone with every golden green. M4 reverses the tilt outright, and is
+still caught only by the two tilt pins. `tsc --noEmit` clean. Full suite
+2693 passed | 13 skipped.
+
+**Left where it is, deliberately.** Only the louvre came out of those pools. The
+cooler still has a compressor, a lid handle, two pipe stubs and a cable in world
+coordinates, the generator its exhaust stacks, the battery its terminals and
+straps. They are the same kind of gap and they are not this round.
+
+**Next target.** The rest of `cooler.vent`, which is the largest of the four
+remaining pools and holds three distinct relations — a plate bedded into the
+roof, a handle standing on that plate, and a compressor hung off the back face.
+The third is a fourth relation the buildings have not had yet: trim on the face
+*behind* the machine, where every anchor so far has been the front.
+
+---
+
 ## 2026-09-12 — A stove whose door is hung on the face it is cut into
 
 **The gap.** The other half of the same stove. Turn the shell's `depth` from
@@ -72,7 +155,7 @@ the bit, and all three chain-aware pins go red at once. `tsc --noEmit` clean.
 Full suite 2685 passed | 13 skipped.
 
 **A thing found while measuring, not fixed.** The louvre assembly's lowest word
-is not the plate's seat but a blade's front corner, hanging below the line it
+is not the plate's seat but a blade's back corner, hanging below the line it
 sits on, because the blades are tipped six-tenths of a radian. That overhang is
 the shadow the louvre is drawn for, so it is correct — but it means a test that
 reaches for "the lowest height above the floor" gets a blade and not the plate,

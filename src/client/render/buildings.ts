@@ -1459,6 +1459,109 @@ export function shellLidGeometry(r: ShellRecipe): THREE.BufferGeometry | null {
 }
 
 /**
+ * Which face of a shell a louvre is cut into. A flank is the same louvre turned
+ * a quarter and, on the left, mirrored.
+ */
+export type LouvreFace = 'front' | 'left' | 'right';
+
+/**
+ * A panel of a louvre, measured in the face's own axes and not the world's:
+ * along the face, up it, and through it. Which world axis each of those is
+ * depends on which face it is cut into, and that is the builder's business.
+ */
+export interface LouvrePanel {
+  readonly across: number;
+  readonly height: number;
+  readonly thick: number;
+}
+
+/**
+ * An air intake: a plate bedded into a face with blades tipped out of it.
+ *
+ * Four machines have one — the stove under its firebox, the cooler and the
+ * generator on their fronts, the battery bank on both flanks — and until this
+ * was written all four built it out of world coordinates that merely happened
+ * to line up with the shell behind them. Two of the numbers were the same in
+ * all four and none of the four said so: a plate bedded five millimetres into
+ * the face, and blades standing a centimetre proud of it.
+ *
+ * The blades are what makes this an opening rather than a dark rectangle, so
+ * their tilt is a field and not a constant — it is the one number here the
+ * light actually reads.
+ */
+export interface LouvreRecipe {
+  readonly plate: LouvrePanel;
+  /** The plate's middle, bedded back from the face rather than standing out of it. */
+  readonly plateSet: number;
+  /** The plate's bottom edge, above the shell's floor. */
+  readonly plateRise: number;
+  readonly blade: LouvrePanel;
+  /**
+   * Radians, negative lifting the blade's *outer* edge — measured rather than
+   * assumed, because a rotation sign is the easiest thing in a file like this
+   * to get backwards and the hardest to see in a frame. On a flank the same
+   * number turns about the other axis, and the left flank mirrors it.
+   */
+  readonly bladeTilt: number;
+  /** The lowest blade, above the plate's bottom edge. */
+  readonly bladeRise: number;
+  readonly bladePitch: number;
+  readonly bladeCount: number;
+  /** Proud of the face, where the plate is bedded into it. */
+  readonly bladeStand: number;
+}
+
+/** The louvre on each machine that has one, at the numbers it was drawn at. */
+export const LOUVRE_DEFAULT: Readonly<Record<string, LouvreRecipe>> = {
+  stove: {
+    plate: { across: 0.52, height: 0.16, thick: 0.02 },
+    plateSet: 0.005, plateRise: 0.02,
+    blade: { across: 0.44, height: 0.03, thick: 0.07 },
+    bladeTilt: -0.6, bladeRise: 0.02, bladePitch: 0.055, bladeCount: 3, bladeStand: 0.01,
+  },
+  cooler: {
+    plate: { across: 0.54, height: 0.3, thick: 0.02 },
+    plateSet: 0.005, plateRise: 0.15,
+    blade: { across: 0.46, height: 0.03, thick: 0.07 },
+    bladeTilt: -0.6, bladeRise: 0.04, bladePitch: 0.075, bladeCount: 4, bladeStand: 0.01,
+  },
+  gen: {
+    plate: { across: 0.5, height: 0.34, thick: 0.02 },
+    plateSet: 0.005, plateRise: 0.54,
+    blade: { across: 0.42, height: 0.028, thick: 0.07 },
+    bladeTilt: -0.6, bladeRise: 0.06, bladePitch: 0.075, bladeCount: 4, bladeStand: 0.01,
+  },
+  batt: {
+    plate: { across: 0.56, height: 0.36, thick: 0.02 },
+    plateSet: 0.01, plateRise: 0.12,
+    blade: { across: 0.52, height: 0.028, thick: 0.06 },
+    bladeTilt: -0.6, bladeRise: 0.08, bladePitch: 0.09, bladeCount: 3, bladeStand: 0.01,
+  },
+};
+
+/** The louvre, cut into whichever face of the shell it is asked for. */
+export function louvreGeometry(s: ShellRecipe, r: LouvreRecipe, face: LouvreFace): THREE.BufferGeometry {
+  const front = face === 'front';
+  // The plane it is cut into, and which way is out of it.
+  const plane = front ? s.depth / 2 : s.width / 2;
+  const out = face === 'left' ? -1 : 1;
+  const bottom = s.stand + r.plateRise;
+  const panel = (p: LouvrePanel) =>
+    front ? box(p.across, p.height, p.thick, 0, 0, 0) : box(p.thick, p.height, p.across, 0, 0, 0);
+  const stand = (g: THREE.BufferGeometry, y: number, through: number) =>
+    front ? g.translate(0, y, plane + through) : g.translate(out * (plane + through), y, 0);
+
+  const parts = [stand(panel(r.plate), bottom + r.plate.height / 2, -r.plateSet)];
+  for (let i = 0; i < r.bladeCount; i++) {
+    const blade = panel(r.blade);
+    if (front) blade.rotateX(r.bladeTilt);
+    else blade.rotateZ(-out * r.bladeTilt);
+    parts.push(stand(blade, bottom + r.bladeRise + i * r.bladePitch, r.bladeStand));
+  }
+  return merge(...parts);
+}
+
+/**
  * A wall: a square column with a coping stone lapped over the top of it, which
  * is the timber wall and the stone wall both.
  *
@@ -1582,7 +1685,6 @@ export interface StoveRecipe {
   readonly flue: StoveFlue;
   readonly plate: StovePlate;
   readonly door: StoveDoor;
-  readonly vents: StoveVents;
 }
 
 /**
@@ -1694,30 +1796,6 @@ export interface StoveHandle {
   readonly barStand: number;
 }
 
-/**
- * The air intake: a recessed plate with blades tipped down out of it.
- *
- * The blades are what makes this an opening rather than a dark rectangle, so
- * their tilt is a field and not a constant — it is the one number here the light
- * actually reads.
- */
-export interface StoveVents {
-  readonly plate: StovePanel;
-  /** The plate's middle, set back from the face rather than out from it. */
-  readonly plateSet: number;
-  /** The plate's bottom edge, above the shell's floor. */
-  readonly plateRise: number;
-  readonly blade: StovePanel;
-  /** Radians, negative tipping the blade's front edge down. */
-  readonly bladeTilt: number;
-  /** The lowest blade, above the plate's bottom edge. */
-  readonly bladeRise: number;
-  readonly bladePitch: number;
-  readonly bladeCount: number;
-  /** Proud of the face, where the plate is set back into it. */
-  readonly bladeStand: number;
-}
-
 /** The one stove the colony builds, at the numbers it was drawn at. */
 export const STOVE_DEFAULT: StoveRecipe = {
   feet: { radiusTop: 0.06, radiusFoot: 0.085, spread: 0.3, railWidth: 0.78, railHeight: 0.06, railDepth: 0.1 },
@@ -1747,17 +1825,6 @@ export const STOVE_DEFAULT: StoveRecipe = {
     round: 0.015,
     hinge: { radius: 0.032, height: 0.09, x: -0.27, rise: 0.13 },
     handle: { radius: 0.018, length: 0.055, x: 0.19, barWidth: 0.1, barSize: 0.03, barStand: 0.035 },
-  },
-  vents: {
-    plate: { width: 0.52, height: 0.16, depth: 0.02 },
-    plateSet: 0.005,
-    plateRise: 0.02,
-    blade: { width: 0.44, height: 0.03, depth: 0.07 },
-    bladeTilt: -0.6,
-    bladeRise: 0.02,
-    bladePitch: 0.055,
-    bladeCount: 3,
-    bladeStand: 0.01,
   },
 };
 
@@ -1846,23 +1913,6 @@ export function stoveDoorGeometry(s: ShellRecipe, r: StoveRecipe): THREE.BufferG
       .translate(handle.x, y, leafFront + handle.length / 2),
     box(handle.barWidth, handle.barSize, handle.barSize, y, handle.x, leafFront + handle.barStand),
   );
-}
-
-/** The louvres under the firebox, set into the face with their blades proud of it. */
-export function stoveVentsGeometry(s: ShellRecipe, r: StoveRecipe): THREE.BufferGeometry {
-  const v = r.vents;
-  const face = s.depth / 2;
-  const bottom = s.stand + v.plateRise;
-  const parts: THREE.BufferGeometry[] = [
-    box(v.plate.width, v.plate.height, v.plate.depth, bottom + v.plate.height / 2, 0, face - v.plateSet),
-  ];
-  for (let i = 0; i < v.bladeCount; i++) {
-    const blade = box(v.blade.width, v.blade.height, v.blade.depth, 0, 0, 0);
-    blade.rotateX(v.bladeTilt);
-    blade.translate(0, bottom + v.bladeRise + i * v.bladePitch, face + v.bladeStand);
-    parts.push(blade);
-  }
-  return merge(...parts);
 }
 
 /**
@@ -2378,7 +2428,7 @@ export class BuildingsView {
     // from any angle.
     this.pool(
       'stove.vents',
-      stoveVentsGeometry(SHELL_DEFAULT.stove, STOVE_DEFAULT),
+      louvreGeometry(SHELL_DEFAULT.stove, LOUVRE_DEFAULT.stove, 'front'),
       paint('stove', 0x44444a, 0.6, 0.25),
       16,
     );
@@ -2627,13 +2677,7 @@ export class BuildingsView {
     this.pool(
       'cooler.vent',
       merge(
-        box(0.54, 0.3, 0.02, 0.4, 0, 0.425),
-        ...[0, 1, 2, 3].map((i) => {
-          const blade = box(0.46, 0.03, 0.07, 0, 0, 0);
-          blade.rotateX(-0.6);
-          blade.translate(0, 0.29 + i * 0.075, 0.44);
-          return blade;
-        }),
+        louvreGeometry(SHELL_DEFAULT.cooler, LOUVRE_DEFAULT.cooler, 'front'),
         box(0.16, 0.05, 0.04, 1.3, 0, 0.47),
         rbox(0.9, 0.05, 0.84, 1.21, 0, 0, 0.01, 1),
         rbox(0.44, 0.05, 0.07, 1.475, 0, 0.16, 0.02, 1),
@@ -3198,17 +3242,11 @@ export class BuildingsView {
         const parts: THREE.BufferGeometry[] = [
           cylinder(0.04, 0.04, 0.1, 1.22, 10).translate(0.2, 0, 0.25),
           cylinder(0.04, 0.04, 0.1, 1.22, 10).translate(0.32, 0, 0.25),
-          box(0.5, 0.34, 0.02, 0.83, 0, 0.405),
+          louvreGeometry(SHELL_DEFAULT.gen, LOUVRE_DEFAULT.gen, 'front'),
           box(0.14, 0.12, 0.06, 0.42, 0.28, -0.42),
           new THREE.CapsuleGeometry(0.03, 0.28, 2, 8).translate(0.28, 0.22, -0.44),
           new THREE.CapsuleGeometry(0.028, 0.16, 2, 8).rotateX(Math.PI / 2).translate(0.28, 0.04, -0.4),
         ];
-        for (let i = 0; i < 4; i++) {
-          const blade = box(0.42, 0.028, 0.07, 0, 0, 0);
-          blade.rotateX(-0.6);
-          blade.translate(0, 0.72 + i * 0.075, 0.42);
-          parts.push(blade);
-        }
         return merge(...parts);
       })(),
       paint('generator', 0x615a50, 0.45, 0.35),
@@ -3307,14 +3345,8 @@ export class BuildingsView {
           new THREE.CapsuleGeometry(0.03, 0.48, 2, 8).translate(0.2, 0.33, -0.44),
           new THREE.CapsuleGeometry(0.028, 0.16, 2, 8).rotateX(Math.PI / 2).translate(0.2, 0.04, -0.4),
         ];
-        for (const side of [-1, 1]) {
-          parts.push(box(0.02, 0.36, 0.56, 0.4, side * 0.42, 0));
-          for (let i = 0; i < 3; i++) {
-            const blade = box(0.06, 0.028, 0.52, 0, 0, 0);
-            blade.rotateZ(side * 0.6);
-            blade.translate(side * 0.44, 0.3 + i * 0.09, 0);
-            parts.push(blade);
-          }
+        for (const face of ['left', 'right'] as const) {
+          parts.push(louvreGeometry(SHELL_DEFAULT.batt, LOUVRE_DEFAULT.batt, face));
         }
         return merge(...parts);
       })(),
