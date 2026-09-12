@@ -4,6 +4,87 @@ One round, one measured gap, one fix. Newest first.
 
 ---
 
+## 2026-09-12 — A machine whose two halves answer to opposite ends of itself
+
+**The gap.** `gen.trim` was the last pool on the generator still in world
+coordinates: two exhaust stacks at y = 1.22, an outlet box on the back at
+z = -0.42, and a lead down from it and out along the floor. The stacks sat at
+1.22 because the plinth, the body and the lid happen to add to 1.18 and the
+stacks happen to be bedded a centimetre in. Turn any one of those three and the
+stovepipes float above the roof or sink through it, and every pin in the file
+was green through all three.
+
+**Two halves, opposite anchors, one machine.** The round's shape is the finding.
+The stacks answer to the *top* of the lid chain — plinth, body, seat and lid
+height, all four — and to nothing about the plan. The outlet answers to the
+*floor* and the back face, and to nothing about the roof: make the body taller
+or the lid thicker and it does not move at all. And the lead answers to neither,
+because both its runs are measured from the ground they lie on. Three anchors on
+one machine, out of one recipe, each asked for and each denied the other two.
+
+**The cooler's finding, arrived at again from different numbers.** The back of
+this machine repeats the shape the compressor settled a round earlier — a box
+bedded into the back plane, a lead down beside it, a run along the floor — and
+deliberately does *not* share its recipe. Every number differs, the generator
+has no fins, and its ground run lies a centimetre in front of the shell's back
+plane where the cooler's lies exactly on it. Two is not three and this file
+extracts at three; the battery bank's terminals will be the honest test of
+whether these are one family or two things that rhyme. What is worth having
+twice is the relation: raise the plinth and the box climbs while the lead stays
+lying where it was.
+
+**Arithmetic that cannot be made exact, and did not need to be.** The stove
+door's lesson is to step through the surface two parts actually meet on, and it
+was worth a round to learn. Here it does not help: the generator's back plane is
+at -0.41, the outlet is bedded 0.02 into it, and 0.41 and 0.02 do not sum
+exactly in binary. Four associations were tried and all four land a unit or two
+in the last place short. The error is 4e-17 against a float32 step of 3e-8 at
+that distance — nine orders under anything a vertex can hold — and every buffer
+came out identical to the literals, 2,268 words with none differing. The
+cooler's back happened to land exact and this one does not, and the difference
+is arithmetic rather than care. That is written into the recipe so the next
+person does not go looking for a bug.
+
+**A new kind of pin: no dead knobs.** Most pins in this file reach a recipe
+*through* the shell, which cannot see a field the shell has no opinion about.
+The stacks' own centre and spread are two such: they place a pair off to the
+right of the roof rather than across its middle, which is how they were drawn
+and is held rather than tidied, and freezing them back to 0.26 and 0.06 was
+invisible to every other test in the block. So every number the recipe exposes
+is now turned in turn and the buffer has to notice. A field nothing reads is
+worse than a literal — it tells the bench a number is adjustable and then
+ignores the adjustment. Writing it turned up that a segment count is a whole
+number the geometry rounds, so a fraction of one is not a turn of that knob but
+a test failing to turn it; integers move by one.
+
+**And the interior part again.** The drill found the same blindness the cooler's
+handle posts found, in a different place: raise the vertical lead with the
+plinth while leaving the ground run alone and no extreme in the assembly moves,
+because the lead tops out *inside* the outlet's own band of heights. At the
+default shell that version is identical to the bit, so every golden is green and
+the dead-knob pin is green too. Its top is now reached for behind the outlet's
+back face and above everything lying on the floor, which is the lead and nothing
+else. That is two rounds running where the thing no box could see was a part
+nested inside another part's span, and it is starting to look like the default
+rather than the exception.
+
+**Seven mutations red.** The stacks frozen to 1.22, their spacing frozen to its
+literals, the stacks resting on the lid instead of bedded into it, the outlet
+frozen to -0.42/0.42, the ground run frozen to -0.4, the lead hung off the
+shell's floor, and the lead raised with the plinth but identical at the default
+shell. Three of those leave every golden green; the spacing one is caught by the
+dead-knob pin alone and the last by the new lead pin alone. `gen.trim` is now
+three recipes and nothing else — the second pool in the file built entirely out
+of them — and its buffer is byte-identical, 2,808 position words, dumped from
+the old file and the new one and compared. 2,717 passing. No frames: no vertex
+moved.
+
+**Next.** The battery bank's terminals and straps, which is the third instance
+of the back-face outlet and therefore the point at which the extract-at-three
+rule either bites or is shown not to apply.
+
+---
+
 ## 2026-09-12 — The face behind the machine, and the one part that answers to the ground
 
 **The gap.** The last of `cooler.vent`: a compressor bedded into the machine's

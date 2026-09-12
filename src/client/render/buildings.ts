@@ -1773,6 +1773,133 @@ export function compressorGeometry(s: ShellRecipe, r: CompressorRecipe): THREE.B
 }
 
 /**
+ * The generator's own ironwork: two exhaust stacks bedded into its lid, and an
+ * outlet on its back face with a lead running down from it and out along the
+ * ground.
+ *
+ * The back repeats the shape the cooler's compressor settled a round earlier —
+ * a box bedded into the back plane, a lead down beside it, a run along the
+ * floor — and deliberately does not share its recipe. Every number differs, the
+ * generator has no fins, and its ground run lies a centimetre in front of the
+ * shell's back plane where the cooler's lies exactly on it. Two is not three
+ * and this file extracts at three; the battery bank's terminals will be the
+ * honest test of whether these are one family or two things that rhyme. What
+ * does carry over, and is worth having twice, is that the lead answers to the
+ * ground rather than to the machine — the same relation, arrived at from
+ * different numbers.
+ *
+ * The stacks are the part that is not like anything else here. They are a pair
+ * on the roof's right rather than a pair straddling its middle, so they take a
+ * centre of their own; that is how they were drawn and it is held, not tidied.
+ *
+ * One thing measured and kept: the generator's back plane is at -0.41 and the
+ * outlet is bedded 0.02 into it, and 0.41 and 0.02 do not sum exactly in
+ * binary, so every z behind this machine is a unit or two in the last place off
+ * a round number however the arithmetic is associated — four tries, all of them
+ * short. The error is 4e-17 against a float32 step of 3e-8 at that distance, so
+ * it is nine orders under anything a vertex can hold and every buffer comes out
+ * identical to the literals. The cooler's back happened to land exact; this one
+ * does not, and the difference is arithmetic rather than care.
+ */
+export interface GenRecipe {
+  readonly stacks: GenStacks;
+  readonly outlet: GenOutlet;
+}
+
+export interface GenStacks {
+  readonly radius: number;
+  readonly height: number;
+  readonly seg: number;
+  /** How far a stack's foot sits below the lid's top rather than on it. */
+  readonly bed: number;
+  /** The pair's own middle across the roof, which is not the roof's middle. */
+  readonly centre: number;
+  readonly spread: number;
+  /** Their axis, forward of the machine's middle. */
+  readonly forward: number;
+}
+
+export interface GenOutlet {
+  readonly width: number;
+  readonly height: number;
+  readonly thick: number;
+  /** How far the outlet's front face is buried inside the shell's back plane. */
+  readonly bed: number;
+  /** Its bottom edge, above the shell's floor. */
+  readonly rise: number;
+  /** Its middle across the machine. */
+  readonly beside: number;
+  readonly downRadius: number;
+  readonly downLength: number;
+  /** The lead's middle, above the ground rather than the shell's floor. */
+  readonly downRise: number;
+  /** Its axis, in front of the outlet's back face. */
+  readonly downSet: number;
+  readonly runRadius: number;
+  readonly runLength: number;
+  /** The ground run's axis, above the ground it lies on. */
+  readonly runLift: number;
+  /** And in front of the shell's back plane, where the cooler's lies on it. */
+  readonly runSet: number;
+}
+
+export const GEN_DEFAULT: GenRecipe = {
+  stacks: { radius: 0.04, height: 0.1, seg: 10, bed: 0.01, centre: 0.26, spread: 0.06, forward: 0.25 },
+  outlet: {
+    width: 0.14,
+    height: 0.12,
+    thick: 0.06,
+    bed: 0.02,
+    rise: 0.24,
+    beside: 0.28,
+    downRadius: 0.03,
+    downLength: 0.28,
+    downRise: 0.22,
+    downSet: 0.01,
+    runRadius: 0.028,
+    runLength: 0.16,
+    runLift: 0.04,
+    runSet: 0.01,
+  },
+};
+
+export function genStacksGeometry(s: ShellRecipe, r: GenRecipe): THREE.BufferGeometry {
+  const { stacks } = r;
+  const top = s.stand + s.height + s.lid!.seat + s.lid!.height;
+  const foot = top - stacks.bed;
+  return merge(
+    ...[-1, 1].map((side) =>
+      cylinder(stacks.radius, stacks.radius, stacks.height, foot + stacks.height / 2, stacks.seg)
+        .translate(stacks.centre + side * stacks.spread, 0, stacks.forward),
+    ),
+  );
+}
+
+export function genOutletGeometry(s: ShellRecipe, r: GenRecipe): THREE.BufferGeometry {
+  const { outlet } = r;
+  // The surface the outlet and the shell actually meet on, taken first for the
+  // same reason the compressor's is, even though on this machine the arithmetic
+  // cannot be made exact whichever way it is associated.
+  const face = -s.depth / 2 + outlet.bed;
+  const back = face - outlet.thick;
+  return merge(
+    box(
+      outlet.width,
+      outlet.height,
+      outlet.thick,
+      s.stand + outlet.rise + outlet.height / 2,
+      outlet.beside,
+      face - outlet.thick / 2,
+    ),
+    new THREE.CapsuleGeometry(outlet.downRadius, outlet.downLength, 2, 8)
+      .translate(outlet.beside, outlet.downRise, back + outlet.downSet),
+    new THREE.CapsuleGeometry(outlet.runRadius, outlet.runLength, 2, 8)
+      .rotateX(Math.PI / 2)
+      .translate(outlet.beside, outlet.runLift, -s.depth / 2 + outlet.runSet),
+  );
+}
+
+/**
  * A wall: a square column with a coping stone lapped over the top of it, which
  * is the timber wall and the stone wall both.
  *
@@ -3438,17 +3565,11 @@ export class BuildingsView {
     // plate and stands a centimetre and a half proud of it.
     this.pool(
       'gen.trim',
-      (() => {
-        const parts: THREE.BufferGeometry[] = [
-          cylinder(0.04, 0.04, 0.1, 1.22, 10).translate(0.2, 0, 0.25),
-          cylinder(0.04, 0.04, 0.1, 1.22, 10).translate(0.32, 0, 0.25),
-          louvreGeometry(SHELL_DEFAULT.gen, LOUVRE_DEFAULT.gen, 'front'),
-          box(0.14, 0.12, 0.06, 0.42, 0.28, -0.42),
-          new THREE.CapsuleGeometry(0.03, 0.28, 2, 8).translate(0.28, 0.22, -0.44),
-          new THREE.CapsuleGeometry(0.028, 0.16, 2, 8).rotateX(Math.PI / 2).translate(0.28, 0.04, -0.4),
-        ];
-        return merge(...parts);
-      })(),
+      merge(
+        genStacksGeometry(SHELL_DEFAULT.gen, GEN_DEFAULT),
+        louvreGeometry(SHELL_DEFAULT.gen, LOUVRE_DEFAULT.gen, 'front'),
+        genOutletGeometry(SHELL_DEFAULT.gen, GEN_DEFAULT),
+      ),
       paint('generator', 0x615a50, 0.45, 0.35),
       16,
     );

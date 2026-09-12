@@ -16,6 +16,7 @@ import {
   BuildingsView,
   COMPRESSOR_DEFAULT,
   COOLER_DEFAULT,
+  GEN_DEFAULT,
   LOUVRE_DEFAULT,
   SHELL_DEFAULT,
   GAME_DEFAULT,
@@ -27,6 +28,8 @@ import {
   gameStoolsGeometry,
   compressorGeometry,
   coolerLidGeometry,
+  genOutletGeometry,
+  genStacksGeometry,
   louvreGeometry,
   shellBodyGeometry,
   shellLidGeometry,
@@ -1654,6 +1657,210 @@ describe("a cooler's back", () => {
     const g = partGeometry(view, 'cooler.vent');
     g.computeBoundingBox();
     expect(g.boundingBox!.min.z, 'the cable reaches out behind the machine').toBeLessThan(-0.5);
+    view.dispose();
+  });
+});
+
+describe("a generator's stacks and outlet", () => {
+  // The last pool on this machine still in world coordinates. Its back repeats
+  // the shape the cooler's compressor settled a round earlier and deliberately
+  // does not share its recipe — two is not three — so what is asked here is
+  // whether the same *relation* holds on different numbers.
+  const shell = SHELL_DEFAULT.gen;
+  const { stacks, outlet } = GEN_DEFAULT;
+  const bounds = (g: THREE.BufferGeometry) => {
+    g.computeBoundingBox();
+    return g.boundingBox!;
+  };
+  const stacksAt = (s = shell) => bounds(genStacksGeometry(s, GEN_DEFAULT));
+  const outletAt = (s = shell) => bounds(genOutletGeometry(s, GEN_DEFAULT));
+  const values = (g: THREE.BufferGeometry, k: number) => {
+    const a = g.attributes.position.array as Float32Array;
+    const set = new Set<number>();
+    for (let i = k; i < a.length; i += 3) set.add(a[i]);
+    return [...set].sort((p, q) => p - q);
+  };
+  /** Both halves as one list of numbers, which is all a knob has to disturb. */
+  const merged = (...gs: THREE.BufferGeometry[]) =>
+    gs.flatMap((g) => [...(g.attributes.position.array as Float32Array)]);
+
+  it("holds the generator's ironwork at the numbers it was drawn at", () => {
+    expect(GEN_DEFAULT).toEqual({
+      stacks: { radius: 0.04, height: 0.1, seg: 10, bed: 0.01, centre: 0.26, spread: 0.06, forward: 0.25 },
+      outlet: {
+        width: 0.14,
+        height: 0.12,
+        thick: 0.06,
+        bed: 0.02,
+        rise: 0.24,
+        beside: 0.28,
+        downRadius: 0.03,
+        downLength: 0.28,
+        downRise: 0.22,
+        downSet: 0.01,
+        runRadius: 0.028,
+        runLength: 0.16,
+        runLift: 0.04,
+        runSet: 0.01,
+      },
+    });
+  });
+
+  it('stands both pieces exactly where the frozen calls stood them', () => {
+    const s = stacksAt();
+    expect([s.min.x, s.max.x]).toEqual([0.1619577407836914, 0.35804226994514465]);
+    expect([s.min.y, s.max.y]).toEqual([1.1699999570846558, 1.2699999809265137]);
+    expect([s.min.z, s.max.z]).toEqual([0.21000000834465027, 0.28999999165534973]);
+
+    const o = outletAt();
+    expect([o.min.x, o.max.x]).toEqual([0.20999999344348907, 0.3499999940395355]);
+    expect([o.min.y, o.max.y]).toEqual([0.011999999172985554, 0.47999998927116394]);
+    expect([o.min.z, o.max.z]).toEqual([-0.5080000162124634, -0.2919999957084656]);
+
+    // The outlet box is interior in z between the lead's two runs, exactly as
+    // the compressor was, so the box above cannot see the face it is bedded on.
+    expect(values(genOutletGeometry(shell, GEN_DEFAULT), 2)).toEqual([
+      -0.5080000162124634, -0.499798983335495, -0.47999998927116394,
+      -0.4699999988079071, -0.46121320128440857, -0.45500001311302185,
+      -0.44999998807907104, -0.4399999976158142, -0.42500001192092896,
+      -0.41878679394721985, -0.4099999964237213, -0.39000001549720764,
+      -0.3199999928474426, -0.3002009987831116, -0.2919999957084656,
+    ]);
+  });
+
+  it('beds the stacks into whatever roof the lid actually makes', () => {
+    // All three of the numbers that decide where a lid's top ends up move them,
+    // and by the whole of the change: the plinth under the body, the body, and
+    // the lid itself. Before this lift the stacks sat at 1.22 through all three.
+    const b = stacksAt();
+    for (const [name, s, want] of [
+      ['a taller body', { ...shell, height: shell.height + 0.3 }, 0.3],
+      ['a thicker lid', { ...shell, lid: { ...shell.lid!, height: shell.lid!.height + 0.1 }, }, 0.1],
+      ['a taller plinth', { ...shell, stand: shell.stand + 0.2 }, 0.2],
+      ['a deeper seat', { ...shell, lid: { ...shell.lid!, seat: shell.lid!.seat + 0.05 } }, 0.05],
+    ] as const) {
+      const t = stacksAt(s);
+      expect(t.min.y - b.min.y, `${name} leaves the stacks behind`).toBeCloseTo(want, 6);
+      expect(t.max.y - b.max.y, `${name} stretches the stacks`).toBeCloseTo(want, 6);
+    }
+
+    // And the foot is buried, asked of a machine that was never drawn so that
+    // no frozen height can satisfy it. A stack merely resting on the lid would
+    // show a seam at exactly the height a roof meets the sky.
+    const other = { ...shell, height: 1.7, lid: { ...shell.lid!, height: 0.3, seat: 0.04 } };
+    const top = other.stand + other.height + other.lid.seat + other.lid.height;
+    expect(top - stacksAt(other).min.y).toBeCloseTo(stacks.bed, 6);
+  });
+
+  it('stands the pair off to one side of the roof rather than across it', () => {
+    // Held as drawn, not tidied. The two stacks straddle a middle of their own
+    // that is nowhere near the machine's, and the whole pair is on the right of
+    // it — which a golden written as a symmetric span would quietly lose.
+    const b = stacksAt();
+    expect((b.min.x + b.max.x) / 2).toBeCloseTo(stacks.centre, 6);
+    expect(b.min.x, 'the pair has crossed the middle of the roof').toBeGreaterThan(0);
+
+    // Nothing about the plan reaches them: they are offsets from the machine's
+    // middle and not fractions of its roof, which is how they were drawn.
+    for (const s of [
+      { ...shell, depth: shell.depth + 0.2 },
+      { ...shell, width: shell.width + 0.2 },
+    ]) {
+      const t = stacksAt(s);
+      expect([t.min.x, t.max.x, t.min.z, t.max.z]).toEqual([b.min.x, b.max.x, b.min.z, b.max.z]);
+    }
+  });
+
+  it('beds the outlet into whatever back face its shell actually has', () => {
+    const b = outletAt();
+    const deep = outletAt({ ...shell, depth: shell.depth + 0.2 });
+    expect(deep.min.z - b.min.z).toBeCloseTo(-0.1, 6);
+    expect(deep.max.z - b.max.z).toBeCloseTo(-0.1, 6);
+
+    // Asked of a shell never drawn: the box's front face is buried by its bed.
+    // Reached for by name because the lead runs behind it and in front of it,
+    // so the outlet owns neither end of the assembly's own span.
+    const other = { ...shell, depth: 1.24 };
+    const a = genOutletGeometry(other, GEN_DEFAULT).attributes.position.array as Float32Array;
+    let front = -Infinity;
+    for (let i = 0; i < a.length; i += 3) {
+      if (a[i + 1] > other.stand + outlet.rise && a[i + 2] > front) front = a[i + 2];
+    }
+    expect(front - -other.depth / 2).toBeCloseTo(outlet.bed, 6);
+
+    // Nothing back here answers to the roof, only to the floor — which is the
+    // opposite of the stacks, on the same machine, out of the same recipe.
+    for (const s of [
+      { ...shell, height: shell.height + 0.3 },
+      { ...shell, lid: { ...shell.lid!, height: shell.lid!.height + 0.1 } },
+    ]) {
+      const t = outletAt(s);
+      expect([t.min.y, t.max.y]).toEqual([b.min.y, b.max.y]);
+    }
+  });
+
+  it('lifts the outlet with the plinth and leaves the lead on the ground', () => {
+    // The cooler's finding, arrived at again from different numbers, which is
+    // the whole reason these two were not folded into one recipe: the relation
+    // repeats and the values do not. Raise the plinth and the box climbs while
+    // the lead stays exactly where it was lying.
+    const b = outletAt();
+    const tall = { ...shell, stand: shell.stand + 0.2 };
+    expect(outletAt(tall).max.y - b.max.y, 'the outlet rides the plinth').toBeCloseTo(0.2, 6);
+    expect(outletAt(tall).min.y, 'the run stays on the ground').toBe(b.min.y);
+
+    // The box above speaks for the ground run, which owns the bottom of the
+    // span, and for nothing else. The vertical lead is interior in height — it
+    // tops out inside the outlet's own band — so a version that raised it with
+    // the plinth and left the ground run alone moves no extreme at all and was
+    // caught by the frozen golden only. Its top is reached for behind the
+    // outlet's back face and above everything lying on the floor, which is the
+    // lead and nothing else.
+    const leadTop = (sh: typeof shell) => {
+      const a = genOutletGeometry(sh, GEN_DEFAULT).attributes.position.array as Float32Array;
+      const behind = -sh.depth / 2 + outlet.bed - outlet.thick;
+      let y = -Infinity;
+      for (let i = 0; i < a.length; i += 3) {
+        if (a[i + 2] < behind && a[i + 1] > outlet.runLift + outlet.runRadius) y = Math.max(y, a[i + 1]);
+      }
+      return y;
+    };
+    expect(leadTop(tall), 'the lead was pulled up off the ground by the plinth').toBe(leadTop(shell));
+  });
+
+  it('turns every number it exposes, so the bench has no dead knob', () => {
+    // A recipe field that nothing reads is worse than a literal: it says on the
+    // bench that a number is adjustable and then ignores the adjustment. Most
+    // of the pins above reach the recipe through the shell, which cannot see a
+    // field the shell has no opinion about — the stacks' own centre and spread
+    // are two, and freezing them back to 0.26 and 0.06 was invisible to every
+    // other test in this block. So each number is turned in turn and the buffer
+    // has to notice.
+    const build = (r: typeof GEN_DEFAULT) =>
+      merged(genStacksGeometry(shell, r), genOutletGeometry(shell, r));
+    const before = build(GEN_DEFAULT);
+    for (const group of ['stacks', 'outlet'] as const) {
+      const fields = GEN_DEFAULT[group] as unknown as Record<string, number>;
+      for (const field of Object.keys(fields)) {
+        // A segment count is a whole number and the geometry rounds it, so a
+        // fraction of one is not a turn of that knob — it is the test failing
+        // to turn it. Integers move by one.
+        const was = fields[field];
+        const turned = {
+          ...GEN_DEFAULT,
+          [group]: { ...fields, [field]: Number.isInteger(was) ? was + 1 : was + 0.017 },
+        };
+        expect(build(turned), `${group}.${field} is a knob that does nothing`).not.toEqual(before);
+      }
+    }
+  });
+
+  it("still pools the generator's trim", () => {
+    const view = new BuildingsView();
+    const g = partGeometry(view, 'gen.trim');
+    g.computeBoundingBox();
+    expect(g.boundingBox!.max.y, 'the stacks stand above the lid').toBeGreaterThan(1.2);
+    expect(g.boundingBox!.min.z, 'the lead reaches out behind the machine').toBeLessThan(-0.5);
     view.dispose();
   });
 });

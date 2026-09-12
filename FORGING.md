@@ -397,7 +397,7 @@ to be overruled by the photographs:
 | Trees | 2 | Variation already exists and is unaddressable; making it addressable is nearly free. |
 | Piles | 8 | Eight objects sharing a prefix, seen constantly, each small. |
 | People and fauna | 5 | The heaviest models and the most looked-at, but also the ones with the most existing look-loop rounds behind them — least likely to be wrong. |
-| Buildings | 26 | Largest surface (3,451 lines) and least varied per instance; a stove is one stove. Last on purpose. On the bench since 2026-09-10, with one field and no recipe. Five of the twenty-six — the machine shells — build from `ShellRecipe` as of 2026-09-10, the two tables from `TableRecipe` and the two walls from `WallRecipe` as of 2026-09-12, the games table's trim follows its own top as of the same day — the first building whose parts would survive a knob being turned — and the stove's feet, flue and hotplates follow its shell, which is the first machine to do so, its door following the face it is cut into as a four-link chain, and the louvre it shares with the cooler, the generator and the battery bank lifted out of all four, the cooler's lid furniture following the lid rather than the world, and its compressor, fins and cable following the face behind it — leaving `cooler.vent` built out of three recipes and nothing else. The bench still has no knob, so the census still reads no recipe here. |
+| Buildings | 26 | Largest surface (3,451 lines) and least varied per instance; a stove is one stove. Last on purpose. On the bench since 2026-09-10, with one field and no recipe. Five of the twenty-six — the machine shells — build from `ShellRecipe` as of 2026-09-10, the two tables from `TableRecipe` and the two walls from `WallRecipe` as of 2026-09-12, the games table's trim follows its own top as of the same day — the first building whose parts would survive a knob being turned — and the stove's feet, flue and hotplates follow its shell, which is the first machine to do so, its door following the face it is cut into as a four-link chain, and the louvre it shares with the cooler, the generator and the battery bank lifted out of all four, the cooler's lid furniture following the lid rather than the world, and its compressor, fins and cable following the face behind it, and the generator's stacks and back-face outlet from `GenRecipe` — leaving `cooler.vent` and `gen.trim` built out of three recipes each and nothing else. The bench still has no knob, so the census still reads no recipe here. |
 
 Grass is a special case worth naming: it cannot be exported to `.glb`, so the bench
 is the *only* place its shader sway can ever be judged in isolation. That makes it a
@@ -912,6 +912,23 @@ is the right shape for a game drawing flat polygons where a material is a palett
 Aetherhold's materials are `MeshStandardMaterial` with an ambient-occlusion bake
 living in vertex colours, so the split is not free and is not obviously worth
 paying for. Revisit if the recipe work makes it cheap.
+
+**Built — a machine whose two halves answer to opposite ends of itself,
+2026-09-12.** `gen.trim`, the generator's exhaust stacks and its back-face
+outlet, lifted into `GenRecipe`. Three anchors on one machine out of one recipe:
+the stacks answer to the top of the lid chain and to nothing about the plan, the
+outlet answers to the floor and the back face and to nothing about the roof, and
+the lead answers to neither because both its runs lie on the ground. The back
+repeats the cooler's compressor shape and deliberately does not share its recipe
+— every number differs and two is not three — so the battery bank's terminals
+will be the honest test of whether they are one family. The round adds a new
+kind of pin: most pins here reach a recipe *through* the shell, which cannot see
+a field the shell has no opinion about, so every number the recipe exposes is
+now turned in turn and the buffer has to notice. A field nothing reads is worse
+than a literal, because it tells the bench a number is adjustable and then
+ignores the adjustment. It also records an arithmetic case the stove door's
+lesson cannot fix: -0.41 and 0.02 do not sum exactly however associated, four
+tries, and the 4e-17 error is nine orders under a float32 step at that distance.
 
 **Built — the face behind the machine, 2026-09-12.** The last of `cooler.vent`:
 a compressor bedded into the cooler's back, three cooling fins across it and a
