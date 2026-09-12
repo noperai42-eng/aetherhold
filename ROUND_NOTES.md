@@ -4,6 +4,112 @@ One round, one measured gap, one fix. Newest first.
 
 ---
 
+## 2026-09-12 — A stove that stands on its own plinth and vents through its own roof
+
+**The gap.** `SHELL_DEFAULT.stove` has had knobs since the shells got a recipe,
+and nothing bolted to that shell has been listening. Three of its knobs break
+the stove three different ways, and every pin in the file stays green through
+all three. Turn `stand` from 0.14 to 0.22 and the four cast legs, cut to 0.14,
+leave the shell held up by eight centimetres of nothing. Turn `height` and the
+flue still leaves the roof at 1.04, so a third of a metre of stovepipe is inside
+the firebox and the rain cap barely clears it; the hotplates are buried
+outright. Turn `depth` and the firebox door sinks into a face that has moved out
+past it. The trim was drawn in world coordinates and the shell was given a
+recipe afterwards, so nothing ever connected the two.
+
+**Why this half of it.** The last round's note predicted the anchors here would
+be different, and they are, but not uniformly — the stove's trim splits cleanly
+in two. The legs and rails rest on a horizontal surface from below, and the flue
+and hotplates rise from one; that is the same relation the games table's board
+and pieces had, in a new place. The firebox door and the air vents stand *proud
+of a vertical face*, and they carry a four-link chain — surround to leaf to
+hinge knuckle to handle — that is genuinely a different problem. This round
+takes the horizontal half. The face is next, with its chain to work out.
+
+**The measurement.** Against the stove's own shell the exact hits are: the legs'
+height is `stand`, their centre is `stand / 2`, the rails' top is `stand`, and
+the flue's pipe begins at `stand + height`. The hotplates are at `stand + height
++ 0.01` — a centimetre above the roof on a plate 0.025 thick, which means the
+plate is *let into* the iron rather than lying on it, and that is worth a field
+of its own rather than a rounding.
+
+**What is in the recipe and what is not.** `StoveRecipe` names the feet, the
+flue and the hotplates. What it deliberately does not do is make their plan
+positions shares of the shell: the legs stand at 0.3 in both axes on a shell
+that is 0.88 across and 0.86 deep, so one number cannot be both `halfW - inset`
+and `halfD - inset`. The flue's offset and the plates' spread are the same case.
+They are pinned as they are, and the question of whether a wider stove should
+have a wider plinth is a brief below.
+
+**The float.** One derivation does not come out exactly: `stand - railHeight / 2`
+is 0.11000000000000001 against the 0.11 that was written, and no association of
+the three numbers fixes it, because 0.14 - 0.06 is already 0.08000000000000002.
+The table's slab had an exact form and this has none, so the drift is kept
+rather than removed — and measured before it was kept, both ways: the rail's
+vertices land at 0.08 and 0.14, where a float32 step is seven parts in a
+billion against a leftover of one part in a hundred quadrillion, and the three
+merged buffers came out of the recipe byte for byte as they came out of the
+literals — 15,168 words, none differing. The table's leg drifted because its
+foot sat at y = 0, where the steps are small enough for a last bit to matter.
+Nothing here is near the origin.
+
+**A pin a bounding box cannot be.** The feet are four legs and two rails, and
+the rails live entirely inside the legs' span: move a rail and the box does not
+change by a millimetre. So the golden here is the set of heights in the buffer,
+once each — three of them for the feet, which are the ground, the underside of
+the rails, and the shell's floor. The flue has eight and the hotplates two. A
+bounding box is kept alongside for the plan, which is what the heights cannot
+see.
+
+**And the strongest pin needs no number at all.** The flue's lowest word is the
+body's highest word — two things built and asked whether they touch, with no
+literal between them, and it holds when the body is a different body. The feet
+cannot quite be asked that way: the legs arrive at the shell's floor out of
+`stand / 2` doubled and the body arrives out of `stand + height / 2` less half
+its height, so the two land one float32 step apart. That is asserted as a
+tolerance with the reason written down, and it is not a weak pin — a leg that
+had not followed `stand` at all would be out by eight centimetres, not by
+fifteen billionths.
+
+**Verified.** Four mutations, each red and restored green. Two of them matter:
+pinning the flue's roof back to 1.04, and pinning the legs back to 0.14, are
+each *exactly the state the code was in before this round* — and each leaves
+every golden in the file green and is caught by the knob pin alone. The other
+two are the reverse case: dropping the rails by their own thickness, and sliding
+a hotplate a centimetre forward, are invisible to the knob pins and caught by
+the goldens. Four pins, two kinds, each catching what the other cannot.
+`tsc --noEmit` clean. Full suite 2677 passed | 13 skipped.
+
+**A brief, not a change.** The stove's plinth keeps its footprint while the
+shell above it changes width: legs at 0.3, rails 0.78 wide, on a shell 0.88
+across. Widen the stove and it overhangs its own feet further. Whether that
+reads as a heavy machine on a neat cast base or as a box balanced on something
+too small for it is a judgement the code cannot make. The brief: photograph the
+stove at three shell widths with a fixed plinth and with one that follows, from
+the manager camera, and see which still looks like it is standing rather than
+teetering.
+
+**Next target, already measured.** The other half of the same stove: the firebox
+door and the air vents, which is the *proud of a face* relation the last note
+predicted and which this round deliberately left. The chain is four links and
+every one of them is already in the numbers, so it wants naming rather than
+deciding — the surround is bedded a centimetre into the face at 0.43, the leaf
+is lapped a centimetre into the surround's front at 0.46, the hinge knuckles sit
+exactly on that same front, and the handle's stem begins on the leaf's front at
+0.5. The vents go with them: the louvre plate stands five millimetres proud of
+the face and the blades a centimetre. Two anchors are vertical rather than
+horizontal and belong to the same round — the door's centre is a centimetre
+below the shell's own, and the louvre plate begins two centimetres above the
+shell's floor. One float caveat is already visible: the handle's base derives to
+0.49999999999999994 against the leaf's front of 0.5, a last bit apart, and the
+stem's foot is not near the origin so it will very likely round away — but that
+is the table's leg again and it gets a probe before a line is written, not
+after. The face also brings in `width` and `depth`, the two knobs this round did
+not touch. After that the remaining four machines, whose trim is the same two
+relations in different proportions.
+
+---
+
 ## 2026-09-12 — Trim that knows where its own table is
 
 **The gap, and why it is the one that matters.** Three rounds have now lifted

@@ -16,6 +16,7 @@ import {
   BuildingsView,
   SHELL_DEFAULT,
   GAME_DEFAULT,
+  STOVE_DEFAULT,
   TABLE_DEFAULT,
   WALL_DEFAULT,
   gameBoardGeometry,
@@ -23,6 +24,9 @@ import {
   gameStoolsGeometry,
   shellBodyGeometry,
   shellLidGeometry,
+  stoveFeetGeometry,
+  stoveFlueGeometry,
+  stovePlateGeometry,
   tableLegsGeometry,
   tableTopGeometry,
   wallBodyGeometry,
@@ -724,6 +728,148 @@ describe("the games table's trim", () => {
   });
 });
 
+describe("a stove's ironwork", () => {
+  /**
+   * Every height in a part, once each, low to high.
+   *
+   * A bounding box would not do here. The stove's feet are four legs and two
+   * rails, and the rails live entirely inside the legs' span: move a rail and
+   * the box does not change by a millimetre. The set of heights sees it,
+   * because the rail's underside is one of the three heights there are.
+   */
+  const heights = (g: THREE.BufferGeometry) => {
+    const a = g.attributes.position.array as Float32Array;
+    const set = new Set<number>();
+    for (let i = 1; i < a.length; i += 3) set.add(a[i]);
+    return [...set].sort((p, q) => p - q);
+  };
+
+  const plan = (g: THREE.BufferGeometry) => {
+    g.computeBoundingBox();
+    const b = g.boundingBox!;
+    return [b.min.x, b.max.x, b.min.z, b.max.z];
+  };
+
+  const stove = SHELL_DEFAULT.stove;
+
+  it('stands all three at exactly the heights the frozen calls stood them at', () => {
+    // The calls as they were before they knew where the shell was: legs of
+    // 0.14 at 0.07, rails at 0.11, a flue whose pipe started at 1.29, hotplates
+    // at 1.05. `merge` and `cylinder` are private, so there is no golden buffer
+    // to build here, and these are asked for as words rather than as closeness
+    // for the reason the table's legs were — a lift that claims to have moved
+    // nothing can be made to say so exactly. It was also checked the other way
+    // before this test existed: the three merged buffers came out of the
+    // recipe byte for byte as they came out of the literals, fifteen thousand
+    // words with none differing.
+    expect(heights(stoveFeetGeometry(stove, STOVE_DEFAULT))).toEqual([
+      -2.98023217215615e-10, 0.07999999821186066, 0.14000000059604645,
+    ]);
+    expect(heights(stoveFlueGeometry(stove, STOVE_DEFAULT))).toEqual([
+      1.0399999618530273, 1.0750000476837158, 1.125, 1.4500000476837158,
+      1.4900000095367432, 1.5299999713897705, 1.5399999618530273, 1.590000033378601,
+    ]);
+    expect(heights(stovePlateGeometry(stove, STOVE_DEFAULT))).toEqual([1.037500023841858, 1.0625]);
+
+    expect(plan(stoveFeetGeometry(stove, STOVE_DEFAULT))).toEqual([
+      -0.38999998569488525, 0.38999998569488525, -0.38499999046325684, 0.38499999046325684,
+    ]);
+    expect(plan(stoveFlueGeometry(stove, STOVE_DEFAULT))).toEqual([
+      -0.36000001430511475, -0.1599999964237213, -0.36000001430511475, -0.1599999964237213,
+    ]);
+    expect(plan(stovePlateGeometry(stove, STOVE_DEFAULT))).toEqual([
+      -0.3400000035762787, 0.3400000035762787, -0.03999999910593033, 0.23999999463558197,
+    ]);
+  });
+
+  it('holds the recipe at the numbers the stove was drawn at', () => {
+    expect(STOVE_DEFAULT.feet).toEqual({
+      radiusTop: 0.06,
+      radiusFoot: 0.085,
+      spread: 0.3,
+      railWidth: 0.78,
+      railHeight: 0.06,
+      railDepth: 0.1,
+    });
+    expect(STOVE_DEFAULT.flue).toEqual({
+      offset: 0.26,
+      radiusTop: 0.07,
+      radiusFoot: 0.075,
+      height: 0.5,
+      collarRadius: 0.095,
+      collarHeight: 0.05,
+      collarRise: 0.06,
+      bandRadius: 0.095,
+      bandHeight: 0.04,
+      bandDrop: 0.07,
+      capRadiusTop: 0.1,
+      capRadiusFoot: 0.085,
+      capHeight: 0.06,
+      capRise: 0.02,
+    });
+    expect(STOVE_DEFAULT.plate).toEqual({
+      radius: 0.14,
+      thickness: 0.025,
+      rise: 0.01,
+      spread: 0.2,
+      forward: 0.1,
+    });
+  });
+
+  it('takes the flue out of the roof, and not out of where the roof used to be', () => {
+    // The strongest shape a pin here can take: no number at all, just two
+    // things built and asked whether they touch. The flue's lowest word is the
+    // body's highest word, and it stays so when the body is a different body —
+    // which is the whole of what the old `1.29` could not say.
+    for (const shell of [stove, { ...stove, height: 1.4 }, { ...stove, stand: 0.31 }]) {
+      const roof = heights(shellBodyGeometry(shell)).at(-1);
+      expect(heights(stoveFlueGeometry(shell, STOVE_DEFAULT))[0]).toBe(roof);
+    }
+  });
+
+  it('cuts the legs and the rails to the gap the shell stands over, whatever that gap is', () => {
+    // Raise the shell on a taller plinth and the legs have to grow with it, or
+    // the stove is held up by nothing. Three heights again: the ground, the
+    // underside of the rails a rail's thickness below the top, and the top,
+    // which is the shell's floor.
+    const taller = { ...stove, stand: 0.22 };
+    expect(heights(stoveFeetGeometry(taller, STOVE_DEFAULT))).toEqual([
+      5.9604643443123e-10, 0.1599999964237213, 0.2199999988079071,
+    ]);
+
+    // The legs reach the floor the body actually has. Not to the word, though:
+    // the two arrive at the same height along different arithmetic — the legs
+    // out of `stand / 2` doubled, the body out of `stand + height / 2` less
+    // half its height — and land one float32 step apart. A leg that had not
+    // followed `stand` at all would be out by eight centimetres, not by
+    // fifteen billionths.
+    const floor = heights(shellBodyGeometry(taller))[0];
+    const top = heights(stoveFeetGeometry(taller, STOVE_DEFAULT)).at(-1)!;
+    expect(Math.abs(top - floor)).toBeLessThan(2e-8);
+  });
+
+  it('keeps the hotplates bedded in the roof rather than floating above where it was', () => {
+    // A hotplate is let into the iron: its underside is below the roof and its
+    // face above it, which is why it reads as part of the stove and not as a
+    // disc resting on one. That has to survive the roof moving.
+    const taller = { ...stove, height: 1.4 };
+    const roof = heights(shellBodyGeometry(taller)).at(-1)!;
+    const plate = heights(stovePlateGeometry(taller, STOVE_DEFAULT));
+    expect(plate).toEqual([1.537500023841858, 1.5625]);
+    expect(plate[0]).toBeLessThan(roof);
+    expect(plate.at(-1)!).toBeGreaterThan(roof);
+  });
+
+  it('still pools feet, a flue and hotplates', () => {
+    const view = new BuildingsView();
+    for (const key of ['stove.feet', 'stove.flue', 'stove.plate']) {
+      const g = partGeometry(view, key);
+      g.computeBoundingBox();
+      expect(g.boundingBox!.max.y, `${key} has height`).toBeGreaterThan(0);
+    }
+    view.dispose();
+  });
+});
 describe('a machine', () => {
   it('stands on feet, because a shell run into the turf is a box somebody dropped', () => {
     // The one thing every machine in the colony had in common from the manager

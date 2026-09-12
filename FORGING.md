@@ -397,7 +397,7 @@ to be overruled by the photographs:
 | Trees | 2 | Variation already exists and is unaddressable; making it addressable is nearly free. |
 | Piles | 8 | Eight objects sharing a prefix, seen constantly, each small. |
 | People and fauna | 5 | The heaviest models and the most looked-at, but also the ones with the most existing look-loop rounds behind them — least likely to be wrong. |
-| Buildings | 26 | Largest surface (3,451 lines) and least varied per instance; a stove is one stove. Last on purpose. On the bench since 2026-09-10, with one field and no recipe. Five of the twenty-six — the machine shells — build from `ShellRecipe` as of 2026-09-10, the two tables from `TableRecipe` and the two walls from `WallRecipe` as of 2026-09-12, and the games table's trim follows its own top as of the same day — the first building whose parts would survive a knob being turned. The bench still has no knob, so the census still reads no recipe here. |
+| Buildings | 26 | Largest surface (3,451 lines) and least varied per instance; a stove is one stove. Last on purpose. On the bench since 2026-09-10, with one field and no recipe. Five of the twenty-six — the machine shells — build from `ShellRecipe` as of 2026-09-10, the two tables from `TableRecipe` and the two walls from `WallRecipe` as of 2026-09-12, the games table's trim follows its own top as of the same day — the first building whose parts would survive a knob being turned — and the stove's feet, flue and hotplates follow its shell, which is the first machine to do so. The bench still has no knob, so the census still reads no recipe here. |
 
 Grass is a special case worth naming: it cannot be exported to `.glb`, so the bench
 is the *only* place its shader sway can ever be judged in isolation. That makes it a
@@ -912,6 +912,26 @@ is the right shape for a game drawing flat polygons where a material is a palett
 Aetherhold's materials are `MeshStandardMaterial` with an ambient-occlusion bake
 living in vertex colours, so the split is not free and is not obviously worth
 paying for. Revisit if the recipe work makes it cheap.
+
+**Built — a stove that stands on its own plinth, 2026-09-12.** The first trim in a
+machine to follow the shell it is bolted to, and the round that shows the goldens
+themselves were the wrong shape. `SHELL_DEFAULT.stove` has had knobs since the shells
+got a recipe and nothing on the stove was listening: `stand` at 0.22 leaves the shell
+held up by eight centimetres of nothing, `height` buries a third of a metre of stovepipe
+inside the firebox, and every pin in the file was green through both. The stove's trim
+splits in two and this takes the horizontal half — the legs and rails standing under the
+shell's floor, the flue and hotplates rising from its roof, which is the games table's
+relation in a new place. The firebox door and the air vents are the other one, proud of a
+vertical face and carrying a four-link chain from surround to leaf to hinge to handle,
+and they are a round of their own. The finding is the form of the golden: a bounding box
+cannot see the rails, because they live entirely inside the legs' span and a rail can move
+a whole thickness without changing the box by a millimetre. The golden is the set of
+heights in the buffer instead, once each — three for the feet, which are the ground, the
+rails' underside, and the shell's floor — with a box kept for the plan the heights cannot
+see. The flue's pin carries no number at all: its lowest word is the body's highest word,
+and that holds when the body is a different body. Two of the four mutations are the
+evidence — pinning the flue's roof back to 1.04 and the legs back to 0.14 are each exactly
+the state the code was in before the round, and each leaves every golden green.
 
 **Built — trim that knows where its own table is, 2026-09-12.** The first trim in the
 buildings to follow the body it sits on, and the round that says why three lifts had not

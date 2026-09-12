@@ -1553,6 +1553,166 @@ export function wallPlinthGeometry(r: WallRecipe): THREE.BufferGeometry | null {
 }
 
 /**
+ * A stove's ironwork, given against the shell it is bolted to.
+ *
+ * `SHELL_DEFAULT.stove` has had knobs since the shells got a recipe, and
+ * nothing else on the stove has been listening. Turn `depth` and the firebox
+ * door stays where it was, sunk into a face that has moved out past it. Turn
+ * `height` and the flue keeps leaving the roof at the height the old roof was,
+ * so a third of a metre of stovepipe is inside the box and the rain cap is
+ * barely clear of it. Turn `stand` and the four cast legs, which are cut to the
+ * old plinth's height, no longer reach the shell they hold up. Three knobs, three
+ * different ways for the stove to come apart, and every pin in the file stays
+ * green through all of them, because every pin in the file says only that the
+ * parts are where they were.
+ *
+ * This covers the three that meet a horizontal surface: the legs and rails that
+ * stand under the shell's floor, and the flue and hotplates that rise from its
+ * roof. The firebox door and the air vents are the other relation — proud of a
+ * vertical face rather than resting on a top — and they come next, with their
+ * own chain of surround to leaf to hinge to handle to work out.
+ *
+ * The stove is one machine and this recipe is used once, which is the same
+ * shape `GameRecipe` has. What makes it worth naming is not reuse but the
+ * bench: a recipe is the thing a slider turns, and a number that no builder
+ * reads from one cannot be turned at all.
+ */
+export interface StoveRecipe {
+  readonly feet: StoveFeet;
+  readonly flue: StoveFlue;
+  readonly plate: StovePlate;
+}
+
+/**
+ * The cast plinth: four legs and two rails, filling the gap the shell stands
+ * over. Its height is not here, because it is the shell's `stand` — that gap is
+ * what the legs are the length of.
+ */
+export interface StoveFeet {
+  readonly radiusTop: number;
+  readonly radiusFoot: number;
+  /** How far out from the centre each leg stands, the same in both axes. */
+  readonly spread: number;
+  /** The two rails between them, which run along the leg lines front and back. */
+  readonly railWidth: number;
+  readonly railHeight: number;
+  readonly railDepth: number;
+}
+
+/** The stovepipe, rising out of the shell's roof. */
+export interface StoveFlue {
+  /** Where it stands: back of centre and left of it by the same amount. */
+  readonly offset: number;
+  readonly radiusTop: number;
+  readonly radiusFoot: number;
+  readonly height: number;
+  /** The collar where the pipe passes the shell, measured up from the roof. */
+  readonly collarRadius: number;
+  readonly collarHeight: number;
+  readonly collarRise: number;
+  /**
+   * The band under the rain cap, measured down from the pipe's tip. Its radius
+   * is the collar's today and is still its own number: the two are at opposite
+   * ends of the pipe and nothing says they move together.
+   */
+  readonly bandRadius: number;
+  readonly bandHeight: number;
+  readonly bandDrop: number;
+  /** The rain cap, whose middle sits above the tip rather than on it. */
+  readonly capRadiusTop: number;
+  readonly capRadiusFoot: number;
+  readonly capHeight: number;
+  readonly capRise: number;
+}
+
+/** The two hotplates on the roof. */
+export interface StovePlate {
+  readonly radius: number;
+  readonly thickness: number;
+  /**
+   * How far a plate's middle stands above the roof. Less than half its own
+   * thickness, so the plate is bedded into the iron rather than lying on it.
+   */
+  readonly rise: number;
+  /** Either side of centre, and both the same distance forward of it. */
+  readonly spread: number;
+  readonly forward: number;
+}
+
+/** The one stove the colony builds, at the numbers it was drawn at. */
+export const STOVE_DEFAULT: StoveRecipe = {
+  feet: { radiusTop: 0.06, radiusFoot: 0.085, spread: 0.3, railWidth: 0.78, railHeight: 0.06, railDepth: 0.1 },
+  flue: {
+    offset: 0.26,
+    radiusTop: 0.07,
+    radiusFoot: 0.075,
+    height: 0.5,
+    collarRadius: 0.095,
+    collarHeight: 0.05,
+    collarRise: 0.06,
+    bandRadius: 0.095,
+    bandHeight: 0.04,
+    bandDrop: 0.07,
+    capRadiusTop: 0.1,
+    capRadiusFoot: 0.085,
+    capHeight: 0.06,
+    capRise: 0.02,
+  },
+  plate: { radius: 0.14, thickness: 0.025, rise: 0.01, spread: 0.2, forward: 0.1 },
+};
+
+/**
+ * The legs and rails under the shell.
+ *
+ * The rails' height off the ground is the one number here that does not come
+ * out of the arithmetic exactly: `stand - railHeight / 2` is 0.11000000000000001
+ * against the 0.11 that was written, because 0.14 - 0.06 is already
+ * 0.08000000000000002 and no association of the three fixes it. The table's slab
+ * had an exact form and this has none, so the drift is kept rather than removed,
+ * and it was measured before it was kept: the rail's vertices land at 0.08 and
+ * 0.14, where a float32 step is seven parts in a billion against a leftover of
+ * one part in a hundred quadrillion. The table's leg drifted into the frame
+ * because its foot sat at y = 0, where the steps are small enough for a last bit
+ * to matter. Nothing here is near the origin.
+ */
+export function stoveFeetGeometry(s: ShellRecipe, r: StoveRecipe): THREE.BufferGeometry {
+  const feet = r.feet;
+  const parts: THREE.BufferGeometry[] = [];
+  for (const x of [-feet.spread, feet.spread]) {
+    for (const z of [-feet.spread, feet.spread]) {
+      parts.push(cylinder(feet.radiusTop, feet.radiusFoot, s.stand, s.stand / 2, 12).translate(x, 0, z));
+    }
+  }
+  const railY = s.stand - feet.railHeight / 2;
+  parts.push(box(feet.railWidth, feet.railHeight, feet.railDepth, railY, 0, -feet.spread));
+  parts.push(box(feet.railWidth, feet.railHeight, feet.railDepth, railY, 0, feet.spread));
+  return merge(...parts);
+}
+
+/** The flue, leaving the roof and finishing in its cap. */
+export function stoveFlueGeometry(s: ShellRecipe, r: StoveRecipe): THREE.BufferGeometry {
+  const flue = r.flue;
+  const roof = s.stand + s.height;
+  const tip = roof + flue.height;
+  const at = (g: THREE.BufferGeometry) => g.translate(-flue.offset, 0, -flue.offset);
+  return merge(
+    at(cylinder(flue.radiusTop, flue.radiusFoot, flue.height, roof + flue.height / 2, 16)),
+    at(cylinder(flue.collarRadius, flue.collarRadius, flue.collarHeight, roof + flue.collarRise, 16)),
+    at(cylinder(flue.bandRadius, flue.bandRadius, flue.bandHeight, tip - flue.bandDrop, 16)),
+    at(cylinder(flue.capRadiusTop, flue.capRadiusFoot, flue.capHeight, tip + flue.capRise, 16)),
+  );
+}
+
+/** The hotplates, bedded into the roof. */
+export function stovePlateGeometry(s: ShellRecipe, r: StoveRecipe): THREE.BufferGeometry {
+  const plate = r.plate;
+  const y = s.stand + s.height + plate.rise;
+  const one = (at: number) =>
+    cylinder(plate.radius, plate.radius, plate.thickness, y, 20).translate(at, 0, plate.forward);
+  return merge(one(-plate.spread), one(plate.spread));
+}
+
+/**
  * How high off y = 0 a loose stack sits on this cell: on the furniture there,
  * or else on the drawn ground. The ground is not the plane — a snowpack lifts
  * it and a lake bed sinks it (`groundLiftAt`) — and a stack drawn at zero
@@ -2042,15 +2202,7 @@ export class BuildingsView {
     // exactly that.
     this.pool(
       'stove.feet',
-      (() => {
-        const parts: THREE.BufferGeometry[] = [];
-        for (const x of [-0.3, 0.3]) {
-          for (const z of [-0.3, 0.3]) parts.push(cylinder(0.06, 0.085, 0.14, 0.07, 12).translate(x, 0, z));
-        }
-        parts.push(box(0.78, 0.06, 0.1, 0.11, 0, -0.3));
-        parts.push(box(0.78, 0.06, 0.1, 0.11, 0, 0.3));
-        return merge(...parts);
-      })(),
+      stoveFeetGeometry(SHELL_DEFAULT.stove, STOVE_DEFAULT),
       paint('stove', 0x4b4b52, 0.55, 0.3),
       16,
     );
@@ -2099,18 +2251,13 @@ export class BuildingsView {
     // and finishes in a rain cap.
     this.pool(
       'stove.flue',
-      merge(
-        cylinder(0.07, 0.075, 0.5, 1.29, 16).translate(-0.26, 0, -0.26),
-        cylinder(0.095, 0.095, 0.05, 1.1, 16).translate(-0.26, 0, -0.26),
-        cylinder(0.095, 0.095, 0.04, 1.47, 16).translate(-0.26, 0, -0.26),
-        cylinder(0.1, 0.085, 0.06, 1.56, 16).translate(-0.26, 0, -0.26),
-      ),
+      stoveFlueGeometry(SHELL_DEFAULT.stove, STOVE_DEFAULT),
       paint('stove', 0x56565d, 0.6, 0.28),
       16,
     );
     this.pool(
       'stove.plate',
-      merge(cylinder(0.14, 0.14, 0.025, 1.05, 20).translate(-0.2, 0, 0.1), cylinder(0.14, 0.14, 0.025, 1.05, 20).translate(0.2, 0, 0.1)),
+      stovePlateGeometry(SHELL_DEFAULT.stove, STOVE_DEFAULT),
       (() => {
         // The hotplates, and the one part of the class round 9 missed. They
         // carry an emissive so a lit stove has two red discs on its top, and
