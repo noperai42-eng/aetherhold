@@ -4,6 +4,72 @@ One round, one measured gap, one fix. Newest first.
 
 ---
 
+## 2026-09-12 — Two tables that were the same table, and a leg that moved at the foot
+
+**The gap.** The round before this one lifted the five machine shells out of the
+`pool` calls they were typed into. The next group chosen the same way is the
+furniture: the dining table and the games table were drawn eleven months apart
+and already share a `legs(pitch, h, rTop, rBottom)` helper, so they have the
+parameterisation and lack only the recipe.
+
+**What the two tables turned out to agree on.** Set the four calls side by side
+and every number that is a decision agrees, while every number that differs is a
+size. Both slabs are 0.08 thick. Both are eased at 0.035. Both tops are square.
+And the legs stand 0.09 inside the top's edge on both — 0.98 / 2 − 0.09 = 0.40
+and 0.74 / 2 − 0.09 = 0.28, exactly, which is not a coincidence two tables reach
+by eye. What differs is the width, the height, and how much the legs taper.
+
+**Where the height comes from.** `surface` is the field the rest hangs off,
+because it is the one number that is not the modeller's: the dining table's 0.9
+is `ITEM_REST`'s, where a hauled stack comes to rest on the table, and the call
+site's comment already said the slab was built down from it. The games table has
+no `ITEM_REST` entry and falls through to its def's `standHeight`, which is
+zero, so its 0.81 is a number somebody chose by eye. It is written in the recipe
+as a literal, because there is nothing in the sim to read it from.
+
+**The one that was not free.** The leg height is the underside of the slab, and
+the obvious way to write that is `surface - thickness`. A probe written before
+the lift said no: 38 words of the leg's buffer came out different. It is not the
+top of the leg — 0.9 − 0.08 is 0.8200000000000001 in a double, and one unit in
+the last place of a double is some eight orders under what a float32 can hold
+apart at that height, so the top of the leg does not move. It is the *foot*. The
+foot sits at zero, a float32's steps there are tiny, and the leftover bit is
+enough to land the vertices on the other side of one: 3.5762786065873797e-9
+becomes 3.5762788286319847e-9. Walking down in two steps through the middle of
+the slab — which the top geometry needs anyway — is exact for both tables. The
+recipe does that, the reason is written next to it, and the pin below goes red
+if anybody folds it back.
+
+**What did not change.** No vertex. The tops are pinned word-for-word against
+goldens built from the frozen calls, and the legs receive exactly the same four
+doubles they received before, so no frame could have moved and the look loop has
+nothing to judge. `game.board`, `game.pieces` and `game.stools` are trim and
+were left where they were, the same way the machine trim was.
+
+**The pins.** Four, in the `a table` block that already existed: both tops
+byte-identical to the calls they came out of; both sets of legs standing in
+exactly the bounding box the frozen calls stood them in, `toBe` and not
+`toBeCloseTo`, which is what catches the fold; the two recipes held at literal
+numbers; and all four parts still pooled, because a `pool` rewire that silently
+drops a key would otherwise draw a top floating over nothing. The `golden`
+helper moved from inside the machine block to module scope so both blocks use
+one copy.
+
+**Verified.** Four mutations, each red and restored green: folding the leg
+derivation (the foot pin, alone); moving the games table's inset to 0.08; easing
+the dining top at 0.03; deleting the `game.legs` pool. `tsc --noEmit` clean.
+Full suite 2661 passed | 13 skipped.
+
+**Next target.** The three beds, which already share `bedSet(prefix, cap, head,
+...)` and are the last group in the buildings that has the parameterisation and
+lacks the recipe. After that the bench knob is the question, and it is still
+blocked on the same two things: the `covers` partition, since a second building
+bench has to take its names off the first, and the trim, which is positioned in
+absolute coordinates keyed to the body it sits on and would float off a resized
+one.
+
+---
+
 ## 2026-09-10 — Five machines that were one shape written five times
 
 **Track: the forge.** Stage 5 says roll the recipe treatment forward family by family in

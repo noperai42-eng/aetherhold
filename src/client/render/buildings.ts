@@ -1505,6 +1505,73 @@ function legs(pitch: number, h: number, rTop: number, rBottom: number): THREE.Bu
   return merge(...parts);
 }
 
+/**
+ * A table: a square top on four tapered legs, which is the dining table and the
+ * games table both.
+ *
+ * The two were drawn eleven months apart and they are the same object at two
+ * sizes. Set them side by side and every number that differs is a size, and
+ * every number that is a decision agrees: the slab is 0.08 thick on both, eased
+ * at 0.035 on both, and the legs stand 0.09 inside the top's edge on both. What
+ * differs is the width, the height a thing set down comes to rest at, and how
+ * much the legs taper.
+ *
+ * `surface` is the field the rest hangs off, because it is the one number that
+ * is not the modeller's. The dining table's is `ITEM_REST`'s 0.9 — where a
+ * hauled stack comes to rest on it — and the slab was always built down from
+ * that. The games table has no `ITEM_REST` entry and falls through to its def's
+ * `standHeight` of zero, so its 0.81 is a number somebody chose by eye; it is
+ * written here as a literal rather than read from the sim, because there is
+ * nothing in the sim to read.
+ *
+ * There is one width and no depth. `legs()` takes a single `pitch` for both
+ * axes, so a rectangular top would stand on a square frame — an object nobody
+ * has drawn and the shared helper cannot express. A `depth` field would be a
+ * knob that produces a broken table at every setting but one.
+ */
+export interface TableRecipe {
+  readonly width: number;
+  /** Where the top of the slab is: what a thing set down on the table stands on. */
+  readonly surface: number;
+  readonly thickness: number;
+  readonly round: number;
+  /** How far inside the top's edge the legs stand. */
+  readonly inset: number;
+  /** The leg's radius where it meets the apron. */
+  readonly legTop: number;
+  /** And where it meets the floor, which is the smaller of the two. */
+  readonly legFoot: number;
+}
+
+export const TABLE_DEFAULT: Readonly<Record<string, TableRecipe>> = {
+  table: { width: 0.98, surface: 0.9, thickness: 0.08, round: 0.035, inset: 0.09, legTop: 0.055, legFoot: 0.034 },
+  game: { width: 0.74, surface: 0.81, thickness: 0.08, round: 0.035, inset: 0.09, legTop: 0.048, legFoot: 0.03 },
+};
+
+/**
+ * The middle of the slab, which is where a box geometry wants to be told to go.
+ *
+ * It is a step on the way to the underside, and the step is load-bearing. The
+ * underside is `mid - thickness / 2`, and folding that into the obvious
+ * `surface - thickness` moves the legs: 0.9 - 0.08 is 0.8200000000000001 in a
+ * double, and while that last bit is far too small to matter at the top of the
+ * leg, the foot of the leg sits at zero, where a float32's steps are tiny
+ * enough for it to land on the other side of one. The vertices at the floor
+ * come out a different word. Going through the middle of the slab is exact for
+ * both tables, so do not simplify it.
+ */
+function tableMid(r: TableRecipe): number {
+  return r.surface - r.thickness / 2;
+}
+
+export function tableTopGeometry(r: TableRecipe): THREE.BufferGeometry {
+  return rbox(r.width, r.thickness, r.width, tableMid(r), 0, 0, r.round);
+}
+
+export function tableLegsGeometry(r: TableRecipe): THREE.BufferGeometry {
+  return legs(r.width / 2 - r.inset, tableMid(r) - r.thickness / 2, r.legTop, r.legFoot);
+}
+
 /** A sandbag: a squashed capsule lying along x, at rest on `y`. */
 function bag(y: number, x: number, z: number, alongZ: boolean): THREE.BufferGeometry {
   const g = new THREE.CapsuleGeometry(0.15, 0.36, 3, 10);
@@ -1746,11 +1813,10 @@ export class BuildingsView {
     // legs that taper toward the floor. The taper was the wrong way round —
     // thin at the top and thick at the foot, which is a stool leg, not a
     // table's — and reading the two numbers as "at the apron" and "at the
-    // floor" is the whole fix. The top's height is fixed by `ITEM_REST`, which
-    // is where a hauled stack comes to rest on it: 0.9, and the slab is built
-    // down from that.
-    this.pool('table.top', rbox(0.98, 0.08, 0.98, 0.86, 0, 0, 0.035), solidMat(0.7), 32);
-    this.pool('table.legs', legs(0.4, 0.82, 0.055, 0.034), solidMat(0.8), 32);
+    // floor" is the whole fix. Both tables now come out of `TableRecipe`,
+    // which is where the taper and the rest height are written down.
+    this.pool('table.top', tableTopGeometry(TABLE_DEFAULT.table), solidMat(0.7), 32);
+    this.pool('table.legs', tableLegsGeometry(TABLE_DEFAULT.table), solidMat(0.8), 32);
 
     // A games table: a smaller top than the dining table, a dark board laid on
     // it with pale pieces standing on the board, and a stool either side. The
@@ -1758,8 +1824,8 @@ export class BuildingsView {
     // same silhouette, and the dark square on top is what tells you which one
     // your settlers are playing at. Its material multiplies under the palette
     // tint, the same trick the grave uses to get two tones from one entry.
-    this.pool('game.top', rbox(0.74, 0.08, 0.74, 0.77, 0, 0, 0.035), solidMat(0.7), 24);
-    this.pool('game.legs', legs(0.28, 0.73, 0.048, 0.03), solidMat(0.8), 24);
+    this.pool('game.top', tableTopGeometry(TABLE_DEFAULT.game), solidMat(0.7), 24);
+    this.pool('game.legs', tableLegsGeometry(TABLE_DEFAULT.game), solidMat(0.8), 24);
     this.pool('game.board', rbox(0.5, 0.03, 0.5, 0.825, 0, 0, 0.01, 1), tone(0x4e6b46, 0.95), 24);
     this.pool(
       'game.pieces',

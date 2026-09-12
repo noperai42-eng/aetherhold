@@ -397,7 +397,7 @@ to be overruled by the photographs:
 | Trees | 2 | Variation already exists and is unaddressable; making it addressable is nearly free. |
 | Piles | 8 | Eight objects sharing a prefix, seen constantly, each small. |
 | People and fauna | 5 | The heaviest models and the most looked-at, but also the ones with the most existing look-loop rounds behind them — least likely to be wrong. |
-| Buildings | 26 | Largest surface (3,451 lines) and least varied per instance; a stove is one stove. Last on purpose. On the bench since 2026-09-10, with one field and no recipe. Five of the twenty-six — the machine shells — build from `ShellRecipe` as of 2026-09-10; the bench still has no knob to turn, so the census still reads no recipe here. |
+| Buildings | 26 | Largest surface (3,451 lines) and least varied per instance; a stove is one stove. Last on purpose. On the bench since 2026-09-10, with one field and no recipe. Five of the twenty-six — the machine shells — build from `ShellRecipe` as of 2026-09-10, and the two tables from `TableRecipe` as of 2026-09-12; the bench still has no knob to turn, so the census still reads no recipe here. |
 
 Grass is a special case worth naming: it cannot be exported to `.glb`, so the bench
 is the *only* place its shader sway can ever be judged in isolation. That makes it a
@@ -912,6 +912,30 @@ is the right shape for a game drawing flat polygons where a material is a palett
 Aetherhold's materials are `MeshStandardMaterial` with an ambient-occlusion bake
 living in vertex colours, so the split is not free and is not obviously worth
 paying for. Revisit if the recipe work makes it cheap.
+
+**Built — the two tables, 2026-09-12.** The second group out of its literals, chosen the
+way the first was: the dining table and the games table were drawn eleven months apart, and
+they are one object at two sizes. Every number that is a decision agrees — the slab is 0.08
+thick and eased at 0.035 on both, both tops are square, and the legs stand 0.09 inside the
+top's edge on both — while the width, the height and the taper are the only things that
+differ. `buildings.ts` now has `TableRecipe`, `TABLE_DEFAULT` and two geometry functions,
+and the four `pool` calls read out of the table.
+
+`surface` is the field the others hang off, because it is the one number that is not the
+modeller's: the dining table's 0.9 is `ITEM_REST`'s, where a hauled stack comes to rest on
+it. The games table has no `ITEM_REST` entry, falls through to a `standHeight` of zero, and
+so keeps its 0.81 as a literal — there is nothing in the sim to read. There is one `width`
+and no `depth`, because `legs()` takes a single pitch for both axes and a rectangular top
+would stand on a square frame.
+
+Nothing a player sees moved, but this one was not free the way the shells were. The leg
+height is the underside of the slab, and writing that as `surface - thickness` moves the
+vertices at the *foot* of the leg: 0.9 − 0.08 is 0.8200000000000001 in a double, which is
+far below what a float32 holds apart at the top of the leg and not below it at zero, where
+the steps are eight orders finer. A probe written before the lift caught it; walking down
+through the middle of the slab in two steps is exact for both tables, and the pin on the
+legs' bounding box is `toBe` so that folding it back goes red. The census is unchanged and
+correctly so, for the same reason as the shells: none of this is draggable yet.
 
 **Built — the machine shells, 2026-09-10.** The first of the twenty-six buildings to come
 out of its literals. The building grid stands all of them together, and the middle of that

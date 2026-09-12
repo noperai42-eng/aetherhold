@@ -12,7 +12,15 @@ import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
 import { describe, expect, it } from 'vitest';
 
-import { BuildingsView, SHELL_DEFAULT, shellBodyGeometry, shellLidGeometry } from '../src/client/render/buildings';
+import {
+  BuildingsView,
+  SHELL_DEFAULT,
+  TABLE_DEFAULT,
+  shellBodyGeometry,
+  shellLidGeometry,
+  tableLegsGeometry,
+  tableTopGeometry,
+} from '../src/client/render/buildings';
 import { AO_FLOOR } from '../src/client/render/occlusion';
 import { BUILDING_COLOR, RESOURCE_COLOR } from '../src/client/render/palette';
 import { groundLiftAt } from '../src/client/render/terrain';
@@ -464,6 +472,13 @@ describe('a bed', () => {
   });
 });
 
+/** `rbox` as `buildings.ts` writes it, so a golden is built the same way. */
+function golden(w: number, h: number, d: number, y: number, r: number): THREE.BufferGeometry {
+  const g = new RoundedBoxGeometry(w, h, d, 2, r);
+  g.translate(0, y, 0);
+  return g;
+}
+
 describe('a table', () => {
   it('carries an apron under its top and tapers its legs toward the floor', () => {
     // A top on four posts has nothing between the underside of the top and the
@@ -489,6 +504,97 @@ describe('a table', () => {
       if (y > 0.8) atApron = Math.max(atApron, r);
     }
     expect(atApron, `a leg ${atFloor} wide at the floor and ${atApron} at the apron`).toBeGreaterThan(atFloor);
+    view.dispose();
+  });
+
+  /**
+   * The two `rbox` calls the tops were lifted out of: width, thickness, depth,
+   * centre height and eased edge. Copied out by hand and frozen, because a
+   * recipe checked against the code that reads it agrees with itself whatever
+   * either of them says.
+   */
+  const TOPS_BEFORE: Record<string, [number, number, number, number, number]> = {
+    table: [0.98, 0.08, 0.98, 0.86, 0.035],
+    game: [0.74, 0.08, 0.74, 0.77, 0.035],
+  };
+
+  it('builds both tops byte-identical to the calls they were lifted out of', () => {
+    // The dining table and the games table were drawn as separate objects and
+    // are one object at two sizes, and the value of saying so in a recipe rests
+    // entirely on it having changed nothing on screen. The recipe reaches the
+    // slab's centre by arithmetic — `surface - thickness / 2` — where the calls
+    // had 0.86 and 0.77 written down, so this asks for the same words, not for
+    // close-enough.
+    for (const [kind, want] of Object.entries(TOPS_BEFORE)) {
+      const a = golden(...want).attributes.position.array as Float32Array;
+      const b = tableTopGeometry(TABLE_DEFAULT[kind]!).attributes.position.array as Float32Array;
+      expect(b.length, `${kind}.top vertex count`).toBe(a.length);
+      let differing = 0;
+      for (let j = 0; j < a.length; j++) if (a[j] !== b[j]) differing++;
+      expect(differing, `${kind}.top words differing from the shipped buffer`).toBe(0);
+    }
+  });
+
+  it('stands both sets of legs in exactly the box the frozen calls stood them in', () => {
+    // `legs` is private, so there is no golden to build here the way there is
+    // for a top; what there is instead is the box the four legs and their apron
+    // occupy, which pins every number the recipe hands over. The half-widths are
+    // the leg pitch plus the radius at the apron — 0.4 + 0.055 and 0.28 + 0.048
+    // — and the top of the box is the leg height, which is the underside of the
+    // slab.
+    //
+    // The floor of the box is the interesting one, and it is why these are
+    // `toBe` and not `toBeCloseTo`. The recipe walks down to the leg height in
+    // two steps, through the middle of the slab, and the obvious single step of
+    // `surface - thickness` gives a number one unit in the last place higher:
+    // 0.8200000000000001. At the top of the leg that difference is far below
+    // what a float32 can hold apart and nothing moves. At the foot it is not,
+    // because the foot sits at zero, where a float32's steps are some eight
+    // orders finer than they are at a metre — and the vertices there come out
+    // 3.5762788286319847e-9 instead. Fold the derivation and this goes red,
+    // which is the whole reason it is written the long way.
+    const WANT: Record<string, { half: number; top: number; floor: number }> = {
+      table: { half: 0.45500001311302185, top: 0.8199999928474426, floor: 3.5762786065873797e-9 },
+      game: { half: 0.328000009059906, top: 0.7300000190734863, floor: -9.53674295089968e-9 },
+    };
+    for (const [kind, want] of Object.entries(WANT)) {
+      const g = tableLegsGeometry(TABLE_DEFAULT[kind]!);
+      g.computeBoundingBox();
+      const b = g.boundingBox!;
+      expect(b.max.x, `${kind} legs reach x`).toBe(want.half);
+      expect(b.min.x, `${kind} legs reach -x`).toBe(-want.half);
+      expect(b.max.z, `${kind} legs reach z`).toBe(want.half);
+      expect(b.min.z, `${kind} legs reach -z`).toBe(-want.half);
+      expect(b.max.y, `${kind} legs meet the underside of the top`).toBe(want.top);
+      expect(b.min.y, `${kind} legs stand on the floor`).toBe(want.floor);
+    }
+  });
+
+  it('holds the two recipes at the numbers the two tables were drawn at', () => {
+    // Literal numbers, because a table checked against itself is not a check.
+    // Three of these are the reason the two are one family rather than two
+    // things that happen to be tables: the slab is the same thickness and the
+    // same eased edge on both, and the legs stand the same distance inside the
+    // top's edge on both. What differs is a size and a taper.
+    expect(TABLE_DEFAULT.table).toEqual({
+      width: 0.98, surface: 0.9, thickness: 0.08, round: 0.035, inset: 0.09, legTop: 0.055, legFoot: 0.034,
+    });
+    expect(TABLE_DEFAULT.game).toEqual({
+      width: 0.74, surface: 0.81, thickness: 0.08, round: 0.035, inset: 0.09, legTop: 0.048, legFoot: 0.03,
+    });
+    expect(Object.keys(TABLE_DEFAULT).sort()).toEqual(['game', 'table']);
+  });
+
+  it('still pools a top and legs for both tables', () => {
+    // Four `pool` calls rewired, and the way that goes wrong with nothing else
+    // noticing is a part quietly ceasing to be pooled: the colony would draw a
+    // table top floating over nothing and nothing would throw.
+    const view = new BuildingsView();
+    for (const key of ['table.top', 'table.legs', 'game.top', 'game.legs']) {
+      const g = partGeometry(view, key);
+      g.computeBoundingBox();
+      expect(g.boundingBox!.max.y, `${key} has height`).toBeGreaterThan(0);
+    }
     view.dispose();
   });
 });
@@ -521,13 +627,6 @@ describe('a machine', () => {
     }
     view.dispose();
   });
-
-  /** `rbox` as `buildings.ts` writes it, so a golden is built the same way. */
-  const golden = (w: number, h: number, d: number, y: number, r: number) => {
-    const g = new RoundedBoxGeometry(w, h, d, 2, r);
-    g.translate(0, y, 0);
-    return g;
-  };
 
   /**
    * The nine `rbox` calls as they stood before the shells were lifted into a
