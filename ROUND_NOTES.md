@@ -4,6 +4,78 @@ One round, one measured gap, one fix. Newest first.
 
 ---
 
+## 2026-09-12 — The same rack on another machine
+
+**The gap.** `gen.skid` was four members in world coordinates under the
+generator: two cross members 0.94 across at z = ±0.28 running from the ground to
+y = 0.12, and two runners at x = ±0.36 standing 0.1 off the ground and 0.58
+long. The one that matters most — the cross members' height — happens to equal
+the housing's plinth, so the engine rested on its skid by coincidence rather
+than by construction, exactly as the battery crate did before its rack was
+lifted.
+
+**It is the rack again, and that is the round.** Same four members, same two
+anchors: the cross members *fill* the plinth, taking their height from `s.stand`
+and their middle from half of it; the runners *stand on* the ground with a
+height of their own. Two machines, one assembly, drawn independently and
+agreeing on both anchors.
+
+**Where they disagree is the interesting part.** The bank's rack derives exactly
+one length — a rail runs from the front runner's axis to the back one's, so it
+takes `runnerSpread * 2` rather than a number. The skid does not hold that. Its
+runners are 0.58 long against a cross-member spread of 0.28, so each end
+overhangs by a centimetre rather than meeting a centre line. Relaying it on the
+bank's rule would have been an easy and invisible mistake — at the drawn numbers
+it is a two-centimetre difference on a member half a metre long — and it is the
+kind of tidy a lift is most likely to make, because the rule *reads* structural.
+
+It is not. **A relation that looks structural on one drawing can be a number on
+the next**, which is the round's transferable result and now its acceptance row.
+`runnerLength` is held as a length of its own, pinned at three cross-member
+spreads the skid was never built at, and logged as a brief rather than closed.
+
+**Extract-at-three, asked of a second family and answered before it is due.**
+Two is not three, so the file's rule does not ask for the extraction yet. What
+this round pins is what the answer would be if it did, and it is no. The bank's
+cross members are plain boxes; this machine's are rounded. The same four members
+cost 2,160 position words here against the bank's 432 — a factor of five — so a
+shared builder would have to move vertices on one machine or the other. That is
+the reason the cooler could not join the back-outlet family, reached this time
+by counting rather than by argument, and written as a test rather than only as
+prose so a later round that tries the merge is told why by a failure.
+
+**One more coincidence, pinned as one.** Both machines leave exactly two
+centimetres between the ground member's top and the floor above it, out of a
+plinth of 0.12 and a runner of 0.10 here and a plinth of 0.10 and a rail of 0.08
+there. Four numbers, none of them shared, one gap. The proof it is a
+coincidence is that neither machine moves when the other's numbers do.
+
+**The first round where the half-read field cost nothing.** `rack.railHeight`
+and `band.thick` were each found by the drill, after the fact, at the price of
+writing a pin and re-running. `runnerHeight` here is read the same two ways —
+as the runner's own thickness and, halved, as the middle it is drawn about — and
+the ground pin was written at heights the skid was never cut to *before* the
+drill ran. The two mutations that would otherwise have come back green were red
+on the first pass. A lesson two rounds old, applied rather than rediscovered,
+which is the only evidence that the notes are doing anything.
+
+**Verified.** 2,160 position words byte-identical to the literals, probed in the
+module before the lift and the probe deleted after; the pool byte-identical too,
+dumped from the old file and the new and compared. Ten mutations, all red; seven
+caught by exactly one pin each. `tests/buildings-view.test.ts` goes from 137 to
+146 tests, the suite from 2,746 to 2,755. tsc clean. No frames: no vertex
+moved.
+
+**Next.** `gen.wheel`, `gen.stack` and `gen.fire` finish the generator.
+`gen.wheel` is the first thing on this bench built from a rotated cylinder — a
+flywheel on the machine's flank, lying on its side — so its anchor question is
+one no round has asked yet: whether a part that answers to a face should take
+that face's plane or the machine's middle. After those, `cooler.feet` and
+`cooler.frost`, and then the solar panel, whose parts answer to a tilt rather
+than to a plane.
+
+---
+
 ## 2026-09-12 — The last two on the bank, and the number read twice
 
 **The gap.** `batt.caps` and `batt.band` were the two pools still in world

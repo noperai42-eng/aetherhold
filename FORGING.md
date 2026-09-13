@@ -397,7 +397,7 @@ to be overruled by the photographs:
 | Trees | 2 | Variation already exists and is unaddressable; making it addressable is nearly free. |
 | Piles | 8 | Eight objects sharing a prefix, seen constantly, each small. |
 | People and fauna | 5 | The heaviest models and the most looked-at, but also the ones with the most existing look-loop rounds behind them — least likely to be wrong. |
-| Buildings | 26 | Largest surface (3,451 lines) and least varied per instance; a stove is one stove. Last on purpose. On the bench since 2026-09-10, with one field and no recipe. Five of the twenty-six — the machine shells — build from `ShellRecipe` as of 2026-09-10, the two tables from `TableRecipe` and the two walls from `WallRecipe` as of 2026-09-12, the games table's trim follows its own top as of the same day — the first building whose parts would survive a knob being turned — and the stove's feet, flue and hotplates follow its shell, which is the first machine to do so, its door following the face it is cut into as a four-link chain, and the louvre it shares with the cooler, the generator and the battery bank lifted out of all four, the cooler's lid furniture following the lid rather than the world, and its compressor, fins and cable following the face behind it, and the generator's stacks from `GenStacks`, and the battery bank's terminals and straps from `BattRecipe` over a `BackOutlet` the generator and the bank now share, the bank's rack under all of it and its cell caps and charge band as of the same day — which makes the battery bank the first machine here with all six of its pools recipe-built and no literal geometry left on it anywhere, and leaves `cooler.vent` and `gen.trim` built out of three recipes each. The bench still has no knob, so the census still reads no recipe here. |
+| Buildings | 26 | Largest surface (3,451 lines) and least varied per instance; a stove is one stove. Last on purpose. On the bench since 2026-09-10, with one field and no recipe. Five of the twenty-six — the machine shells — build from `ShellRecipe` as of 2026-09-10, the two tables from `TableRecipe` and the two walls from `WallRecipe` as of 2026-09-12, the games table's trim follows its own top as of the same day — the first building whose parts would survive a knob being turned — and the stove's feet, flue and hotplates follow its shell, which is the first machine to do so, its door following the face it is cut into as a four-link chain, and the louvre it shares with the cooler, the generator and the battery bank lifted out of all four, the cooler's lid furniture following the lid rather than the world, and its compressor, fins and cable following the face behind it, and the generator's stacks from `GenStacks`, and the battery bank's terminals and straps from `BattRecipe` over a `BackOutlet` the generator and the bank now share, the bank's rack under all of it and its cell caps and charge band as of the same day — which makes the battery bank the first machine here with all six of its pools recipe-built and no literal geometry left on it anywhere, and leaves `cooler.vent` and `gen.trim` built out of three recipes each, with the generator's skid lifted the same day into a `GenSkid` that is the bank's rack again and deliberately not the bank's builder. The bench still has no knob, so the census still reads no recipe here. |
 
 Grass is a special case worth naming: it cannot be exported to `.glb`, so the bench
 is the *only* place its shader sway can ever be judged in isolation. That makes it a
@@ -912,6 +912,39 @@ is the right shape for a game drawing flat polygons where a material is a palett
 Aetherhold's materials are `MeshStandardMaterial` with an ambient-occlusion bake
 living in vertex colours, so the split is not free and is not obviously worth
 paying for. Revisit if the recipe work makes it cheap.
+
+**Built — the same rack on another machine, 2026-09-12.** `gen.skid`, the two
+cross members and two runners under the generator, lifted into `GenSkid`. It is
+the battery bank's rack a second time: same four members, same two anchors, the
+cross members taking their height from `s.stand` so the housing rests on them at
+whatever height it stands, the runners lying on the ground with a height of
+their own and two centimetres of daylight under the floor. Both machines leave
+exactly that two centimetres, out of a plinth of 0.12 and a runner of 0.10 here
+and a plinth of 0.10 and a rail of 0.08 there — four numbers, none shared, one
+gap, pinned as the coincidence it is.
+
+Two is not three, so the file's rule does not ask for the extraction yet. What
+this round pins is what the answer would be if it did, and it is no: the bank's
+cross members are plain boxes and this machine's are rounded, so the same four
+members cost 2,160 words here against the bank's 432. A shared builder would
+move vertices on one machine or the other — the reason the cooler could not join
+the back-outlet family, reached this time by counting rather than by argument,
+and written as a test so a later round that tries it gets told why.
+
+And the one length the bank's rack DERIVES is the one this machine does not
+hold. A battery rail laps exactly to the runners' axes and takes that spread as
+its length; a skid runner is a centimetre longer than that at each end and
+overhangs the members it crosses. The same assembly on two machines disagreeing
+about its one derived relation is worth more than either version of it: a
+relation that looks structural on one drawing can be a number on the next, so
+`runnerLength` is held as a length of its own and logged as a brief rather than
+quietly relaid on the bank's rule.
+
+The round is also the first where the half-read field cost nothing. `railHeight`
+and `band.thick` were each found by the drill; `runnerHeight` is read the same
+two ways and the ground pin was written at heights the skid was never cut to
+before the drill ran, so the two mutations that would have been green were red
+on the first pass. Ten mutations, all red, seven caught by exactly one pin each.
 
 **Built — the last two on the bank, and the number read twice, 2026-09-12.**
 `batt.caps` and `batt.band`, the six cell caps bedded into the lid and the

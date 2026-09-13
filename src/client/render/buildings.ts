@@ -1773,6 +1773,77 @@ export function compressorGeometry(s: ShellRecipe, r: CompressorRecipe): THREE.B
 }
 
 /**
+ * The skid the generator is bolted to: two cross members filling the gap
+ * between the ground and the housing's floor, and two runners lying on the
+ * ground between them.
+ *
+ * This is the battery bank's rack a second time — same four members, same two
+ * anchors, the cross members taking their height from `s.stand` so the housing
+ * rests on them at whatever height it stands, the runners standing on the
+ * ground with a height of their own. Two is not three and this file extracts at
+ * three, so it stays its own builder; but the interesting part is that even at
+ * three these two could not share one. The bank's cross members are plain
+ * boxes and this machine's are ROUNDED boxes, which is a different mesh with a
+ * different vertex count, so a shared builder would move vertices — the same
+ * answer the cooler's back gave when the outlet family was settled.
+ *
+ * And the one length the bank's rack DERIVES is the one this machine does not
+ * hold. A battery rail laps exactly to the runners' axes; a skid runner is a
+ * centimetre longer than that at each end, so it overhangs the cross members it
+ * crosses rather than meeting their centre lines. That is how it was drawn and
+ * it is held as a length of its own, not quietly relaid on the bank's rule.
+ * Measured at a centimetre and logged as a brief.
+ */
+export interface GenSkid {
+  /** The cross members, which fill the gap between the ground and the floor. */
+  readonly crossAcross: number;
+  readonly crossThick: number;
+  /** Their axes, either side of the machine's middle. */
+  readonly crossSpread: number;
+  readonly crossRound: number;
+  readonly crossSeg: number;
+  readonly runnerWidth: number;
+  /** The runners lie on the ground, so this is all of them there is. */
+  readonly runnerHeight: number;
+  /** Their own length, which is NOT the cross members' spread doubled. */
+  readonly runnerLength: number;
+  readonly runnerSpread: number;
+}
+
+export const GEN_SKID_DEFAULT: GenSkid = {
+  crossAcross: 0.94, crossThick: 0.14, crossSpread: 0.28, crossRound: 0.03, crossSeg: 1,
+  runnerWidth: 0.14, runnerHeight: 0.1, runnerLength: 0.58, runnerSpread: 0.36,
+};
+
+/** That skid, filling whatever gap the shell recipe leaves under the housing. */
+export function genSkidGeometry(s: ShellRecipe, r: GenSkid): THREE.BufferGeometry {
+  return merge(
+    ...[-1, 1].map((side) =>
+      rbox(
+        r.crossAcross,
+        s.stand,
+        r.crossThick,
+        s.stand / 2,
+        0,
+        side * r.crossSpread,
+        r.crossRound,
+        r.crossSeg,
+      ),
+    ),
+    ...[-1, 1].map((side) =>
+      box(
+        r.runnerWidth,
+        r.runnerHeight,
+        r.runnerLength,
+        r.runnerHeight / 2,
+        side * r.runnerSpread,
+        0,
+      ),
+    ),
+  );
+}
+
+/**
  * The generator's own ironwork: two exhaust stacks bedded into its lid. What
  * stands on its back face is a `BackOutlet`, which it no longer owns alone.
  *
@@ -3797,12 +3868,7 @@ export class BuildingsView {
     // under. Everything above is lifted by that.
     this.pool(
       'gen.skid',
-      merge(
-        rbox(0.94, 0.12, 0.14, 0.06, 0, -0.28, 0.03, 1),
-        rbox(0.94, 0.12, 0.14, 0.06, 0, 0.28, 0.03, 1),
-        box(0.14, 0.1, 0.58, 0.05, -0.36, 0),
-        box(0.14, 0.1, 0.58, 0.05, 0.36, 0),
-      ),
+      genSkidGeometry(SHELL_DEFAULT.gen, GEN_SKID_DEFAULT),
       paint('generator', 0x534e46, 0.6, 0.3),
       16,
     );

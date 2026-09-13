@@ -18,6 +18,7 @@ import {
   COOLER_DEFAULT,
   BACK_OUTLET_DEFAULT,
   BATT_DEFAULT,
+  GEN_SKID_DEFAULT,
   GEN_STACKS_DEFAULT,
   LOUVRE_DEFAULT,
   SHELL_DEFAULT,
@@ -35,6 +36,7 @@ import {
   battCellsGeometry,
   battLidGeometry,
   battRackGeometry,
+  genSkidGeometry,
   genStacksGeometry,
   louvreGeometry,
   shellBodyGeometry,
@@ -2661,6 +2663,208 @@ describe("a battery bank's cell caps and charge band", () => {
     expect(g.boundingBox!.max.z, 'the band no longer stands proud of the front').toBeGreaterThan(
       shell.depth / 2,
     );
+    view.dispose();
+  });
+});
+
+/**
+ * The skid under the generator, which is the battery bank's rack a second time
+ * — same four members, same two anchors, and the one relation the bank's rack
+ * derives is the one this machine does not hold.
+ *
+ * Two is not three, so it stays its own builder under this file's rule. What
+ * this block pins is that even at three these two could not share one: the
+ * bank's cross members are plain boxes and this machine's are rounded, which is
+ * a different mesh, so the same four members cost 2,160 words here against the
+ * bank's 432. A shared builder would move vertices, which is a look judgement
+ * and not a lift — the answer the cooler's back gave when the outlet family was
+ * settled, reached here by counting rather than by argument.
+ */
+describe("a generator's skid", () => {
+  const shell = SHELL_DEFAULT.gen;
+  const skid = GEN_SKID_DEFAULT;
+  const bounds = (g: THREE.BufferGeometry) => {
+    g.computeBoundingBox();
+    return g.boundingBox!;
+  };
+  const skidAt = (s = shell, r = skid) => bounds(genSkidGeometry(s, r));
+  const values = (g: THREE.BufferGeometry, k: number) => {
+    const a = g.attributes.position.array as Float32Array;
+    const set = new Set<number>();
+    for (let i = k; i < a.length; i += 3) set.add(a[i]);
+    return [...set].sort((p, q) => p - q);
+  };
+  /**
+   * The runners, asked for by the one axis that holds them alone: off the
+   * middle and inboard of where the cross members' eased corners begin. Every
+   * face of a runner is interior to the cross members' box, so this window is
+   * how both the ground they lie on and the length they overhang by are
+   * reached.
+   */
+  const runnersOnly = (s = shell, r = skid) => {
+    const a = genSkidGeometry(s, r).attributes.position.array as Float32Array;
+    const span = { loY: Infinity, hiY: -Infinity, lo: Infinity, hi: -Infinity };
+    for (let i = 0; i < a.length; i += 3) {
+      const x = Math.abs(a[i]);
+      if (x < 1e-6 || x > r.crossAcross / 2 - r.crossRound - 1e-6) continue;
+      span.loY = Math.min(span.loY, a[i + 1]);
+      span.hiY = Math.max(span.hiY, a[i + 1]);
+      span.lo = Math.min(span.lo, a[i + 2]);
+      span.hi = Math.max(span.hi, a[i + 2]);
+    }
+    return span;
+  };
+
+  it('holds the skid at the numbers it was drawn at', () => {
+    expect(GEN_SKID_DEFAULT).toEqual({
+      crossAcross: 0.94,
+      crossThick: 0.14,
+      crossSpread: 0.28,
+      crossRound: 0.03,
+      crossSeg: 1,
+      runnerWidth: 0.14,
+      runnerHeight: 0.1,
+      runnerLength: 0.58,
+      runnerSpread: 0.36,
+    });
+  });
+
+  it('stands every member exactly where the frozen calls stood them', () => {
+    const b = skidAt();
+    expect([b.min.x, b.max.x]).toEqual([-0.4699999988079071, 0.4699999988079071]);
+    expect([b.min.y, b.max.y]).toEqual([-7.450580707946131e-10, 0.11999999731779099]);
+    expect([b.min.z, b.max.z]).toEqual([-0.3499999940395355, 0.3499999940395355]);
+
+    const g = genSkidGeometry(shell, skid);
+    expect(values(g, 0)).toEqual([
+      -0.4699999988079071, -0.46121320128440857, -0.45732051134109497,
+      -0.4399999976158142, -0.4300000071525574, -0.28999999165534973,
+      0.28999999165534973, 0.4300000071525574, 0.4399999976158142,
+      0.45732051134109497, 0.46121320128440857, 0.4699999988079071,
+    ]);
+    // Ten heights where the bank's rack has four, and the six extra are the
+    // eased corners of the two rounded members. The runners' own two are the
+    // 1.3e-9 that is the ground and the 0.1 that is their top.
+    expect(values(g, 1)).toEqual([
+      -7.450580707946131e-10, 1.3411045607369942e-09, 0.008786794729530811,
+      0.012679492123425007, 0.029999999329447746, 0.09000000357627869,
+      0.10000000149011612, 0.10732050985097885, 0.11121320724487305,
+      0.11999999731779099,
+    ]);
+  });
+
+  it('fills whatever plinth the housing leaves, so the engine rests on its skid', () => {
+    // The cross members are the tallest thing down here, so the top of the box
+    // is their top and it has to be the shell's floor at every stand. Before
+    // this lift it was twelve centimetres through all of them.
+    for (const stand of [shell.stand, 0.32, 0.44]) {
+      const b = skidAt({ ...shell, stand });
+      expect(b.max.y, `the housing floats above its skid at a stand of ${stand}`).toBeCloseTo(
+        stand,
+        6,
+      );
+      expect(b.min.y, `the skid has left the ground at a stand of ${stand}`).toBeCloseTo(0, 6);
+    }
+  });
+
+  it('leaves the runners their own height and their own daylight, as the rack does', () => {
+    // The other anchor, and the same one the bank's rails answer to: the ground
+    // is not a field of the shell, so a runner keeps its height while the
+    // machine over it grows. Asked at heights the skid was never cut to,
+    // because `runnerHeight` is read twice — as the runner's thickness and,
+    // halved, as the middle it is drawn about — and at the ten centimetres it
+    // was drawn at those two agree.
+    for (const runnerHeight of [skid.runnerHeight, 0.06, 0.11]) {
+      const span = runnersOnly(shell, { ...skid, runnerHeight });
+      expect(span.loY, `the runners have left the ground at a height of ${runnerHeight}`)
+        .toBeCloseTo(0, 6);
+      expect(span.hiY, `the runners are not the height they were cut to at ${runnerHeight}`)
+        .toBeCloseTo(runnerHeight, 6);
+    }
+
+    // And they do not grow with the plinth, which is the rack's brief again.
+    const raised = runnersOnly({ ...shell, stand: shell.stand + 0.3 });
+    expect(raised.hiY, 'the runners followed the housing up').toBeCloseTo(skid.runnerHeight, 6);
+  });
+
+  it('overhangs the cross members rather than lapping to them, where the rack laps', () => {
+    // The round's measured gap. A battery rail runs from one runner's axis to
+    // the other's and takes that spread as its length; a skid runner is a
+    // centimetre longer than that at each end. The two machines draw the same
+    // assembly and disagree about its one derived length, so this one is held
+    // as a length of its own and not quietly relaid on the bank's rule.
+    const span = runnersOnly();
+    expect(span.hi - span.lo, 'the runners are not their own length').toBeCloseTo(
+      skid.runnerLength,
+      6,
+    );
+    expect(span.hi - skid.crossSpread, 'the runners have stopped overhanging').toBeCloseTo(0.01, 6);
+
+    // Asked at spreads the skid was never built at, where a runner relaid on
+    // the bank's rule would follow the cross members and this one does not.
+    for (const crossSpread of [0.19, 0.37]) {
+      const moved = runnersOnly(shell, { ...skid, crossSpread });
+      expect(moved.hi - moved.lo, `the runners followed the cross members at ${crossSpread}`)
+        .toBeCloseTo(skid.runnerLength, 6);
+    }
+  });
+
+  it('agrees with the battery rack on two centimetres of daylight, by a different route', () => {
+    // Both machines leave exactly 0.02 between the ground member's top and the
+    // floor, out of a plinth of 0.12 and a runner of 0.10 here and a plinth of
+    // 0.10 and a rail of 0.08 there. Four numbers, none shared, one gap — a
+    // coincidence, pinned as one. The proof nothing is shared is that neither
+    // machine moves when the other's numbers do.
+    expect(shell.stand - skid.runnerHeight).toBeCloseTo(0.02, 6);
+    expect(SHELL_DEFAULT.batt.stand - BATT_DEFAULT.rack.railHeight).toBeCloseTo(0.02, 6);
+    expect(shell.stand).not.toBeCloseTo(SHELL_DEFAULT.batt.stand, 6);
+    expect(skid.runnerHeight).not.toBeCloseTo(BATT_DEFAULT.rack.railHeight, 6);
+  });
+
+  it('cannot share a builder with the rack it is the twin of, and the count says why', () => {
+    // Two is not three, so this file's rule does not ask for the extraction
+    // yet. This pin is about what the answer would be if it did: the bank's
+    // cross members are plain boxes and this machine's are rounded, so the
+    // same four members cost five times the words. A shared builder would have
+    // to move vertices on one machine or the other, which is the reason the
+    // cooler could not join the back-outlet family, reached by counting.
+    const here = genSkidGeometry(shell, skid).attributes.position.count;
+    const there = battRackGeometry(SHELL_DEFAULT.batt, BATT_DEFAULT).attributes.position.count;
+    expect(here, 'the skid has stopped being a rounded assembly').toBe(720);
+    expect(there, 'the rack has stopped being four plain boxes').toBe(144);
+    expect(here).toBeGreaterThan(there);
+  });
+
+  it('turns every number the skid exposes, so the bench has no dead knob', () => {
+    // The segment count is a whole number the geometry rounds, so it moves by
+    // one and changes the size of the buffer; every other field moves by a
+    // length and has to shift a word.
+    const before = [
+      ...(genSkidGeometry(shell, skid).attributes.position.array as Float32Array),
+    ];
+    for (const key of Object.keys(skid) as (keyof typeof skid)[]) {
+      const step = key === 'crossSeg' ? 1 : 0.05;
+      const after = [
+        ...(genSkidGeometry(shell, { ...skid, [key]: skid[key] + step }).attributes.position
+          .array as Float32Array),
+      ];
+      expect(
+        after.length !== before.length || after.some((v, i) => v !== before[i]),
+        `nothing reads ${key}`,
+      ).toBe(true);
+    }
+  });
+
+  it("still pools the generator's skid", () => {
+    const view = new BuildingsView();
+    const g = partGeometry(view, 'gen.skid');
+    g.computeBoundingBox();
+    expect(g.boundingBox!.max.y, 'the skid has grown up into the housing').toBeCloseTo(
+      shell.stand,
+      6,
+    );
+    expect(g.boundingBox!.max.x, 'the cross members no longer reach past the housing')
+      .toBeGreaterThan(shell.width / 2);
     view.dispose();
   });
 });
