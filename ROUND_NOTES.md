@@ -4,6 +4,100 @@ One round, one measured gap, one fix. Newest first.
 
 ---
 
+## 2026-09-12 — One plate on three machines, and the key nobody checked
+
+**The gap.** Three machines carry a lit panel on the front: the generator's
+firebox, the heater's element, the battery bank's charge readout. The bank's was
+lifted a round ago into a `BattBand` and looked like the bank's own thing. The
+other two were still frozen `rbox` calls in the pool list — `rbox(0.4, 0.24,
+0.08, 0.44, 0, 0.42, 0.02, 1)` and `rbox(0.56, 0.46, 0.04, 0.6, 0, 0.33, 0.01,
+1)` — and nothing anywhere said they were the same shape.
+
+**They were the same call.** Measured against the bank's builder at their own
+numbers, both came back byte-identical: 972 position words apiece, nothing
+differing. So the family is three, this file extracts at three, and unlike the
+back-outlet family there is no member that cannot join — the outlet got two
+builders out of three shapes because the cooler's box is a `RoundedBoxGeometry`
+where the others are plain boxes, and here all three were already the same mesh.
+The louvre got there first and across four machines, so this is not the first
+family every member could join. What it is the first of is a family assembled
+BACKWARDS: the louvre was lifted as a family in one round, and this one was
+lifted a machine at a time, a round apart, with a one-machine type in between
+that turned out to be the family all along. That order is how the finding below
+got in. `BattBand` is retired; `FrontPlate` and a machine-keyed
+`FRONT_PLATE_DEFAULT` replace it, which is the `BackOutlet` idiom on the
+machine's other side.
+
+**Three goldens, not one.** The three agree on exactly one number, `seg: 1`, and
+they agree on it by coincidence: the bank beds two centimetres into its front
+plane and stands four proud, the generator three and five, the heater one and
+three. A family pinned at one machine is a family pinned at one machine — freeze
+`s.depth / 2` at the 0.39 the bank happens to have and the bank stays green
+while the other two walk out through their own front planes. So every relation
+in the block is asked machine by machine, and all three defaults are pinned as
+literals rather than derived from each other.
+
+**The finding: a shared builder moves the bug into the argument list.** Eleven
+mutations, ten red on the first pass. The eleventh was green, and it was not a
+mutation of the geometry at all — it hands the heater's pool the *bank's* plate.
+Every pin in the block passed it. It is still a plate. It still stands proud of
+the heater's front, because the bank's bed and thickness happen to clear the
+heater's shallower shell. It still glows the heater's own colour, because the
+material is wired separately from the geometry and the mutation did not touch
+it. Before this lift `heat.glow` was a literal and could not be wired to the
+wrong machine; after it there are two dictionaries keyed by machine and nothing
+whatever said the two keys had to agree. That is the cost of the lift, and it is
+worth stating as a rule: the goldens pin the BUILDER, and a family needs one
+more pin that asks the ARGUMENTS — each pool made to equal its own machine's
+shell and its own machine's plate word for word, which is the claim the lift
+actually makes and the only claim that catches a swapped key. Written; twelve of
+twelve red, including a second wiring mutation that hands the generator's plate
+the heater's shell.
+
+**Brief: the same hazard is live in the two older shared families, unpinned.**
+`LOUVRE_DEFAULT` is keyed by four machines and `BACK_OUTLET_DEFAULT` by two, and
+both were lifted before this round knew what to ask of a pool. Their pool pins
+were read after the finding: the louvre's asks only that each of the four pools
+has `max.y > 0`, which a plate from any of the other three machines would pass
+without hesitating. Nothing in either family compares a pool to its own
+machine's arguments. Not fixed here — it is three families and two of them are
+adjacent code this round did not touch — but it is the same class as the green
+mutation above and should be closed in a round of its own, by giving each of
+those pools the word-for-word comparison this one now has.
+
+**A field read twice, for the third time.** `thick` is the box's own depth and,
+halved, its offset from the face it is buried in — found by the drill last
+round. `height` is the box's own height and, halved, the lift from its bottom
+edge to its middle, so `rise` names the bottom edge only for as long as the
+halving still reads the field it halves. That one was written before the drill
+ran, off the rule rather than off a green mutation. Three instances now —
+`rack.railHeight`, `band.thick`, `height` — which is enough to stop calling it a
+finding: wherever a builder halves a field, the halving and the field are two
+readers, and the default is exactly where they agree. Pinned at heights and
+thicknesses none of the three machines was ever cut to.
+
+**Verified.** All three pools byte-identical, probed in-module before the lift
+and the probe deleted, then dumped from the old file and the new and compared
+word for word — 972, 972, 972, zero differing. Twelve mutations red. tsc clean.
+2759 passed, 13 skipped. No frames: no vertex moved, so the look loop has
+nothing to judge.
+
+**Next.** `gen.wheel` and `gen.stack` finish the generator. `gen.wheel` is the
+first thing on this bench built from a rotated cylinder — a flywheel on the
+machine's flank, lying on its side: the rim is bedded two centimetres into a
+flank at x = 0.45 and stands eight proud of it, and the hub through the middle
+of it goes four in and ten out, so the two members are bedded differently in the
+same face. Its anchor question is one no round has asked yet: whether a part
+that answers to a *face* should take that face's plane or the machine's middle. `gen.stack` is a tapered flue wider at the foot than the top,
+which is the cell caps' taper lesson on a second machine, and it is deliberately
+not `GenStacks` — the two small stacks in `gen.trim` are a different pair at a
+different radius, and a round that merges them without measuring would be the
+skid-relaid-on-the-rack's-rule mistake. After those, `cooler.feet`,
+`cooler.frost`, `heat.feet` and `heat.grille`, and then the solar panel, whose
+parts answer to a tilt rather than to a plane.
+
+---
+
 ## 2026-09-12 — The same rack on another machine
 
 **The gap.** `gen.skid` was four members in world coordinates under the

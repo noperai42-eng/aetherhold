@@ -397,7 +397,7 @@ to be overruled by the photographs:
 | Trees | 2 | Variation already exists and is unaddressable; making it addressable is nearly free. |
 | Piles | 8 | Eight objects sharing a prefix, seen constantly, each small. |
 | People and fauna | 5 | The heaviest models and the most looked-at, but also the ones with the most existing look-loop rounds behind them — least likely to be wrong. |
-| Buildings | 26 | Largest surface (3,451 lines) and least varied per instance; a stove is one stove. Last on purpose. On the bench since 2026-09-10, with one field and no recipe. Five of the twenty-six — the machine shells — build from `ShellRecipe` as of 2026-09-10, the two tables from `TableRecipe` and the two walls from `WallRecipe` as of 2026-09-12, the games table's trim follows its own top as of the same day — the first building whose parts would survive a knob being turned — and the stove's feet, flue and hotplates follow its shell, which is the first machine to do so, its door following the face it is cut into as a four-link chain, and the louvre it shares with the cooler, the generator and the battery bank lifted out of all four, the cooler's lid furniture following the lid rather than the world, and its compressor, fins and cable following the face behind it, and the generator's stacks from `GenStacks`, and the battery bank's terminals and straps from `BattRecipe` over a `BackOutlet` the generator and the bank now share, the bank's rack under all of it and its cell caps and charge band as of the same day — which makes the battery bank the first machine here with all six of its pools recipe-built and no literal geometry left on it anywhere, and leaves `cooler.vent` and `gen.trim` built out of three recipes each, with the generator's skid lifted the same day into a `GenSkid` that is the bank's rack again and deliberately not the bank's builder. The bench still has no knob, so the census still reads no recipe here. |
+| Buildings | 26 | Largest surface (3,451 lines) and least varied per instance; a stove is one stove. Last on purpose. On the bench since 2026-09-10, with one field and no recipe. Five of the twenty-six — the machine shells — build from `ShellRecipe` as of 2026-09-10, the two tables from `TableRecipe` and the two walls from `WallRecipe` as of 2026-09-12, the games table's trim follows its own top as of the same day — the first building whose parts would survive a knob being turned — and the stove's feet, flue and hotplates follow its shell, which is the first machine to do so, its door following the face it is cut into as a four-link chain, and the louvre it shares with the cooler, the generator and the battery bank lifted out of all four, the cooler's lid furniture following the lid rather than the world, and its compressor, fins and cable following the face behind it, and the generator's stacks from `GenStacks`, and the battery bank's terminals and straps from `BattRecipe` over a `BackOutlet` the generator and the bank now share, the bank's rack under all of it and its cell caps and charge band as of the same day — which makes the battery bank the first machine here with all six of its pools recipe-built and no literal geometry left on it anywhere, and leaves `cooler.vent` and `gen.trim` built out of three recipes each, with the generator's skid lifted the same day into a `GenSkid` that is the bank's rack again and deliberately not the bank's builder, and `gen.fire`, `heat.glow` and the bank's charge band lifted the same day into one `FrontPlate` the three of them share — the second family here every member could join, after the louvre, and the first assembled a machine at a time rather than in one round, which leaves the heater with `heat.feet` and `heat.grille` still literal and the generator with `gen.wheel` and `gen.stack`. The bench still has no knob, so the census still reads no recipe here. |
 
 Grass is a special case worth naming: it cannot be exported to `.glb`, so the bench
 is the *only* place its shader sway can ever be judged in isolation. That makes it a
@@ -912,6 +912,44 @@ is the right shape for a game drawing flat polygons where a material is a palett
 Aetherhold's materials are `MeshStandardMaterial` with an ambient-occlusion bake
 living in vertex colours, so the split is not free and is not obviously worth
 paying for. Revisit if the recipe work makes it cheap.
+
+**Built — one plate on three machines, 2026-09-12.** `gen.fire`, `heat.glow` and
+`batt.band`: the lit panel on the front of the generator, the heater and the
+battery bank, lifted into a `FrontPlate` all three share. The bank's charge band
+had been lifted a round earlier and looked like the bank's own; the other two
+were still frozen `rbox` calls, and when they were measured the bank's builder
+reproduced both of them to the bit. The louvre reached all four of its machines
+first, so this is not the first family every member could join — it is the first
+assembled backwards, a machine at a time and a round apart, with a one-machine
+type in between that turned out to be the family all along. The back-outlet
+family got two builders out of three shapes because the cooler's box is a
+different mesh; this one gets one out of three, 972 words apiece and nothing
+differing.
+The three agree on exactly one number, `seg: 1`, and they agree on it by
+coincidence: the bank beds two centimetres and stands four proud, the generator
+three and five, the heater one and three.
+
+The finding is what a shared builder does to where the bug can be. Eleven
+mutations, ten red on the first pass — freeze the half-depth at the bank's 0.39
+and the other two machines walk out through their own front planes, which is
+what three goldens are for rather than one. The eleventh was green: hand the
+heater's pool the *bank's* plate. It is still a plate, it still stands proud of
+the heater's front, and it still glows the heater's own colour, because the
+material is wired separately from the geometry — every pin in the block passed.
+Before the lift `heat.glow` was a literal and could not be wired to the wrong
+machine; after it there are two dictionaries keyed by machine and nothing said
+the two keys had to agree. A family builder moves the bug out of the geometry and
+into the argument list, so the pool pin has to stop asking whether a pool looks
+right and ask it to equal its own machine's shell and its own machine's plate
+word for word. With that written, twelve of twelve are red.
+
+Two fields are read twice inside the one call and both are pinned at settings no
+machine was drawn at: `thick` is the box's depth and, halved, its offset from the
+face it is buried in, and `height` is the box's height and, halved, the lift from
+its bottom edge to its middle. That is the third time — `rack.railHeight`,
+`band.thick`, now `height` — and it is clear enough to state as a rule rather
+than a finding: wherever a builder halves a field, the halving and the field are
+two readers, and the default is exactly where they agree.
 
 **Built — the same rack on another machine, 2026-09-12.** `gen.skid`, the two
 cross members and two runners under the generator, lifted into `GenSkid`. It is

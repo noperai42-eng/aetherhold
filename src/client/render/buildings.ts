@@ -1979,6 +1979,82 @@ export function backOutletGeometry(s: ShellRecipe, r: BackOutlet): THREE.BufferG
 }
 
 /**
+ * The lit plate on the front of a machine: a rounded box bedded into its front
+ * plane, standing proud of it, and glowing.
+ *
+ * This is the back outlet's family seen from the machine's other side, and it
+ * settled faster because all three of them are one call. The battery bank's
+ * charge band was lifted first and looked like the bank's own; the generator's
+ * firebox and the heater's element were still frozen literals a round later,
+ * and when they were finally measured the bank's builder reproduced both of
+ * them to the bit — 972 words apiece, nothing differing. So the count reached
+ * three and the mesh was one mesh. The louvre got there first and across four
+ * machines, so this is not the first family every member could join; what it is
+ * the first of is a family assembled BACKWARDS. The louvre was lifted as a
+ * family in one round. This one was lifted a machine at a time, a round apart,
+ * with a one-machine type in between that turned out to be the family all
+ * along — and that order is exactly how the hazard below got in. The outlet
+ * family, for its part, got two builders out of three shapes because the
+ * cooler's box is a different mesh; this gets one out of three.
+ *
+ * What the three do NOT share is the material, and that is what they are for:
+ * each carries its own emissive colour, and two of the three are pushed only
+ * while the machine is actually running, so whether a colony building is doing
+ * anything is a thing you read off its face. The geometry says where the light
+ * sits; whether it is lit is the building's business and stays there.
+ *
+ * Every number is measured off the machine it was drawn on and the three agree
+ * on almost none of them — the bank beds two centimetres and stands four proud,
+ * the generator three and five, the heater one and three. Reading any of those
+ * as the family's number would be a mistake; `seg: 1` is the only field all
+ * three share, and they share it by coincidence rather than by rule.
+ *
+ * Two fields are read twice inside one call, which is this file's oldest trap,
+ * and both are pinned at settings no machine was drawn at. `thick` is the box's
+ * own depth and, halved, its offset from the face it is buried in. `height` is
+ * the box's own height and, halved, the lift from its bottom edge to its
+ * middle — so `rise` means the bottom edge only for as long as the halving
+ * still reads the field it halves. At the numbers all three were drawn at,
+ * freezing either half moves nothing whatever. That is `rack.railHeight` and
+ * `band.thick` a third time, and it is now clear enough to state as a rule
+ * rather than a finding: wherever a builder halves a field, the halving and the
+ * field are two readers, and the default is exactly where they agree.
+ */
+export interface FrontPlate {
+  readonly width: number;
+  readonly height: number;
+  readonly thick: number;
+  /** How far the plate's back face is buried inside the shell's front plane. */
+  readonly bed: number;
+  /** Its bottom edge, above the shell's floor. */
+  readonly rise: number;
+  readonly round: number;
+  readonly seg: number;
+}
+
+/** The front of each machine that lights up, at the numbers it was drawn at. */
+export const FRONT_PLATE_DEFAULT: Readonly<Record<string, FrontPlate>> = {
+  gen: { width: 0.4, height: 0.24, thick: 0.08, bed: 0.03, rise: 0.2, round: 0.02, seg: 1 },
+  heat: { width: 0.56, height: 0.46, thick: 0.04, bed: 0.01, rise: 0.27, round: 0.01, seg: 1 },
+  batt: { width: 0.5, height: 0.14, thick: 0.06, bed: 0.02, rise: 0.35, round: 0.01, seg: 1 },
+};
+
+/** That plate, bedded into whatever front plane the shell recipe actually makes. */
+export function frontPlateGeometry(s: ShellRecipe, r: FrontPlate): THREE.BufferGeometry {
+  const face = s.depth / 2 - r.bed;
+  return rbox(
+    r.width,
+    r.height,
+    r.thick,
+    s.stand + r.rise + r.height / 2,
+    0,
+    face + r.thick / 2,
+    r.round,
+    r.seg,
+  );
+}
+
+/**
  * The battery bank's own ironwork: two terminals with a bar across them, and
  * two straps holding the lid down.
  *
@@ -2017,12 +2093,14 @@ export function backOutletGeometry(s: ShellRecipe, r: BackOutlet): THREE.BufferG
  * the drawing had meant.
  *
  * The last two things on the bank are the cell caps and the charge band, and
- * between them they finish a count worth stating: FIVE separate assemblies here
- * sink a face into the surface they sit on rather than laying it across —
- * collars 3 mm into the lid, straps and caps 2.5 mm into the same lid, the band
- * 2 cm into the front plane, and the back outlet nothing at all. A face laid
- * flat on another shows a line of daylight from twenty cells up; that is why
- * `bed` is the most repeated idea in this file. The two 2.5 mm are two
+ * the band turned out not to be the bank's at all — it is a `FrontPlate`, which
+ * two other machines were drawing by hand. Between them the two still finish a
+ * count worth stating: FIVE separate assemblies here sink a face into the
+ * surface they sit on rather than laying it across — collars 3 mm into the lid,
+ * straps and caps 2.5 mm into the same lid, the plate 2 cm into the front
+ * plane, and the back outlet nothing at all. A face laid flat on another shows
+ * a line of daylight from twenty cells up; that is why `bed` is the most
+ * repeated idea in this file. The two 2.5 mm are two
  * assemblies agreeing on a number, not sharing one: nothing in the code joins
  * the straps to the caps and moving either leaves the other where it was.
  * Pinned as the coincidence it is.
@@ -2031,22 +2109,17 @@ export function backOutletGeometry(s: ShellRecipe, r: BackOutlet): THREE.BufferG
  * terminals have the back of the lid. Held as drawn — `forward` is a number the
  * bench can turn, not a centring the code enforces.
  *
- * Two things here are easy to break without any test noticing, and both are
- * pinned. A cap is a truncated cone whose WIDE end is the one bedded into the
- * lid, which is what makes it read as a cap screwed down rather than a peg
- * standing up — turn the taper over and every box, and the list of heights,
- * comes back the same. And `band.thick` is read twice in one call, as the box's
- * own depth and, halved, as its offset from the face it is buried in, so at the
- * six centimetres it was drawn at freezing either half moves nothing at all.
- * That is `rack.railHeight` again on the machine's other end: a number read
- * twice at settings where its two readings agree is a number read once.
+ * One thing here is easy to break without any test noticing, and it is pinned.
+ * A cap is a truncated cone whose WIDE end is the one bedded into the lid,
+ * which is what makes it read as a cap screwed down rather than a peg standing
+ * up — turn the taper over and every box, and the list of heights, comes back
+ * the same.
  */
 export interface BattRecipe {
   readonly rack: BattRack;
   readonly terminals: BattTerminals;
   readonly straps: BattStraps;
   readonly cells: BattCells;
-  readonly band: BattBand;
 }
 
 export interface BattCells {
@@ -2062,18 +2135,6 @@ export interface BattCells {
   readonly along: number;
   /** The grid's own middle, ahead of the machine's and clear of the terminals. */
   readonly forward: number;
-}
-
-export interface BattBand {
-  readonly width: number;
-  readonly height: number;
-  readonly thick: number;
-  /** How far the band's back face is buried inside the shell's front plane. */
-  readonly bed: number;
-  /** Its bottom edge, above the shell's floor. */
-  readonly rise: number;
-  readonly round: number;
-  readonly seg: number;
 }
 
 export interface BattRack {
@@ -2133,7 +2194,6 @@ export const BATT_DEFAULT: BattRecipe = {
     radiusTop: 0.055, radiusFoot: 0.06, height: 0.035, seg: 10, bed: 0.0025,
     across: 0.16, along: 0.18, forward: 0.17,
   },
-  band: { width: 0.5, height: 0.14, thick: 0.06, bed: 0.02, rise: 0.35, round: 0.01, seg: 1 },
 };
 
 /** The cell caps, bedded into whatever lid the shell recipe actually makes. */
@@ -2154,22 +2214,6 @@ export function battCellsGeometry(s: ShellRecipe, r: BattRecipe): THREE.BufferGe
     }
   }
   return merge(...parts);
-}
-
-/** The charge band, bedded into whatever front plane the shell recipe makes. */
-export function battBandGeometry(s: ShellRecipe, r: BattRecipe): THREE.BufferGeometry {
-  const b = r.band;
-  const face = s.depth / 2 - b.bed;
-  return rbox(
-    b.width,
-    b.height,
-    b.thick,
-    s.stand + b.rise + b.height / 2,
-    0,
-    face + b.thick / 2,
-    b.round,
-    b.seg,
-  );
 }
 
 /** The rack, filling whatever gap the shell recipe leaves under the crate. */
@@ -3490,7 +3534,7 @@ export class BuildingsView {
     );
     this.pool(
       'heat.glow',
-      rbox(0.56, 0.46, 0.04, 0.6, 0, 0.33, 0.01, 1),
+      frontPlateGeometry(SHELL_DEFAULT.heat, FRONT_PLATE_DEFAULT.heat),
       new THREE.MeshStandardMaterial({ color: 0xff9b4d, emissive: new THREE.Color(0xd8500a), roughness: 0.4 }),
       24,
     );
@@ -3908,7 +3952,7 @@ export class BuildingsView {
     // thing you read off the machine rather than off a panel.
     this.pool(
       'gen.fire',
-      rbox(0.4, 0.24, 0.08, 0.44, 0, 0.42, 0.02, 1),
+      frontPlateGeometry(SHELL_DEFAULT.gen, FRONT_PLATE_DEFAULT.gen),
       new THREE.MeshStandardMaterial({ color: 0xffb056, emissive: new THREE.Color(0xd45a10), roughness: 0.4 }),
       16,
     );
@@ -3996,7 +4040,7 @@ export class BuildingsView {
     );
     this.pool(
       'batt.band',
-      battBandGeometry(SHELL_DEFAULT.batt, BATT_DEFAULT),
+      frontPlateGeometry(SHELL_DEFAULT.batt, FRONT_PLATE_DEFAULT.batt),
       new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: new THREE.Color(0x224422), roughness: 0.4 }),
       16,
     );

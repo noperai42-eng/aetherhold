@@ -18,6 +18,7 @@ import {
   COOLER_DEFAULT,
   BACK_OUTLET_DEFAULT,
   BATT_DEFAULT,
+  FRONT_PLATE_DEFAULT,
   GEN_SKID_DEFAULT,
   GEN_STACKS_DEFAULT,
   LOUVRE_DEFAULT,
@@ -32,10 +33,10 @@ import {
   compressorGeometry,
   coolerLidGeometry,
   backOutletGeometry,
-  battBandGeometry,
   battCellsGeometry,
   battLidGeometry,
   battRackGeometry,
+  frontPlateGeometry,
   genSkidGeometry,
   genStacksGeometry,
   louvreGeometry,
@@ -51,6 +52,7 @@ import {
   wallCapGeometry,
   wallPlinthGeometry,
 } from '../src/client/render/buildings';
+import type { FrontPlate, ShellRecipe } from '../src/client/render/buildings';
 import { AO_FLOOR } from '../src/client/render/occlusion';
 import { BUILDING_COLOR, RESOURCE_COLOR } from '../src/client/render/palette';
 import { groundLiftAt } from '../src/client/render/terrain';
@@ -1945,15 +1947,6 @@ describe("a battery bank's terminals, straps and back", () => {
         along: 0.18,
         forward: 0.17,
       },
-      band: {
-        width: 0.5,
-        height: 0.14,
-        thick: 0.06,
-        bed: 0.02,
-        rise: 0.35,
-        round: 0.01,
-        seg: 1,
-      },
     });
     expect(BACK_OUTLET_DEFAULT.batt).toEqual({
       width: 0.14,
@@ -2426,16 +2419,15 @@ describe("a battery bank's rack", () => {
  * the other exactly where it was. It is the same shape as the generator's and
  * the battery's backs landing on one plane from different depths.
  */
-describe("a battery bank's cell caps and charge band", () => {
+describe("a battery bank's cell caps", () => {
   const shell = SHELL_DEFAULT.batt;
-  const { cells, band, straps, terminals: t } = BATT_DEFAULT;
+  const { cells, straps, terminals: t } = BATT_DEFAULT;
   const top = shell.stand + shell.height + shell.lid!.seat + shell.lid!.height;
   const bounds = (g: THREE.BufferGeometry) => {
     g.computeBoundingBox();
     return g.boundingBox!;
   };
   const capsAt = (s = shell, r = BATT_DEFAULT) => bounds(battCellsGeometry(s, r));
-  const bandAt = (s = shell, r = BATT_DEFAULT) => bounds(battBandGeometry(s, r));
   const values = (g: THREE.BufferGeometry, k: number) => {
     const a = g.attributes.position.array as Float32Array;
     const set = new Set<number>();
@@ -2458,7 +2450,7 @@ describe("a battery bank's cell caps and charge band", () => {
     return most;
   };
 
-  it('stands the caps and the band exactly where the frozen calls stood them', () => {
+  it('stands the caps exactly where the frozen calls stood them', () => {
     const c = capsAt();
     expect([c.min.x, c.max.x]).toEqual([-0.21706338226795197, 0.21706338226795197]);
     expect([c.min.y, c.max.y]).toEqual([0.8174999952316284, 0.8525000214576721]);
@@ -2475,22 +2467,6 @@ describe("a battery bank's cell caps and charge band", () => {
     // which makes the one axis that matters here the one a list can hold.
     expect(values(battCellsGeometry(shell, BATT_DEFAULT), 1)).toEqual([
       0.8174999952316284, 0.8525000214576721,
-    ]);
-
-    const b = bandAt();
-    expect([b.min.x, b.max.x]).toEqual([-0.25, 0.25]);
-    expect([b.min.y, b.max.y]).toEqual([0.44999998807907104, 0.5899999737739563]);
-    expect([b.min.z, b.max.z]).toEqual([0.3700000047683716, 0.4300000071525574]);
-    const g = battBandGeometry(shell, BATT_DEFAULT);
-    expect(values(g, 1)).toEqual([
-      0.44999998807907104, 0.45292893052101135, 0.4542264938354492,
-      0.46000000834465027, 0.5799999833106995, 0.5857735276222229,
-      0.5870710611343384, 0.5899999737739563,
-    ]);
-    expect(values(g, 2)).toEqual([
-      0.3700000047683716, 0.3729289174079895, 0.37422651052474976,
-      0.3799999952316284, 0.41999998688697815, 0.4257735013961792,
-      0.42707106471061707, 0.4300000071525574,
     ]);
   });
 
@@ -2583,86 +2559,274 @@ describe("a battery bank's cell caps and charge band", () => {
     expect(moved.min.z + moved.max.z, 'nothing reads cells.forward').toBeCloseTo(-0.18, 6);
   });
 
-  it('beds the band into whatever front plane the shell has, and stands it proud', () => {
-    // The mirror of the back outlet, and the only thing on this machine that
-    // answers to the front. Asked at depths the bank was never built at, where
-    // a frozen 0.4 would either float off the plane or sink behind it.
-    for (const depth of [shell.depth, 1.3, 0.44]) {
-      const b = bandAt({ ...shell, depth });
-      expect(depth / 2 - b.min.z, `the band has left the front plane at a depth of ${depth}`)
-        .toBeCloseTo(band.bed, 6);
-      expect(b.max.z - depth / 2, `the band is not standing proud at a depth of ${depth}`)
-        .toBeCloseTo(band.thick - band.bed, 6);
-    }
-
-    // And the thickness is read twice inside one call — once as the box's own
-    // depth and once, halved, as the offset from the face it is buried in — so
-    // at the six centimetres it was drawn at freezing either half moves
-    // nothing. The rack's rail height again, on the machine's other end.
-    // Asked at thicknesses the band was never cut to, where a frozen offset
-    // slides the whole readout out through the plane.
-    for (const thick of [band.thick, 0.02, 0.15]) {
-      const b = bandAt(shell, { ...BATT_DEFAULT, band: { ...band, thick } });
-      expect(shell.depth / 2 - b.min.z, `the band has left the plane at a thickness of ${thick}`)
-        .toBeCloseTo(band.bed, 6);
-      expect(b.max.z - b.min.z, `the band is not the thickness it was cut to at ${thick}`)
-        .toBeCloseTo(thick, 6);
-    }
-    // Two centimetres in and four proud, which is the deepest bed on the
-    // machine by a factor of eight and the only one meant to be seen as a bed.
-    expect(band.bed).toBeCloseTo(0.02, 6);
-    expect(band.thick - band.bed).toBeCloseTo(0.04, 6);
-  });
-
-  it('rides the band up on the plinth, unlike the run that lies on the ground', () => {
-    // The band is measured from the shell's floor, the way the outlet's box is
-    // and the way its ground run deliberately is not. Raise the plinth and the
-    // readout goes with the machine; the cable stays in the grass.
-    const base = bandAt();
-    const raised = bandAt({ ...shell, stand: shell.stand + 0.25 });
-    expect(raised.min.y - base.min.y, 'the band stayed behind on the ground').toBeCloseTo(0.25, 6);
-    expect(base.min.y - shell.stand, 'the band has left the floor it rises from').toBeCloseTo(
-      band.rise,
-      6,
-    );
-    // And it is nowhere near the body's top, so this is a rise and not a hang.
-    expect(base.max.y).toBeLessThan(shell.stand + shell.height);
-  });
-
-  it('turns every number the caps and the band expose, so the bench has no dead knob', () => {
+  it('turns every number the caps expose, so the bench has no dead knob', () => {
     // Segment counts are whole numbers the geometry rounds away, so they move
     // by one and change the size of the buffer rather than its contents; every
     // other field moves by a length and has to shift a word.
     const ints = new Set(['seg']);
-    for (const [name, build, part] of [
-      ['cells', battCellsGeometry, cells],
-      ['band', battBandGeometry, band],
-    ] as const) {
-      const before = [
-        ...(build(shell, BATT_DEFAULT).attributes.position.array as Float32Array),
+    const before = [
+      ...(battCellsGeometry(shell, BATT_DEFAULT).attributes.position.array as Float32Array),
+    ];
+    for (const key of Object.keys(cells) as (keyof typeof cells)[]) {
+      const step = ints.has(key) ? 1 : 0.05;
+      const r = { ...BATT_DEFAULT, cells: { ...cells, [key]: cells[key] + step } };
+      const after = [
+        ...(battCellsGeometry(shell, r).attributes.position.array as Float32Array),
       ];
-      for (const key of Object.keys(part) as (keyof typeof part)[]) {
+      expect(
+        after.length !== before.length || after.some((v, i) => v !== before[i]),
+        `nothing reads cells.${key}`,
+      ).toBe(true);
+    }
+  });
+
+  it("still pools the battery bank's caps", () => {
+    const view = new BuildingsView();
+    const caps = partGeometry(view, 'batt.caps');
+    caps.computeBoundingBox();
+    expect(caps.boundingBox!.min.y, 'the caps have left the lid').toBeCloseTo(top - cells.bed, 6);
+    view.dispose();
+  });
+});
+
+/**
+ * The lit plate on three machines' fronts, which was the battery bank's charge
+ * band until the generator's firebox and the heater's element were measured and
+ * turned out to be the same call at different numbers.
+ *
+ * One builder now, and this block's whole job is what that builder owes each of
+ * the three which its own numbers cannot say. A family pinned at one machine is
+ * a family pinned at one machine: freeze `s.depth / 2` at the 0.39 the bank
+ * happens to have and the bank stays green while the other two walk out through
+ * their own front planes. So there are three goldens here and not one, and
+ * every relation below is asked machine by machine rather than once.
+ *
+ * The three are also the cheapest proof this file has that a shared builder is
+ * not a shared drawing. They disagree on every number but one — the bank beds
+ * two centimetres and stands four proud, the generator three and five, the
+ * heater one and three — and the one they agree on, `seg: 1`, they agree on by
+ * coincidence. Pinned as three literals for that reason.
+ */
+describe("the lit plate on a machine's front", () => {
+  const machines = [
+    ['the generator', SHELL_DEFAULT.gen, FRONT_PLATE_DEFAULT.gen],
+    ['the heater', SHELL_DEFAULT.heat, FRONT_PLATE_DEFAULT.heat],
+    ['the battery bank', SHELL_DEFAULT.batt, FRONT_PLATE_DEFAULT.batt],
+  ] as const;
+  const bounds = (g: THREE.BufferGeometry) => {
+    g.computeBoundingBox();
+    return g.boundingBox!;
+  };
+  const plateAt = (s: ShellRecipe, r: FrontPlate) => bounds(frontPlateGeometry(s, r));
+  const values = (g: THREE.BufferGeometry, k: number) => {
+    const a = g.attributes.position.array as Float32Array;
+    const set = new Set<number>();
+    for (let i = k; i < a.length; i += 3) set.add(a[i]);
+    return [...set].sort((p, q) => p - q);
+  };
+
+  it('holds all three plates at the numbers they were drawn at', () => {
+    expect(FRONT_PLATE_DEFAULT).toEqual({
+      gen: { width: 0.4, height: 0.24, thick: 0.08, bed: 0.03, rise: 0.2, round: 0.02, seg: 1 },
+      heat: { width: 0.56, height: 0.46, thick: 0.04, bed: 0.01, rise: 0.27, round: 0.01, seg: 1 },
+      batt: { width: 0.5, height: 0.14, thick: 0.06, bed: 0.02, rise: 0.35, round: 0.01, seg: 1 },
+    });
+  });
+
+  it('stands all three exactly where their own frozen calls stood them', () => {
+    // Three goldens, because one would leave the builder free to answer to the
+    // bank alone. Every word here was read off the literal `rbox` calls the
+    // three machines carried before the lift, and all three pools came back
+    // identical to the bit — 972 words apiece, nothing differing.
+    const gen = plateAt(SHELL_DEFAULT.gen, FRONT_PLATE_DEFAULT.gen);
+    expect([gen.min.x, gen.max.x]).toEqual([-0.20000000298023224, 0.20000000298023224]);
+    expect([gen.min.y, gen.max.y]).toEqual([0.3199999928474426, 0.5600000023841858]);
+    expect([gen.min.z, gen.max.z]).toEqual([0.3799999952316284, 0.46000000834465027]);
+
+    const heat = plateAt(SHELL_DEFAULT.heat, FRONT_PLATE_DEFAULT.heat);
+    expect([heat.min.x, heat.max.x]).toEqual([-0.2800000011920929, 0.2800000011920929]);
+    expect([heat.min.y, heat.max.y]).toEqual([0.3700000047683716, 0.8299999833106995]);
+    expect([heat.min.z, heat.max.z]).toEqual([0.3100000023841858, 0.3499999940395355]);
+
+    const batt = plateAt(SHELL_DEFAULT.batt, FRONT_PLATE_DEFAULT.batt);
+    expect([batt.min.x, batt.max.x]).toEqual([-0.25, 0.25]);
+    expect([batt.min.y, batt.max.y]).toEqual([0.44999998807907104, 0.5899999737739563]);
+    expect([batt.min.z, batt.max.z]).toEqual([0.3700000047683716, 0.4300000071525574]);
+
+    // And the eased corners themselves, on the two axes a plate is thin in. A
+    // box holds the extremes; these hold the four words the easing puts inside
+    // them, which is the only place `round` and `seg` are visible at all. The
+    // generator's are twice as far in as the other two because its corner is
+    // eased at two centimetres rather than one.
+    const g = frontPlateGeometry(SHELL_DEFAULT.gen, FRONT_PLATE_DEFAULT.gen);
+    expect(values(g, 1)).toEqual([
+      0.3199999928474426, 0.32585787773132324, 0.328453004360199, 0.3400000035762787,
+      0.5400000214576721, 0.5515469908714294, 0.5541421175003052, 0.5600000023841858,
+    ]);
+    expect(values(g, 2)).toEqual([
+      0.3799999952316284, 0.38585785031318665, 0.38845300674438477, 0.4000000059604645,
+      0.4399999976158142, 0.4515469968318939, 0.45414212346076965, 0.46000000834465027,
+    ]);
+
+    const h = frontPlateGeometry(SHELL_DEFAULT.heat, FRONT_PLATE_DEFAULT.heat);
+    expect(values(h, 1)).toEqual([
+      0.3700000047683716, 0.3729289472103119, 0.37422651052474976, 0.3799999952316284,
+      0.8199999928474426, 0.8257734775543213, 0.8270710706710815, 0.8299999833106995,
+    ]);
+    expect(values(h, 2)).toEqual([
+      0.3100000023841858, 0.3129289448261261, 0.31422650814056396, 0.3199999928474426,
+      0.3400000035762787, 0.34577348828315735, 0.3470710813999176, 0.3499999940395355,
+    ]);
+
+    const b = frontPlateGeometry(SHELL_DEFAULT.batt, FRONT_PLATE_DEFAULT.batt);
+    expect(values(b, 1)).toEqual([
+      0.44999998807907104, 0.45292893052101135, 0.4542264938354492, 0.46000000834465027,
+      0.5799999833106995, 0.5857735276222229, 0.5870710611343384, 0.5899999737739563,
+    ]);
+    expect(values(b, 2)).toEqual([
+      0.3700000047683716, 0.3729289174079895, 0.37422651052474976, 0.3799999952316284,
+      0.41999998688697815, 0.4257735013961792, 0.42707106471061707, 0.4300000071525574,
+    ]);
+  });
+
+  it("beds each plate into its own machine's front plane, and stands it proud", () => {
+    // The mirror of the back outlet, asked at depths none of the three was ever
+    // built at, where a frozen half-depth would either float the plate off the
+    // plane or sink it behind one.
+    for (const [name, shell, plate] of machines) {
+      for (const depth of [shell.depth, 1.3, 0.44]) {
+        const b = plateAt({ ...shell, depth }, plate);
+        expect(depth / 2 - b.min.z, `${name} has left the front plane at a depth of ${depth}`)
+          .toBeCloseTo(plate.bed, 6);
+        expect(b.max.z - depth / 2, `${name} is not standing proud at a depth of ${depth}`)
+          .toBeCloseTo(plate.thick - plate.bed, 6);
+      }
+
+      // And the thickness is read twice inside one call — once as the box's own
+      // depth and once, halved, as the offset from the face it is buried in —
+      // so at the numbers each machine was drawn at, freezing either half moves
+      // nothing. The rack's rail height again. Asked at thicknesses none of the
+      // three was cut to, where a frozen offset slides the whole plate out
+      // through the plane it is bedded in.
+      for (const thick of [plate.thick, 0.02, 0.15]) {
+        const b = plateAt(shell, { ...plate, thick });
+        expect(shell.depth / 2 - b.min.z, `${name} has left the plane at a thickness of ${thick}`)
+          .toBeCloseTo(plate.bed, 6);
+        expect(b.max.z - b.min.z, `${name} is not the thickness it was cut to at ${thick}`)
+          .toBeCloseTo(thick, 6);
+      }
+    }
+
+    // The three beds and the three prouds, as measured. Two centimetres in and
+    // four proud on the bank, three and five on the generator, one and three on
+    // the heater: the deepest bed on any of these machines and the only ones
+    // meant to be seen as beds rather than to hide a seam.
+    expect([FRONT_PLATE_DEFAULT.gen.bed, FRONT_PLATE_DEFAULT.gen.thick - FRONT_PLATE_DEFAULT.gen.bed])
+      .toEqual([0.03, 0.05]);
+    expect([FRONT_PLATE_DEFAULT.heat.bed, FRONT_PLATE_DEFAULT.heat.thick - FRONT_PLATE_DEFAULT.heat.bed])
+      .toEqual([0.01, 0.03]);
+    expect(FRONT_PLATE_DEFAULT.batt.bed).toBeCloseTo(0.02, 6);
+    expect(FRONT_PLATE_DEFAULT.batt.thick - FRONT_PLATE_DEFAULT.batt.bed).toBeCloseTo(0.04, 6);
+  });
+
+  it('rides each plate up on its own plinth, unlike the run that lies on the ground', () => {
+    // A plate is measured from its shell's floor, the way the outlet's box is
+    // and the way the outlet's ground run deliberately is not. Raise the plinth
+    // and the light goes up with the machine; the cable stays in the grass.
+    for (const [name, shell, plate] of machines) {
+      const base = plateAt(shell, plate);
+      const raised = plateAt({ ...shell, stand: shell.stand + 0.25 }, plate);
+      expect(raised.min.y - base.min.y, `${name} left its plate behind on the ground`)
+        .toBeCloseTo(0.25, 6);
+      expect(base.min.y - shell.stand, `${name}'s plate has left the floor it rises from`)
+        .toBeCloseTo(plate.rise, 6);
+      // And none of the three is anywhere near its body's top, so all three are
+      // a rise from the floor and not a hang from the lid.
+      expect(base.max.y, `${name}'s plate has climbed to the lid`)
+        .toBeLessThan(shell.stand + shell.height);
+
+      // `height` is the second field read twice in this one call: the box's own
+      // height, and halved, the lift from its bottom edge to its middle. So
+      // `rise` names the bottom edge only for as long as the halving still
+      // reads the field it halves — at the numbers the three were drawn at,
+      // freezing that half leaves the bottom edge exactly where it was and
+      // every golden above green. Asked at heights none of them was cut to.
+      for (const height of [plate.height, 0.05, 0.4]) {
+        const b = plateAt(shell, { ...plate, height });
+        expect(b.min.y - shell.stand, `${name}'s plate rises wrong at a height of ${height}`)
+          .toBeCloseTo(plate.rise, 6);
+        expect(b.max.y - b.min.y, `${name}'s plate is not the height it was cut to at ${height}`)
+          .toBeCloseTo(height, 6);
+      }
+    }
+  });
+
+  it('turns every number a plate exposes on every machine, so the bench has no dead knob', () => {
+    // Run at all three rather than once, because a shared builder is exactly
+    // where a field can be live for the machine the pin uses and dead for the
+    // two it does not. Segment counts are whole numbers the geometry rounds
+    // away, so they move by one and change the size of the buffer rather than
+    // its contents; every other field moves by a length and has to shift a word.
+    const ints = new Set(['seg']);
+    for (const [name, shell, plate] of machines) {
+      const before = [
+        ...(frontPlateGeometry(shell, plate).attributes.position.array as Float32Array),
+      ];
+      for (const key of Object.keys(plate) as (keyof FrontPlate)[]) {
         const step = ints.has(key) ? 1 : 0.05;
-        const r = { ...BATT_DEFAULT, [name]: { ...part, [key]: part[key] + step } };
-        const after = [...(build(shell, r).attributes.position.array as Float32Array)];
+        const after = [
+          ...(frontPlateGeometry(shell, { ...plate, [key]: plate[key] + step }).attributes.position
+            .array as Float32Array),
+        ];
         expect(
           after.length !== before.length || after.some((v, i) => v !== before[i]),
-          `nothing reads ${name}.${key}`,
+          `nothing on ${name} reads ${key}`,
         ).toBe(true);
       }
     }
   });
 
-  it("still pools the battery bank's caps and band", () => {
+  it("pools each plate at its own machine's numbers, and with its own light", () => {
+    // The one pin in this block that exists because of the lift rather than in
+    // spite of it. Before it, `heat.glow` was a literal `rbox` call and could
+    // not be wired to the wrong machine; after it there are two dictionaries
+    // keyed by machine and nothing whatever says the two keys have to agree.
+    // Handing the heater the bank's plate was the only mutation of eleven that
+    // this block did not catch on the first pass: it is still a plate, it still
+    // stands proud of the heater's front, and it still carries the heater's own
+    // light, because the material is wired separately from the geometry. So the
+    // goldens above pin the BUILDER and this pins the ARGUMENTS — each pool is
+    // asked to equal its own machine's shell and its own machine's plate, word
+    // for word, which is the claim the lift actually makes.
     const view = new BuildingsView();
-    const caps = partGeometry(view, 'batt.caps');
-    caps.computeBoundingBox();
-    expect(caps.boundingBox!.min.y, 'the caps have left the lid').toBeCloseTo(top - cells.bed, 6);
-    const g = partGeometry(view, 'batt.band');
-    g.computeBoundingBox();
-    expect(g.boundingBox!.max.z, 'the band no longer stands proud of the front').toBeGreaterThan(
-      shell.depth / 2,
-    );
+    const emissives = new Set<number>();
+    for (const [key, machine] of [
+      ['gen.fire', 'gen'],
+      ['heat.glow', 'heat'],
+      ['batt.band', 'batt'],
+    ] as const) {
+      const shell = SHELL_DEFAULT[machine];
+      const g = partGeometry(view, key);
+      g.computeBoundingBox();
+      expect(g.boundingBox!.max.z, `${key} no longer stands proud of the front`)
+        .toBeGreaterThan(shell.depth / 2);
+      const want = frontPlateGeometry(shell, FRONT_PLATE_DEFAULT[machine]).attributes.position
+        .array as Float32Array;
+      const got = g.attributes.position.array as Float32Array;
+      expect([...got], `${key} is pooled at some other machine's numbers`).toEqual([...want]);
+
+      let mat: THREE.MeshStandardMaterial | null = null;
+      view.group.traverse((o) => {
+        const m = o as THREE.Mesh;
+        if (m.geometry && m.geometry.name === key) mat = m.material as THREE.MeshStandardMaterial;
+      });
+      expect(mat, `${key} has lost its material`).not.toBeNull();
+      emissives.add((mat as unknown as THREE.MeshStandardMaterial).emissive.getHex());
+    }
+    // The geometry says where the light sits; whether it is lit is the
+    // building's business, and two of these three are only pushed while the
+    // machine is actually running. Three colours, not one shared three ways.
+    expect(emissives.size, 'the three plates have been given one light between them').toBe(3);
     view.dispose();
   });
 });
