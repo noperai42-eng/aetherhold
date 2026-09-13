@@ -21,3 +21,9 @@ are the map, and this file only says which one to open.
   them: [ASSETS.md](ASSETS.md).
 - **What has been checked and by whom:** [ACCEPTANCE.md](ACCEPTANCE.md); the hands-on
   browser script: [PLAYTEST.md](PLAYTEST.md).
+
+## Loom
+This repo is a **Loom sub-loom** — lane map + invariant floor in `LOOM.md`
+(read it at session start). Resume pointer: `CURRENT_WORK.md`. Operating
+posture + session-start onboarding: workspace `~/CLAUDE.md` (single source —
+never restate it here).
