@@ -20,6 +20,7 @@ import { cellTemp, tickTemperature } from '../src/sim/temperature';
 import { reachable } from '../src/sim/jobs';
 import { spawnRaid } from '../src/sim/events';
 import { DESIG_HARVEST, TICKS_PER_DAY, terrainAt } from '../src/sim/types';
+import { idleRates } from '../src/eval/run';
 
 const HOME = {
   x: Math.round((CABIN.x0 + CABIN.x1) / 2),
@@ -398,5 +399,63 @@ describe('a run that reached the far end of a road', () => {
     delete world.ending!.record;
     world.gameOver = true;
     expect(judge(world, [], 12, true).verdict).toBe('collapsed');
+  });
+});
+
+/**
+ * Group 3's fourth pin: what the colony built, whether it grew a room, and
+ * how much of every settler's day sat idle while work stood on the board
+ * (`idleBoardShare`, the Steward's gap) against how much sat idle while work
+ * stood ready for THIS pawn specifically to take (`idleTakeableShare`,
+ * dispatch's gap). One predicate cannot answer both questions, which is why
+ * there are two.
+ */
+describe('what the colony built and how idle its hands sat', () => {
+  // The unmanaged arm: EvalOptions.steward is explicitly false (the eval
+  // harness's own driver, src/eval/steward.ts, never runs) while
+  // world.steward is left undefined, which leaves the in-sim foreman
+  // (src/sim/steward.ts) running exactly as it would for a player who never
+  // opened the steward panel. This is the balance grid's default arm — the
+  // one every Group 3 fix is judged against — so it is the one pinned here.
+  it('builds, grows rooms and idles at a pinned rate on harsh/99001, foreman on (world.steward left undefined) and eval driver off (steward: false)', () => {
+    const r = runColony({
+      seed: 99001,
+      days: 30,
+      difficulty: 'harsh',
+      playPastFounding: true,
+      steward: false,
+    });
+    const rates = idleRates(r);
+    // "One room a day": the literal figure this pin exists to put a number on.
+    expect(rates.roomsPerDay).toBeCloseTo(0.13, 2);
+    expect(rates.builtPerDay).toBeCloseTo(4.8, 2);
+    expect(rates.idleBoardShare).toBeCloseTo(0.117, 3);
+    expect(rates.idleTakeableShare).toBeCloseTo(0.047, 3);
+    expect(
+      rates.idleTakeableShare,
+      "dispatch's gap can never be wider than the Steward's gap — takeable work is only ever counted once the board is already confirmed open",
+    ).toBeLessThanOrEqual(rates.idleBoardShare);
+  });
+
+  it("keeps dispatch's gap inside the Steward's gap on every seed of the opening week", () => {
+    for (const seed of SEEDS) {
+      const rates = idleRates(runColony({ seed, days: DAYS }));
+      expect(
+        rates.idleTakeableShare,
+        `seed ${seed}: takeable share ${rates.idleTakeableShare} exceeded board share ${rates.idleBoardShare}`,
+      ).toBeLessThanOrEqual(rates.idleBoardShare);
+    }
+  });
+
+  it('pins the zero-denominator case rather than letting it read NaN', () => {
+    // Zero awake colonist-ticks (nobody ever conscious, or a zero-day run):
+    // both shares must read a clean 0, not NaN — a NaN would print blank in
+    // every table and silently pass any `toBeLessThanOrEqual` comparison
+    // against another NaN, which is exactly the failure mode this test rules
+    // out with a literal value instead of a shape check.
+    const r = runColony({ seed: SEEDS[0], days: 0 });
+    const rates = idleRates(r);
+    expect(rates.idleBoardShare).toBe(0);
+    expect(rates.idleTakeableShare).toBe(0);
   });
 });

@@ -16,6 +16,51 @@ Four sections: [the killer feature](#the-killer-feature),
 and [what still wants a human](#what-still-wants-a-human) — which is the long one, and is
 ordered to match `PLAYTEST.md` rather than by importance.
 
+Last run — 2026-09-13, the build-rate round: two counters in `src/eval/run.ts` and four
+columns in `src/eval/sweep.ts`, so the sixty-day grid was re-run — fingerprint `effc8eef`
+→ `4e67f12b`, 39 colonies, 7137.237 s. The grid could already see downs, threats and
+the food line, and never the two things a player is actually watching when a colony feels
+stuck: whether anything is getting built, and whether the hands standing idle could have
+picked something up. `builtPerDay`/`roomsPerDay` are literal deltas of
+`world.stats.built`/`roomIndex(world).rooms.size` — "one room a day" is now a number
+rather than a phrase. Idle turned out to be two questions: `idleBoardShare` (the Steward's
+gap) counts a colonist-tick idle while *any* work stands on the board — an unbuilt
+blueprint, a designation, a stalled bill; `idleTakeableShare` (dispatch's gap) counts idle
+only while work stands reachable, prioritized, supplied and unclaimed for *that* pawn.
+Pinned `idleTakeableShare ≤ idleBoardShare` on every seed of the opening week, because a
+subset cannot read wider than the set it narrows. harsh/99001, the named pin (foreman on,
+eval driver off — `steward: false` stated in the test name): `builtPerDay` **4.8**,
+`roomsPerDay` **0.13**, `idleBoardShare` **0.117**, `idleTakeableShare` **0.047** — the
+row's own seven-point split between "the board has something" and "this pawn can take it"
+is measured, not yet explained, and is the whole of `3b-sim-probe-why`'s ask. Cost of the
+round: counting two predicates a tick, one of them a 36,864-cell scan when the board is
+open, measured honestly at ~21% slower on the eval harness (83284.6 ms → 100506.8 ms,
+harsh/99001, 30 days) — paid on every seed the grid plays and not chased down this round.
+Determinism held: the same seed and settings (including the grid's own `--days 60
+--past-founding`) run once on `origin/main` and once on this branch return byte-identical
+`RunMeasure` on every pre-existing field, `starveHours` included to the hundredth; the
+four new columns are the only difference. `npm run balance` — 15 of 16 enforced
+principles hold; the one break, `on-their-feet-at-zero-is-a-walk-home` (three of fifteen
+runs past the twelve-hour ceiling: settler/1312 28.3 h, settler/99001 45.2 h, harsh/7
+34.6 h), is proven pre-existing on `origin/main` at this branch's own base commit by the
+same A/B above, and is a real regression against the grid's own history (the principle
+records a worst case of 7.92 h the last time it was closed) that surfaced only because
+this round's fingerprint bump forced the first full re-measurement in a month — not
+caused by, and out of reach of, this round's write set. Flagged for its own round; not
+patched here.
+
+- `npx tsc --noEmit` clean.
+- `npm test` — **127 of 129 files, 2778 tests green**, 13 skipped, in 1230 s.
+  New: `tests/idle-predicates.test.ts` (16 tests) pins `isIdlePawn`/`boardOpen`/
+  `hasTakeableWork` directly, including the till-designation and reserved-blueprint
+  branches; `tests/colony-eval.test.ts` gained a named-run pin (all four rates, on
+  harsh/99001, both steward flags in the test name) plus a per-seed subset check and a
+  zero-denominator pin (`idleBoardShare`/`idleTakeableShare` read `0`, never `NaN`, on a
+  zero-day run).
+  Both predicates proven red-first: dropping the `sleeping` exclusion out of
+  `isIdlePawn` and the construct-priority check out of `hasTakeableWork`'s blueprint
+  branch each failed exactly one test, reverted byte-identical.
+
 Last run — 2026-08-13, the rescuer round: one constant in `src/sim/jobs.ts` and one latch in
 `src/eval/run.ts`, so the sixty-day grid was re-run — fingerprint `ce4d9a8f` → `8b19f4e1`, 39
 colonies, 3016 s. `strandedStarveHours` named the right population and still could not name a defect:

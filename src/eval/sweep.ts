@@ -15,7 +15,7 @@
  * either of them owning a second definition of what the grid is.
  */
 
-import { runColony, type EvalReport, type Verdict } from './run';
+import { idleRates, runColony, type EvalReport, type Verdict } from './run';
 import { DIFFICULTIES, DIFFICULTY_ORDER } from '../sim/difficulty';
 import { ENDING_IDS } from '../sim/endings';
 import { WAR_PARTY } from '../sim/holdings';
@@ -266,6 +266,25 @@ export interface RunMeasure {
    * if it had.
    */
   tradedWorth: number;
+  /**
+   * What the colony built and how much of its hands stood idle, from
+   * `run.ts`'s `idleRates` — see the doc comments on `DaySnapshot.builtToday`,
+   * `roomsToday`, `idleBoardTicks`, and `idleTakeableTicks` for what each is
+   * counted from. Four columns rather than one combined idle number: one
+   * predicate cannot answer both "was the board open" and "could this pawn
+   * have taken it", and a fix that widens dispatch without widening the board
+   * has to be able to move one without moving the other.
+   *
+   * Optional, like no other field here — this is the one property of
+   * `RunMeasure` that predates every hand-built fixture in the test suite, so
+   * a fixture that does not set them (and reads as 0 for all four, via
+   * `?? 0` wherever they are printed or compared) must stay exactly as valid
+   * as it was before this pass. `measure()` always sets all four.
+   */
+  builtPerDay?: number;
+  roomsPerDay?: number;
+  idleBoardShare?: number;
+  idleTakeableShare?: number;
 }
 
 export interface SweepOptions {
@@ -615,6 +634,7 @@ export function measure(r: EvalReport): RunMeasure {
     endingCommittedOn: r.endingCommittedOn,
     endingLandedOn: r.endingLandedOn,
     tradedWorth: last?.tradedWorth ?? 0,
+    ...idleRates(r),
   };
 }
 
@@ -660,7 +680,7 @@ export function armedShareOf(rs: RunMeasure[]): number {
 /** A fixed-width grid, because a balance pass is read by eye. */
 export function formatSweep(sweep: Sweep): string {
   const cols =
-    'setting        seed  verdict     days  1st  threats  band  downs  buried  alive  kills  rung  worstFood  floorH strandH unfedH  fed  upkeep  foodDays  raiders  rifles     trips  spare   tree  idle   wait  unsent   steel  spent        roads  hands';
+    'setting        seed  verdict     days  1st  threats  band  downs  buried  alive  kills  rung  worstFood  floorH strandH unfedH  fed  upkeep  foodDays  raiders  rifles     trips  spare   tree  idle   wait  unsent   steel  spent        roads  hands  builtPerDay  roomsPerDay  idleBoardShare  idleTakeableShare';
   const lines: string[] = [`balance grid · ${sweep.days} days · ${sweep.seeds.length} seeds`, cols];
   for (const d of sweep.difficulties) {
     const rs = on(sweep, d);
@@ -713,6 +733,10 @@ export function formatSweep(sweep: Sweep): string {
           // the most convincing way available. The war is printed below, off the
           // family that could fight one.
           pad(m.peakHands ?? 0, 7),
+          pad((m.builtPerDay ?? 0).toFixed(2), 13),
+          pad((m.roomsPerDay ?? 0).toFixed(2), 13),
+          pad((m.idleBoardShare ?? 0).toFixed(3), 16),
+          pad((m.idleTakeableShare ?? 0).toFixed(3), 18),
         ].join(''),
       );
     }
@@ -749,6 +773,10 @@ export function formatSweep(sweep: Sweep): string {
         pad(avg(rs, (m) => m.steelDrawdown ?? 0).toFixed(0), 7),
         pad([0, 1, 2].map((r) => avg(rs, (m) => m.roadRungs?.[r] ?? 0).toFixed(1)).join('/'), 12),
         pad(avg(rs, (m) => m.peakHands ?? 0).toFixed(1), 7),
+        pad(avg(rs, (m) => m.builtPerDay ?? 0).toFixed(2), 13),
+        pad(avg(rs, (m) => m.roomsPerDay ?? 0).toFixed(2), 13),
+        pad(avg(rs, (m) => m.idleBoardShare ?? 0).toFixed(3), 16),
+        pad(avg(rs, (m) => m.idleTakeableShare ?? 0).toFixed(3), 18),
       ].join(''),
       '',
     );
