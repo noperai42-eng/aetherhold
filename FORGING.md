@@ -397,7 +397,7 @@ to be overruled by the photographs:
 | Trees | 2 | Variation already exists and is unaddressable; making it addressable is nearly free. |
 | Piles | 8 | Eight objects sharing a prefix, seen constantly, each small. |
 | People and fauna | 5 | The heaviest models and the most looked-at, but also the ones with the most existing look-loop rounds behind them — least likely to be wrong. |
-| Buildings | 26 | Largest surface (3,451 lines) and least varied per instance; a stove is one stove. Last on purpose. On the bench since 2026-09-10, with one field and no recipe. Five of the twenty-six — the machine shells — build from `ShellRecipe` as of 2026-09-10, the two tables from `TableRecipe` and the two walls from `WallRecipe` as of 2026-09-12, the games table's trim follows its own top as of the same day — the first building whose parts would survive a knob being turned — and the stove's feet, flue and hotplates follow its shell, which is the first machine to do so, its door following the face it is cut into as a four-link chain, and the louvre it shares with the cooler, the generator and the battery bank lifted out of all four, the cooler's lid furniture following the lid rather than the world, and its compressor, fins and cable following the face behind it, and the generator's stacks from `GenStacks`, and the battery bank's terminals and straps from `BattRecipe` over a `BackOutlet` the generator and the bank now share, and the bank's rack under all of it — leaving `cooler.vent` and `gen.trim` built out of three recipes each, `batt.trim` out of four and `batt.rack` out of one, and nothing else. The bench still has no knob, so the census still reads no recipe here. |
+| Buildings | 26 | Largest surface (3,451 lines) and least varied per instance; a stove is one stove. Last on purpose. On the bench since 2026-09-10, with one field and no recipe. Five of the twenty-six — the machine shells — build from `ShellRecipe` as of 2026-09-10, the two tables from `TableRecipe` and the two walls from `WallRecipe` as of 2026-09-12, the games table's trim follows its own top as of the same day — the first building whose parts would survive a knob being turned — and the stove's feet, flue and hotplates follow its shell, which is the first machine to do so, its door following the face it is cut into as a four-link chain, and the louvre it shares with the cooler, the generator and the battery bank lifted out of all four, the cooler's lid furniture following the lid rather than the world, and its compressor, fins and cable following the face behind it, and the generator's stacks from `GenStacks`, and the battery bank's terminals and straps from `BattRecipe` over a `BackOutlet` the generator and the bank now share, the bank's rack under all of it and its cell caps and charge band as of the same day — which makes the battery bank the first machine here with all six of its pools recipe-built and no literal geometry left on it anywhere, and leaves `cooler.vent` and `gen.trim` built out of three recipes each. The bench still has no knob, so the census still reads no recipe here. |
 
 Grass is a special case worth naming: it cannot be exported to `.glb`, so the bench
 is the *only* place its shader sway can ever be judged in isolation. That makes it a
@@ -912,6 +912,35 @@ is the right shape for a game drawing flat polygons where a material is a palett
 Aetherhold's materials are `MeshStandardMaterial` with an ambient-occlusion bake
 living in vertex colours, so the split is not free and is not obviously worth
 paying for. Revisit if the recipe work makes it cheap.
+
+**Built — the last two on the bank, and the number read twice, 2026-09-12.**
+`batt.caps` and `batt.band`, the six cell caps bedded into the lid and the
+charge readout bedded into the front plane, lifted into `BattCells` and
+`BattBand`. All six of the bank's pools are now built by a recipe, which makes
+the battery bank the first machine in this file with no literal geometry left
+anywhere on it. Between them
+the two pools finish a count worth stating: five separate assemblies on this one
+machine sink a face into the surface they sit on rather than laying it across —
+collars 3 mm into the lid, straps and caps 2.5 mm into the same lid, the band
+2 cm into the front plane, and the back outlet nothing at all. A face laid flat
+on another shows a line of daylight from twenty cells up, so `bed` is the most
+repeated idea in the file. The straps' and the caps' 2.5 mm is two assemblies
+agreeing on a number rather than sharing one, pinned as the coincidence it is:
+nothing in the code joins them and moving either leaves the other alone.
+
+The round's two findings are both kinds of blindness the drill had to find. A
+cap is a truncated cone and the wide end is the one bedded into the lid, which
+is what makes it read as a cap screwed down rather than a peg standing up —
+turn the taper over and every bounding box comes back identical in all three
+axes and the list of heights comes back with the same two words, because a cone
+and the same cone inverted are the same size. It is asked one ring at a time
+instead. And `band.thick` is read twice inside one call, as the box's own depth
+and, halved, as its offset from the face it is buried in, so at the six
+centimetres it was drawn at freezing either half moves nothing: the rack's rail
+height again, one round later, on the other end of the machine. A number read
+twice at a setting where its two readings agree is a number read once, and only
+a setting the model was never drawn at can tell them apart. Eleven mutations,
+all red, five caught by exactly one pin each.
 
 **Built — the rack, which does not follow the machine it carries, 2026-09-12.**
 `batt.rack`, the two cross runners and two side rails under the battery bank,

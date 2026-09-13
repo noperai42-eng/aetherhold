@@ -31,6 +31,8 @@ import {
   compressorGeometry,
   coolerLidGeometry,
   backOutletGeometry,
+  battBandGeometry,
+  battCellsGeometry,
   battLidGeometry,
   battRackGeometry,
   genStacksGeometry,
@@ -1931,6 +1933,25 @@ describe("a battery bank's terminals, straps and back", () => {
         barBed: 0.005,
       },
       straps: { width: 0.07, thickness: 0.025, spread: 0.32, bed: 0.0025, round: 0.01 },
+      cells: {
+        radiusTop: 0.055,
+        radiusFoot: 0.06,
+        height: 0.035,
+        seg: 10,
+        bed: 0.0025,
+        across: 0.16,
+        along: 0.18,
+        forward: 0.17,
+      },
+      band: {
+        width: 0.5,
+        height: 0.14,
+        thick: 0.06,
+        bed: 0.02,
+        rise: 0.35,
+        round: 0.01,
+        seg: 1,
+      },
     });
     expect(BACK_OUTLET_DEFAULT.batt).toEqual({
       width: 0.14,
@@ -2384,6 +2405,261 @@ describe("a battery bank's rack", () => {
     );
     expect(g.boundingBox!.max.x, 'the runners no longer reach past the crate').toBeGreaterThan(
       shell.width / 2,
+    );
+    view.dispose();
+  });
+});
+
+/**
+ * The last two pools on the battery bank: six cell caps bedded into its lid,
+ * and the charge band bedded into its front plane. Between them they finish a
+ * count this file has been building up to without saying: five assemblies on
+ * this one machine sink a face into the surface they sit on rather than laying
+ * it across. A face laid flat on another shows a line of daylight from twenty
+ * cells up, and `bed` is the answer every time.
+ *
+ * Two of those five are the same number — the straps and the caps both sink
+ * 2.5 mm into the lid — and this block pins that as a coincidence rather than
+ * closing it, because nothing in the code joins them and moving either leaves
+ * the other exactly where it was. It is the same shape as the generator's and
+ * the battery's backs landing on one plane from different depths.
+ */
+describe("a battery bank's cell caps and charge band", () => {
+  const shell = SHELL_DEFAULT.batt;
+  const { cells, band, straps, terminals: t } = BATT_DEFAULT;
+  const top = shell.stand + shell.height + shell.lid!.seat + shell.lid!.height;
+  const bounds = (g: THREE.BufferGeometry) => {
+    g.computeBoundingBox();
+    return g.boundingBox!;
+  };
+  const capsAt = (s = shell, r = BATT_DEFAULT) => bounds(battCellsGeometry(s, r));
+  const bandAt = (s = shell, r = BATT_DEFAULT) => bounds(battBandGeometry(s, r));
+  const values = (g: THREE.BufferGeometry, k: number) => {
+    const a = g.attributes.position.array as Float32Array;
+    const set = new Set<number>();
+    for (let i = k; i < a.length; i += 3) set.add(a[i]);
+    return [...set].sort((p, q) => p - q);
+  };
+  /**
+   * How wide the caps are at one of their two heights. A cone and the cone
+   * turned upside down have the same bounding box in all three axes, so which
+   * end of a cap is the wide one is reachable only by asking one ring at a
+   * time.
+   */
+  const widthAt = (y: number, r = BATT_DEFAULT) => {
+    const a = battCellsGeometry(shell, r).attributes.position.array as Float32Array;
+    let most = 0;
+    for (let i = 0; i < a.length; i += 3) {
+      if (Math.abs(a[i + 1] - y) > 1e-6) continue;
+      most = Math.max(most, Math.abs(a[i]) - r.cells.across);
+    }
+    return most;
+  };
+
+  it('stands the caps and the band exactly where the frozen calls stood them', () => {
+    const c = capsAt();
+    expect([c.min.x, c.max.x]).toEqual([-0.21706338226795197, 0.21706338226795197]);
+    expect([c.min.y, c.max.y]).toEqual([0.8174999952316284, 0.8525000214576721]);
+    expect([c.min.z, c.max.z]).toEqual([0.020000001415610313, 0.3199999928474426]);
+    // A cap is a ten-sided prism, so it reaches its full radius along z, where
+    // a vertex sits on the axis, and only cos 18 degrees of it along x, where
+    // none does. The box above is a tenth of a millimetre narrower than the
+    // spread plus the radius for that reason and not because anything moved.
+    expect(c.max.x - cells.across).toBeCloseTo(cells.radiusFoot * Math.cos(Math.PI / 10), 6);
+    expect(c.max.z).toBeCloseTo(cells.forward + cells.along / 2 + cells.radiusFoot, 6);
+
+    // Thirty-one distinct words in x and twenty-six in z, and exactly two in y:
+    // a flat-topped prism has an underside and a top and nothing between them,
+    // which makes the one axis that matters here the one a list can hold.
+    expect(values(battCellsGeometry(shell, BATT_DEFAULT), 1)).toEqual([
+      0.8174999952316284, 0.8525000214576721,
+    ]);
+
+    const b = bandAt();
+    expect([b.min.x, b.max.x]).toEqual([-0.25, 0.25]);
+    expect([b.min.y, b.max.y]).toEqual([0.44999998807907104, 0.5899999737739563]);
+    expect([b.min.z, b.max.z]).toEqual([0.3700000047683716, 0.4300000071525574]);
+    const g = battBandGeometry(shell, BATT_DEFAULT);
+    expect(values(g, 1)).toEqual([
+      0.44999998807907104, 0.45292893052101135, 0.4542264938354492,
+      0.46000000834465027, 0.5799999833106995, 0.5857735276222229,
+      0.5870710611343384, 0.5899999737739563,
+    ]);
+    expect(values(g, 2)).toEqual([
+      0.3700000047683716, 0.3729289174079895, 0.37422651052474976,
+      0.3799999952316284, 0.41999998688697815, 0.4257735013961792,
+      0.42707106471061707, 0.4300000071525574,
+    ]);
+  });
+
+  it('flares each cap where it meets the lid, not where it leaves off', () => {
+    // A cap is a truncated cone and the wide end is the one bedded into the
+    // lid, which is what makes it read as a cap screwed down rather than as a
+    // peg standing up. No box can see it — a cone and the same cone inverted
+    // have the same extent in all three axes — and neither can the list of
+    // heights, which has two words either way. Turning the taper over was the
+    // one mutation in this round that left every other pin green.
+    const ten = Math.cos(Math.PI / 10);
+    expect(widthAt(top - cells.bed), 'the caps are pinched where they meet the lid').toBeCloseTo(
+      cells.radiusFoot * ten,
+      6,
+    );
+    expect(widthAt(top - cells.bed + cells.height), 'the caps no longer taper').toBeCloseTo(
+      cells.radiusTop * ten,
+      6,
+    );
+    expect(cells.radiusFoot, 'the foot is not the wide end').toBeGreaterThan(cells.radiusTop);
+  });
+
+  it('carries the caps up with whatever lid they are bedded into', () => {
+    // The same four numbers the terminals and straps answer to. Before this
+    // lift the caps sat at 0.835 through all of them.
+    const base = capsAt();
+    for (const [name, s, want] of [
+      ['a taller body', { ...shell, height: shell.height + 0.3 }, 0.3],
+      ['a thicker lid', { ...shell, lid: { ...shell.lid!, height: shell.lid!.height + 0.1 } }, 0.1],
+      ['a taller plinth', { ...shell, stand: shell.stand + 0.2 }, 0.2],
+      ['a deeper seat', { ...shell, lid: { ...shell.lid!, seat: shell.lid!.seat + 0.05 } }, 0.05],
+    ] as const) {
+      const c = capsAt(s);
+      expect(c.min.y - base.min.y, `${name} leaves the caps behind`).toBeCloseTo(want, 6);
+      expect(c.max.y - base.max.y, `${name} stretches the caps`).toBeCloseTo(want, 6);
+    }
+  });
+
+  it('beds the caps into the lid, on the straps’ number without sharing it', () => {
+    // Two faces in the whole assembly, so the bed is simply the lower one
+    // against the lid's top, asked at a lid the machine was never given.
+    for (const s of [shell, { ...shell, lid: { ...shell.lid!, height: 0.31 } }]) {
+      const lidTop = s.stand + s.height + s.lid!.seat + s.lid!.height;
+      const ys = values(battCellsGeometry(s, BATT_DEFAULT), 1);
+      expect(ys.length, 'a cap has grown a face between its ends').toBe(2);
+      expect(lidTop - ys[0], 'the caps are laid on the lid rather than sunk into it').toBeCloseTo(
+        cells.bed,
+        6,
+      );
+      expect(ys[1] - ys[0], 'the caps are not their own height').toBeCloseTo(cells.height, 6);
+    }
+
+    // The straps sink by the same 2.5 mm, and that is two assemblies agreeing
+    // rather than one number in two places. Nothing joins them, so moving
+    // either has to leave the other where it was.
+    expect(cells.bed).toBeCloseTo(straps.bed, 6);
+    const capsUnderMovedStraps = capsAt(shell, {
+      ...BATT_DEFAULT,
+      straps: { ...straps, bed: 0.02 },
+    });
+    expect(capsUnderMovedStraps.min.y, 'the caps followed the straps').toBeCloseTo(
+      top - cells.bed,
+      6,
+    );
+    const lidUnderMovedCaps = bounds(
+      battLidGeometry(shell, { ...BATT_DEFAULT, cells: { ...cells, bed: 0.02 } }),
+    );
+    expect(lidUnderMovedCaps.min.y, 'the straps followed the caps').toBeCloseTo(
+      bounds(battLidGeometry(shell, BATT_DEFAULT)).min.y,
+      6,
+    );
+  });
+
+  it('lays the caps forward of the middle, clear of the terminals behind them', () => {
+    // Held as drawn. The grid is centred on its own `forward` and not on the
+    // machine, because the terminals have the back of the lid — six caps
+    // straddling them would be a drawing nobody meant. Freezing that at the
+    // 0.17 it was drawn at was invisible to every other pin in this block.
+    const c = capsAt();
+    expect(c.min.z + c.max.z, 'the caps have slid off their own middle').toBeCloseTo(
+      cells.forward * 2,
+      6,
+    );
+    expect(cells.forward, 'the caps are centred on the machine after all').toBeGreaterThan(0);
+    expect(c.min.z, 'the caps have reached back into the terminals').toBeGreaterThan(
+      -t.back + t.baseRadius,
+    );
+
+    const moved = capsAt(shell, { ...BATT_DEFAULT, cells: { ...cells, forward: -0.09 } });
+    expect(moved.min.z + moved.max.z, 'nothing reads cells.forward').toBeCloseTo(-0.18, 6);
+  });
+
+  it('beds the band into whatever front plane the shell has, and stands it proud', () => {
+    // The mirror of the back outlet, and the only thing on this machine that
+    // answers to the front. Asked at depths the bank was never built at, where
+    // a frozen 0.4 would either float off the plane or sink behind it.
+    for (const depth of [shell.depth, 1.3, 0.44]) {
+      const b = bandAt({ ...shell, depth });
+      expect(depth / 2 - b.min.z, `the band has left the front plane at a depth of ${depth}`)
+        .toBeCloseTo(band.bed, 6);
+      expect(b.max.z - depth / 2, `the band is not standing proud at a depth of ${depth}`)
+        .toBeCloseTo(band.thick - band.bed, 6);
+    }
+
+    // And the thickness is read twice inside one call — once as the box's own
+    // depth and once, halved, as the offset from the face it is buried in — so
+    // at the six centimetres it was drawn at freezing either half moves
+    // nothing. The rack's rail height again, on the machine's other end.
+    // Asked at thicknesses the band was never cut to, where a frozen offset
+    // slides the whole readout out through the plane.
+    for (const thick of [band.thick, 0.02, 0.15]) {
+      const b = bandAt(shell, { ...BATT_DEFAULT, band: { ...band, thick } });
+      expect(shell.depth / 2 - b.min.z, `the band has left the plane at a thickness of ${thick}`)
+        .toBeCloseTo(band.bed, 6);
+      expect(b.max.z - b.min.z, `the band is not the thickness it was cut to at ${thick}`)
+        .toBeCloseTo(thick, 6);
+    }
+    // Two centimetres in and four proud, which is the deepest bed on the
+    // machine by a factor of eight and the only one meant to be seen as a bed.
+    expect(band.bed).toBeCloseTo(0.02, 6);
+    expect(band.thick - band.bed).toBeCloseTo(0.04, 6);
+  });
+
+  it('rides the band up on the plinth, unlike the run that lies on the ground', () => {
+    // The band is measured from the shell's floor, the way the outlet's box is
+    // and the way its ground run deliberately is not. Raise the plinth and the
+    // readout goes with the machine; the cable stays in the grass.
+    const base = bandAt();
+    const raised = bandAt({ ...shell, stand: shell.stand + 0.25 });
+    expect(raised.min.y - base.min.y, 'the band stayed behind on the ground').toBeCloseTo(0.25, 6);
+    expect(base.min.y - shell.stand, 'the band has left the floor it rises from').toBeCloseTo(
+      band.rise,
+      6,
+    );
+    // And it is nowhere near the body's top, so this is a rise and not a hang.
+    expect(base.max.y).toBeLessThan(shell.stand + shell.height);
+  });
+
+  it('turns every number the caps and the band expose, so the bench has no dead knob', () => {
+    // Segment counts are whole numbers the geometry rounds away, so they move
+    // by one and change the size of the buffer rather than its contents; every
+    // other field moves by a length and has to shift a word.
+    const ints = new Set(['seg']);
+    for (const [name, build, part] of [
+      ['cells', battCellsGeometry, cells],
+      ['band', battBandGeometry, band],
+    ] as const) {
+      const before = [
+        ...(build(shell, BATT_DEFAULT).attributes.position.array as Float32Array),
+      ];
+      for (const key of Object.keys(part) as (keyof typeof part)[]) {
+        const step = ints.has(key) ? 1 : 0.05;
+        const r = { ...BATT_DEFAULT, [name]: { ...part, [key]: part[key] + step } };
+        const after = [...(build(shell, r).attributes.position.array as Float32Array)];
+        expect(
+          after.length !== before.length || after.some((v, i) => v !== before[i]),
+          `nothing reads ${name}.${key}`,
+        ).toBe(true);
+      }
+    }
+  });
+
+  it("still pools the battery bank's caps and band", () => {
+    const view = new BuildingsView();
+    const caps = partGeometry(view, 'batt.caps');
+    caps.computeBoundingBox();
+    expect(caps.boundingBox!.min.y, 'the caps have left the lid').toBeCloseTo(top - cells.bed, 6);
+    const g = partGeometry(view, 'batt.band');
+    g.computeBoundingBox();
+    expect(g.boundingBox!.max.z, 'the band no longer stands proud of the front').toBeGreaterThan(
+      shell.depth / 2,
     );
     view.dispose();
   });

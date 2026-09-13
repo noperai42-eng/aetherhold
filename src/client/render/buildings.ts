@@ -1944,11 +1944,65 @@ export function backOutletGeometry(s: ShellRecipe, r: BackOutlet): THREE.BufferG
  * Lapping to the centre line of the member you cross is what a rail does, and
  * a rack whose rails did not follow its runners would be a broken rack whatever
  * the drawing had meant.
+ *
+ * The last two things on the bank are the cell caps and the charge band, and
+ * between them they finish a count worth stating: FIVE separate assemblies here
+ * sink a face into the surface they sit on rather than laying it across —
+ * collars 3 mm into the lid, straps and caps 2.5 mm into the same lid, the band
+ * 2 cm into the front plane, and the back outlet nothing at all. A face laid
+ * flat on another shows a line of daylight from twenty cells up; that is why
+ * `bed` is the most repeated idea in this file. The two 2.5 mm are two
+ * assemblies agreeing on a number, not sharing one: nothing in the code joins
+ * the straps to the caps and moving either leaves the other where it was.
+ * Pinned as the coincidence it is.
+ *
+ * The caps sit forward of the machine's middle, not on it, because the
+ * terminals have the back of the lid. Held as drawn — `forward` is a number the
+ * bench can turn, not a centring the code enforces.
+ *
+ * Two things here are easy to break without any test noticing, and both are
+ * pinned. A cap is a truncated cone whose WIDE end is the one bedded into the
+ * lid, which is what makes it read as a cap screwed down rather than a peg
+ * standing up — turn the taper over and every box, and the list of heights,
+ * comes back the same. And `band.thick` is read twice in one call, as the box's
+ * own depth and, halved, as its offset from the face it is buried in, so at the
+ * six centimetres it was drawn at freezing either half moves nothing at all.
+ * That is `rack.railHeight` again on the machine's other end: a number read
+ * twice at settings where its two readings agree is a number read once.
  */
 export interface BattRecipe {
   readonly rack: BattRack;
   readonly terminals: BattTerminals;
   readonly straps: BattStraps;
+  readonly cells: BattCells;
+  readonly band: BattBand;
+}
+
+export interface BattCells {
+  /** A cap tapers, wider where it meets the lid than at its top. */
+  readonly radiusTop: number;
+  readonly radiusFoot: number;
+  readonly height: number;
+  readonly seg: number;
+  /** How far a cap's underside sits below the lid's top rather than on it. */
+  readonly bed: number;
+  /** The step between the three columns, and between the two rows. */
+  readonly across: number;
+  readonly along: number;
+  /** The grid's own middle, ahead of the machine's and clear of the terminals. */
+  readonly forward: number;
+}
+
+export interface BattBand {
+  readonly width: number;
+  readonly height: number;
+  readonly thick: number;
+  /** How far the band's back face is buried inside the shell's front plane. */
+  readonly bed: number;
+  /** Its bottom edge, above the shell's floor. */
+  readonly rise: number;
+  readonly round: number;
+  readonly seg: number;
 }
 
 export interface BattRack {
@@ -2004,7 +2058,48 @@ export const BATT_DEFAULT: BattRecipe = {
     barWidth: 0.6, barHeight: 0.03, barDepth: 0.04, barBed: 0.005,
   },
   straps: { width: 0.07, thickness: 0.025, spread: 0.32, bed: 0.0025, round: 0.01 },
+  cells: {
+    radiusTop: 0.055, radiusFoot: 0.06, height: 0.035, seg: 10, bed: 0.0025,
+    across: 0.16, along: 0.18, forward: 0.17,
+  },
+  band: { width: 0.5, height: 0.14, thick: 0.06, bed: 0.02, rise: 0.35, round: 0.01, seg: 1 },
 };
+
+/** The cell caps, bedded into whatever lid the shell recipe actually makes. */
+export function battCellsGeometry(s: ShellRecipe, r: BattRecipe): THREE.BufferGeometry {
+  const lid = s.lid!;
+  const top = s.stand + s.height + lid.seat + lid.height;
+  const c = r.cells;
+  const parts: THREE.BufferGeometry[] = [];
+  for (const x of [-c.across, 0, c.across]) {
+    for (const side of [-1, 1]) {
+      parts.push(
+        cylinder(c.radiusTop, c.radiusFoot, c.height, top - c.bed + c.height / 2, c.seg).translate(
+          x,
+          0,
+          c.forward + (side * c.along) / 2,
+        ),
+      );
+    }
+  }
+  return merge(...parts);
+}
+
+/** The charge band, bedded into whatever front plane the shell recipe makes. */
+export function battBandGeometry(s: ShellRecipe, r: BattRecipe): THREE.BufferGeometry {
+  const b = r.band;
+  const face = s.depth / 2 - b.bed;
+  return rbox(
+    b.width,
+    b.height,
+    b.thick,
+    s.stand + b.rise + b.height / 2,
+    0,
+    face + b.thick / 2,
+    b.round,
+    b.seg,
+  );
+}
 
 /** The rack, filling whatever gap the shell recipe leaves under the crate. */
 export function battRackGeometry(s: ShellRecipe, r: BattRecipe): THREE.BufferGeometry {
@@ -3829,19 +3924,13 @@ export class BuildingsView {
     );
     this.pool(
       'batt.caps',
-      (() => {
-        const parts: THREE.BufferGeometry[] = [];
-        for (const x of [-0.16, 0, 0.16]) {
-          for (const z of [0.08, 0.26]) parts.push(cylinder(0.055, 0.06, 0.035, 0.835, 10).translate(x, 0, z));
-        }
-        return merge(...parts);
-      })(),
+      battCellsGeometry(SHELL_DEFAULT.batt, BATT_DEFAULT),
       tone(0xd9c78a, 0.5),
       16,
     );
     this.pool(
       'batt.band',
-      rbox(0.5, 0.14, 0.06, 0.52, 0, 0.4, 0.01, 1),
+      battBandGeometry(SHELL_DEFAULT.batt, BATT_DEFAULT),
       new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: new THREE.Color(0x224422), roughness: 0.4 }),
       16,
     );

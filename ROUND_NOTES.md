@@ -4,6 +4,95 @@ One round, one measured gap, one fix. Newest first.
 
 ---
 
+## 2026-09-12 — The last two on the bank, and the number read twice
+
+**The gap.** `batt.caps` and `batt.band` were the two pools still in world
+coordinates on the battery bank: six cell caps at y = 0.835 in a three-by-two
+grid ahead of the terminals, and the charge readout — the only part of this
+machine whose material moves — at z = 0.4 against a front plane of 0.39. Both
+sat where they sat because the plinth, the body and the lid happen to add to
+0.82 and the depth happens to be 0.78.
+
+**Both are now recipes, and the machine has none left.** `BattCells` and
+`BattBand` join the rack, the terminals, the straps and the back outlet, and all
+six of the bank's pools — `batt.body`, `batt.lid`, `batt.rack`, `batt.trim`,
+`batt.caps` and `batt.band` — are now built by a recipe. That makes the battery
+bank the first machine in this file with no literal geometry left anywhere on
+it. `BattRecipe` itself has five members; the bank draws on three more builders
+it shares with other machines, which is the point of sharing them.
+
+**The count the file had been building without saying it.** Five separate
+assemblies on this one machine sink a face into the surface they sit on rather
+than laying it across: the collars 3 mm into the lid, the straps and the caps
+2.5 mm into the same lid, the band 2 cm into the front plane, and the back
+outlet nothing at all, which is itself a measured zero. A face laid flat on
+another shows a line of daylight from twenty cells up. `bed` is the most
+repeated idea in this file and it is worth naming as one.
+
+The straps' 2.5 mm and the caps' 2.5 mm are the first real candidate on this
+machine for a number two assemblies could share. They do not share it. Nothing
+in the code joins them, moving either leaves the other exactly where it was, and
+they are pinned as the coincidence they are — the same shape as the generator's
+and the battery's backs landing on one plane from different depths a round ago,
+and the same answer: measure it, pin it as it is, do not tidy it into a field.
+
+**A cone and the cone turned over are the same size.** This is the round's
+title and a kind of blindness none of the earlier rounds turned up. A cap is a
+truncated cone and the wide end is the one bedded into the lid, which is what
+makes it read as a cap screwed down rather than a peg standing up. Swap the two
+radii and the bounding box is identical in all three axes, and the list of
+heights is identical at two words, because a cone and the same cone inverted
+occupy exactly the same space. Every instrument this file had — the box, the
+differential, the list of distinct values, the window — came back green. It is
+asked one ring at a time instead: the width at the underside is the foot's
+radius and the width at the top is the top's.
+
+That measurement carries a second thing worth writing down. A cap is a ten-gon,
+so it reaches its full radius along z, where a vertex sits on the axis, and only
+cos 18 degrees of it along x, where none does. The golden box is a tenth of a
+millimetre narrower than spread-plus-radius for that reason and not because
+anything moved, which is exactly the sort of number a later round tidies by
+accident.
+
+**And the rail height again, on the other end of the machine.** `band.thick` is
+read twice inside one call: as the box's own depth, and halved, as its offset
+from the face it is buried in. At the six centimetres it was drawn at those two
+agree, so freezing either half leaves the goldens green, the depth pin green and
+the dead-knob pin green. Same fault as `rack.railHeight` one round earlier, same
+fix — asked at thicknesses the band was never cut to. Twice running now, on two
+different assemblies, which makes it a thing to look for rather than a thing
+that happened: **wherever a builder halves a field, the halving and the field
+are two readers, and the default is where they agree.**
+
+**Two more held as drawn.** The caps' grid is centred on its own `forward` and
+not on the machine, because the terminals have the back of the lid — freezing
+that at 0.17 was invisible to everything else in the block. And the band rides
+up on the plinth the way the back outlet's box does and the way its ground run
+deliberately does not; raise the plinth and the readout goes with the machine
+while the cable stays in the grass.
+
+**Verified.** 2,160 words for the caps and 972 for the band byte-identical to
+the literals, probed in the module before the lift and the probe deleted after;
+both pools byte-identical too, dumped from the old file and the new and compared
+rather than argued about. Eleven mutations, all red; five caught by exactly one
+pin each. `tests/buildings-view.test.ts` goes from 128 to 137 tests, the suite
+from 2,737 to 2,746. tsc clean. No frames: no vertex moved.
+
+**Next.** The battery bank is finished. What is left in world coordinates on
+its neighbours is `gen.skid`, `gen.wheel`, `gen.stack` and `gen.fire` on the
+generator, and `cooler.feet` and `cooler.frost` on the cooler. `gen.skid` is the
+interesting one and it should be taken first, because it is the rack again: two
+cross members at z = ±0.28 and two side rails at x = ±0.36, the same assembly
+this round's predecessor lifted. It is the extract-at-three test a third time,
+and the answer looks like the cooler's back — the skid's members are rounded
+boxes where the rack's are plain ones, so sharing would move vertices and the
+family is two shapes with two builders. Worth proving rather than assuming.
+After the machines, the solar panel: a tilted frame on a pillar with a grid of
+cells laid into it, the first thing on this bench whose parts answer to a
+rotation rather than to a plane.
+
+---
+
 ## 2026-09-12 — The rack, which does not follow the machine it carries
 
 **The gap.** `batt.rack` was four boxes in world coordinates under the battery
