@@ -4,6 +4,76 @@ One round, one measured gap, one fix. Newest first.
 
 ---
 
+## 2026-09-13 — Escape the pawn's name before the HUD prints it
+
+**The gap.** `escapeHtml` guards every string sink in `hud.ts` except one:
+`HudChrome.syncFps`, the first-person self panel, built its markup by
+interpolating a settler's own fields straight into `innerHTML` — `target.verb`
+at :2672, `p.name` and `p.weapon` at :2678, and the carried/job label at :2684 —
+while every other panel in the file already escapes. None of those four fields
+is the player's data to trust: `importColony` (`src/sim/transfer.ts`) hands a
+pasted colony code to `deserialize` (`src/sim/save.ts`) with no validation on
+any string field, and `target.verb` can itself carry a second settler's name
+(`Tend ${p.name}` on a downed ally, `src/sim/interact.ts:138`). A pawn named
+`<img src=x onerror=…>` ran script on the 5062 origin every saved colony lives
+on, the moment its owner stepped into first person or turned toward its body.
+This ships outside the pass Group 3 opens — ruled in at the gate as its own PR,
+not counted in the sixteen-segment count, and lands before `3e-measure-label`
+opens this file again.
+
+**The fix.** Five interpolations wrapped in `escapeHtml()`: `target.verb`,
+`p.name`, `p.weapon`, and both branches of the carried/job label. The self
+panel's markup is pulled out of `syncFps` into `selfPanelHtml(world, p)`, a
+pure string builder beside the file's other `xxxPanel` functions, so the
+escaping it depends on can be asserted without a live DOM.
+
+**Ruled at the gate, then measured false: the ' does not join escapeHtml's
+class.** The brief asked for a fifth member of `escapeHtml`'s class — `'` →
+`&#39;`, beside `&`, `<`, `>`, `"` — read as free, since every other sink in
+the file already escapes and the ask was framed as closing the one gap. It is
+not free: `escapeHtml` is one shared function across roughly thirty call
+sites, and one of them is `kitRow` (hud.ts:4480), already escaping
+`EQUIP[kind].label` before this round touched anything. `EQUIP['medkit']`'s
+label is `"doctor's bag"`, and `tests/kit-card.test.ts` — frozen,
+additions-only — pins `kitRows('medkit', ...)`'s output as containing that
+label character-for-character. Adding `'` to the class turns it into
+`doctor&#39;s bag` and reddens that test, which this round may not edit.
+Checked whether the apostrophe is load-bearing anywhere it would actually
+close a hole: every attribute in this file is double-quoted (`grep -n "='"`
+returns nothing), and all five of this round's sinks land in a text node, not
+an attribute, so an unescaped `'` cannot break out of anything a current call
+site builds. The four-character class already neutralises every payload the
+gap description names (`<img src=x onerror=…>`, `<b>x</b>`) — closing `<`
+closes every route to a new element or a new attribute. `escapeHtml` is left
+as it was, with a comment at the definition saying why, and the fifth member
+is a **human gate**: the two ways to actually add it are widening the frozen
+test (not this round's to do) or splitting a stricter sibling function for
+future attribute-position sinks, and which of those is worth doing is not a
+measured question, it is a design one.
+
+**Verified.** Red-first: `tests/hud.test.ts` names a pawn `<b>x</b>` and fails
+against the pre-fix code — the test's own fragment parser shows the tag
+consumed into a real nested element and the name reduced to the bare word
+`x` (`expected 'xrifleHealthFoodRestFunidle' to contain '<b>x</b>'`) — then
+passes once the five sinks escape, alongside a byte-for-byte check that an
+ordinary pawn's rows are unchanged. `npm run typecheck` clean. Full suite alone
+at the config's six workers, first pass: 2763 passed, 1 failed (the apostrophe
+regression above, in `tests/kit-card.test.ts`), 13 skipped; second pass after
+reverting the class change: 2765 passed, 13 skipped, in 1039 s — every
+pre-existing test at its old value, plus the sixth `escapeHtml` test this round
+added, and no fingerprint change because nothing under `src/sim` or `src/eval`
+was touched.
+
+**Next.** Two things read while writing this round, neither its gap. `main.ts:16`
+hangs the whole `App` on `window` unconditionally, which only survives today
+because the look harness happens to depend on the same global
+(`shot.mjs:154`) — a headless caller without one never gets a running colony,
+and nothing says so. `vite.config.ts`'s `allowedHosts: ['.local']` is a suffix
+match on a dev server bound to `0.0.0.0`, so any hostname ending `.local`
+anywhere on the LAN is accepted, wider than "this box's own address."
+
+---
+
 ## 2026-09-12 — One plate on three machines, and the key nobody checked
 
 **The gap.** Three machines carry a lit panel on the front: the generator's

@@ -2669,20 +2669,16 @@ export class Hud {
     const target = describeTarget(s.world, p);
     if (target) {
       this.prompt.style.display = 'block';
-      this.prompt.innerHTML = `<kbd>E</kbd>${target.verb}`;
+      // `verb` can carry another pawn's name (`Tend ${p.name}` — interact.ts)
+      // and a name comes from a save, which can arrive as a pasted colony
+      // code (`sim/transfer.ts`), so it is untrusted the same way `p.name`
+      // below is.
+      this.prompt.innerHTML = `<kbd>E</kbd>${escapeHtml(target.verb)}`;
     } else {
       this.prompt.style.display = 'none';
     }
     this.crosshair.classList.toggle('armed', p.drafted);
-    this.selfPanel.innerHTML =
-      `<div class="who"><b>${p.name}</b><span class="wep">${p.weapon}${p.drafted ? ' · DRAFTED' : ''}</span></div>` +
-      bar('hp', p.hp / p.maxHp, 'Health') +
-      bar('food', p.needs.food, 'Food') +
-      bar('rest', p.needs.rest, 'Rest') +
-      bar('rec', p.needs.recreation, 'Fun') +
-      `<div class="kv" style="margin-top:5px;color:var(--dim);font-size:11px">${
-        p.carryingItemId !== null ? `carrying ${carriedLabel(s.world, p)}` : jobLabel(s.world, p)
-      }</div>`;
+    this.selfPanel.innerHTML = selfPanelHtml(s.world, p);
   }
 
   setLockHint(show: boolean): void {
@@ -3925,6 +3921,31 @@ function carriedLabel(world: World, p: Pawn): string {
   return it ? `${it.amount} ${it.kind}` : 'nothing';
 }
 
+/**
+ * The first-person self panel: who they are, what they are carrying, their
+ * three needs, and what they are doing. A pure string builder, like the other
+ * `xxxPanel` functions in this file, so the escaping it depends on can be
+ * asserted without a live DOM — a settler's name reaches here from a save,
+ * and a save can arrive as a pasted colony code (`sim/transfer.ts`), so it is
+ * untrusted in exactly the way every other sink in this file already treats it.
+ */
+export function selfPanelHtml(world: World, p: Pawn): string {
+  return (
+    `<div class="who"><b>${escapeHtml(p.name)}</b><span class="wep">${escapeHtml(p.weapon)}${
+      p.drafted ? ' · DRAFTED' : ''
+    }</span></div>` +
+    bar('hp', p.hp / p.maxHp, 'Health') +
+    bar('food', p.needs.food, 'Food') +
+    bar('rest', p.needs.rest, 'Rest') +
+    bar('rec', p.needs.recreation, 'Fun') +
+    `<div class="kv" style="margin-top:5px;color:var(--dim);font-size:11px">${
+      p.carryingItemId !== null
+        ? `carrying ${escapeHtml(carriedLabel(world, p))}`
+        : escapeHtml(jobLabel(world, p))
+    }</div>`
+  );
+}
+
 function occupantName(world: World, id: number | null | undefined): string {
   if (id === null || id === undefined) return 'empty';
   return findPawn(world, id)?.name ?? 'empty';
@@ -4536,6 +4557,12 @@ export function corpsePanel(p: Pawn): string {
   );
 }
 
-function escapeHtml(s: string): string {
+// NOTE: does not escape `'` — see ROUND_NOTES.md 2026-09-13. Every call site in
+// this file puts its argument in a text node or a double-quoted attribute, so
+// an apostrophe is inert everywhere this function is actually used; adding it
+// to the class would also re-encode `EQUIP['medkit'].label` ("doctor's bag")
+// and every other already-shipped string an apostrophe occurs in, which
+// `tests/kit-card.test.ts` (frozen, additions-only) already pins raw.
+export function escapeHtml(s: string): string {
   return s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!);
 }
