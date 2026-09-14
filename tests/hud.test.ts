@@ -19,9 +19,10 @@
 
 import { describe, expect, it } from 'vitest';
 
-import { escapeHtml, selfPanelHtml } from '../src/client/ui/hud';
+import { escapeHtml, promptHtml, selfPanelHtml } from '../src/client/ui/hud';
 import { createWorld } from '../src/sim/worldgen';
-import { livingColonists } from '../src/sim/world';
+import { livingColonists, nextId } from '../src/sim/world';
+import type { ItemStack, Pawn, ResourceKind, World } from '../src/sim/types';
 
 // ------------------------------------------------------- the fragment parser
 
@@ -82,6 +83,26 @@ function query(f: Frag, selector: string): Frag | null {
   return find(f);
 }
 
+/**
+ * Puts a stack of `kind` in the pawn's hands, the way a haul job would. Built
+ * directly rather than through `addItem`, which merges into whatever is already
+ * lying on the cell and would hand back a stack of the wrong kind.
+ */
+function carried(world: World, p: Pawn, kind: ResourceKind, amount: number): ItemStack {
+  const stack: ItemStack = {
+    id: nextId(world),
+    kind,
+    amount,
+    x: p.x,
+    y: p.y,
+    carriedBy: p.id,
+    reservedBy: null,
+  };
+  world.items.push(stack);
+  p.carryingItemId = stack.id;
+  return stack;
+}
+
 // ------------------------------------------------------------- escapeHtml
 
 describe('escapeHtml', () => {
@@ -134,6 +155,7 @@ describe('selfPanelHtml', () => {
     p.name = 'Corwin Verrow';
     p.weapon = 'none';
     p.drafted = false;
+    p.carryingItemId = null;
 
     const html = selfPanelHtml(world, p);
 
@@ -142,5 +164,59 @@ describe('selfPanelHtml', () => {
     expect(html).toContain('class="bar food"');
     expect(html).toContain('class="bar rest"');
     expect(html).toContain('class="bar rec"');
+    // The bottom row too, in full. Leaving it out is how the carrying branch
+    // below went unasserted in the first place: five `toContain` calls that
+    // all landed above it read as coverage of the whole panel.
+    expect(html).toContain(
+      '<div class="kv" style="margin-top:5px;color:var(--dim);font-size:11px">idle</div>',
+    );
+  });
+
+  // --------------------------------------------------- the carrying branch
+
+  it('names what an ordinary pawn is carrying', () => {
+    const world = createWorld(7);
+    const p = livingColonists(world)[0]!;
+    const stack = carried(world, p, 'wood', 12);
+
+    expect(stack.carriedBy).toBe(p.id);
+    expect(selfPanelHtml(world, p)).toContain(
+      '<div class="kv" style="margin-top:5px;color:var(--dim);font-size:11px">carrying 12 wood</div>',
+    );
+  });
+
+  it('renders a carried stack whose kind is markup as text, not as an element', () => {
+    const world = createWorld(7);
+    const p = livingColonists(world)[0]!;
+    // `importColony` (`sim/transfer.ts`) deserializes a pasted colony code with
+    // no validation, so `kind` is only a `ResourceKind` to TypeScript. At run
+    // time it is whatever the save said.
+    carried(world, p, '<img src=x onerror=alert(1)>' as ResourceKind, 3);
+
+    const html = selfPanelHtml(world, p);
+    const frag = parseFragment(html);
+
+    expect(html).not.toContain('<img');
+    expect(contains(frag, 'img')).toBe(false);
+    expect(textOf(frag)).toContain('carrying 3 <img src=x onerror=alert(1)>');
+  });
+});
+
+// ------------------------------------------------------------- promptHtml
+
+describe('promptHtml', () => {
+  it('wraps an ordinary verb in the key hint', () => {
+    expect(promptHtml('Open the door')).toBe('<kbd>E</kbd>Open the door');
+  });
+
+  it('renders a verb carrying a markup-named pawn as text, not as an element', () => {
+    // `describeTarget` builds `Tend ${p.name}` for a downed ally
+    // (`sim/interact.ts`), so a settler's name reaches the prompt whole.
+    const html = promptHtml('Tend <b>x</b>');
+    const frag = parseFragment(html);
+
+    expect(html).toBe('<kbd>E</kbd>Tend &lt;b&gt;x&lt;/b&gt;');
+    expect(contains(frag, 'b')).toBe(false);
+    expect(textOf(frag)).toBe('ETend <b>x</b>');
   });
 });

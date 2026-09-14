@@ -2669,11 +2669,7 @@ export class Hud {
     const target = describeTarget(s.world, p);
     if (target) {
       this.prompt.style.display = 'block';
-      // `verb` can carry another pawn's name (`Tend ${p.name}` — interact.ts)
-      // and a name comes from a save, which can arrive as a pasted colony
-      // code (`sim/transfer.ts`), so it is untrusted the same way `p.name`
-      // below is.
-      this.prompt.innerHTML = `<kbd>E</kbd>${escapeHtml(target.verb)}`;
+      this.prompt.innerHTML = promptHtml(target.verb);
     } else {
       this.prompt.style.display = 'none';
     }
@@ -3919,6 +3915,20 @@ export function errandLine(world: World, p: Pawn): string {
 function carriedLabel(world: World, p: Pawn): string {
   const it = findItem(world, p.carryingItemId);
   return it ? `${it.amount} ${it.kind}` : 'nothing';
+}
+
+/**
+ * The interact prompt — the one line at the crosshair that names what pressing
+ * E would do. A pure string builder for the same reason `selfPanelHtml` below
+ * is one: `syncFps` needs a live DOM and this suite deliberately has none, so
+ * the escaping could not otherwise be asserted at all.
+ *
+ * `verb` can carry another pawn's name (`Tend ${p.name}` — `sim/interact.ts`)
+ * and a name comes from a save, which can arrive as a pasted colony code
+ * (`sim/transfer.ts`), so it is untrusted the same way `p.name` is.
+ */
+export function promptHtml(verb: string): string {
+  return `<kbd>E</kbd>${escapeHtml(verb)}`;
 }
 
 /**

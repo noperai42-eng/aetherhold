@@ -55,8 +55,21 @@ measured question, it is a design one.
 against the pre-fix code — the test's own fragment parser shows the tag
 consumed into a real nested element and the name reduced to the bare word
 `x` (`expected 'xrifleHealthFoodRestFunidle' to contain '<b>x</b>'`) — then
-passes once the five sinks escape, alongside a byte-for-byte check that an
-ordinary pawn's rows are unchanged. `npm run typecheck` clean. Full suite alone
+passes once the five sinks escape, alongside a check that an ordinary pawn's
+rows are unchanged — the `who` row and the bottom `kv` row each asserted as
+their whole literal string, the four bars by class.
+
+All five sinks are now covered, which took a second pass: the first draft
+escaped five and tested three. Review found that the carrying branch of the
+self panel had no assertion at all, positive or negative, because no test ever
+set `carryingItemId` — five `toContain` calls that all landed above that row
+read as coverage of the whole panel. And `target.verb` was escaped inline
+inside `syncFps`, which needs a live DOM this suite deliberately does not
+have, so it could not be reached from a test at all. The prompt markup is now
+`promptHtml(verb)`, a pure builder beside `selfPanelHtml` — the same move,
+made for the same reason. Both new sinks were run red first by taking their
+`escapeHtml` call back out: `carrying 3 <img src=x onerror=alert(1)>` builds a
+real `img` element, and `Tend <b>x</b>` a real `b`. `npm run typecheck` clean. Full suite alone
 at the config's six workers, first pass: 2763 passed, 1 failed (the apostrophe
 regression above, in `tests/kit-card.test.ts`), 13 skipped; second pass after
 reverting the class change: 2765 passed, 13 skipped, in 1039 s — every
