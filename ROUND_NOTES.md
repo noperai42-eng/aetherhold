@@ -34,7 +34,39 @@ proved out but production lacked) now snaps `prev.ph` to the destination's raw
 phase along with `x`/`y`/`f`, so a teleported or newly-sighted pawn's bob does
 not sweep from wherever the last body happened to leave it.
 
-**Measured, not assumed.** `tests/fps-trace.test.ts` reads the change back off
+**Say plainly what else that snap changes.** It is not only a bob-continuity
+fix. Before this round `PawnsView.onTick` had no jump handling at all, so a
+large move lerped `x`/`y`/`f` like any other — the body swept visibly across
+the gap over one tick. That is a behaviour change to position and facing, on
+every pawn, and it earns its own acceptance row rather than riding in on the
+phase one. It is reachable in the sim today: `src/sim/ice.ts:160` puts someone
+who fell through the ice on the bank, and `src/sim/holdings.ts:396`/`:497` and
+`src/sim/jobs.ts:2978`/`:3644` each write a pawn's position outright, past
+`moveWithCollision`. Any of those can clear two cells. The threshold is
+strictly greater than `SNAP_CELLS`, so a two-cell step — the largest an
+ordinary walk produces — still sweeps; `tests/pawns-interp.test.ts` pins that
+edge along with the jump and the one-cell case.
+
+**Measured, not assumed — and on the real class, not a copy.** The first cut
+of this round pinned the headline behaviour only through `TraceView`, the
+hand-written stand-in `1a` built to score a whole scripted run cheaply. A copy
+cannot fail when the original changes, and review proved it by mutation:
+replacing both production lerps with `pr.ph + (c.ph - pr.ph) * (alpha < 0.5 ? 0
+: 1)` — bit-exact at both boundaries, a restored 20 Hz staircase everywhere
+between — and disabling the teleport branch with `if (false && jump >
+SNAP_CELLS)` left all 315 tests in the repository green. `tests/pawns-interp.test.ts`
+closes that: it imports `PawnsView` itself, asserts `interpolated` returns the
+midpoint phase at alpha 0.5 and nine distinct climbing values across nine
+alphas, reads the posed leg off the rig after `sync` to show the body is driven
+by the same midpoint and not by `pawn.animPhase`, and feeds the interpolated
+phase to `updateCamera` to show `camera.position.y` moves by exactly
+`settlerBob(mid) - settlerBob(raw)` against the five-argument call that defaults
+to the raw phase — which is the only thing standing between `app.ts:350`'s
+wiring and a silent return to the staircase. Six of the seven cases were run
+red against those mutants first; the seventh is the two-cell edge, which the
+mutants do not move.
+
+`tests/fps-trace.test.ts` reads the change back off
 `controller.camera.position.y` itself — not off a value the test computed on
 its own from `at.ph` — so a controller that still read the raw phase (today's
 code before this fix, checked by literally reverting the three source files

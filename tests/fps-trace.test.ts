@@ -463,6 +463,18 @@ describe('1e-feel-interp-phase: the bob no longer steps at 20 Hz — animPhase i
   // `at.ph` (the interpolated phase `PawnsView`/`updateCamera` now share)
   // instead, the bob changes on literally every rendered frame at all three
   // rates, because `alpha` itself advances every frame while walking.
+  //
+  // The `changes` count is what is load-bearing below. The `maxDelta` ceilings
+  // are NOT a smoothness bound: each is the largest single-frame step a correct
+  // implementation can emit at that rate, computed from the shipped constants
+  // (SETTLER_LEG 0.74 and SETTLER_SWING 0.62 give phaseScale 0.48711;
+  // PHASE_PER_CELL 7.5; SETTLER_DEFAULT.bob 0.035). At PLAYER_RUN the bob
+  // argument advances 1.315 rad per frame at 30 fps, so the peak step is
+  // sin(1.315) * 0.035 = 0.0339 — 97% of the whole amplitude, and only 2.39
+  // samples per half-cycle. They catch an implementation that OVERSHOOTS a
+  // correct one; they cannot tell a smooth bob from a coarsely sampled one. If
+  // a real smoothness bound is ever wanted, assert samples per half-cycle
+  // (2.39 / 4.78 / 11.47 at PLAYER_RUN) instead of a delta.
   it('30 fps: bob changes on every one of 119 frame-to-frame steps while walking (was 79, ~2/3)', () => {
     const r = run(30);
     const walking = r.samples.filter((s) => s.activity === 'walking');
@@ -510,11 +522,19 @@ describe('1e-feel-interp-phase: the bob no longer steps at 20 Hz — animPhase i
 
   it('tick-boundary values equal the raw ones exactly, at alpha 0 and alpha 1', () => {
     // `interpolated(id, 0)` is `pr + (c - pr) * 0`, which is `pr` bit-for-bit
-    // (multiplying by zero introduces no rounding); `interpolated(id, 1)` is
-    // `pr + (c - pr)`, which recovers `c` exactly for the same reason — no
-    // fractional term survives at either boundary, so a candidate that drifts
-    // from the raw tick values even slightly at the edges of its own lerp
-    // would be caught here rather than only in a tolerance band.
+    // for any two doubles: multiplying by zero introduces no rounding.
+    //
+    // `interpolated(id, 1)` is `pr + (c - pr)`, and that is NOT a general
+    // property of floating-point addition — over three million random pairs in
+    // [0, 10), `a + (b - a) !== b` in 9.67% of them. It is exact here because
+    // of how the phase is produced: `c.ph` is `pr.ph + delta`, so `c.ph - pr.ph`
+    // is exact (Sterbenz: the two operands are within a factor of two of the
+    // sum) and adding it back recovers `c.ph`. Do not generalise the round trip
+    // to two independently-computed doubles — a test written on that reasoning
+    // fails about a tenth of the time.
+    //
+    // So a candidate that drifts from the raw tick values even slightly at the
+    // edges of its own lerp is caught here rather than only in a tolerance band.
     const world = createWorld(77);
     const pawn = bodyIn(world);
     const view = new TraceView();
