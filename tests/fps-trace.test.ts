@@ -101,39 +101,49 @@ function shortestAngle(from: number, to: number): number {
  */
 const SNAP_CELLS = 2;
 class TraceView {
-  prev = new Map<number, { x: number; y: number; f: number }>();
-  curr = new Map<number, { x: number; y: number; f: number }>();
+  prev = new Map<number, { x: number; y: number; f: number; ph: number }>();
+  curr = new Map<number, { x: number; y: number; f: number; ph: number }>();
   onTick(world: World): void {
     for (const p of world.pawns) {
       const c = this.curr.get(p.id);
       if (c) {
         const jump = Math.hypot(p.x - c.x, p.y - c.y);
-        const pr = this.prev.get(p.id) ?? { x: c.x, y: c.y, f: c.f };
+        const pr = this.prev.get(p.id) ?? { x: c.x, y: c.y, f: c.f, ph: c.ph };
         if (jump > SNAP_CELLS) {
           // Teleport: prev snaps to the new curr instead of lerping across
-          // the gap, so the render never sweeps through the space between.
+          // the gap, so the render never sweeps through the space between —
+          // and, since 1e-feel-interp-phase, neither does the bob `ph` now
+          // carries alongside x/y/f.
           pr.x = p.x;
           pr.y = p.y;
           pr.f = p.facing;
+          pr.ph = p.animPhase;
         } else {
           pr.x = c.x;
           pr.y = c.y;
           pr.f = c.f;
+          pr.ph = c.ph;
         }
         this.prev.set(p.id, pr);
         c.x = p.x;
         c.y = p.y;
         c.f = p.facing;
+        c.ph = p.animPhase;
       } else {
-        this.curr.set(p.id, { x: p.x, y: p.y, f: p.facing });
-        this.prev.set(p.id, { x: p.x, y: p.y, f: p.facing });
+        this.curr.set(p.id, { x: p.x, y: p.y, f: p.facing, ph: p.animPhase });
+        this.prev.set(p.id, { x: p.x, y: p.y, f: p.facing, ph: p.animPhase });
       }
     }
   }
-  interpolated(id: number, alpha: number): { x: number; y: number; f: number } {
+  interpolated(id: number, alpha: number): { x: number; y: number; f: number; ph: number } {
     const c = this.curr.get(id)!;
     const pr = this.prev.get(id) ?? c;
-    return { x: pr.x + (c.x - pr.x) * alpha, y: pr.y + (c.y - pr.y) * alpha, f: pr.f + shortestAngle(pr.f, c.f) * alpha };
+    return {
+      x: pr.x + (c.x - pr.x) * alpha,
+      y: pr.y + (c.y - pr.y) * alpha,
+      f: pr.f + shortestAngle(pr.f, c.f) * alpha,
+      ph: pr.ph + (c.ph - pr.ph) * alpha,
+    };
   }
   truth(id: number, alpha: number): { x: number; y: number; f: number } {
     const c = this.curr.get(id)!;
@@ -170,6 +180,8 @@ interface Sample {
   x: number;
   y: number;
   f: number;
+  /** The interpolated gait phase this frame's bob was read off (1e-feel-interp-phase). */
+  ph: number;
   /** `camera.position.y` — the eased eye height PLUS the walking bob. */
   eye: number;
   /** The eased eye height alone (`eye` minus this frame's bob), so the
@@ -233,8 +245,16 @@ function run(fps: number): RunResult {
     const alpha = alphaOf(owed, 1);
     const at = view.interpolated(pawn.id, alpha);
     const truthAt = view.truth(pawn.id, alpha);
-    controller.updateCamera(world, pawn, at.x, at.y, 1 / 60);
-    const bobNow = pawn.activity === 'walking' ? settlerBob(pawn.animPhase) : 0;
+    controller.updateCamera(world, pawn, at.x, at.y, 1 / 60, at.ph);
+    // `bob` is read back off `controller.camera.position.y` itself, not
+    // recomputed from `at.ph` locally — so a `controller.ts` that ignored the
+    // passed phase (today's code, before this segment) would show up here as
+    // the old raw, tick-stepped step function, and a fix that actually wires
+    // it through shows up as the continuous one. `EYE_HEIGHT` (1.62) is
+    // subtracted rather than imported: the walk premise above already pins
+    // the ease term at exactly zero for every sample in this window, so
+    // whatever is left in `camera.position.y` past 1.62 is the bob alone.
+    const bobNow = pawn.activity === 'walking' ? controller.camera.position.y - 1.62 : 0;
     samples.push({
       frame,
       wallMs,
@@ -242,6 +262,7 @@ function run(fps: number): RunResult {
       x: at.x,
       y: at.y,
       f: at.f,
+      ph: at.ph,
       eye: controller.camera.position.y,
       eyeOnly: controller.camera.position.y - bobNow,
       activity: pawn.activity,
@@ -434,35 +455,102 @@ describe('the eye gap: the stand-up/lie-down transient takes the same 14 frames 
   });
 });
 
-describe('the bob staircase: raw animPhase bob changes once per completed sim tick, so it steps once every ~2/3, ~1/3, ~1/7 frames', () => {
-  it('30 fps: bob changes on 79 of 119 frame-to-frame steps while walking (~2/3)', () => {
+describe('1e-feel-interp-phase: the bob no longer steps at 20 Hz — animPhase is lerped between ticks like x/y/f', () => {
+  // Before this segment, `bobNow` was read off the raw, tick-stepped
+  // `pawn.animPhase`, so it only changed the frame a new tick landed: 79 of
+  // 119 frame-to-frame steps at 30 fps (~2/3), 79 of 239 at 60 (~1/3), 79 of
+  // 575 at 144 (~1/7) — the staircase this segment closes. Reading it off
+  // `at.ph` (the interpolated phase `PawnsView`/`updateCamera` now share)
+  // instead, the bob changes on literally every rendered frame at all three
+  // rates, because `alpha` itself advances every frame while walking.
+  //
+  // The `changes` count is what is load-bearing below. The `maxDelta` ceilings
+  // are NOT a smoothness bound: each is the largest single-frame step a correct
+  // implementation can emit at that rate, computed from the shipped constants
+  // (SETTLER_LEG 0.74 and SETTLER_SWING 0.62 give phaseScale 0.48711;
+  // PHASE_PER_CELL 7.5; SETTLER_DEFAULT.bob 0.035). At PLAYER_RUN the bob
+  // argument advances 1.315 rad per frame at 30 fps, so the peak step is
+  // sin(1.315) * 0.035 = 0.0339 — 97% of the whole amplitude, and only 2.39
+  // samples per half-cycle. They catch an implementation that OVERSHOOTS a
+  // correct one; they cannot tell a smooth bob from a coarsely sampled one. If
+  // a real smoothness bound is ever wanted, assert samples per half-cycle
+  // (2.39 / 4.78 / 11.47 at PLAYER_RUN) instead of a delta.
+  it('30 fps: bob changes on every one of 119 frame-to-frame steps while walking (was 79, ~2/3)', () => {
     const r = run(30);
     const walking = r.samples.filter((s) => s.activity === 'walking');
     let changes = 0;
-    for (let i = 1; i < walking.length; i++) if (walking[i]!.bob !== walking[i - 1]!.bob) changes++;
+    let maxDelta = 0;
+    for (let i = 1; i < walking.length; i++) {
+      const d = Math.abs(walking[i]!.bob - walking[i - 1]!.bob);
+      if (d !== 0) changes++;
+      maxDelta = Math.max(maxDelta, d);
+    }
     expect(walking.length).toBe(120);
-    expect(changes).toBe(79);
-    expect(changes / (walking.length - 1)).toBeCloseTo(2 / 3, 1);
+    expect(changes).toBe(walking.length - 1);
+    expect(maxDelta).toBeLessThanOrEqual(0.034);
   });
 
-  it('60 fps: bob changes on 79 of 239 frame-to-frame steps while walking (~1/3)', () => {
+  it('60 fps: bob changes on every one of 239 frame-to-frame steps while walking (was 79, ~1/3)', () => {
     const r = run(60);
     const walking = r.samples.filter((s) => s.activity === 'walking');
     let changes = 0;
-    for (let i = 1; i < walking.length; i++) if (walking[i]!.bob !== walking[i - 1]!.bob) changes++;
+    let maxDelta = 0;
+    for (let i = 1; i < walking.length; i++) {
+      const d = Math.abs(walking[i]!.bob - walking[i - 1]!.bob);
+      if (d !== 0) changes++;
+      maxDelta = Math.max(maxDelta, d);
+    }
     expect(walking.length).toBe(240);
-    expect(changes).toBe(79);
-    expect(changes / (walking.length - 1)).toBeCloseTo(1 / 3, 1);
+    expect(changes).toBe(walking.length - 1);
+    expect(maxDelta).toBeLessThanOrEqual(0.0214);
   });
 
-  it('144 fps: bob changes on 79 of 575 frame-to-frame steps while walking (~1/7)', () => {
+  it('144 fps: bob changes on every one of 575 frame-to-frame steps while walking (was 79, ~1/7)', () => {
     const r = run(144);
     const walking = r.samples.filter((s) => s.activity === 'walking');
     let changes = 0;
-    for (let i = 1; i < walking.length; i++) if (walking[i]!.bob !== walking[i - 1]!.bob) changes++;
+    let maxDelta = 0;
+    for (let i = 1; i < walking.length; i++) {
+      const d = Math.abs(walking[i]!.bob - walking[i - 1]!.bob);
+      if (d !== 0) changes++;
+      maxDelta = Math.max(maxDelta, d);
+    }
     expect(walking.length).toBe(576);
-    expect(changes).toBe(79);
-    expect(changes / (walking.length - 1)).toBeCloseTo(1 / 7, 1);
+    expect(changes).toBe(walking.length - 1);
+    expect(maxDelta).toBeLessThanOrEqual(0.0095);
+  });
+
+  it('tick-boundary values equal the raw ones exactly, at alpha 0 and alpha 1', () => {
+    // `interpolated(id, 0)` is `pr + (c - pr) * 0`, which is `pr` bit-for-bit
+    // for any two doubles: multiplying by zero introduces no rounding.
+    //
+    // `interpolated(id, 1)` is `pr + (c - pr)`, and that is NOT a general
+    // property of floating-point addition — over three million random pairs in
+    // [0, 10), `a + (b - a) !== b` in 9.67% of them. It is exact here because
+    // of how the phase is produced: `c.ph` is `pr.ph + delta`, so `c.ph - pr.ph`
+    // is exact (Sterbenz: the two operands are within a factor of two of the
+    // sum) and adding it back recovers `c.ph`. Do not generalise the round trip
+    // to two independently-computed doubles — a test written on that reasoning
+    // fails about a tenth of the time.
+    //
+    // So a candidate that drifts from the raw tick values even slightly at the
+    // edges of its own lerp is caught here rather than only in a tolerance band.
+    const world = createWorld(77);
+    const pawn = bodyIn(world);
+    const view = new TraceView();
+    view.onTick(world); // seed prev === curr
+
+    const before = pawn.animPhase;
+    pawn.animPhase += 2.025; // one run tick's worth of phase (PLAYER_RUN * PHASE_PER_CELL)
+    const after = pawn.animPhase;
+    view.onTick(world);
+
+    expect(view.interpolated(pawn.id, 0).ph).toBe(before);
+    expect(view.interpolated(pawn.id, 1).ph).toBe(after);
+    // The bob the two boundary phases produce matches the raw one exactly too,
+    // not just the phase underneath it.
+    expect(settlerBob(view.interpolated(pawn.id, 0).ph)).toBe(settlerBob(before));
+    expect(settlerBob(view.interpolated(pawn.id, 1).ph)).toBe(settlerBob(after));
   });
 });
 
@@ -595,3 +683,4 @@ describe('a >2-cell teleport snaps instead of lerping across the gap', () => {
     expect(Math.abs(naiveHalfway - r.pawn.x)).toBeCloseTo(5, 6); // the naive lerp this rule replaces would sit 5 cells short
   });
 });
+

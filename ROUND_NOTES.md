@@ -4,6 +4,123 @@ One round, one measured gap, one fix. Newest first.
 
 ---
 
+## 2026-09-13 — The bob stops staircasing
+
+**The gap.** "The eye gap" round measured, but did not touch, a second staircase
+walking distance from the first: `settlerBob` — the one function the FPS eye
+and every pawn rig share — was read straight off `pawn.animPhase`, which only
+`moveWithCollision` advances, once per completed 20 Hz sim tick. `x`, `y` and
+`f` were already lerped between ticks by `PawnsView`; `animPhase` was not, so
+on a frame rate above 20 fps the bob visibly held its value across several
+rendered frames and then jumped, while the body under it glided. The round
+before this one counted it exactly: 79 tick-advances land inside a walk
+regardless of frame rate, so the fraction of frames that show a *new* bob
+falls straight out of how many of a rate's frames land on one of those 79 —
+79 of 119 at 30 fps, 79 of 239 at 60, 79 of 575 at 144.
+
+**The fix.** `PawnsView.prev`/`curr` now carry a `ph` field alongside
+`x`/`y`/`f`, lerped the same way in `sync()` and `interpolated()`; `Rig.update`
+takes the interpolated phase as an explicit parameter instead of reading
+`pawn.animPhase` off the pawn directly (both `PawnRig` and `AnimalRig`), and
+`FpsController.updateCamera` takes an optional `phase` argument, defaulting to
+`pawn.animPhase` so every existing 5-argument call in `tests/fps-view.test.ts`
+keeps today's behaviour byte-for-byte. `animPhase` only ever increases
+(`PHASE_PER_CELL` in `moveWithCollision` is added, never wrapped), so the lerp
+needs none of the shortest-angle handling `f` does. The one-writer rule is
+untouched — `moveWithCollision` is still the only place in the sim that writes
+`animPhase`; the renderer reads two snapshots of it and writes none. A
+snapshot reset (a >2-cell jump, `SNAP_CELLS`, same rule 1a's `TraceView`
+proved out but production lacked) now snaps `prev.ph` to the destination's raw
+phase along with `x`/`y`/`f`, so a teleported or newly-sighted pawn's bob does
+not sweep from wherever the last body happened to leave it.
+
+**Say plainly what else that snap changes.** It is not only a bob-continuity
+fix. Before this round `PawnsView.onTick` had no jump handling at all, so a
+large move lerped `x`/`y`/`f` like any other — the body swept visibly across
+the gap over one tick. That is a behaviour change to position and facing, on
+every pawn, and it earns its own acceptance row rather than riding in on the
+phase one. It is reachable in the sim today: `src/sim/ice.ts:160` puts someone
+who fell through the ice on the bank, and `src/sim/holdings.ts:396`/`:497` and
+`src/sim/jobs.ts:2978`/`:3644` each write a pawn's position outright, past
+`moveWithCollision`. Any of those can clear two cells. The threshold is
+strictly greater than `SNAP_CELLS`, so a two-cell step — the largest an
+ordinary walk produces — still sweeps; `tests/pawns-interp.test.ts` pins that
+edge along with the jump and the one-cell case.
+
+**Measured, not assumed — and on the real class, not a copy.** The first cut
+of this round pinned the headline behaviour only through `TraceView`, the
+hand-written stand-in `1a` built to score a whole scripted run cheaply. A copy
+cannot fail when the original changes, and review proved it by mutation:
+replacing both production lerps with `pr.ph + (c.ph - pr.ph) * (alpha < 0.5 ? 0
+: 1)` — bit-exact at both boundaries, a restored 20 Hz staircase everywhere
+between — and disabling the teleport branch with `if (false && jump >
+SNAP_CELLS)` left all 315 tests in the repository green. `tests/pawns-interp.test.ts`
+closes that: it imports `PawnsView` itself, asserts `interpolated` returns the
+midpoint phase at alpha 0.5 and nine distinct climbing values across nine
+alphas, reads the posed leg off the rig after `sync` to show the body is driven
+by the same midpoint and not by `pawn.animPhase`, and feeds the interpolated
+phase to `updateCamera` to show `camera.position.y` moves by exactly
+`settlerBob(mid) - settlerBob(raw)` against the five-argument call that defaults
+to the raw phase — which is the only thing standing between `app.ts:350`'s
+wiring and a silent return to the staircase. Six of the seven cases were run
+red against those mutants first; the seventh is the two-cell edge, which the
+mutants do not move.
+
+`tests/fps-trace.test.ts` reads the change back off
+`controller.camera.position.y` itself — not off a value the test computed on
+its own from `at.ph` — so a controller that still read the raw phase (today's
+code before this fix, checked by literally reverting the three source files
+and re-running) shows the old 79-change staircase and fails the new
+assertions; the first draft of this test computed its own bob from the same
+lerp under test and passed unchanged either way, which is exactly the
+tautology "tests verify intent, not just behaviour" warns against — caught by
+stashing the fix and re-running before trusting green. With the fix in: 119 of
+119 frame-to-frame steps change at 30 fps (was 79 of 119), 239 of 239 at 60
+(was 79 of 239), 575 of 575 at 144 (was 79 of 575) — every rendered frame
+during the walk now shows a new bob, at every rate. Per-frame delta is capped
+at 0.034 / 0.0214 / 0.0095 rad-scaled bob units at 30/60/144 fps respectively,
+falling roughly in proportion to frame time as a continuous curve should.
+`interpolated(id, 0)` and `interpolated(id, 1)` recover the raw tick-boundary
+phase and its `settlerBob` bit-for-bit — no drift at either edge of the lerp's
+own domain.
+
+**Verified.** `npx tsc --noEmit` clean. `npx vitest run tests/fps-trace.test.ts
+tests/fps-view.test.ts tests/pace.test.ts tests/gait.test.ts
+tests/architecture.test.ts tests/forge-recipes.test.ts` — 260 passed, 19
+skipped, 0 failed, 6 files; `fps-view.test.ts`'s own 'rise ≈ settlerBob(phase)'
+and eye-never-below-standing-height assertions are unedited and green off the
+`phase` default. Full suite alone: green (see the commit for the exact
+tally). Frames: `1e-before`/`1e-after` in `.look/shots/`, three frames each —
+`1-settlers` and `4-firstperson` are visually identical either side (both
+catch the pawn standing still, where the bob this round fixes is zero by
+construction — the fix is a timing change invisible to a paused still frame,
+which is why `fps-trace.test.ts` rather than the eye is the instrument that
+grades it) with zero console errors in both runs; `crew-walking` (a scratch
+capture, mid-stride, not one of the six standard frames — `crew.mjs`
+photographs hands and attention, not gait) shows a settler's arms and legs in
+a natural swinging stride with the new phase wiring in place, no T-pose or
+limb break.
+
+**Discovered during execution.** `tests/fps-trace.test.ts` lives on
+`1a-feel-trace`'s branch, whose PR (#4) is still open, not merged, at the time
+of this round — this round's diff was built on top of it directly
+(`origin/1a-feel-trace`) rather than waiting, and bundles 1a's own changes
+until #4 lands. Separately, this box's long-running (9-day-old) `vite` dev
+server left Puppeteer's `networkidle2` wait on the look loop's own harnesses
+(`shot.mjs`, `crew.mjs`, and every other harness that navigates to the main
+page) unable to resolve — a `load`-vs-`networkidle2` mismatch with Vite's HMR
+websocket, reproduced independently of any change in this round and on a
+freshly restarted server alike. Not fixed here (`scripts/look/*.mjs` is out of
+this segment's write set); the frame evidence above was captured with a
+scratch-only harness that swaps `waitUntil: 'load'` for the first navigation
+and is otherwise identical to `shot.mjs`'s own sequence.
+
+**Next.** `1b-feel-eye-ease` reads `dt` from the real frame time instead of
+the hardcoded `1/60`, which should collapse "The eye gap" round's three wall
+times to one. `1c-feel-accel` and `1d-feel-bob-sway-run` follow it.
+
+---
+
 ## 2026-09-13 — Escape the pawn's name before the HUD prints it
 
 **The gap.** `escapeHtml` guards every string sink in `hud.ts` except one:

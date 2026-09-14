@@ -129,7 +129,13 @@ export function animalGrowth(maturity: number, r: AnimalRecipe = ANIMAL_DEFAULT)
 interface Rig {
   readonly group: THREE.Group;
   setLayer(layer: number): void;
-  update(world: World, pawn: Pawn, x: number, z: number, facing: number, dt: number): void;
+  /**
+   * `phase` is the renderer's own interpolated `animPhase` — lerped between
+   * two sim ticks by `PawnsView`, not the raw value off `Pawn` — so the one
+   * `settlerBob` every rig and the FPS eye share stays continuous at any
+   * frame rate instead of stepping once per 20 Hz tick.
+   */
+  update(world: World, pawn: Pawn, x: number, z: number, facing: number, phase: number, dt: number): void;
   dispose(): void;
 }
 
@@ -793,7 +799,7 @@ class PawnRig implements Rig {
    * the map, the facing, and the three things that are shown or hidden rather
    * than moved.
    */
-  update(world: World, pawn: Pawn, x: number, z: number, facing: number, dt: number): void {
+  update(world: World, pawn: Pawn, x: number, z: number, facing: number, phase: number, dt: number): void {
     const g = this.group;
     const prone = pawn.dead || pawn.downed || pawn.activity === 'sleeping';
     const floor = standHeight(world, Math.round(x), Math.round(z));
@@ -829,7 +835,7 @@ class PawnRig implements Rig {
     const pose = settlerPose({
       activity: pawn.activity,
       prone,
-      phase: pawn.animPhase,
+      phase,
       handsFull,
       cooldown: pawn.attackCooldown,
     });
@@ -1474,7 +1480,7 @@ class AnimalRig implements Rig {
     this.group.traverse((o) => o.layers.set(layer));
   }
 
-  update(world: World, pawn: Pawn, x: number, z: number, facing: number): void {
+  update(world: World, pawn: Pawn, x: number, z: number, facing: number, phase: number): void {
     const floor = standHeight(world, Math.round(x), Math.round(z));
     this.group.position.set(x, floor, z);
     this.group.rotation.set(0, Math.PI / 2 - facing, 0);
@@ -1514,7 +1520,7 @@ class AnimalRig implements Rig {
     }
     this.group.rotation.z = 0;
 
-    const ph = pawn.animPhase;
+    const ph = phase;
     if (pawn.activity === 'walking') {
       const w = ph * this.walkPhase;
       poseLegs(this.legs, w);
@@ -2644,30 +2650,52 @@ function makeShared(): SharedGeometry {
   return { ...settlerGeometry(), animals: speciesModels(), ...animalFittings() };
 }
 
+/**
+ * A pawn's position and facing can, in principle, jump more than a tick of
+ * ordinary movement ever would — a teleport, or the first tick a pawn is
+ * seen at all. Past this many cells, `PawnsView` snaps its `prev` snapshot
+ * to the new one instead of lerping across the gap, so neither the body nor
+ * the gait phase it carries sweeps through the space between. Named for the
+ * rule `tests/fps-trace.test.ts`'s own trace helper pins.
+ */
+const SNAP_CELLS = 2;
+
 export class PawnsView {
   readonly group = new THREE.Group();
   private readonly shared = makeShared();
   private readonly rigs = new Map<number, Rig>();
   /** Sim-tick snapshots, so rendering can interpolate between 20 Hz updates. */
-  private readonly prev = new Map<number, { x: number; y: number; f: number }>();
-  private readonly curr = new Map<number, { x: number; y: number; f: number }>();
+  private readonly prev = new Map<number, { x: number; y: number; f: number; ph: number }>();
+  private readonly curr = new Map<number, { x: number; y: number; f: number; ph: number }>();
 
   /** Call once per simulation tick, before any further stepping. */
   onTick(world: World): void {
     for (const p of world.pawns) {
       const c = this.curr.get(p.id);
       if (c) {
-        const pr = this.prev.get(p.id) ?? { x: c.x, y: c.y, f: c.f };
-        pr.x = c.x;
-        pr.y = c.y;
-        pr.f = c.f;
+        const jump = Math.hypot(p.x - c.x, p.y - c.y);
+        const pr = this.prev.get(p.id) ?? { x: c.x, y: c.y, f: c.f, ph: c.ph };
+        if (jump > SNAP_CELLS) {
+          // Teleport: prev snaps to the new position instead of lerping
+          // across the gap.
+          pr.x = p.x;
+          pr.y = p.y;
+          pr.f = p.facing;
+          pr.ph = p.animPhase;
+        } else {
+          pr.x = c.x;
+          pr.y = c.y;
+          pr.f = c.f;
+          pr.ph = c.ph;
+        }
         this.prev.set(p.id, pr);
         c.x = p.x;
         c.y = p.y;
         c.f = p.facing;
+        c.ph = p.animPhase;
       } else {
-        this.curr.set(p.id, { x: p.x, y: p.y, f: p.facing });
-        this.prev.set(p.id, { x: p.x, y: p.y, f: p.facing });
+        this.curr.set(p.id, { x: p.x, y: p.y, f: p.facing, ph: p.animPhase });
+        this.prev.set(p.id, { x: p.x, y: p.y, f: p.facing, ph: p.animPhase });
       }
     }
   }
@@ -2694,13 +2722,17 @@ export class PawnsView {
         this.rigs.set(p.id, rig);
         this.group.add(rig.group);
       }
-      const c = this.curr.get(p.id) ?? { x: p.x, y: p.y, f: p.facing };
+      const c = this.curr.get(p.id) ?? { x: p.x, y: p.y, f: p.facing, ph: p.animPhase };
       const pr = this.prev.get(p.id) ?? c;
       const x = pr.x + (c.x - pr.x) * alpha;
       const y = pr.y + (c.y - pr.y) * alpha;
       const f = pr.f + shortestAngle(pr.f, c.f) * alpha;
+      // `animPhase` only ever increases (`movement.ts`'s `PHASE_PER_CELL`),
+      // so a plain lerp between two ticks' values is safe — no wraparound to
+      // guard against, the way `f` needs `shortestAngle` for.
+      const ph = pr.ph + (c.ph - pr.ph) * alpha;
       rig.setLayer(p.id === hiddenPawnId ? LAYER_MANAGER : LAYER_ALL);
-      rig.update(world, p, x, y, f, dt);
+      rig.update(world, p, x, y, f, ph, dt);
     }
     for (const [id, rig] of this.rigs) {
       if (live.has(id)) continue;
@@ -2712,8 +2744,11 @@ export class PawnsView {
     }
   }
 
-  /** Interpolated position, so the FPS camera sits exactly where the body renders. */
-  interpolated(id: number, alpha: number): { x: number; y: number; f: number } | null {
+  /**
+   * Interpolated position and gait phase, so the FPS camera — and the bob it
+   * reads off `phase` — sits exactly where the body renders.
+   */
+  interpolated(id: number, alpha: number): { x: number; y: number; f: number; ph: number } | null {
     const c = this.curr.get(id);
     if (!c) return null;
     const pr = this.prev.get(id) ?? c;
@@ -2721,6 +2756,7 @@ export class PawnsView {
       x: pr.x + (c.x - pr.x) * alpha,
       y: pr.y + (c.y - pr.y) * alpha,
       f: pr.f + shortestAngle(pr.f, c.f) * alpha,
+      ph: pr.ph + (c.ph - pr.ph) * alpha,
     };
   }
 
