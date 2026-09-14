@@ -4,6 +4,87 @@ One round, one measured gap, one fix. Newest first.
 
 ---
 
+## 2026-09-13 — The eye gap
+
+**The gap.** `tests/fps-trace.test.ts` is the first thing in this repo to drive
+`FpsController` through a full frame loop rebuilt from `pace()`/`alphaOf()` at
+three real frame rates — 30, 60, 144 fps — over one scripted body: stand, walk,
+Shift-run, release, turn 90°, lie down, stand back up. Nothing under `src/`
+moved. The point of the round was to find out whether the trace could even
+name the thing three earlier rounds have talked around — "the camera feels
+laggy at low frame rate" — in a literal, and it can: `updateCamera` eases the
+eye with `this.eye += (wanted - this.eye) * Math.min(1, dt * 9)`, and `dt` is
+not the real frame time. `app.ts:349` hardcodes `1 / 60` into that call no
+matter what the monitor is doing, so the decay factor is a fixed 0.85 per
+FRAME rendered, not per second elapsed. Ninety per cent of the stand-up
+transient (`PRONE_EYE` 0.42 back to `EYE_HEIGHT` 1.62) always finishes in
+exactly 14 frames — the trace pins the same 14 at all three rates, onset frame
+to converged frame, wake and sleep both — and those 14 frames are 466.667 ms
+of wall time at 30 fps, 233.333 ms at 60, and 97.222 ms at 144. A player at 30
+fps stands up in half a second; the same code, same constants, same settler,
+stands the 144 fps player up in a tenth of one. The bug was never the ease
+curve; it is that the curve is metered in frames instead of seconds, and the
+only reason nobody had a number for it before is that nobody had traced more
+than one frame rate in the same run to catch the two disagreeing.
+
+**A second staircase, walking distance from the first.** The settler's bob is
+read raw off `pawn.animPhase` by both the rig and the eye — it changes only
+when `moveWithCollision` advances the phase, which is once per completed SIM
+tick, not once per rendered frame. On flat, building-free ground the walk's
+own eye-ease term is exactly zero the whole way (`wanted` never leaves
+`EYE_HEIGHT`, pinned as a literal at every sampled frame from tick 0 to the
+turn), so the bob is the only thing moving up and down during the walk, and it
+moves in visible steps: 79 of 119 frame-to-frame steps change it at 30 fps
+(two ticks land in three frames, so roughly two-thirds of frames show a new
+bob), 79 of 239 at 60 fps (about a third), 79 of 575 at 144 fps (about a
+seventh). Same 79 tick-advances at every rate, because the ticks themselves
+don't care what's watching; the render's fraction of "frames where anything
+changed" falls straight out of how many of those frames land on a fresh tick.
+
+**A truth line the next interpolation candidate cannot grade its own homework
+against.** `tests/fps-trace.test.ts` also builds a `PawnsView`-shaped prev/curr
+lerp side by side with a dead-reckoning `truth` line (`curr + (curr - prev) *
+alpha`, the position extrapolation would show with the same two samples) and
+pins four numbers against it at each rate: mean positional error (~0.115,
+banded 0.10–0.12), max positional error (exactly `PLAYER_RUN`, 0.27 — the
+largest single tick's displacement, because `truth - rendered` is `curr -
+prev` exactly and is constant regardless of alpha), max heading error
+(exactly `π/2`, the turn's own magnitude), and jitter during the steady run
+(exactly zero — linear interpolation of constant-velocity motion is itself
+constant velocity). Whatever segment 1e-feel-interp-phase tries next inherits
+these four as the baseline it has to beat, not a metric it gets to define
+after the fact. The same file also proves a snap rule works before anything
+in `src/` needs it: a >2-cell jump collapses `prev` to `curr` instead of
+lerping across the gap, `interpolated(0) === interpolated(1)` === the
+destination at all three rates, and pins what the lerp it replaces would have
+shown instead (5 cells short of the destination, at the midpoint alpha) —
+groundwork, not yet wired into `PawnsView` itself.
+
+**Not fixed.** The eye-gap bug, the bob staircase and the lag-based
+interpolation are all traced and none are touched — `1b-feel-eye-ease`,
+`1d-feel-bob-sway-run` and `1e-feel-interp-phase` are the rounds that get to
+spend a frame on any of them, each starting from a trace it cannot quietly
+redefine.
+
+**Verified.** `dt * 9` mutated to `dt * 5` in `updateCamera` turned two of the
+eye-gap assertions and the three-wall-times assertion in
+`tests/fps-trace.test.ts` red (`expected 1.52 to be close to 1.44`, `expected
+833.33 to be close to 466.667`); the file was restored byte-identical
+(`git diff --stat src/client/fps/controller.ts` empty) and the suite went
+green again. `npx tsc --noEmit` clean. Full suite alone: 2781 passed, 13
+skipped, 0 failed, 127 files. No frames: this round wrote no renderer, so
+there is nothing for the look loop to judge.
+
+**Next.** `1e-feel-interp-phase` is next in the plan's order, and is the one
+with a truth line and a snap rule already waiting for it: it lerps
+`animPhase` the same way `x`/`y`/`f` already are, so the bob staircase this
+round measured stops stepping at 20 Hz. `1b-feel-eye-ease` follows it and
+reads `dt` from the real frame time instead of the hardcoded `1/60`, which is
+the round that should collapse this file's three eye-gap wall times to one.
+`1c-feel-accel` and `1d-feel-bob-sway-run` are last in the chain.
+
+---
+
 ## 2026-09-12 — One plate on three machines, and the key nobody checked
 
 **The gap.** Three machines carry a lit panel on the front: the generator's
