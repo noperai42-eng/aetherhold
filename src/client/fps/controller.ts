@@ -155,8 +155,17 @@ export class FpsController {
     }
   }
 
-  /** Per-frame camera placement from the interpolated body position. */
-  updateCamera(world: World, pawn: Pawn, x: number, y: number, dt: number): void {
+  /**
+   * Per-frame camera placement from the interpolated body position.
+   *
+   * `phase` is the renderer's own interpolated `animPhase` — `PawnsView`
+   * lerps it between two sim ticks the same way it lerps `x`/`y`/`f`, so the
+   * bob below is continuous at any frame rate instead of stepping once per
+   * 20 Hz tick. It defaults to the pawn's raw, un-interpolated `animPhase`
+   * so a caller that predates the interpolated one (this file's own tests
+   * among them) keeps today's stepped behaviour unchanged.
+   */
+  updateCamera(world: World, pawn: Pawn, x: number, y: number, dt: number, phase = pawn.animPhase): void {
     const prone = pawn.dead || pawn.downed || pawn.activity === 'sleeping';
     const floor = standHeight(world, Math.round(x), Math.round(y));
     const wanted = floor + (prone ? PRONE_EYE : EYE_HEIGHT);
@@ -172,7 +181,7 @@ export class FpsController {
     // cycle where the body had two, and every other step took the camera
     // thirty-five millimetres BELOW standing height while the body it belongs
     // to went up. Two lines that have to agree are one line.
-    const bobY = !prone && pawn.activity === 'walking' ? settlerBob(pawn.animPhase) : 0;
+    const bobY = !prone && pawn.activity === 'walking' ? settlerBob(phase) : 0;
 
     this.camera.position.set(x, this.eye + bobY, y);
     this.camera.rotation.y = -this.yaw - Math.PI / 2;

@@ -345,8 +345,9 @@ export class App {
     this.view.sync(this.world, alpha, focus, player ? player.id : null, dt);
 
     if (player) {
-      const at = this.view.pawns.interpolated(player.id, alpha) ?? { x: player.x, y: player.y };
-      this.fps.updateCamera(this.world, player, at.x, at.y, 1 / 60);
+      const at = this.view.pawns.interpolated(player.id, alpha) ??
+        { x: player.x, y: player.y, ph: player.animPhase };
+      this.fps.updateCamera(this.world, player, at.x, at.y, 1 / 60, at.ph);
       this.viewport.render(this.fps.camera);
     } else {
       this.viewport.render(this.cam.camera);

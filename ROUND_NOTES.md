@@ -112,6 +112,287 @@ last measurement and this one.
 
 ---
 
+## 2026-09-13 — The bob stops staircasing
+
+**The gap.** "The eye gap" round measured, but did not touch, a second staircase
+walking distance from the first: `settlerBob` — the one function the FPS eye
+and every pawn rig share — was read straight off `pawn.animPhase`, which only
+`moveWithCollision` advances, once per completed 20 Hz sim tick. `x`, `y` and
+`f` were already lerped between ticks by `PawnsView`; `animPhase` was not, so
+on a frame rate above 20 fps the bob visibly held its value across several
+rendered frames and then jumped, while the body under it glided. The round
+before this one counted it exactly: 79 tick-advances land inside a walk
+regardless of frame rate, so the fraction of frames that show a *new* bob
+falls straight out of how many of a rate's frames land on one of those 79 —
+79 of 119 at 30 fps, 79 of 239 at 60, 79 of 575 at 144.
+
+**The fix.** `PawnsView.prev`/`curr` now carry a `ph` field alongside
+`x`/`y`/`f`, lerped the same way in `sync()` and `interpolated()`; `Rig.update`
+takes the interpolated phase as an explicit parameter instead of reading
+`pawn.animPhase` off the pawn directly (both `PawnRig` and `AnimalRig`), and
+`FpsController.updateCamera` takes an optional `phase` argument, defaulting to
+`pawn.animPhase` so every existing 5-argument call in `tests/fps-view.test.ts`
+keeps today's behaviour byte-for-byte. `animPhase` only ever increases
+(`PHASE_PER_CELL` in `moveWithCollision` is added, never wrapped), so the lerp
+needs none of the shortest-angle handling `f` does. The one-writer rule is
+untouched — `moveWithCollision` is still the only place in the sim that writes
+`animPhase`; the renderer reads two snapshots of it and writes none. A
+snapshot reset (a >2-cell jump, `SNAP_CELLS`, same rule 1a's `TraceView`
+proved out but production lacked) now snaps `prev.ph` to the destination's raw
+phase along with `x`/`y`/`f`, so a teleported or newly-sighted pawn's bob does
+not sweep from wherever the last body happened to leave it.
+
+**Say plainly what else that snap changes.** It is not only a bob-continuity
+fix. Before this round `PawnsView.onTick` had no jump handling at all, so a
+large move lerped `x`/`y`/`f` like any other — the body swept visibly across
+the gap over one tick. That is a behaviour change to position and facing, on
+every pawn, and it earns its own acceptance row rather than riding in on the
+phase one. It is reachable in the sim today: `src/sim/ice.ts:160` puts someone
+who fell through the ice on the bank, and `src/sim/holdings.ts:396`/`:497` and
+`src/sim/jobs.ts:2978`/`:3644` each write a pawn's position outright, past
+`moveWithCollision`. Any of those can clear two cells. The threshold is
+strictly greater than `SNAP_CELLS`, so a two-cell step — the largest an
+ordinary walk produces — still sweeps; `tests/pawns-interp.test.ts` pins that
+edge along with the jump and the one-cell case.
+
+**Measured, not assumed — and on the real class, not a copy.** The first cut
+of this round pinned the headline behaviour only through `TraceView`, the
+hand-written stand-in `1a` built to score a whole scripted run cheaply. A copy
+cannot fail when the original changes, and review proved it by mutation:
+replacing both production lerps with `pr.ph + (c.ph - pr.ph) * (alpha < 0.5 ? 0
+: 1)` — bit-exact at both boundaries, a restored 20 Hz staircase everywhere
+between — and disabling the teleport branch with `if (false && jump >
+SNAP_CELLS)` left all 315 tests in the repository green. `tests/pawns-interp.test.ts`
+closes that: it imports `PawnsView` itself, asserts `interpolated` returns the
+midpoint phase at alpha 0.5 and nine distinct climbing values across nine
+alphas, reads the posed leg off the rig after `sync` to show the body is driven
+by the same midpoint and not by `pawn.animPhase`, and feeds the interpolated
+phase to `updateCamera` to show `camera.position.y` moves by exactly
+`settlerBob(mid) - settlerBob(raw)` against the five-argument call that defaults
+to the raw phase — which is the only thing standing between `app.ts:350`'s
+wiring and a silent return to the staircase. Six of the seven cases were run
+red against those mutants first; the seventh is the two-cell edge, which the
+mutants do not move.
+
+`tests/fps-trace.test.ts` reads the change back off
+`controller.camera.position.y` itself — not off a value the test computed on
+its own from `at.ph` — so a controller that still read the raw phase (today's
+code before this fix, checked by literally reverting the three source files
+and re-running) shows the old 79-change staircase and fails the new
+assertions; the first draft of this test computed its own bob from the same
+lerp under test and passed unchanged either way, which is exactly the
+tautology "tests verify intent, not just behaviour" warns against — caught by
+stashing the fix and re-running before trusting green. With the fix in: 119 of
+119 frame-to-frame steps change at 30 fps (was 79 of 119), 239 of 239 at 60
+(was 79 of 239), 575 of 575 at 144 (was 79 of 575) — every rendered frame
+during the walk now shows a new bob, at every rate. Per-frame delta is capped
+at 0.034 / 0.0214 / 0.0095 rad-scaled bob units at 30/60/144 fps respectively,
+falling roughly in proportion to frame time as a continuous curve should.
+`interpolated(id, 0)` and `interpolated(id, 1)` recover the raw tick-boundary
+phase and its `settlerBob` bit-for-bit — no drift at either edge of the lerp's
+own domain.
+
+**Verified.** `npx tsc --noEmit` clean. `npx vitest run tests/fps-trace.test.ts
+tests/fps-view.test.ts tests/pace.test.ts tests/gait.test.ts
+tests/architecture.test.ts tests/forge-recipes.test.ts` — 260 passed, 19
+skipped, 0 failed, 6 files; `fps-view.test.ts`'s own 'rise ≈ settlerBob(phase)'
+and eye-never-below-standing-height assertions are unedited and green off the
+`phase` default. Full suite alone: green (see the commit for the exact
+tally). Frames: `1e-before`/`1e-after` in `.look/shots/`, three frames each —
+`1-settlers` and `4-firstperson` are visually identical either side (both
+catch the pawn standing still, where the bob this round fixes is zero by
+construction — the fix is a timing change invisible to a paused still frame,
+which is why `fps-trace.test.ts` rather than the eye is the instrument that
+grades it) with zero console errors in both runs; `crew-walking` (a scratch
+capture, mid-stride, not one of the six standard frames — `crew.mjs`
+photographs hands and attention, not gait) shows a settler's arms and legs in
+a natural swinging stride with the new phase wiring in place, no T-pose or
+limb break.
+
+**Discovered during execution.** `tests/fps-trace.test.ts` lives on
+`1a-feel-trace`'s branch, whose PR (#4) is still open, not merged, at the time
+of this round — this round's diff was built on top of it directly
+(`origin/1a-feel-trace`) rather than waiting, and bundles 1a's own changes
+until #4 lands. Separately, this box's long-running (9-day-old) `vite` dev
+server left Puppeteer's `networkidle2` wait on the look loop's own harnesses
+(`shot.mjs`, `crew.mjs`, and every other harness that navigates to the main
+page) unable to resolve — a `load`-vs-`networkidle2` mismatch with Vite's HMR
+websocket, reproduced independently of any change in this round and on a
+freshly restarted server alike. Not fixed here (`scripts/look/*.mjs` is out of
+this segment's write set); the frame evidence above was captured with a
+scratch-only harness that swaps `waitUntil: 'load'` for the first navigation
+and is otherwise identical to `shot.mjs`'s own sequence.
+
+**Next.** `1b-feel-eye-ease` reads `dt` from the real frame time instead of
+the hardcoded `1/60`, which should collapse "The eye gap" round's three wall
+times to one. `1c-feel-accel` and `1d-feel-bob-sway-run` follow it.
+
+---
+
+## 2026-09-13 — Escape the pawn's name before the HUD prints it
+
+**The gap.** `escapeHtml` guards every string sink in `hud.ts` except one:
+`HudChrome.syncFps`, the first-person self panel, built its markup by
+interpolating a settler's own fields straight into `innerHTML` — `target.verb`
+at :2672, `p.name` and `p.weapon` at :2678, and the carried/job label at :2684 —
+while every other panel in the file already escapes. None of those four fields
+is the player's data to trust: `importColony` (`src/sim/transfer.ts`) hands a
+pasted colony code to `deserialize` (`src/sim/save.ts`) with no validation on
+any string field, and `target.verb` can itself carry a second settler's name
+(`Tend ${p.name}` on a downed ally, `src/sim/interact.ts:138`). A pawn named
+`<img src=x onerror=…>` ran script on the 5062 origin every saved colony lives
+on, the moment its owner stepped into first person or turned toward its body.
+This ships outside the pass Group 3 opens — ruled in at the gate as its own PR,
+not counted in the sixteen-segment count, and lands before `3e-measure-label`
+opens this file again.
+
+**The fix.** Five interpolations wrapped in `escapeHtml()`: `target.verb`,
+`p.name`, `p.weapon`, and both branches of the carried/job label. The self
+panel's markup is pulled out of `syncFps` into `selfPanelHtml(world, p)`, a
+pure string builder beside the file's other `xxxPanel` functions, so the
+escaping it depends on can be asserted without a live DOM.
+
+**Ruled at the gate, then measured false: the ' does not join escapeHtml's
+class.** The brief asked for a fifth member of `escapeHtml`'s class — `'` →
+`&#39;`, beside `&`, `<`, `>`, `"` — read as free, since every other sink in
+the file already escapes and the ask was framed as closing the one gap. It is
+not free: `escapeHtml` is one shared function across roughly thirty call
+sites, and one of them is `kitRow` (hud.ts:4480), already escaping
+`EQUIP[kind].label` before this round touched anything. `EQUIP['medkit']`'s
+label is `"doctor's bag"`, and `tests/kit-card.test.ts` — frozen,
+additions-only — pins `kitRows('medkit', ...)`'s output as containing that
+label character-for-character. Adding `'` to the class turns it into
+`doctor&#39;s bag` and reddens that test, which this round may not edit.
+Checked whether the apostrophe is load-bearing anywhere it would actually
+close a hole: every attribute in this file is double-quoted (`grep -n "='"`
+returns nothing), and all five of this round's sinks land in a text node, not
+an attribute, so an unescaped `'` cannot break out of anything a current call
+site builds. The four-character class already neutralises every payload the
+gap description names (`<img src=x onerror=…>`, `<b>x</b>`) — closing `<`
+closes every route to a new element or a new attribute. `escapeHtml` is left
+as it was, with a comment at the definition saying why, and the fifth member
+is a **human gate**: the two ways to actually add it are widening the frozen
+test (not this round's to do) or splitting a stricter sibling function for
+future attribute-position sinks, and which of those is worth doing is not a
+measured question, it is a design one.
+
+**Verified.** Red-first: `tests/hud.test.ts` names a pawn `<b>x</b>` and fails
+against the pre-fix code — the test's own fragment parser shows the tag
+consumed into a real nested element and the name reduced to the bare word
+`x` (`expected 'xrifleHealthFoodRestFunidle' to contain '<b>x</b>'`) — then
+passes once the five sinks escape, alongside a check that an ordinary pawn's
+rows are unchanged — the `who` row and the bottom `kv` row each asserted as
+their whole literal string, the four bars by class.
+
+All five sinks are now covered, which took a second pass: the first draft
+escaped five and tested three. Review found that the carrying branch of the
+self panel had no assertion at all, positive or negative, because no test ever
+set `carryingItemId` — five `toContain` calls that all landed above that row
+read as coverage of the whole panel. And `target.verb` was escaped inline
+inside `syncFps`, which needs a live DOM this suite deliberately does not
+have, so it could not be reached from a test at all. The prompt markup is now
+`promptHtml(verb)`, a pure builder beside `selfPanelHtml` — the same move,
+made for the same reason. Both new sinks were run red first by taking their
+`escapeHtml` call back out: `carrying 3 <img src=x onerror=alert(1)>` builds a
+real `img` element, and `Tend <b>x</b>` a real `b`. `npm run typecheck` clean. Full suite alone
+at the config's six workers, first pass: 2763 passed, 1 failed (the apostrophe
+regression above, in `tests/kit-card.test.ts`), 13 skipped; second pass after
+reverting the class change: 2765 passed, 13 skipped, in 1039 s — every
+pre-existing test at its old value, plus the sixth `escapeHtml` test this round
+added, and no fingerprint change because nothing under `src/sim` or `src/eval`
+was touched.
+
+**Next.** Two things read while writing this round, neither its gap. `main.ts:16`
+hangs the whole `App` on `window` unconditionally, which only survives today
+because the look harness happens to depend on the same global
+(`shot.mjs:154`) — a headless caller without one never gets a running colony,
+and nothing says so. `vite.config.ts`'s `allowedHosts: ['.local']` is a suffix
+match on a dev server bound to `0.0.0.0`, so any hostname ending `.local`
+anywhere on the LAN is accepted, wider than "this box's own address."
+
+---
+
+## 2026-09-13 — The eye gap
+
+**The gap.** `tests/fps-trace.test.ts` is the first thing in this repo to drive
+`FpsController` through a full frame loop rebuilt from `pace()`/`alphaOf()` at
+three real frame rates — 30, 60, 144 fps — over one scripted body: stand, walk,
+Shift-run, release, turn 90°, lie down, stand back up. Nothing under `src/`
+moved. The point of the round was to find out whether the trace could even
+name the thing three earlier rounds have talked around — "the camera feels
+laggy at low frame rate" — in a literal, and it can: `updateCamera` eases the
+eye with `this.eye += (wanted - this.eye) * Math.min(1, dt * 9)`, and `dt` is
+not the real frame time. `app.ts:349` hardcodes `1 / 60` into that call no
+matter what the monitor is doing, so the decay factor is a fixed 0.85 per
+FRAME rendered, not per second elapsed. Ninety per cent of the stand-up
+transient (`PRONE_EYE` 0.42 back to `EYE_HEIGHT` 1.62) always finishes in
+exactly 14 frames — the trace pins the same 14 at all three rates, onset frame
+to converged frame, wake and sleep both — and those 14 frames are 466.667 ms
+of wall time at 30 fps, 233.333 ms at 60, and 97.222 ms at 144. A player at 30
+fps stands up in half a second; the same code, same constants, same settler,
+stands the 144 fps player up in a tenth of one. The bug was never the ease
+curve; it is that the curve is metered in frames instead of seconds, and the
+only reason nobody had a number for it before is that nobody had traced more
+than one frame rate in the same run to catch the two disagreeing.
+
+**A second staircase, walking distance from the first.** The settler's bob is
+read raw off `pawn.animPhase` by both the rig and the eye — it changes only
+when `moveWithCollision` advances the phase, which is once per completed SIM
+tick, not once per rendered frame. On flat, building-free ground the walk's
+own eye-ease term is exactly zero the whole way (`wanted` never leaves
+`EYE_HEIGHT`, pinned as a literal at every sampled frame from tick 0 to the
+turn), so the bob is the only thing moving up and down during the walk, and it
+moves in visible steps: 79 of 119 frame-to-frame steps change it at 30 fps
+(two ticks land in three frames, so roughly two-thirds of frames show a new
+bob), 79 of 239 at 60 fps (about a third), 79 of 575 at 144 fps (about a
+seventh). Same 79 tick-advances at every rate, because the ticks themselves
+don't care what's watching; the render's fraction of "frames where anything
+changed" falls straight out of how many of those frames land on a fresh tick.
+
+**A truth line the next interpolation candidate cannot grade its own homework
+against.** `tests/fps-trace.test.ts` also builds a `PawnsView`-shaped prev/curr
+lerp side by side with a dead-reckoning `truth` line (`curr + (curr - prev) *
+alpha`, the position extrapolation would show with the same two samples) and
+pins four numbers against it at each rate: mean positional error (~0.115,
+banded 0.10–0.12), max positional error (exactly `PLAYER_RUN`, 0.27 — the
+largest single tick's displacement, because `truth - rendered` is `curr -
+prev` exactly and is constant regardless of alpha), max heading error
+(exactly `π/2`, the turn's own magnitude), and jitter during the steady run
+(exactly zero — linear interpolation of constant-velocity motion is itself
+constant velocity). Whatever segment 1e-feel-interp-phase tries next inherits
+these four as the baseline it has to beat, not a metric it gets to define
+after the fact. The same file also proves a snap rule works before anything
+in `src/` needs it: a >2-cell jump collapses `prev` to `curr` instead of
+lerping across the gap, `interpolated(0) === interpolated(1)` === the
+destination at all three rates, and pins what the lerp it replaces would have
+shown instead (5 cells short of the destination, at the midpoint alpha) —
+groundwork, not yet wired into `PawnsView` itself.
+
+**Not fixed.** The eye-gap bug, the bob staircase and the lag-based
+interpolation are all traced and none are touched — `1b-feel-eye-ease`,
+`1d-feel-bob-sway-run` and `1e-feel-interp-phase` are the rounds that get to
+spend a frame on any of them, each starting from a trace it cannot quietly
+redefine.
+
+**Verified.** `dt * 9` mutated to `dt * 5` in `updateCamera` turned two of the
+eye-gap assertions and the three-wall-times assertion in
+`tests/fps-trace.test.ts` red (`expected 1.52 to be close to 1.44`, `expected
+833.33 to be close to 466.667`); the file was restored byte-identical
+(`git diff --stat src/client/fps/controller.ts` empty) and the suite went
+green again. `npx tsc --noEmit` clean. Full suite alone: 2781 passed, 13
+skipped, 0 failed, 127 files. No frames: this round wrote no renderer, so
+there is nothing for the look loop to judge.
+
+**Next.** `1e-feel-interp-phase` is next in the plan's order, and is the one
+with a truth line and a snap rule already waiting for it: it lerps
+`animPhase` the same way `x`/`y`/`f` already are, so the bob staircase this
+round measured stops stepping at 20 Hz. `1b-feel-eye-ease` follows it and
+reads `dt` from the real frame time instead of the hardcoded `1/60`, which is
+the round that should collapse this file's three eye-gap wall times to one.
+`1c-feel-accel` and `1d-feel-bob-sway-run` are last in the chain.
+
+---
+
 ## 2026-09-12 — One plate on three machines, and the key nobody checked
 
 **The gap.** Three machines carry a lit panel on the front: the generator's
