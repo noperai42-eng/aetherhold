@@ -7,7 +7,7 @@ The EXECUTE workflow that built the first four rows was stopped on 2026-09-14 wi
 | ID | Title | Status | Notes |
 |---|---|---|---|
 | 3a-sim-pin-build-rate | Pin what the colony builds and how many hands stand idle | merged | `35de80b`, PR #3. Review findings resolved by hand: `takeableTargets` hoist, rooms baseline, awake-tick denominator, dead stalled-bill branch deleted, four pins re-measured against a re-run grid (`4ca9864e`). |
-| 3b-sim-probe-why | The probe that names the gap, per tick, before any fix | shipped | PR #7 + 09397dff3a41727da87ab74855013c04344a69fb + awaiting board publish |
+| 3b-sim-probe-why | The probe that names the gap, per tick, before any fix | merged | PR #7 + 3c33bf352503335f82fd8cdbb6905c21cafa0c93 + board clean |
 | 0-hud-escape-html | Escape the pawn's name before the HUD prints it | merged | `c530a40`, PR #6. Shipped outside the pass’s segment count, as agreed at the gate. |
 | 3e-measure-label | Measure 'nothing fun to do' before touching it | not-started | |
 | 3c-sim-fix-dispatch | One fix in dispatch, or a recorded no-op | not-started | |
