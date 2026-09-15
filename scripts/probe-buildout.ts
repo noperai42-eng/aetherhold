@@ -13,7 +13,8 @@
  *
  * Not under `src/sim` or `src/eval`, so it does not move the fingerprint.
  *
- *   npx tsx scripts/probe-buildout.ts [days] [seed...]
+ *   npx rolldown scripts/probe-buildout.ts --format esm --platform node -d .eval/build
+ *   node .eval/build/probe-buildout.js [days] [seed...]
  */
 
 import { createWorld } from '../src/sim/worldgen';

@@ -4,6 +4,157 @@ One round, one measured gap, one fix. Newest first.
 
 ---
 
+## 2026-09-15 — The Steward isn't the bottleneck; the cart is
+
+**The gap.** `3a` pinned that harsh/99001 spends 12.4% of its awake-colonist-ticks idle
+while the board has something on it, and only 4.9% of that is work this pawn specifically
+could take — a seven-and-a-half-point gap between "the Steward's problem" and "dispatch's
+problem" that this round exists to attribute. `scripts/probe-dispatch.ts` (new) samples
+every tick across all five seeds, both `settler` and `harsh`, foreman on and off
+(`setSteward`), 40 days — twenty arms, 485,548 marking-wait ticks across the ten
+foreman-on arms alone — never once a day, per this repo's own 07:12 scar.
+
+Grand totals, every arm:
+
+| metric | value |
+|---|---|
+| `idleBoardShare` | 10.60% |
+| `idleTakeableShare` | 1.09% |
+| share of the day hauling | 17.91% |
+| `idleReason` breakdown | nothing-takeable 69%, resting/no-signal 16%, short-on-resource 14%, unreachable-blueprints 0% |
+| `ASSIGN_INTERVAL` cadence, fired for a pawn idle going in | declined 85%, took-work 14%, takeABreak(IDLE_REC) 1%, break-need(BORED) 0% |
+| marking-wait ticks with an idle, takeable hand standing by | 28,481 / 485,548 (5.9%) |
+
+Two independent measures agree almost exactly on the first branch: `idleReason` reads
+"nothing-takeable" or "short-on-resource" on 83% of idle-while-board-open ticks, and the
+`ASSIGN_INTERVAL` cadence — the mechanism that would actually hand a takeable job to that
+pawn — declines 85% of the times it fires on one. That is not a dispatch failing to offer
+work; it is dispatch correctly finding none to offer. `idleTakeableShare` staying at a
+tenth of `idleBoardShare` is the same fact from `3a`'s side of the counter.
+
+`3d`'s own text names the exact test for whether rule 4 (`stewardLoad(world) > 0`,
+`steward.ts:2168`) is the ceiling: "marking-wait behind a haul-blocked ambition dominates
+idle-board ticks." It does not. Per foreman-on arm (the ten that run `tickSteward` at
+all), the share of that ambition's marking-wait ticks carrying an idle, takeable hand:
+
+| seed | settler | harsh |
+|---|---|---|
+| 7 | 3,526 / 35,096 (10.0%) | 3,389 / 45,858 (7.4%) |
+| 1312 | 1,506 / 51,957 (2.9%) | 1,831 / 51,827 (3.5%) |
+| 4242 | 3,055 / 34,902 (8.8%) | 2,777 / 68,916 (4.0%) |
+| 99001 | 2,095 / 66,230 (3.2%) | 4,385 / 66,012 (6.6%) |
+| 424242 | 4,179 / 24,033 (17.4%) | 1,738 / 40,717 (4.3%) |
+
+Worst single arm is 424242/settler at 17.4% — nowhere near "dominates." Rule 4 fires
+often at the `STEWARD_INTERVAL` gate (`stewardLoad>0` 25–51% of passes across arms) but
+almost never strands an idle hand who had something else to do; most of the time nobody
+is free anyway. Rule 4 is a design choice that is not shown to be a ceiling by this data.
+
+What the per-ambition wall time (attributed to `world.stewardLast`, foreman-on arms,
+`blocked` = hostiles, sleep hours, or `boardStarved`) actually shows is hauling eating the
+time building would otherwise take: haul time meets or beats build time in 18 of the 19
+ambitions the Steward opened across every seed — strictly beats in 17 (`wiring` haul 35%
+vs. build 12%, `floors` haul 60% vs. build 0% (no build share at all), `knowhow` haul 22%
+vs. build 16%, `beds` haul 24% vs. build 17%, `cells` haul 20% vs. build 17% among them)
+and ties in one (`defence`, 16/16) — `shelter` (build 27% vs. haul 22%) is the one
+exception. Colony-wide, hauling consumes 17.91% of every day, foreman on or off; that
+capacity is not idle, and it is not going to raising a frame.
+
+**One sentence.** Of {dispatch never offers a job to a takeable hand; the board is empty
+because rule 4 holds one ambition; an ambition is haul-blocked; hands are hauling}, it is
+the last: `idleTakeableShare` (1.09%) and the 85%-decline `ASSIGN_INTERVAL` cadence rule
+out dispatch, and the 5.9%-worst-17.4% marking-wait/idle-takeable ratio rules out rule 4
+as PLAN.md's own test defines it, leaving hauling — which meets or beats build time in 18
+of 19 opened ambitions and costs 17.91% of every day colony-wide — as the gap; the file a
+fix belongs in is `src/sim/jobs.ts` (the haul-vs-build ordering inside `assignJob`, the
+same file `3c`'s write set already names), and rule 4 is not shown to be the ceiling, so
+`3d` reads as PLAN.md's own allowed "recorded no-op" unless a later round finds a
+different partition.
+
+`PLAN_INTERVAL`/`anyoneIdle` (`jobs.ts:415`), measured but not decisive here: `planAhead`
+ran 64–89% of its cadence hits with the foreman on and 30–49% with it off — busy pawns get
+their forward planning gated by a colony-wide idle colonist noticeably more often with no
+foreman running the board, which is consistent with the rest of this round's numbers
+(nothing else is picking up the idle slack) but is not itself the gap.
+
+**A caveat on `blocked`.** The per-ambition `blocked` bucket folds hostiles, sleep hours
+and `boardStarved` (materials missing colony-wide) into one flag read against the whole
+world, not filtered to the resource the open ambition's own blueprint needs — so a
+material shortage anywhere in the colony can mark an ambition's tick `blocked` even when
+that ambition's own blueprint is fully supplied. The `STEWARD_INTERVAL` gate table (which
+does split the three) shows `boardStarved` at 0% on every arm printed, so in practice
+`blocked` here is overwhelmingly sleep hours and hostiles, not starvation — ordinary
+downtime, not a scheduling defect — but the bucket itself cannot prove that split on its
+own. Named so a reader of the per-ambition table does not read `blocked`'s size as a
+resource-supply finding.
+
+**On "not under `src/sim` or `src/eval`."** This round's own write set holds to that —
+`scripts/probe-dispatch.ts` plus the two header corrections below plus this file, nothing
+under `src/`. Read as a constraint on the *recommended fix target* instead, it would
+contradict `3c`'s and `3d`'s own declared write sets (`src/sim/jobs.ts`,
+`src/sim/tick.ts`, `src/sim/steward.ts`), so this entry follows PLAN.md's text over that
+reading.
+
+**Corrected.** Two probe headers still told a reader to run `npx tsx`, which is not a
+dependency this repo has (`package.json`, `METHODOLOGY.md:144`): `scripts/probe-buildout.ts:16`
+and `scripts/probe-boardclear.ts:8` now read the rolldown-then-node recipe this file's own
+header uses. Thirteen more carry the same stale line and are untouched, named rather than
+silently left: `scripts/probe-beds.ts`, `scripts/probe-bench-med.ts`,
+`scripts/probe-collapse.ts`, `scripts/probe-fence.ts`, `scripts/probe-larder.ts`,
+`scripts/probe-noboard.ts`, `scripts/probe-orphan.ts`, `scripts/probe-sealed.ts`,
+`scripts/probe-spiral.ts`, `scripts/probe-starved-board.ts`, `scripts/probe-stranded.ts`,
+`scripts/probe-ward.ts`, `scripts/probe-wedge.ts`.
+
+**Discovered during execution, left alone on purpose.**
+- `scripts/probe-boardclear.ts`'s `clear()` loop calls `stepWorld(world, streams, null)`
+  with a stray third argument; `stepWorld(world: World, streams: Streams): void`
+  (`tick.ts:122`) takes two. It runs anyway — JS drops the extra argument, and neither
+  gate catches it (`scripts/` is outside `tsconfig.json`'s `include`, and rolldown does
+  not type-check) — but this round's instruction was the header only, so the call is
+  untouched.
+- `bySteward` is a flat boolean on `Building` with no per-ambition attribution, so the
+  per-ambition wall-time table here is read-only reconstruction from `world.stewardLast`
+  — "what the Steward is narrating," the same trade `probe-boardclear.ts` already makes —
+  not a ledger of which blueprint belongs to which ambition.
+- `boardStarvedProbe` and `anyoneIdleProbe` in the new probe are read-only mirrors of
+  `steward.ts`'s unexported `boardStarved` (`:2103-2113`) and `jobs.ts`'s unexported
+  `anyoneIdle` (`:389-396`); both are pure reads, cited at the lines they copy, and never
+  run inside a colony.
+- The `ASSIGN_INTERVAL` cadence bucketing approximates the `queue`/`startQueued`
+  fast-path (a pawn whose next job is already queued skips the cadence) via
+  `pawn.queue.length === 0` as a precondition, rather than calling the real assignment
+  path a second time, which would have side effects on the sim being measured.
+- The probe's grand-totals block aggregates `idleReason` and `ASSIGN_INTERVAL` cadence
+  across all twenty arms but not `PLAN_INTERVAL`/`anyoneIdle`; the ten foreman-on and ten
+  foreman-off per-arm lines are read directly from the run log instead (quoted above).
+
+**Verified.**
+- `npx rolldown scripts/probe-dispatch.ts --format esm --platform node -d .eval/build`
+  then `node .eval/build/probe-dispatch.js 40 7 1312 4242 99001 424242` — ~196s/arm
+  average across twenty arms, 3,918.3s total; `.eval/build/` is gitignored and not
+  committed.
+- `npm run typecheck` clean. `scripts/` sits outside `tsconfig.json`'s `include: ["src",
+  "tests", "vite.config.ts"]`, so `tsc --noEmit` never looks at this file; the rolldown
+  build above is the probe's real type gate, and it built clean.
+- `npm run balance` — 15 of 16 enforced principles hold; the same single break this file's
+  previous entry recorded, `on-their-feet-at-zero-is-a-walk-home`, fires on the same three
+  runs at the same hours (settler/1312 28.3 h, settler/99001 45.2 h, harsh/7 34.6 h). Not
+  this round's doing — this round's write set touches no `src/sim` or `src/eval` file, so
+  the fingerprint did not move, and that pre-existing break is `3a`'s handoff, not this
+  round's to chase.
+- No file under `src/` touched; `git diff --stat` against `origin/main` shows only
+  `scripts/probe-dispatch.ts` (new), `scripts/probe-buildout.ts`,
+  `scripts/probe-boardclear.ts` and this file.
+
+**Next.** `3c-sim-fix-dispatch` — a fix (or a recorded no-op, since dispatch itself
+measures clean here) against `src/sim/jobs.ts`'s haul-vs-build ordering in `assignJob`,
+judged on `roomsPerDay` and `idleTakeableShare`/`idleBoardShare` on the pinned arm. Then
+`3d-sim-fix-steward` — per this round's numbers, a recorded no-op is the expected outcome
+unless a later round's partition disagrees; rule 4 stays. `on-their-feet-at-zero-is-a-walk-home`
+is still open and still someone else's round.
+
+---
+
 ## 2026-09-14 — Two counters for the two questions one predicate cannot answer
 
 **Better.** The grid could already see downs, threats and the food line, and never the

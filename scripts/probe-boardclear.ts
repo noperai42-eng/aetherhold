@@ -5,7 +5,8 @@
  * `defence` down — turrets, research, quarters — sits below that gate. A colony
  * whose crew keeps getting floored never finishes the frame, so the question this
  * asks is simple: after the first week, is the board ever clear at all?
- * `npx tsx scripts/probe-boardclear.ts [days] [seed...]`
+ * `npx rolldown scripts/probe-boardclear.ts --format esm --platform node -d .eval/build`
+ * `node .eval/build/probe-boardclear.js [days] [seed...]`
  */
 import { createWorld } from '../src/sim/worldgen';
 import { makeStreams, stepWorld } from '../src/sim/tick';
