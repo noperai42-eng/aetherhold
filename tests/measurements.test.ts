@@ -3,7 +3,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { fingerprint, staleness, type Measurements } from '../src/eval/measurements';
+import { fingerprint, loadMeasurements, staleness, type Measurements } from '../src/eval/measurements';
 import type { Sweep } from '../src/eval/sweep';
 
 /**
@@ -116,5 +116,32 @@ describe('what the judge is told before it scores anything', () => {
 
   it('says there is no grid rather than pretending an absent one is stale', () => {
     expect(staleness(null, tree(BASE))).toContain('no measurements at');
+  });
+});
+
+/**
+ * The guard above is only ever *called* from inside
+ * `describe.runIf(process.env.BALANCE)` in `tests/balance-grid.test.ts`, and
+ * `package.json` wires that to the opt-in `npm run balance`. So `npm test`
+ * never asked whether the grid on disk describes the sim on disk — which is
+ * how `main` came to carry a grid claiming fingerprint `effc8eef` against a
+ * `2e868453` tree across thirteen commits under `src/sim`/`src/eval`, with
+ * every gate green the whole way, while rounds in that window cited its
+ * numbers as evidence.
+ *
+ * This case costs no measurement time and turns "the repo carries a grid for a
+ * game nobody played" into a red test at the commit that stales it.
+ *
+ * The trade it forces is real and deliberate: any sim-touching PR must either
+ * re-measure or drop the committed grid. That is what "pinned as measured"
+ * already claimed, so the cost was always owed — it was just never collected.
+ */
+describe('the grid on disk describes the sim on disk', () => {
+  it('is fresh, or there is no grid to be stale', () => {
+    const m = loadMeasurements();
+    // A fresh checkout has no `.eval/measurements.json` and nothing to check;
+    // that absence is exactly what the opt-in BALANCE gate exists for.
+    if (!m) return;
+    expect(staleness(m)).toBeNull();
   });
 });

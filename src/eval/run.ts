@@ -11,13 +11,20 @@
 
 import { createWorld } from '../sim/worldgen';
 import { makeStreams, stepWorld } from '../sim/tick';
-import { CROP_NONE, growingCells } from '../sim/farming';
-import { countResource, livingColonists } from '../sim/world';
-import { FOOD_VALUE } from '../sim/needs';
+import { CROP_NONE, canTill, growingCells } from '../sim/farming';
+import { countResource, livingColonists, spendableResource } from '../sim/world';
+import { FOOD_VALUE, isBreaking } from '../sim/needs';
 import {
+  DESIG_DECONSTRUCT,
+  DESIG_HARVEST,
+  DESIG_NONE,
+  DESIG_TILL,
   TICKS_PER_DAY,
+  packCell,
+  terrainAt,
   type Difficulty,
   type Message,
+  type Pawn,
   type PawnActivity,
   type World,
 } from '../sim/types';
@@ -38,6 +45,9 @@ import {
 import { escalation } from '../sim/events';
 import { researchStalled } from '../sim/research';
 import { roadRungs } from '../sim/roads';
+import { roomIndex } from '../sim/rooms';
+import { blueprintReady, isBuildingTargeted, isCellTargeted, isFloorTargeted, reachable } from '../sim/jobs';
+import { FLOOR_DEFS, canFloor, canRemoveFloor, floorAt, floorForDesig } from '../sim/floors';
 import { stewardTick } from './steward';
 
 export interface DaySnapshot {
@@ -298,6 +308,299 @@ export interface DaySnapshot {
    * two answers `every-ending-is-reachable` has to tell apart.
    */
   tradedWorth: number;
+  /**
+   * Buildings finished since yesterday's snapshot — the delta of the
+   * cumulative `world.stats.built`, not a running total. `built` above is the
+   * total; this is the rate `builtPerDay` in `RunMeasure` is averaged from.
+   *
+   * The increment at `jobs.ts:2967` sits in the generic build-job completion
+   * path with no filter on kind, so it counts **every completed building**:
+   * beds, stoves, lamps, doors and tables alongside wall cells and fence
+   * posts. Read `builtPerDay` as buildings finished per day, not as structure
+   * cells laid — 4.8/day is not 4.8 walls.
+   */
+  builtToday: number;
+  /**
+   * Rooms gained since yesterday — the delta of `roomIndex(world).rooms.size`,
+   * the number "one room a day" names.
+   *
+   * The baseline is the world **as generated**, not zero. `roomIndex` counts
+   * natural rock as wall (`rooms.ts:101`), so an untouched map already holds
+   * enclosed rock pockets alongside the starter cabin. Measured at tick zero
+   * across the grid's own seeds — and identical on all three difficulties,
+   * because worldgen lays the same rock either way: 3 rooms on 99001, 8 on
+   * 1312, 9 on 7, 15 on 424242, 34 on 20260729.
+   *
+   * Starting the delta at zero charged every one of those to day one. On a
+   * column that publishes hundredths of a room a day that is not a rounding
+   * error: harsh/99001's first pin read 0.13 rooms/day, of which 0.10 was the
+   * three rooms the valley was handed. Seed 20260729 would have booked 34
+   * rooms on day one — 1.13 a day over a thirty-day run, the whole of "one
+   * room a day" manufactured out of world-gen before a settler lifted
+   * anything. Summed across a run this now telescopes to rooms the colony
+   * *gained*, not rooms standing in it.
+   *
+   * Can still go negative, and for two different reasons: a breach can merge
+   * two rooms into one, and mining a rock pocket open removes a room nobody
+   * ever built. The second is a known distortion of a column that reads as a
+   * build rate — see ROUND_NOTES.md 2026-09-14, "Discovered".
+   */
+  roomsToday: number;
+  /**
+   * Awake colonist-ticks to date — cumulative like `upkeepTicks` behind
+   * `upkeepShare`, and the denominator `idleBoardShare`/`idleTakeableShare`
+   * are a fraction of.
+   *
+   * It counts exactly the ticks `isIdlePawn` is willing to call idle, and for
+   * the reason the `drafted` skip below already gives: a tick that can only
+   * ever be a zero in the numerator must not be a one in the denominator, or
+   * the setting that produces most of them reads as idling less. So the same
+   * four exclusions apply here as there — asleep, drafted, `manual`, and
+   * `isBreaking`. A settler on a mood break is not choosing between work and
+   * supper any more than a drafted one is, and harsh breaks most.
+   */
+  awakeTicks: number;
+  /**
+   * Colonist-ticks, to date, spent idle (`isIdlePawn`) while the work board
+   * was not empty — an unbuilt blueprint, a designated cell, or a stalled
+   * research bill stood somewhere in the colony. "The player's perception,
+   * the Steward's gap": it says the board had something on it, not that this
+   * settler could reach it.
+   *
+   * Counted per tick beside `freeTicks`, never at the 07:12 day snapshot —
+   * see `unsentDays` above for why a once-a-day sample of a quantity that
+   * turns on and off inside an hour is the wrong instrument.
+   *
+   * Contract: a grid column (`idleBoardShare` in `RunMeasure`). Treat a change
+   * to what counts as "the board is open" (`boardOpen`) as a one-way door.
+   */
+  idleBoardTicks: number;
+  /**
+   * Colonist-ticks, to date, spent idle while *this* settler specifically had
+   * something takeable: in their region, switched on in their Work tab, and
+   * supplied/unreserved (`hasTakeableWork`). "Dispatch's gap" — the narrower
+   * question `idleBoardTicks` cannot answer on its own, because a colony can
+   * have plenty on the board and nobody able to reach any of it.
+   *
+   * A subset of `idleBoardTicks` by construction: nothing here is counted
+   * unless the board was already open. Contract: a grid column
+   * (`idleTakeableShare`). Treat a change to `hasTakeableWork` as a one-way
+   * door.
+   */
+  idleTakeableTicks: number;
+}
+
+/**
+ * `idleReason`'s exclusions (`src/sim/idle.ts:139-165`) without the sentence:
+ * true exactly when a settler is doing nothing the panel would call "busy" —
+ * not a raider, not dead, downed, drafted, hand-driven, asleep, or on a mood
+ * break — and either has no job at all or is sitting at a table on their own
+ * recreation.
+ *
+ * Contract: this is the base of `idleBoardShare` and `idleTakeableShare`.
+ * Treat an edit here as a one-way door — it moves both grid columns at once.
+ */
+export function isIdlePawn(world: World, pawn: Pawn): boolean {
+  if (pawn.faction !== 'colony' || pawn.dead || pawn.downed) return false;
+  if (pawn.drafted || pawn.manual) return false;
+  if (pawn.activity === 'sleeping' || isBreaking(pawn)) return false;
+  if (pawn.jobId === null) return true;
+  const job = world.jobs.find((j) => j.id === pawn.jobId);
+  return job !== undefined && job.kind === 'recreate';
+}
+
+/**
+ * Whether the colony's work board has anything standing on it at all: an
+ * unbuilt blueprint, a cell carrying a designation (mine, chop, till, lay a
+ * floor, take one up, or deconstruct), or a research bill the bench has
+ * finished studying and is waiting on parts for.
+ *
+ * This is "the player's perception" half of the idle split — it says nothing
+ * about whether any *particular* settler could reach the thing, only that the
+ * board is not empty. `hasTakeableWork` asks the narrower question for one
+ * pawn.
+ *
+ * `stalled` defaults to a fresh `researchStalled(world)` call so this reads
+ * as a single self-contained predicate; a hot loop that already has the
+ * answer for this tick may pass it in to skip the extra call.
+ *
+ * Contract: a grid column (`idleBoardShare` in `RunMeasure`). Treat an edit
+ * here as a one-way door.
+ */
+export function boardOpen(world: World, stalled = researchStalled(world)): boolean {
+  if (stalled) return true;
+  for (const b of world.buildings) if (!b.built) return true;
+  for (const d of world.cellDesig) if (d !== DESIG_NONE) return true;
+  return false;
+}
+
+/**
+ * One piece of work standing on the board, stripped of everything that depends
+ * on *which* settler is asking.
+ *
+ * `need` is the Work-tab column that gates it and `adjacent` is what
+ * `reachable` wants for it. Building the list once a tick is the whole point:
+ * the check used to rescan `world.buildings` plus all `width × height` cells
+ * of `world.cellDesig` separately for every idle pawn, which made the eval's
+ * cost scale with how much the colony idles — the harness charged most for
+ * exactly the colonies it exists to study.
+ *
+ * Timed three ways on one quiet box, 30 days, `playPastFounding`, same node:
+ * `origin/main` with no counters at all, the first cut with the per-pawn
+ * rescan, and this one. On harsh/99001 (`idleBoardShare` 0.124) that reads
+ * 76.9 s → 91.0 s → 82.1 s: +18.3% overhead cut to +6.8%. On harsh/7
+ * (`idleBoardShare` 0.383, three times as idle) it reads 104.8 s → 151.5 s
+ * → 118.9 s: +44.5% cut to +13.4%.
+ *
+ * Both halves of the first round's cost sentence were wrong, and in the same
+ * direction. It quoted ~21% from harsh/99001 alone, which is the least idle
+ * seed on the grid and so the cheapest possible arm to have measured; and it
+ * called that cost unavoidable, when three quarters of it was one hoist out
+ * of a loop.
+ */
+export interface TakeableTarget {
+  x: number;
+  y: number;
+  need: 'construct' | 'chop' | 'mine' | 'farm';
+  adjacent: boolean;
+}
+
+/**
+ * Every piece of work on the board that is ready, unreserved and supplied,
+ * without asking who might take it.
+ *
+ * Order matters and mirrors `tryWorkType`'s own (jobs.ts): unbuilt frames and
+ * the two designations that live on `world.buildings` (a felled tree, a
+ * building marked for deconstruction) first, then a single pass over
+ * `world.cellDesig` for everything the X tool paints onto bare ground.
+ */
+export function takeableTargets(world: World): TakeableTarget[] {
+  const out: TakeableTarget[] = [];
+  for (const b of world.buildings) {
+    if (!b.built) {
+      if (!blueprintReady(b) || isBuildingTargeted(world, b.id)) continue;
+      out.push({ x: b.x, y: b.y, need: 'construct', adjacent: true });
+      continue;
+    }
+    const desig = world.cellDesig[packCell(world, b.x, b.y)];
+    if (b.kind === 'tree') {
+      if (desig !== DESIG_HARVEST || isBuildingTargeted(world, b.id)) continue;
+      out.push({ x: b.x, y: b.y, need: 'chop', adjacent: true });
+    } else {
+      if (desig !== DESIG_DECONSTRUCT || isBuildingTargeted(world, b.id)) continue;
+      out.push({ x: b.x, y: b.y, need: 'construct', adjacent: true });
+    }
+  }
+  for (let i = 0; i < world.cellDesig.length; i++) {
+    const desig = world.cellDesig[i];
+    if (desig === DESIG_NONE) continue;
+    const x = i % world.width;
+    const y = Math.floor(i / world.width);
+    if (desig === DESIG_HARVEST) {
+      if (terrainAt(world, x, y) !== 'rock' || isCellTargeted(world, x, y)) continue;
+      out.push({ x, y, need: 'mine', adjacent: true });
+    } else if (desig === DESIG_TILL) {
+      if (!canTill(world, x, y) || isCellTargeted(world, x, y)) continue;
+      out.push({ x, y, need: 'farm', adjacent: true });
+    } else if (desig === DESIG_DECONSTRUCT) {
+      if (!canRemoveFloor(world, x, y) || isFloorTargeted(world, x, y)) continue;
+      out.push({ x, y, need: 'construct', adjacent: floorAt(world, x, y) === 'bridge' });
+    } else {
+      const kind = floorForDesig(desig);
+      if (!kind || !canFloor(world, x, y, kind)) continue;
+      if (isFloorTargeted(world, x, y)) continue;
+      if (spendableResource(world, FLOOR_DEFS[kind].cost) <= 0) continue;
+      out.push({ x, y, need: 'construct', adjacent: kind === 'bridge' });
+    }
+  }
+  return out;
+}
+
+/**
+ * Whether the specific work making the board non-empty is something *this*
+ * settler could pick up right now: in their region (a cheap region lookup,
+ * not a pathfind — `reachable`, jobs.ts:511) and switched on in their Work tab.
+ *
+ * Everything that does not depend on the pawn — ready, unreserved, supplied,
+ * and in `tryWorkType`'s own search order — is `takeableTargets` above. A hot
+ * loop builds that list once per tick and passes it in; the default keeps this
+ * readable as a single self-contained predicate.
+ *
+ * "Supplied" reads as "the materials are already at the site or in stock"
+ * (`blueprintReady`, `spendableResource`) — not "fetchable by some future
+ * haul". A settler two hops from doing something is not yet a settler with
+ * something to do; that is a deliberately conservative (undercounting) read,
+ * and simpler than replaying `tryWorkType`'s full haul-then-build chain.
+ *
+ * `moveBedJob` — a bunk pulled out of the hall into an empty room — is not
+ * counted. It is real work `tryWorkType('construct', ...)` will take, but it
+ * is neither an unbuilt blueprint nor a designation, and the plan this
+ * predicate is pinned against names those two.
+ *
+ * **A stalled research bill is not counted either, and that is a correction.**
+ * This predicate used to answer true whenever research was stalled, the pawn
+ * hauled, and any unreserved stack of a needed kind was reachable. That branch
+ * was never real work: `researchNeeds` computes its gap as
+ * `want - spendableResource(kind)`, and `spendableStack` already counts every
+ * uncarried, unreserved stack anywhere on the map — precisely the stacks the
+ * branch then went looking for. Hauling one changes nothing about the stall,
+ * and no job in `jobs.ts` consumes `researchNeeds` at all; only the caravan
+ * does (`settlements.ts`). A stall is a caravan question. If a haul-to-bench
+ * job is ever added, gate a branch on that job's own preconditions.
+ *
+ * Contract: a grid column (`idleTakeableShare` in `RunMeasure`). Treat an
+ * edit here as a one-way door.
+ */
+export function hasTakeableWork(
+  world: World,
+  pawn: Pawn,
+  targets: TakeableTarget[] = takeableTargets(world),
+): boolean {
+  const p = pawn.priorities;
+  for (const t of targets) {
+    if ((p[t.need] ?? 0) <= 0) continue;
+    if (reachable(world, pawn, t.x, t.y, t.adjacent)) return true;
+  }
+  return false;
+}
+
+/** What `formatReport` and `RunMeasure.measure` both print/derive from a run's colonist-tick counters. */
+export interface IdleRates {
+  builtPerDay: number;
+  roomsPerDay: number;
+  idleBoardShare: number;
+  idleTakeableShare: number;
+}
+
+/**
+ * `builtPerDay`/`roomsPerDay`/`idleBoardShare`/`idleTakeableShare`, computed
+ * once here so `formatReport` (one run) and `sweep.ts`'s `measure` (the grid)
+ * cannot drift into two different answers for the same question.
+ *
+ * The two rates sum each day's delta rather than reading `last.built`
+ * directly, because `roomsToday` can be negative (a breach can merge rooms)
+ * and there is no raw cumulative "rooms" field to divide by days instead —
+ * the delta sum telescopes to the same total either way.
+ *
+ * Zero-denominator pinned to 0, never NaN: an empty run, or one where nobody
+ * was ever awake, reads as no rate and no idle share rather than a crash.
+ */
+export function idleRates(r: EvalReport): IdleRates {
+  const days = r.snapshots.length;
+  const last = r.snapshots[days - 1];
+  if (!last) return { builtPerDay: 0, roomsPerDay: 0, idleBoardShare: 0, idleTakeableShare: 0 };
+  let built = 0;
+  let rooms = 0;
+  for (const s of r.snapshots) {
+    built += s.builtToday;
+    rooms += s.roomsToday;
+  }
+  return {
+    builtPerDay: round(built / days),
+    roomsPerDay: round(rooms / days),
+    idleBoardShare: round3(last.idleBoardTicks / Math.max(1, last.awakeTicks)),
+    idleTakeableShare: round3(last.idleTakeableTicks / Math.max(1, last.awakeTicks)),
+  };
 }
 
 /**
@@ -464,6 +767,21 @@ export function runColony(opts: EvalOptions = {}): EvalReport {
   // colony actually spends its time at.
   let freeTicks = 0;
   let upkeepTicks = 0;
+  // `freeTicks` counts sleep as free time, which is right for `upkeepShare`
+  // and wrong for `idleBoardShare`/`idleTakeableShare`: `isIdlePawn` never
+  // calls a sleeping settler idle, so the share's denominator must not count
+  // the sleep either, or a colony that sleeps more would read as idling less.
+  let awakeTicks = 0;
+  let idleBoardTicks = 0;
+  let idleTakeableTicks = 0;
+  // Reused rather than allocated 4 800×/day, like `flooredHungry` below.
+  const idleAwakePawns: Pawn[] = [];
+  let prevBuilt = 0;
+  // The world as generated, not zero. `roomIndex` counts natural rock as wall,
+  // so the map is born with enclosed pockets and a starter cabin; charging
+  // those to day one made `roomsPerDay` a count of rooms standing rather than
+  // rooms gained. See the `roomsToday` doc above.
+  let prevRooms = roomIndex(world).rooms.size;
   // The day the charter closed, latched. `hasWon` is a latch itself and never
   // goes back to false, so once the run plays on it can only answer *whether*
   // the colony founded and never *when* — and when is the interesting half the
@@ -544,7 +862,8 @@ export function runColony(opts: EvalOptions = {}): EvalReport {
         const to = settlementById(world, out.settlementId);
         if (to) tripsByRing[ringOf(to)]!++;
       }
-      if (researchStalled(world)) {
+      const stalled = researchStalled(world);
+      if (stalled) {
         const talker = bestTalker(world);
         if (talker && caravanAllowed(world, talker)) idleTicks++;
       }
@@ -553,6 +872,7 @@ export function runColony(opts: EvalOptions = {}): EvalReport {
       let band = 0;
       let upright = 0;
       flooredHungry.length = 0;
+      idleAwakePawns.length = 0;
       for (const p of world.pawns) {
         if (p.dead) continue;
         if (p.faction === 'raider') {
@@ -603,6 +923,25 @@ export function runColony(opts: EvalOptions = {}): EvalReport {
         if (p.drafted) continue;
         freeTicks++;
         if (UPKEEP_ACTIVITIES.has(p.activity)) upkeepTicks++;
+        // The same exclusions `isIdlePawn` applies, for the same reason the
+        // `drafted` skip above gives: somebody on a mood break, or under the
+        // player's direct hand, is a guaranteed zero in the numerator, so
+        // counting their ticks in the denominator would push both idle
+        // columns down on the setting that breaks most.
+        if (p.activity !== 'sleeping' && !p.manual && !isBreaking(p)) {
+          awakeTicks++;
+          if (isIdlePawn(world, p)) idleAwakePawns.push(p);
+        }
+      }
+      if (idleAwakePawns.length > 0 && boardOpen(world, stalled)) {
+        idleBoardTicks += idleAwakePawns.length;
+        // Built once for the tick, not once per idle settler: nothing in it
+        // depends on who is asking, and rebuilding it per pawn is what made
+        // the eval's cost scale with how much the colony idles.
+        const targets = takeableTargets(world);
+        for (const p of idleAwakePawns) {
+          if (hasTakeableWork(world, p, targets)) idleTakeableTicks++;
+        }
       }
       // The third spell, and the only one of the three that is a promise the
       // colony can keep. `floorStarveHours` turned out to be dominated by runs
@@ -655,6 +994,7 @@ export function runColony(opts: EvalOptions = {}): EvalReport {
       }
       if (band > biggestBand) biggestBand = band;
     }
+    const rooms = roomIndex(world).rooms.size;
     snapshots.push(
       snapshot(world, day, downs, biggestBand, seenRaiders.size, armedRaiders, {
         upkeepTicks,
@@ -663,8 +1003,15 @@ export function runColony(opts: EvalOptions = {}): EvalReport {
         longestFloorStarve,
         longestStranded,
         longestUnfed,
+        awakeTicks,
+        idleBoardTicks,
+        idleTakeableTicks,
+        builtToday: world.stats.built - prevBuilt,
+        roomsToday: rooms - prevRooms,
       }),
     );
+    prevBuilt = world.stats.built;
+    prevRooms = rooms;
     if (foundedOn === null && hasWon(world)) foundedOn = day;
     if (spareGoods(world, PACK_CEILING) !== null) spareDays++;
     for (let ring = 1; ring < ringOpenedOn.length; ring++) {
@@ -712,6 +1059,11 @@ function snapshot(
     longestFloorStarve: number;
     longestStranded: number;
     longestUnfed: number;
+    awakeTicks: number;
+    idleBoardTicks: number;
+    idleTakeableTicks: number;
+    builtToday: number;
+    roomsToday: number;
   },
 ): DaySnapshot {
   const colonists = livingColonists(world);
@@ -778,6 +1130,11 @@ function snapshot(
     holdingsTaken: world.stats.holdingsTaken ?? 0,
     warPawnDays: round(world.stats.warPawnDays ?? 0),
     tradedWorth: round(world.stats.tradedWorth ?? 0),
+    builtToday: time.builtToday,
+    roomsToday: time.roomsToday,
+    awakeTicks: time.awakeTicks,
+    idleBoardTicks: time.idleBoardTicks,
+    idleTakeableTicks: time.idleTakeableTicks,
   };
 }
 
@@ -939,8 +1296,14 @@ export function formatReport(r: EvalReport): string {
       pad(s.recruited, 4),
     ].join(''),
   );
+  const rates = idleRates(r);
+  const idleLine =
+    `builtPerDay ${rates.builtPerDay}  roomsPerDay ${rates.roomsPerDay}  ` +
+    `idleBoardShare ${rates.idleBoardShare}  idleTakeableShare ${rates.idleTakeableShare}`;
   const worst = r.incidents.slice(-6).map((m) => `  day ${(m.tick / TICKS_PER_DAY).toFixed(1)}  ${m.text}`);
-  return [head, cols, ...rows, worst.length ? 'last incidents:' : '', ...worst].filter(Boolean).join('\n');
+  return [head, cols, ...rows, idleLine, worst.length ? 'last incidents:' : '', ...worst]
+    .filter(Boolean)
+    .join('\n');
 }
 
 const pad = (v: string | number, w: number) => String(v).padStart(w);
