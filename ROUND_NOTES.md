@@ -4,7 +4,7 @@ One round, one measured gap, one fix. Newest first.
 
 ---
 
-## 2026-09-13 — Two counters for the two questions one predicate cannot answer
+## 2026-09-14 — Two counters for the two questions one predicate cannot answer
 
 **Better.** The grid could already see downs, threats and the food line, and never the
 two things a player is actually looking at when the colony feels stuck: is anything
@@ -22,10 +22,13 @@ up right now — in their region (`reachable`, a flood-fill lookup, not a pathfi
 prioritized on, supplied, and not already claimed. Idle while the board is open is
 `idleBoardShare`, the Steward's gap — what the player's eye tracks ("why is everyone
 just standing there"). Idle while this pawn specifically could take something is
-`idleTakeableShare`, dispatch's gap — always the narrower of the two, and pinned that
-way: `idleTakeableShare ≤ idleBoardShare` is asserted on every seed of the opening week,
-not just the named run, because takeable work is only ever counted once the board is
-already confirmed open — a subset can't read wider than the set it's a subset of.
+`idleTakeableShare`, dispatch's gap — always the narrower of the two, because takeable
+work is only ever counted once the board is already confirmed open. That relationship is
+noted on the named run as documentation and nowhere else: `idleTakeableTicks` is
+incremented only inside the `boardOpen` branch, so `idleTakeableShare ≤ idleBoardShare`
+is a structural identity, not a property of the colony. The round's first cut spent five
+colony runs asserting it across the opening week, which is rule 9's exact failure — a
+test that cannot fail when the business logic changes. Deleted.
 
 **Worse and fixed inside the round.** `npm run measure` with no flags plays the sweep's
 own default — five seeds, three settings, thirty days, no founding — not the grid
@@ -37,19 +40,74 @@ instrumentation-side regression on a branch that only adds read-only idle counti
 wasn't one, and the config was simply wrong for this repo's own convention; re-run with
 `--days 60 --past-founding`, the grid the file has always held.
 
-**Still wrong.** Counting two predicates a tick, for every idle pawn, over a
-`world.cellDesig` scan that runs 36,864 entries wide when the board is open, is not
-free: the same seed and settings (harsh/99001, 30 days, `steward: false`,
-`playPastFounding: true`), timed with `runColony` alone against `origin/main` in a
-worktree and against this branch, went 83284.6 ms → 100506.8 ms — a real ~21% slower
-eval harness, paid on every seed `npm run measure` plays. Accepted rather than chased
-this round: the grid still finishes in the same order of magnitude, and a cheaper scan
-(caching `boardOpen`'s cheapest-to-check disjunct, or only walking `cellDesig` once a
-tick rather than once per idle pawn) is a separate, measured round if it is ever worth
-one. And the number the round exists to expose is still open: harsh/99001's own row
-reads `idleBoardShare 0.117` against `idleTakeableShare 0.047` — roughly seven points of
-every day where the board has *something* on it that this pawn specifically cannot take.
-This round only measures that gap; it does not say why. That's `3b-sim-probe-why`.
+**Worse, and fixed after review — the harness charged most for the colonies it exists
+to study.** Counting two predicates a tick, for every idle pawn, over a `world.cellDesig`
+scan 36,864 entries wide, is not free. The round's first cut rebuilt that whole scan
+*inside* the per-pawn loop, so the eval's cost scaled with how much the colony idled —
+the seeds the instrument was built to explain were the ones it charged most to play.
+`takeableTargets` now builds the list once a tick and `hasTakeableWork` walks it. It is
+a pure hoist: every check it moves out (`blueprintReady`, `isBuildingTargeted`,
+`isCellTargeted`, `isFloorTargeted`, `terrainAt`, `canTill`, `canRemoveFloor`,
+`canFloor`, `spendableResource`) is pawn-independent, and only priorities and `reachable`
+stay per pawn, in `tryWorkType`'s own search order.
+
+Timed three ways on one quiet box — `origin/main` with no counters at all, the first cut,
+and this one; 30 days, `playPastFounding`, same node, one run each:
+
+| seed | `idleBoardShare` | main | first cut | hoisted |
+|---|---|---|---|---|
+| harsh/99001 | 0.124 | 76.9 s | 91.0 s (+18.3%) | 82.1 s (+6.8%) |
+| harsh/7 | 0.383 | 104.8 s | 151.5 s (+44.5%) | 118.9 s (+13.4%) |
+
+The sentence that used to stand here — "~21% slower, accepted rather than chased this
+round" — was wrong in both halves. It quoted harsh/99001 alone, the least idle seed on
+the grid and therefore the cheapest arm the round could have measured; the idle-heavy
+seed was paying 44.5%. And the cost was not inherent to counting: three quarters of it
+was one hoist out of a loop.
+
+The number the round exists to expose is still open: harsh/99001 reads `idleBoardShare
+0.124` against `idleTakeableShare 0.049` — roughly seven and a half points of every day
+where the board has *something* on it that this pawn specifically cannot take. This
+round measures that gap; it does not say why. That is `3b-sim-probe-why`.
+
+**Worse, and the numbers this round published were wrong.** Three of the four columns it
+exists to add were measuring something other than what their names say. All three are
+corrected here, and all three moved the pin.
+
+`roomsPerDay` started its running delta at zero, so day one booked every room the world
+was *generated* with. `roomIndex` counts natural rock as wall, so an untouched map
+already holds enclosed pockets alongside the starter cabin — measured at tick zero: 3
+rooms on seed 99001, 8 on 1312, 9 on 7, 15 on 424242, 34 on 20260729, identical on all
+three difficulties because worldgen lays the same rock either way. The published
+harsh/99001 figure of 0.13 rooms a day was 0.10 world-gen and 0.03 colony. On seed
+20260729 the baseline alone reads 1.13 rooms a day — the whole of "one room a day", the
+phrase this column exists to put a number on, manufactured before a settler lifted
+anything. `prevRooms` now starts at `roomIndex(world).rooms.size`; the pin moves
+0.13 → 0.03, and 0.03 is what thirty harsh days actually add.
+
+`awakeTicks` excluded only sleep, while `isIdlePawn` — the numerator — also excludes
+drafted, hand-driven and on-a-break. A tick that can only ever be a zero on top was
+counted as a one underneath, which reads backwards: the settings producing the most of
+those ticks look like the ones idling least, and harsh breaks most. The denominator now
+applies the same four exclusions the numerator does. Both shares widen slightly and
+honestly — harsh/99001 0.117 → 0.124 and 0.047 → 0.049.
+
+`hasTakeableWork` answered true on a stalled research bill whenever the pawn hauled and
+an unreserved stack of a needed kind was reachable. That branch was never work.
+`researchNeeds` computes its gap as `want - spendableResource(kind)`, and
+`spendableStack` already counts every uncarried, unreserved stack anywhere on the map —
+so the branch went hunting for precisely the stacks its own need had already subtracted.
+Hauling one changes nothing about the stall, and no job in `jobs.ts` consumes
+`researchNeeds` at all; only the caravan does (`settlements.ts`). Deleted, with the
+reasoning written where the branch used to be. A stall stays one of `boardOpen`'s three
+disjuncts, which is correct — the board does have something on it. It is just not
+something a settler can pick up.
+
+`builtToday` is the one column whose number survived (4.8 a day, unchanged) and its
+docstring was still wrong about what it counts. The increment at `jobs.ts:2967` sits in
+the generic build-completion path with no filter on kind, so it counts every finished
+building — beds, stoves, lamps, doors and tables alongside wall cells and fence posts.
+Read `builtPerDay` as buildings a day, not structure cells laid.
 
 The re-measured grid also surfaced something this round did not cause and cannot fix
 inside its own write set: `npm run balance` breaks exactly one of sixteen enforced
@@ -59,56 +117,128 @@ zero past the twelve-hour ceiling (settler/1312 28.3 h, settler/99001 45.2 h, ha
 `--days 60 --past-founding` config, played once on `origin/main` at this branch's own
 base commit (`ea26e6a0`) and once on this branch, come back byte-identical on every
 field including `starveHours: 28.32` for settler/1312 — the four new columns are the
-only difference between them. Nor is it the same known break carried forward: the grid
-this file held before this round (fingerprint `effc8eef`, taken 2026-08-15) measured
-that same seed at `starveHours: 1.22`, comfortably under the ceiling, and the sim-and-eval
-fingerprint — which hashes every file under `src/sim` and `src/eval` save
-`principles.ts` and the other harness files in `NOT_THE_SIM` — did not move between that
-measurement and this branch's base commit. Nothing under either directory changed to
-explain a settler going from 1.22 h to 28.32 h upright at zero on the same seed.
-Something outside the fingerprinted sim moved this seed's outcome by more than an order
-of magnitude, past a promise that was fixed once already (the principle's own comment
-records a worst case of 7.92 h the last time this was closed), without ever tripping the
-guard built to catch exactly that kind of drift. This round's write set touches no sim
-file and has no business chasing it down; it is measured, named, and handed off rather
-than patched here.
+only difference between them. It is also not the same known break carried
+forward: the grid this file held before this round (fingerprint `effc8eef`, taken
+2026-08-15) measured that same seed at `starveHours: 1.22`, comfortably under the
+ceiling.
+
+**Corrected after review — the drift is inside the fingerprint, not outside it.** The
+sentence that used to stand here said the sim-and-eval fingerprint "did not move between
+that measurement and this branch's base commit," and concluded that something *outside*
+the fingerprinted sim had moved the seed by an order of magnitude. Both halves are
+wrong, and one command says so. `effc8eef` was measured at `5cffcee`, whose tree
+fingerprints `effc8eef` — the grid was fresh when it was taken. This branch's base,
+`ea26e6a0`, fingerprints `2e868453`. Thirteen commits touch `src/sim` or `src/eval`
+between the two (`c3be2cd`, `46e7bbd`, `6f54d32`, `9c448fb`, `568e35a`, `06524d1`,
+`5e4b23d`, `e3cc96f`, `6942eff`, `331b706`, `d873ee7`, `ad927e1`, `0c2e04c`), and
+`src/eval/measurements.ts` — the walk that computes the hash — is not among the files
+they change, so the two hashes are comparable and they differ. A settler going from
+1.22 h to 28.32 h upright at zero on the same seed is therefore thirteen candidate
+commits wide: a bounded bisect, not the open-ended hunt the original paragraph handed
+off. The principle's own comment records a worst case of 7.92 h the last time this was
+closed, so the regression is real either way — only its search space changed.
+
+**What actually failed to fire was the guard.** `staleness` is called from exactly one
+place: inside `describe.runIf(process.env.BALANCE)` in `tests/balance-grid.test.ts`,
+which `package.json` wires to the opt-in `npm run balance`. `npm test` never asked
+whether the grid on disk describes the sim on disk. That is how `main` came to carry a
+grid claiming `effc8eef` against a `2e868453` tree across all thirteen commits, every
+gate green the whole way, while rounds in that window cited its numbers as evidence —
+including this one, whose first draft read the un-fired guard as proof of innocence.
+`tests/measurements.test.ts` now asks unconditionally: one ungated case, zero
+measurement time, red at the commit that stales the grid. The trade it forces is
+deliberate — a sim-touching PR must now either re-measure or drop the committed grid.
+That is what "pinned as measured" always claimed; it was simply never collected.
+
+This round's write set touches no sim file and has no business chasing the starve
+regression down; it is measured, bounded, and handed off rather than patched here.
+
+**Discovered during execution, and left alone on purpose.** Two things this round's
+write set can reach and does not touch:
+
+- `isIdlePawn` calls `world.jobs.find` — a linear scan of the whole job list — once per
+  living colonist per tick, on top of the scan the hoist above just took out of the pawn
+  loop. It is not a regression this round introduced and it is not what made the harness
+  slow, so it is named rather than fixed. It is the first thing to measure if the eval is
+  ever timed again.
+- `roomsToday` can go negative for two different reasons and only one of them is a room
+  being lost. A breach merging two rooms into one is a real loss; mining a rock pocket
+  open deletes a room nobody built and nobody wanted, so a column that reads as a build
+  rate dips below zero because the colony dug well. With the world-gen baseline removed
+  this is no longer hypothetical: three of the fifteen sixty-day runs now end on a
+  negative `roomsPerDay` — calm/20260729 at -0.03, settler/1312 and settler/99001 at
+  -0.02 — which is the instrument saying "fewer enclosures than the valley started with",
+  not "the colony demolished itself". Telling the two apart needs `roomIndex` to report
+  *why* a room went away, which is a sim change and not an instrument one. Named here so
+  the next reader of a negative row does not go looking for a collapse.
 
 **Verified.**
-- `npx vitest run tests/colony-eval.test.ts tests/colony-run.test.ts tests/measurements.test.ts` —
-  60 passed (60), 623.38 s.
-- `tests/idle-predicates.test.ts` (new, 16 tests) exercises `isIdlePawn`/`boardOpen`/
-  `hasTakeableWork` directly against real `createWorld`/`addBuilding`/`createJob`
-  fixtures, including the till-designation and stalled-research branches.
-- Two red-first mutations, each reverted byte-identical: dropping the `sleeping` check
-  out of `isIdlePawn` failed exactly one test; dropping the construct-priority check out
-  of `hasTakeableWork`'s blueprint branch failed exactly one test.
 - `npx tsc --noEmit` clean.
-- Full suite alone (`vite.config.ts`'s six workers): 127 files passed, 2 skipped;
-  2778 tests passed, 13 skipped; 1230.09 s.
-- `npm run measure -- --days 60 --past-founding` — fingerprint `effc8eef` → `4e67f12b`,
-  39 colonies, 7137.237 s, node v22.22.3, measured against `ea26e6a0` (the SHA this round
-  branched from).
-- `npm run balance` — 15 of 16 enforced principles hold; the one break
-  (`on-their-feet-at-zero-is-a-walk-home`) is proven pre-existing on `origin/main` at
-  this branch's own base commit, not caused by this round (see "Still wrong" above).
-- Determinism, proven against the grid's own config (`seed 1312`, `settler`, 60 days,
-  `steward: false`, `playPastFounding: true`): `runColony` + `measure`, run once on
-  `origin/main` in an adjacent worktree and once on this branch, return byte-identical
-  `RunMeasure` on every pre-existing field — `daysLived`, `threats`, `downs`, `buried`,
-  `survivors`, `raidersKilled`, `endSteel`, `steelDrawdown`, `tradedWorth`, `starveHours`
-  down to the hundredth (`28.32` both times) — the four new fields are the only
-  difference.
-- Zero-denominator case pinned: a zero-day run reads `idleBoardShare`/`idleTakeableShare`
-  as `0`, never `NaN`.
+- Full suite alone (`vite.config.ts`'s six workers): 130 files passed and 2 skipped,
+  2,828 tests passed and 13 skipped, 1,205.69 s.
+- `tests/idle-predicates.test.ts` (24 tests) exercises `isIdlePawn`, `boardOpen`,
+  `takeableTargets` and `hasTakeableWork` directly against real
+  `createWorld`/`addBuilding`/`createJob` fixtures — including the till branch, a
+  blueprint another job already claims, and the stalled bill now reading false with
+  hauling both off and on while `researchStalled` and `boardOpen` are both true and an
+  unreserved steel stack is one cell away. A new block enumerates every `DESIG_`
+  constant off `src/sim/types.ts` itself rather than off a list written in the test, so
+  a designation added without a branch in `takeableTargets` fails here instead of
+  quietly reading as a colony with less work on it.
+- `tests/colony-eval.test.ts` pins all four rates on the named run and both
+  zero-denominator guards on hand-built reports. The run-based guard test it replaces
+  used `days: 0`, which returns at the first guard and never reaches the second — the
+  case its own comment described was the one it did not cover. The five-seed subset test
+  is deleted: `idleTakeableTicks` only ever increments inside the `boardOpen` branch, so
+  `idleTakeableShare ≤ idleBoardShare` is a structural identity, and it burned five
+  colony runs to assert nothing.
+- Four red-first mutations, each restored byte-identical from a kept copy rather than by
+  `git checkout`:
+  - a `DESIG_` constant added with no branch in `takeableTargets` — 2 tests red;
+  - the stalled-bill branch put back — 1 test red;
+  - `prevRooms` back to `0` — the rooms pin red at 0.13 against 0.03;
+  - `awakeTicks` back to sleep-only — both share pins red, 0.117 against 0.124.
+  The tree fingerprints `4ca9864e` before and after each, which is what makes the
+  restore a proof rather than a claim.
+- `npm run measure -- --days 60 --past-founding` — fingerprint `4e67f12b` → `4ca9864e`,
+  39 colonies, 6223.073 s on a box otherwise idle. The first cut's grid took 7137.237 s
+  on the same box, same config, same node: the 12.8% drop is the hoist, measured on the
+  whole grid rather than on one seed.
+- Determinism, proven against the grid itself rather than against a single seed: all
+  **1,266 pre-existing `RunMeasure` fields** across the 15 unmanaged runs, the 15 war
+  runs and the 3 arm rows are byte-identical to the grid measured at `5a04b0e` —
+  `starveHours`, `meanFood`, `upkeepShare`, `tradedWorth`, `ringOpenedOn`, all of it.
+  Every difference is in the four new columns, and each moves the way its own
+  correction predicts rather than merely moving. `builtPerDay` does not move on a single
+  one of the thirty rows, which is what a docstring-only fix should look like.
+  `roomsPerDay` falls on all thirty, because every map is generated with rooms already
+  in it. `idleBoardShare` rises on twenty-one rows, holds on nine and falls on none — its
+  only correction is the denominator, and a denominator that can only shrink can only
+  push a share up. `idleTakeableShare` is the one column pulled two ways: the denominator
+  lifts it, deleting the stalled-bill branch drops it. It rises on seven rows, holds on
+  twenty-two, and falls on one — war calm/7, 0.061 → 0.013, a colony whose "takeable"
+  work turned out to be almost entirely the research bill that was never takeable. That
+  row is the clearest single answer to whether the deleted branch was load-bearing: it
+  was, and it was wrong.
+- `npm run balance` — 15 of 16 enforced principles hold, and every verdict line the
+  judge prints is byte-identical to the one it printed against the grid before this
+  round: same 15 HOLDS, the same single enforced break, and
+  `on-their-feet-at-zero-is-a-walk-home` naming the same three runs at the same hours to
+  the tenth (settler/1312 28.3 h, settler/99001 45.2 h, harsh/7 34.6 h). Identical
+  verdicts on a re-measured grid is the strongest form the "not this round's doing"
+  claim can take.
+- `tests/measurements.test.ts`'s new ungated case was red at the commit that staled the
+  grid and is green now that the grid describes the sim on disk — which is the whole
+  behaviour it exists to have.
 
 **Next.** `3b-sim-probe-why` — attribute harsh/99001's seven points between "dispatch
 never offers a takeable job" and "rule 4 is holding one ambition at a time," per tick,
 before either fix round touches anything. Separately, and ahead of that if the box's
 serial-resource rule allows only one open at a time: `on-their-feet-at-zero-is-a-walk-home`
-needs a round of its own — a probe like the one that found `tickGroundSleep` the first
-time, run against settler/1312, settler/99001 and harsh/7, to find what outside
-`src/sim`/`src/eval` moved this seed's starve spell from 1.22 h to 28.32 h between the
-last measurement and this one.
+needs a round of its own — bisect the thirteen commits between `5cffcee` and `ea26e6a0`,
+playing settler/1312 at each, to name the one that moved its starve spell from 1.22 h to
+28.32 h. The fingerprint already says the cause is inside that window, so this is a
+bounded walk of thirteen, not a search of everything the sim is not.
 
 ---
 

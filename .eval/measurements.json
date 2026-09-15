@@ -1,7 +1,7 @@
 {
-  "fingerprint": "4e67f12b",
-  "taken": "2026-09-13T16:32:26.195Z",
-  "seconds": 7137.237,
+  "fingerprint": "4ca9864e",
+  "taken": "2026-09-15T01:22:11.272Z",
+  "seconds": 6223.073,
   "steward": false,
   "sweep": {
     "seeds": [
@@ -75,8 +75,8 @@
         "endingLandedOn": null,
         "tradedWorth": 2600.9,
         "builtPerDay": 3.5,
-        "roomsPerDay": 0.53,
-        "idleBoardShare": 0.28,
+        "roomsPerDay": -0.03,
+        "idleBoardShare": 0.281,
         "idleTakeableShare": 0.003
       },
       {
@@ -135,7 +135,7 @@
         "endingLandedOn": null,
         "tradedWorth": 304,
         "builtPerDay": 3.15,
-        "roomsPerDay": 0.17,
+        "roomsPerDay": 0.02,
         "idleBoardShare": 0.026,
         "idleTakeableShare": 0.004
       },
@@ -195,8 +195,8 @@
         "endingLandedOn": null,
         "tradedWorth": 391.05,
         "builtPerDay": 5.12,
-        "roomsPerDay": 0.2,
-        "idleBoardShare": 0.107,
+        "roomsPerDay": 0.07,
+        "idleBoardShare": 0.108,
         "idleTakeableShare": 0.004
       },
       {
@@ -255,8 +255,8 @@
         "endingLandedOn": null,
         "tradedWorth": 1162.15,
         "builtPerDay": 5.13,
-        "roomsPerDay": 0.12,
-        "idleBoardShare": 0.301,
+        "roomsPerDay": 0.07,
+        "idleBoardShare": 0.303,
         "idleTakeableShare": 0.006
       },
       {
@@ -315,7 +315,7 @@
         "endingLandedOn": null,
         "tradedWorth": 904.05,
         "builtPerDay": 5,
-        "roomsPerDay": 0.33,
+        "roomsPerDay": 0.08,
         "idleBoardShare": 0.204,
         "idleTakeableShare": 0.009
       },
@@ -375,8 +375,8 @@
         "endingLandedOn": null,
         "tradedWorth": 290.4,
         "builtPerDay": 2.77,
-        "roomsPerDay": 0.62,
-        "idleBoardShare": 0.274,
+        "roomsPerDay": 0.05,
+        "idleBoardShare": 0.275,
         "idleTakeableShare": 0.011
       },
       {
@@ -435,7 +435,7 @@
         "endingLandedOn": null,
         "tradedWorth": 200,
         "builtPerDay": 3.42,
-        "roomsPerDay": 0.23,
+        "roomsPerDay": 0.08,
         "idleBoardShare": 0.371,
         "idleTakeableShare": 0.008
       },
@@ -495,8 +495,8 @@
         "endingLandedOn": null,
         "tradedWorth": 255,
         "builtPerDay": 3.4,
-        "roomsPerDay": 0.12,
-        "idleBoardShare": 0.123,
+        "roomsPerDay": -0.02,
+        "idleBoardShare": 0.128,
         "idleTakeableShare": 0.01
       },
       {
@@ -555,9 +555,9 @@
         "endingLandedOn": null,
         "tradedWorth": 451,
         "builtPerDay": 5.32,
-        "roomsPerDay": 0.03,
-        "idleBoardShare": 0.067,
-        "idleTakeableShare": 0.023
+        "roomsPerDay": -0.02,
+        "idleBoardShare": 0.069,
+        "idleTakeableShare": 0.024
       },
       {
         "seed": 424242,
@@ -615,9 +615,9 @@
         "endingLandedOn": null,
         "tradedWorth": 94.5,
         "builtPerDay": 3.97,
-        "roomsPerDay": 0.28,
-        "idleBoardShare": 0.094,
-        "idleTakeableShare": 0.027
+        "roomsPerDay": 0.03,
+        "idleBoardShare": 0.095,
+        "idleTakeableShare": 0.028
       },
       {
         "seed": 20260729,
@@ -675,8 +675,8 @@
         "endingLandedOn": null,
         "tradedWorth": 174.5,
         "builtPerDay": 1.87,
-        "roomsPerDay": 0.57,
-        "idleBoardShare": 0.385,
+        "roomsPerDay": 0,
+        "idleBoardShare": 0.391,
         "idleTakeableShare": 0.018
       },
       {
@@ -735,9 +735,9 @@
         "endingLandedOn": null,
         "tradedWorth": 94.5,
         "builtPerDay": 2.68,
-        "roomsPerDay": 0.17,
-        "idleBoardShare": 0.289,
-        "idleTakeableShare": 0.024
+        "roomsPerDay": 0.02,
+        "idleBoardShare": 0.316,
+        "idleTakeableShare": 0.026
       },
       {
         "seed": 1312,
@@ -795,8 +795,8 @@
         "endingLandedOn": null,
         "tradedWorth": 379,
         "builtPerDay": 3.78,
-        "roomsPerDay": 0.22,
-        "idleBoardShare": 0.207,
+        "roomsPerDay": 0.08,
+        "idleBoardShare": 0.209,
         "idleTakeableShare": 0.033
       },
       {
@@ -855,9 +855,9 @@
         "endingLandedOn": null,
         "tradedWorth": 190,
         "builtPerDay": 4.12,
-        "roomsPerDay": 0.1,
-        "idleBoardShare": 0.127,
-        "idleTakeableShare": 0.049
+        "roomsPerDay": 0.05,
+        "idleBoardShare": 0.135,
+        "idleTakeableShare": 0.051
       },
       {
         "seed": 424242,
@@ -915,9 +915,9 @@
         "endingLandedOn": null,
         "tradedWorth": 80,
         "builtPerDay": 2.9,
-        "roomsPerDay": 0.27,
-        "idleBoardShare": 0.087,
-        "idleTakeableShare": 0.021
+        "roomsPerDay": 0.02,
+        "idleBoardShare": 0.088,
+        "idleTakeableShare": 0.022
       }
     ],
     "arm": [
@@ -991,7 +991,7 @@
         "endingLandedOn": null,
         "tradedWorth": 240,
         "builtPerDay": 2.48,
-        "roomsPerDay": 0.63,
+        "roomsPerDay": 0.07,
         "idleBoardShare": 0.559,
         "idleTakeableShare": 0.006
       },
@@ -1051,9 +1051,9 @@
         "endingLandedOn": null,
         "tradedWorth": 620.4,
         "builtPerDay": 3.97,
-        "roomsPerDay": 0.17,
-        "idleBoardShare": 0.316,
-        "idleTakeableShare": 0.061
+        "roomsPerDay": 0.02,
+        "idleBoardShare": 0.32,
+        "idleTakeableShare": 0.013
       },
       {
         "seed": 1312,
@@ -1111,7 +1111,7 @@
         "endingLandedOn": null,
         "tradedWorth": 0,
         "builtPerDay": 2.35,
-        "roomsPerDay": 0.13,
+        "roomsPerDay": 0,
         "idleBoardShare": 0.228,
         "idleTakeableShare": 0.004
       },
@@ -1171,8 +1171,8 @@
         "endingLandedOn": null,
         "tradedWorth": 347,
         "builtPerDay": 3.02,
-        "roomsPerDay": 0.08,
-        "idleBoardShare": 0.462,
+        "roomsPerDay": 0.03,
+        "idleBoardShare": 0.464,
         "idleTakeableShare": 0.011
       },
       {
@@ -1231,8 +1231,8 @@
         "endingLandedOn": null,
         "tradedWorth": 354.5,
         "builtPerDay": 3.02,
-        "roomsPerDay": 0.32,
-        "idleBoardShare": 0.547,
+        "roomsPerDay": 0.07,
+        "idleBoardShare": 0.55,
         "idleTakeableShare": 0.015
       },
       {
@@ -1291,7 +1291,7 @@
         "endingLandedOn": null,
         "tradedWorth": 369.2,
         "builtPerDay": 3.57,
-        "roomsPerDay": 0.57,
+        "roomsPerDay": 0,
         "idleBoardShare": 0.083,
         "idleTakeableShare": 0.016
       },
@@ -1351,9 +1351,9 @@
         "endingLandedOn": null,
         "tradedWorth": 189,
         "builtPerDay": 1.67,
-        "roomsPerDay": 0.17,
+        "roomsPerDay": 0.02,
         "idleBoardShare": 0.043,
-        "idleTakeableShare": 0.02
+        "idleTakeableShare": 0.021
       },
       {
         "seed": 1312,
@@ -1411,7 +1411,7 @@
         "endingLandedOn": null,
         "tradedWorth": 95,
         "builtPerDay": 1.87,
-        "roomsPerDay": 0.13,
+        "roomsPerDay": 0,
         "idleBoardShare": 0.028,
         "idleTakeableShare": 0.007
       },
@@ -1471,8 +1471,8 @@
         "endingLandedOn": null,
         "tradedWorth": 284.5,
         "builtPerDay": 4.42,
-        "roomsPerDay": 0.12,
-        "idleBoardShare": 0.246,
+        "roomsPerDay": 0.07,
+        "idleBoardShare": 0.25,
         "idleTakeableShare": 0.034
       },
       {
@@ -1531,7 +1531,7 @@
         "endingLandedOn": null,
         "tradedWorth": 0,
         "builtPerDay": 1.48,
-        "roomsPerDay": 0.28,
+        "roomsPerDay": 0.03,
         "idleBoardShare": 0.028,
         "idleTakeableShare": 0.007
       },
@@ -1591,8 +1591,8 @@
         "endingLandedOn": null,
         "tradedWorth": 160,
         "builtPerDay": 2.85,
-        "roomsPerDay": 0.55,
-        "idleBoardShare": 0.085,
+        "roomsPerDay": -0.02,
+        "idleBoardShare": 0.086,
         "idleTakeableShare": 0.023
       },
       {
@@ -1651,8 +1651,8 @@
         "endingLandedOn": null,
         "tradedWorth": 94.5,
         "builtPerDay": 2.27,
-        "roomsPerDay": 0.18,
-        "idleBoardShare": 0.229,
+        "roomsPerDay": 0.03,
+        "idleBoardShare": 0.234,
         "idleTakeableShare": 0.019
       },
       {
@@ -1711,8 +1711,8 @@
         "endingLandedOn": null,
         "tradedWorth": 0,
         "builtPerDay": 1.38,
-        "roomsPerDay": 0.15,
-        "idleBoardShare": 0.389,
+        "roomsPerDay": 0.02,
+        "idleBoardShare": 0.391,
         "idleTakeableShare": 0.009
       },
       {
@@ -1771,9 +1771,9 @@
         "endingLandedOn": null,
         "tradedWorth": 95,
         "builtPerDay": 2.42,
-        "roomsPerDay": 0.03,
-        "idleBoardShare": 0.151,
-        "idleTakeableShare": 0.036
+        "roomsPerDay": -0.02,
+        "idleBoardShare": 0.158,
+        "idleTakeableShare": 0.038
       },
       {
         "seed": 424242,
@@ -1831,8 +1831,8 @@
         "endingLandedOn": null,
         "tradedWorth": 80,
         "builtPerDay": 1.73,
-        "roomsPerDay": 0.28,
-        "idleBoardShare": 0.203,
+        "roomsPerDay": 0.03,
+        "idleBoardShare": 0.204,
         "idleTakeableShare": 0.007
       }
     ]

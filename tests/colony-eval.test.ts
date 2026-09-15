@@ -21,6 +21,7 @@ import { reachable } from '../src/sim/jobs';
 import { spawnRaid } from '../src/sim/events';
 import { DESIG_HARVEST, TICKS_PER_DAY, terrainAt } from '../src/sim/types';
 import { idleRates } from '../src/eval/run';
+import type { EvalReport } from '../src/eval/run';
 
 const HOME = {
   x: Math.round((CABIN.x0 + CABIN.x1) / 2),
@@ -426,36 +427,87 @@ describe('what the colony built and how idle its hands sat', () => {
       steward: false,
     });
     const rates = idleRates(r);
-    // "One room a day": the literal figure this pin exists to put a number on.
-    expect(rates.roomsPerDay).toBeCloseTo(0.13, 2);
+    // "One room a day", finally given a number: 0.03. Thirty harsh days add
+    // *one* room to the three the valley was generated with. The first pin
+    // read 0.13 and was measuring the wrong thing — `prevRooms` started at 0,
+    // so day one's delta counted the whole world-gen room set as something the
+    // colony built. Subtracting the three it was handed leaves 0.9 rooms over
+    // thirty days, which is this number, and which is the gap Group 3 exists
+    // to close.
+    expect(rates.roomsPerDay).toBeCloseTo(0.03, 2);
     expect(rates.builtPerDay).toBeCloseTo(4.8, 2);
-    expect(rates.idleBoardShare).toBeCloseTo(0.117, 3);
-    expect(rates.idleTakeableShare).toBeCloseTo(0.047, 3);
+    // Both shares moved with the denominator, not with the colony: `awakeTicks`
+    // now excludes the same four states `isIdlePawn` does (asleep, drafted,
+    // hand-driven, on a break) instead of only sleep, so the divisor counts the
+    // ticks a settler could actually have been working. A smaller true
+    // denominator reads both gaps slightly wider.
+    expect(rates.idleBoardShare).toBeCloseTo(0.124, 3);
+    expect(rates.idleTakeableShare).toBeCloseTo(0.049, 3);
     expect(
       rates.idleTakeableShare,
       "dispatch's gap can never be wider than the Steward's gap — takeable work is only ever counted once the board is already confirmed open",
     ).toBeLessThanOrEqual(rates.idleBoardShare);
   });
 
-  it("keeps dispatch's gap inside the Steward's gap on every seed of the opening week", () => {
-    for (const seed of SEEDS) {
-      const rates = idleRates(runColony({ seed, days: DAYS }));
-      expect(
-        rates.idleTakeableShare,
-        `seed ${seed}: takeable share ${rates.idleTakeableShare} exceeded board share ${rates.idleBoardShare}`,
-      ).toBeLessThanOrEqual(rates.idleBoardShare);
-    }
-  });
+  // Deleted: "keeps dispatch's gap inside the Steward's gap on every seed of
+  // the opening week". `idleTakeableTicks` is only ever incremented inside the
+  // `boardOpen` branch (`run.ts`), so `idleTakeableShare <= idleBoardShare` is
+  // a structural identity no sim change and no predicate change can break. It
+  // burned five colony runs to assert nothing — rule 9: a test that cannot fail
+  // when business logic changes is wrong. The one-seed assertion inside the
+  // pinned test above is kept as documentation of the relationship, where it
+  // costs no extra run.
 
-  it('pins the zero-denominator case rather than letting it read NaN', () => {
-    // Zero awake colonist-ticks (nobody ever conscious, or a zero-day run):
-    // both shares must read a clean 0, not NaN — a NaN would print blank in
-    // every table and silently pass any `toBeLessThanOrEqual` comparison
-    // against another NaN, which is exactly the failure mode this test rules
-    // out with a literal value instead of a shape check.
-    const r = runColony({ seed: SEEDS[0], days: 0 });
-    const rates = idleRates(r);
+  /**
+   * Both zero-denominator guards, on hand-built reports rather than colony
+   * runs, because a run cannot reach the second one.
+   *
+   * `idleRates` guards the divide twice: `if (!last)` for an empty snapshot
+   * list, and `Math.max(1, last.awakeTicks)` for a real snapshot where nobody
+   * was ever conscious. The test this replaces ran `days: 0`, which returns at
+   * the first guard and never evaluates the second — so the case its own
+   * comment described ("nobody ever conscious") was the one it did not cover.
+   *
+   * A NaN here would print blank in every table and silently pass any
+   * `toBeLessThanOrEqual` against another NaN, which is why these assert a
+   * literal 0 rather than a shape.
+   */
+  it('reads 0, not NaN, when the snapshot list is empty', () => {
+    const rates = idleRates({ snapshots: [] } as unknown as EvalReport);
     expect(rates.idleBoardShare).toBe(0);
     expect(rates.idleTakeableShare).toBe(0);
+    expect(rates.builtPerDay).toBe(0);
+    expect(rates.roomsPerDay).toBe(0);
+  });
+
+  it('reads 0, not NaN, on a day nobody was ever awake', () => {
+    const day = {
+      builtToday: 0,
+      roomsToday: 0,
+      awakeTicks: 0,
+      idleBoardTicks: 0,
+      idleTakeableTicks: 0,
+    };
+    const rates = idleRates({ snapshots: [day] } as unknown as EvalReport);
+    expect(rates.idleBoardShare).toBe(0);
+    expect(rates.idleTakeableShare).toBe(0);
+  });
+
+  /**
+   * And the guard must be a floor on the denominator, not a clamp on the
+   * answer: one awake tick spent idle is a share of 1, not of 1/`Math.max`
+   * anything. Without this the previous test passes against a `return 0`.
+   */
+  it('still divides by a real denominator once anybody is awake', () => {
+    const day = {
+      builtToday: 0,
+      roomsToday: 0,
+      awakeTicks: 4,
+      idleBoardTicks: 3,
+      idleTakeableTicks: 1,
+    };
+    const rates = idleRates({ snapshots: [day] } as unknown as EvalReport);
+    expect(rates.idleBoardShare).toBe(0.75);
+    expect(rates.idleTakeableShare).toBe(0.25);
   });
 });

@@ -13,11 +13,15 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { boardOpen, hasTakeableWork, isIdlePawn } from '../src/eval/run';
+import { boardOpen, hasTakeableWork, isIdlePawn, takeableTargets } from '../src/eval/run';
+import { RESEARCH, researchNeeds, researchStalled } from '../src/sim/research';
 import { createWorld } from '../src/sim/worldgen';
-import { addBuilding, livingColonists } from '../src/sim/world';
+import { addBuilding, livingColonists, nextId } from '../src/sim/world';
 import { createJob } from '../src/sim/jobs';
-import { DESIG_HARVEST, DESIG_NONE, DESIG_TILL, packCell } from '../src/sim/types';
+import { DESIG_DECONSTRUCT, DESIG_HARVEST, DESIG_NONE, DESIG_TILL, packCell } from '../src/sim/types';
+import * as TYPES from '../src/sim/types';
+import { floorForDesig } from '../src/sim/floors';
+import type { ItemStack } from '../src/sim/types';
 
 /** A fresh colony with its board and designations cleared, for a controlled read. */
 function bareWorld() {
@@ -109,7 +113,7 @@ describe('hasTakeableWork', () => {
     const { world, pawn } = bareWorld();
     const b = addBuilding(world, 'wall', Math.round(pawn.x) + 1, Math.round(pawn.y), false)!;
     b.have = { ...b.needs };
-    expect(hasTakeableWork(world, pawn, false)).toBe(false);
+    expect(hasTakeableWork(world, pawn)).toBe(false);
   });
 
   it('takes a reachable, supplied, unreserved blueprint once construct is on', () => {
@@ -117,14 +121,14 @@ describe('hasTakeableWork', () => {
     const b = addBuilding(world, 'wall', Math.round(pawn.x) + 1, Math.round(pawn.y), false)!;
     b.have = { ...b.needs };
     pawn.priorities.construct = 1;
-    expect(hasTakeableWork(world, pawn, false)).toBe(true);
+    expect(hasTakeableWork(world, pawn)).toBe(true);
   });
 
   it('is false on a blueprint that is not supplied yet', () => {
     const { world, pawn } = bareWorld();
     addBuilding(world, 'wall', Math.round(pawn.x) + 1, Math.round(pawn.y), false);
     pawn.priorities.construct = 1;
-    expect(hasTakeableWork(world, pawn, false)).toBe(false);
+    expect(hasTakeableWork(world, pawn)).toBe(false);
   });
 
   it('is false on a blueprint another job already has a claim on', () => {
@@ -134,7 +138,7 @@ describe('hasTakeableWork', () => {
     pawn.priorities.construct = 1;
     const other = livingColonists(world)[1]!;
     createJob(world, other, 'build', b.x, b.y, { buildingId: b.id });
-    expect(hasTakeableWork(world, pawn, false)).toBe(false);
+    expect(hasTakeableWork(world, pawn)).toBe(false);
   });
 
   it('does not claim a harvest designation sitting on non-rock terrain', () => {
@@ -144,7 +148,7 @@ describe('hasTakeableWork', () => {
     const { world, pawn } = bareWorld();
     world.cellDesig[packCell(world, Math.round(pawn.x) + 1, Math.round(pawn.y))] = DESIG_HARVEST;
     pawn.priorities.mine = 1;
-    expect(hasTakeableWork(world, pawn, false)).toBe(false);
+    expect(hasTakeableWork(world, pawn)).toBe(false);
   });
 
   it('takes a designated till cell once farm is on, not when it is off', () => {
@@ -154,13 +158,104 @@ describe('hasTakeableWork', () => {
     const x = Math.round(pawn.x) - 6;
     const y = Math.round(pawn.y) - 6;
     world.cellDesig[packCell(world, x, y)] = DESIG_TILL;
-    expect(hasTakeableWork(world, pawn, false)).toBe(false);
+    expect(hasTakeableWork(world, pawn)).toBe(false);
     pawn.priorities.farm = 1;
-    expect(hasTakeableWork(world, pawn, false)).toBe(true);
+    expect(hasTakeableWork(world, pawn)).toBe(true);
   });
 
-  it('is false on a stalled bill when hauling is switched off', () => {
+  /**
+   * The predicate used to answer true here — stalled bill, hauling on, an
+   * unreserved stack of a needed kind within reach — and that was wrong twice
+   * over. `researchNeeds` computes its gap as `want - spendableResource(kind)`,
+   * and `spendableStack` already counts every uncarried, unreserved stack
+   * anywhere on the map, so the stack the branch found was one already
+   * subtracted from the need it claimed to answer. Hauling it changes nothing
+   * about the stall, and no job in `jobs.ts` consumes `researchNeeds` at all.
+   */
+  it('is false on a stalled bill, hauling on or off, with the parts already on the map', () => {
     const { world, pawn } = bareWorld();
-    expect(hasTakeableWork(world, pawn, true)).toBe(false);
+    world.research.current = 'foundry';
+    world.research.progress = RESEARCH.foundry.cost;
+    const stack: ItemStack = {
+      id: nextId(world),
+      kind: 'steel',
+      amount: 10,
+      x: Math.round(pawn.x) + 1,
+      y: Math.round(pawn.y),
+      carriedBy: null,
+      reservedBy: null,
+    };
+    world.items.push(stack);
+
+    // The board is open — a stalled bill is one of `boardOpen`'s three
+    // disjuncts — and the parts are right there, unreserved and uncarried.
+    expect(researchStalled(world)).toBe(true);
+    expect(boardOpen(world)).toBe(true);
+    expect(researchNeeds(world).some((n) => n.kind === 'steel')).toBe(true);
+
+    expect(hasTakeableWork(world, pawn)).toBe(false);
+    pawn.priorities.haul = 1;
+    expect(hasTakeableWork(world, pawn)).toBe(false);
+  });
+});
+
+/**
+ * `hasTakeableWork` mirrors `tryWorkType`'s dispatch policy branch by branch
+ * rather than sharing a predicate with it, which its own docstring calls a
+ * one-way door. Nothing forces the mirror to stay true, and a designation the
+ * mirror has never heard of does not read as an error — it reads as a colony
+ * with less takeable work, which is a number, not a failure.
+ *
+ * So: enumerate the designations off the sim's own module rather than off a
+ * list written here. A new `DESIG_` constant added to `src/sim/types.ts`
+ * without a matching branch in `takeableTargets` fails this.
+ */
+describe('every designation reaches a branch of takeableTargets', () => {
+  /** Every `DESIG_*` the sim exports, read off the module itself. */
+  const DESIGNATIONS = Object.entries(TYPES)
+    .filter(([name, v]) => name.startsWith('DESIG_') && typeof v === 'number')
+    .map(([name, v]) => ({ name, value: v as number }));
+
+  it('finds the seven the sim defines, so the enumeration is not silently empty', () => {
+    expect(DESIGNATIONS.map((d) => d.name).sort()).toEqual([
+      'DESIG_DECONSTRUCT',
+      'DESIG_FLOOR_BRIDGE',
+      'DESIG_FLOOR_PAVED',
+      'DESIG_FLOOR_PLANK',
+      'DESIG_HARVEST',
+      'DESIG_NONE',
+      'DESIG_TILL',
+    ]);
+  });
+
+  for (const d of DESIGNATIONS) {
+    if (d.value === DESIG_NONE) continue;
+    it(`${d.name} is one takeableTargets knows how to read`, () => {
+      // The three named branches, then the floor family, which the `else`
+      // dispatches through `floorForDesig`. A designation that is neither is
+      // one `takeableTargets` silently drops on the floor.
+      const named =
+        d.value === DESIG_HARVEST || d.value === DESIG_DECONSTRUCT || d.value === DESIG_TILL;
+      expect(
+        named || floorForDesig(d.value) !== null,
+        `${d.name} reaches no branch: not mine/deconstruct/till, and floorForDesig returns null`,
+      ).toBe(true);
+    });
+  }
+
+  /**
+   * And the two ends of the mirror have to agree about what a `need` is. The
+   * priority keys `takeableTargets` stamps on a target are looked up on
+   * `pawn.priorities`; a rename on either side would otherwise read as every
+   * settler having that work type switched off.
+   */
+  it('stamps only priority keys a pawn actually carries', () => {
+    const { world, pawn } = bareWorld();
+    world.cellDesig[packCell(world, Math.round(pawn.x) - 6, Math.round(pawn.y) - 6)] = DESIG_TILL;
+    const targets = takeableTargets(world);
+    expect(targets.length).toBeGreaterThan(0);
+    for (const target of targets) {
+      expect(Object.keys(pawn.priorities)).toContain(target.need);
+    }
   });
 });
