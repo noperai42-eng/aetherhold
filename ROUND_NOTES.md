@@ -4,6 +4,77 @@ One round, one measured gap, one fix. Newest first.
 
 ---
 
+## 2026-09-15 — Reproducing "nothing fun to do" before touching it
+
+**The gap.** `3e-measure-label`'s job is to reproduce the player's sighting before anyone
+fixes it, per `PLAN.md`'s own split of this label round in two. The label is not broken in
+isolation: `needs.ts:553-556` already splits `nothing fun to do` from `tired of working` on
+`pawn.jobId === null`, and `tests/morale.test.ts:494-517` (untouched, still green) pins that
+split holds on a pawn built by hand. What that test cannot see is whether `jobId === null`
+ever means something other than "idle" to a real colony — because it is the only question
+`moodBreakdown` asks, and `idle.ts`/`3a`'s own `isIdlePawn` ask four more. `tests/mood-label.test.ts`
+(new) drives a real colony, seed `20260801`, tick by tick, and records `(label, jobId,
+drafted, manual, activity, job.kind)` every tick the row reads `nothing fun to do` on one
+tracked settler, against `isIdlePawn` (`src/eval/run.ts:403`) called live each of those
+ticks — the literal predicate `3a-sim-pin-build-rate` pinned as "idle" for the grid. Two
+trips, both job → idle → job on the same settler:
+
+- **The `ASSIGN_INTERVAL` gap** (`tick.ts:112`, `:354`, up to 12 ticks between a job
+  finishing and the next assignment cadence hitting this pawn's id). Ran a warm-up day so
+  recreation had actually drained under 1 the way the sim does it (nothing set by hand),
+  then drove one more day recording every sighting: the row fired 293 times, every one of
+  them `jobId === null`, `jobKind === null`, `drafted: false`, `manual: false` — and every
+  one of them, `isIdlePawn` called live agreed the settler really was idle. This is **not**
+  the sighting the player quoted; the row and 3a's own predicate tell the same story here.
+- **Drafting mid-job.** Ran the settler until they held a real job (not a `recreate` one —
+  `idle.ts`'s own seat, which `isIdlePawn` rightly still calls idle), then drafted them.
+  `setDrafted` (`src/sim/orders.ts:374-389`) cancels the job outright and clears `jobId` the
+  instant the player presses T — not a cadence wait, immediate — and `tick.ts:316` skips
+  the whole job/idle pass for as long as `drafted` holds, so nothing in the sim ever sets
+  `jobId` again while it does. The row read `nothing fun to do` for all 4,800 of 4,800
+  ticks of the drafted day, and `isIdlePawn` — which excludes `pawn.drafted` on
+  `run.ts:405`, deliberately — said not-idle on every single one of them. Undrafting handed
+  the settler a real job again within the ordinary cadence, closing the job → idle → job
+  trip.
+
+**The branch.** `needs.ts:554` asks one question (`pawn.jobId === null`); `isIdlePawn`
+(`run.ts:403-409`) excludes `dead`, `downed`, `drafted`, `manual`, `sleeping` and
+`isBreaking` before it ever looks at `jobId`. Drafting is the branch that fires: it is the
+one place in the sim that clears `jobId` for a reason 3a's own predicate calls "not idle,"
+and it holds that way for as long as the settler stays drafted — every raid, the whole
+fight, on every settler pulled onto the line. Of the goal's four candidates, this is (ii),
+"a drafted or manual settler, holding no job while visibly busy." (i), the ordinary
+assignment gap, measured clean — `isIdlePawn` agrees with it every time, on this seed. (iii)
+and (iv) — a settler on a `recreate` job, and the alert panel's own copy — were not driven
+this round; the mood-row surface is what the gate named, and the drafted branch alone
+already answers "which one fires, with numbers."
+
+**Ruled at the gate.** The surface is the mood breakdown row; the working assumption named
+in the ask (the `ASSIGN_INTERVAL` gap) is the one this round's own numbers rule out for the
+specific complaint — a settler the game's own `isIdlePawn` calls "not idle" still being told
+they have nothing fun to do. Reproduced instead: the same row, same code, fires on every
+tick of a draft, which is a state the player produces on purpose and reads while watching
+the fight, not a twelve-tick gap between hauls.
+
+**Verified.** Red-first was not this round's shape — nothing existing was wrong in
+isolation, so there was nothing to turn red first; the literal counts above (293 and
+4,800/4,800) are themselves the reproduction, run against the code exactly as it stands.
+`npx vitest run tests/mood-label.test.ts tests/morale.test.ts tests/idle.test.ts` — 44
+passed. `npm run typecheck` clean. Full suite alone, the config's six workers, before
+commit: see below. No file under `src/sim` or `src/eval` touched this round — `src/eval/run.ts`
+and `src/sim/orders.ts` are read, not written — so the fingerprint does not move.
+
+**Next.** `3e-fix-label` — fix the branch this round named. `setDrafted` (`orders.ts:383`)
+clearing `jobId` is correct; the mood row asking only `jobId === null` and never
+`pawn.drafted`/`pawn.manual` is the gap. A fix that reads `isIdlePawn`'s own exclusions (or
+a narrower version of them) before choosing the label would close it without touching
+`computeMood`'s number, which this round's tests show is unaffected either way (`idle.amount === working.amount`,
+`tests/morale.test.ts:514`). If the fix lands in `hud.ts`/`alerts.ts` the fingerprint holds;
+if it lands in `needs.ts` the moods feed breaks and the grid re-measures, per `PLAN.md`'s
+own note on `3e-fix-label`.
+
+---
+
 ## 2026-09-15 — The Steward isn't the bottleneck; the cart is
 
 **The gap.** `3a` pinned that harsh/99001 spends 12.4% of its awake-colonist-ticks idle
