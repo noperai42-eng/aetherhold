@@ -28,8 +28,9 @@
 
 import { describe, expect, it } from 'vitest';
 
-import { buildingAt, isWalkable } from '../src/sim/grid';
+import { buildingAt, dist, isWalkable } from '../src/sim/grid';
 import { setPriority } from '../src/sim/orders';
+import { assignJob } from '../src/sim/jobs';
 import { makeStreams, stepWorld } from '../src/sim/tick';
 import { HOME_X, HOME_Y, createWorld } from '../src/sim/worldgen';
 import { TERRAIN_LIST, TICKS_PER_DAY, WORK_TYPES, packCell } from '../src/sim/types';
@@ -241,6 +242,133 @@ describe('a supply run, not a shuttle', () => {
     runCounting(world, TICKS_PER_DAY, 'haulToBlueprint');
 
     expect(hand.carryingItemId).toBeNull();
+  });
+});
+
+/**
+ * Why a frame wanting wood still beats a frame that could go up now.
+ *
+ * `tryWorkType`'s `construct` branch walks the frames nearest-first and takes the
+ * first one it can do *anything* about — fetch for it or raise it, whichever that
+ * frame happens to need. Round 3c tried to rank the two errands instead, on
+ * `probe-dispatch`'s finding that haul time met or beat build time in eighteen of
+ * the nineteen ambitions the Steward ever opened, `floors` at 60% hauling against
+ * no build time at all, and hauling taking 17.91% of every colony day.
+ *
+ * Both ways of ranking them measured worse than not ranking them, on the full
+ * suite:
+ *
+ *   - Raising above fetching outright, nine failures: `roomsPerDay` fell from 0.03
+ *     to nothing on harsh/99001, and on the three-week 20260729 eval the colony
+ *     raised 6.14 buildings a day, finished no turret at all and ended two of six
+ *     standing. The Steward's fence stopped at its first batch of eight where it
+ *     reaches twenty-four, and a month-old colony had no wood left anywhere. A
+ *     settler who will cross the map for any supplied frame stops finishing the
+ *     cluster in front of them, so walls go up scattered and no enclosure closes.
+ *   - Raising only when it is the shorter walk — the frame against the
+ *     stack-and-back round trip — gave the enclosures and the turrets back
+ *     (`roomsPerDay` 0.03 again, the wood back on the map) and still cut
+ *     `builtPerDay` from 4.8 to 2.8. Six failures rather than nine.
+ *
+ * Because the ratio was never a dispatch defect. A wall costs its wood and one
+ * build action, so several trips per raising is arithmetic, and labour moved off
+ * fetching is labour moved off the thing actually gating the build. 3b had already
+ * said so from the other side: `idleTakeableShare` 1.02%, and the assignment
+ * cadence declining 83% of the times it fired because there was genuinely nothing
+ * for that settler to take. The board is empty, not mis-ordered.
+ *
+ * So these two pin the rule that survived, and each one fails under one of the
+ * alternatives above. Nearest first, and what that frame needs is not a tiebreak.
+ */
+describe('the nearest frame wins, whichever of the two errands it wants', () => {
+  /** Only the frames a test puts down, so worldgen's own are not in the answer. */
+  function onlyPlantedFrames(world: World): void {
+    for (const b of [...world.buildings]) if (!b.built) removeBuilding(world, b);
+  }
+
+  /**
+   * Bare ground about `want` cells out, with its eastern neighbour bare too so a
+   * pile can go down beside a frame. `openAt` above only asks whether a cell can
+   * be walked on, and four cells from the hearth that is true of ground the
+   * starter cabin is already standing on — `addBuilding` returns null there.
+   */
+  function bareAt(world: World, want: number): Cell {
+    for (let r = want; r < want + 8; r++) {
+      for (let a = 0; a < 32; a++) {
+        const x = HOME_X + Math.round(r * Math.cos((a * Math.PI) / 16));
+        const y = HOME_Y + Math.round(r * Math.sin((a * Math.PI) / 16));
+        if (!isWalkable(world, x, y) || buildingAt(world, x, y)) continue;
+        if (!isWalkable(world, x + 1, y) || buildingAt(world, x + 1, y)) continue;
+        return { x, y };
+      }
+    }
+    throw new Error(`no bare ground about ${want} cells out`);
+  }
+
+  /** One settler at the hearth with construct work, no need pressing. */
+  function builderAtHome(world: World): Pawn {
+    const hand = soleWorker(world, 'construct');
+    hand.needs.food = 1;
+    hand.needs.rest = 1;
+    hand.needs.recreation = 1;
+    hand.x = HOME_X;
+    hand.y = HOME_Y;
+    return hand;
+  }
+
+  it('fetches for the near frame rather than raise a supplied one across the yard', () => {
+    const world = swept();
+    onlyPlantedFrames(world);
+    const hand = builderAtHome(world);
+
+    const near = bareAt(world, 4);
+    const far = bareAt(world, 20);
+    const wanting = addBuilding(world, 'wall', near.x, near.y, false);
+    const supplied = addBuilding(world, 'wall', far.x, far.y, false);
+    expect(wanting).not.toBeNull();
+    expect(supplied).not.toBeNull();
+    supplied!.have = { ...supplied!.needs };
+    addItem(world, 'wood', 20, near.x + 1, near.y);
+
+    assignJob(world, hand);
+
+    // Ranking raising above fetching sent the settler out to the far frame here,
+    // and that is what emptied the neighbourhood the enclosures were being closed
+    // in.
+    const job = world.jobs.find((j) => j.id === hand.jobId);
+    expect(job?.kind).toBe('haulToBlueprint');
+    expect(job?.buildingId).toBe(wanting!.id);
+  });
+
+  it('fetches for the near frame even when the wood is the longer walk', () => {
+    const world = swept();
+    onlyPlantedFrames(world);
+    const hand = builderAtHome(world);
+
+    const near = bareAt(world, 4);
+    const mid = bareAt(world, 10);
+    const pile = bareAt(world, 18);
+    const wanting = addBuilding(world, 'wall', near.x, near.y, false);
+    const supplied = addBuilding(world, 'wall', mid.x, mid.y, false);
+    expect(wanting).not.toBeNull();
+    expect(supplied).not.toBeNull();
+    supplied!.have = { ...supplied!.needs };
+    addItem(world, 'wood', 20, pile.x, pile.y);
+
+    // The wood for the near frame is out past the supplied one, so fetching is by
+    // some way the longer walk — which is the case the shorter-walk rule was built
+    // to catch, and it is still the fetch the colony wants. The trips are what the
+    // raising is waiting on.
+    const raiseWalk = dist(hand.x, hand.y, supplied!.x, supplied!.y);
+    const fetchWalk =
+      dist(hand.x, hand.y, pile.x, pile.y) + dist(pile.x, pile.y, wanting!.x, wanting!.y);
+    expect(raiseWalk).toBeLessThan(fetchWalk);
+
+    assignJob(world, hand);
+
+    const job = world.jobs.find((j) => j.id === hand.jobId);
+    expect(job?.kind).toBe('haulToBlueprint');
+    expect(job?.buildingId).toBe(wanting!.id);
   });
 });
 

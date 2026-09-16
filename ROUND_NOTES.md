@@ -4,6 +4,63 @@ One round, one measured gap, one fix. Newest first.
 
 ---
 
+## 2026-09-16 — The haul-to-build ratio is arithmetic, not a dispatch defect
+
+**The gap.** `3c-sim-fix-dispatch` was written to act on `3b`'s probe: haul time met or
+beat build time in eighteen of the nineteen ambitions the Steward ever opened, `floors`
+spending 60% of its life hauling against no build time at all, and hauling taking 17.91% of
+every colony day. The mechanism the segment named — retuning `ASSIGN_INTERVAL` /
+`PLAN_INTERVAL` / `IDLE_REC` — `3b` had already ruled out, so the round went at the only
+other place the ratio is decided: the walk over frames in `tryWorkType`'s `construct`
+branch (`src/sim/jobs.ts`), which sorts nearest-first and takes the first frame it can do
+*anything* about, fetch or raise, whichever that frame happens to want.
+
+**What was tried, and what it measured.** Two ways of ranking the two errands, each taken
+through the full suite (133 files, 2845 tests, ~31 min) rather than through the targeted
+files that had passed both of them.
+
+- **Raising above fetching outright** — supplied frames in one pass, the rest in a second.
+  Nine failures across six files. `roomsPerDay` fell from its pinned 0.03 to **nothing** on
+  harsh/99001; on the three-week 20260729 eval the colony raised 6.14 buildings a day,
+  finished **no turret at all** and ended two of six standing, four buried; the Steward's
+  fence stopped at its first batch of eight where it reaches twenty-four by dusk on day
+  two; a month-old clear-cut colony had **no wood left anywhere**; the larder began to rot;
+  a game animal was hunted that should not have been. More frames raised, no enclosure ever
+  closed — a settler who will cross the map for any supplied frame stops finishing the
+  cluster in front of them.
+- **Raising only when it is the shorter walk** — the walk to the frame against the walk to
+  the stack and back, ties to raising, the distance-sorted scan abandoned once frames are
+  farther off than the whole fetch round trip. This is the bounded, defensible form, and it
+  gave back what locality had cost: `roomsPerDay` 0.03 again, the turrets finished, the
+  wood back on the map, forest green. It still cut `builtPerDay` from its pinned **4.8 to
+  2.8**. Six failures rather than nine.
+
+**The verdict — refuted.** The ratio was never a dispatch defect. A wall costs its wood and
+one build action, so several fetching trips per raising is arithmetic, and every hour moved
+off fetching is moved off the thing the raising is waiting on. `3b` had said the same from
+the other side and it was read as a second symptom rather than as the answer:
+`idleTakeableShare` 1.02%, and the assignment cadence declining 83% of the times it fired
+on an idle settler because there was **genuinely nothing for that settler to take**. The
+board is empty, not mis-ordered. Both directions of ranking lose, which is what a local
+optimum looks like from either side.
+
+**What shipped.** No change to the sim. `src/sim/jobs.ts` is byte-identical to `06524d1`,
+so the fingerprint is back to `4ca9864e`, `.eval/measurements.json` still describes the sim
+on disk, and no re-measure is owed — `npm run measure` was not run, because there is
+nothing for it to move. What is kept is the refutation, as two characterization tests in
+`tests/hauling.test.ts` (not fingerprinted, so they cost nothing) pinning the rule that
+survived: the nearest frame wins and what that frame wants is not a tiebreak. Each of the
+two fails under one of the alternatives above — the first under the outright ranking, the
+second under the shorter-walk bound — so the next reader who has this idea gets the numbers
+instead of the thirty-one-minute suite.
+
+**What it hands forward.** The gap `3a` pinned is real and still open; it is upstream of
+dispatch, in how much the Steward ever puts on the board. That is `3d-sim-fix-steward`,
+which `PLAN.md` had queued behind this round as the likely no-op. The two have swapped
+places.
+
+---
+
 ## 2026-09-15 — Reproducing "nothing fun to do" before touching it
 
 **The gap.** `3e-measure-label`'s job is to reproduce the player's sighting before anyone
