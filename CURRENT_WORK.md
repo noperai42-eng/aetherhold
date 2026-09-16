@@ -16,48 +16,47 @@ status table and `INBOX.md` the rolling log. One round, one measured gap, one fi
 (`METHODOLOGY.md`); a round ends with a `ROUND_NOTES.md` entry and, if a player could
 see the change, an `ACCEPTANCE.md` row.
 
-Seven rounds are taken: `3a-sim-pin-build-rate` (the build-rate and idle pins),
+Nine rounds are taken: `3a-sim-pin-build-rate` (the build-rate and idle pins),
 `3b-sim-probe-why` (the per-tick dispatch probe), `0-hud-escape-html`, `1a-feel-trace`,
-`1e-feel-interp-phase`, `3e-measure-label`, and `3c-sim-fix-dispatch` — the last of them
-a measured refutation that changed no sim code.
+`1e-feel-interp-phase`, `3e-measure-label`, `3c-sim-fix-dispatch`, `3f-sim-probe-board-empty`
+and `3d-sim-fix-steward` — the last three of them measurements that changed no sim code.
 
-**What 3b found, and it decides what happens next.** Sampling every tick across twenty
-arms, dispatch is *not* the gap — `idleTakeableShare` is 1.09% against an
-`idleBoardShare` of 10.60%, and the `ASSIGN_INTERVAL` cadence declines 85% of the times
-it fires on an idle pawn because there is genuinely nothing takeable. Nor is the
-Steward's rule 4: marking-wait with an idle takeable hand standing by is 5.9%
-colony-wide, worst arm 17.4%. What the probe does name is **hauling** — haul time meets
-or beats build time in 18 of the 19 ambitions the Steward opened, and hauling costs
-17.91% of every day. The round note is `ROUND_NOTES.md`, "The Steward isn't the
-bottleneck; the cart is"; the instrument is `scripts/probe-dispatch.ts`.
+**The colony line is closed, and that is the finding.** `3a` pinned a build rate; `3b`, `3c`,
+`3f` and `3d` then went looking for what caps it and found nothing broken. Dispatch is fine
+(`idleTakeableShare` ~1.1%, and both ways of ranking raise-over-fetch measured worse). The
+ambitions answer when asked (`no-ambition-marked` 4%). Rule 4 is a latch rather than a dial:
+headroom at 2 and at 4 leaves *total* haul work flat while moving it off the stockpiles, and
+turns three guards red — `larder.rot` 0 → 0.183, `roomsPerDay` 0.03 → **−0.03**, the cabin fire
+late — each a harm `steward.ts:2168`'s comment predicts in words. What the Steward's time
+actually goes to is night and raiders, both deliberate. The round notes are in
+`ROUND_NOTES.md`; the instrument is `scripts/probe-dispatch.ts`.
 
 ## Next action
 
-`3d-sim-fix-steward`, reopened and re-aimed by `3f-sim-probe-board-empty` — **rule 4's
-headroom**, which is one literal number in `src/sim/steward.ts:2168`.
+**Open question for the human, and the reason this pass has run out of Steward to fix.**
 
-3f measured which of `tickSteward`'s gates returns, on 3b's own arms. The Steward marks work
-on **one or two passes in a hundred**; the rest is `stewardLoad > 0` 36%, `blocked(hostiles)`
-30%, `blocked(sleep)` 26%, `no-ambition-marked` 4%. Two readings are already dead: the colony
-is not out of things to want (ambitions answer when asked), and the hostiles gate is not
-over-broad (`world.ts:440` excludes fauna, traders, prisoners, the dead and the downed — it
-counts real raiders only). Night and raids are right to stand the colony down. Rule 4 is the
-one lock left that can move.
+Four rounds have now looked for the ceiling `3a` pinned, and each found the colony behaving as
+designed. `3c` refuted dispatch (both ways of ranking raise-over-fetch measured worse). `3f`
+found the ambitions answer whenever the Steward reaches them (`no-ambition-marked` 4%). `3d`
+refuted rule 4's headroom at 2 and at 4 — stockpile hauling 1280.9 → 727.0 → 670.0 pawn-ticks a
+day with *total* haul work flat, three guards red, and the gate's own precondition for the
+conditional design unmet at 7.2–7.5%.
 
-The brief: `steward.ts:2168` refuses to mark while *one* frame of its own is unfinished, and
-its comment argues that as a binary against "two dozen" — which measurably killed hauling
-(51, 6, 0, 0, 0, 0 pawn-ticks a day carried to a stockpile, seed 20260729). Nobody has tried
-the middle. Give it a batch or two of headroom instead of exactly zero, red-first, and watch
-both ends: the 3a pins (`roomsPerDay` 0.03, `builtPerDay` 4.8) should rise, and the hauling
-number must not collapse. If both cannot hold at once, that is the finding and the round is
-recorded as one, the way 3c was.
+What is left is not small, and it is not a defect. Across the foreman-on arms the Steward's
+time goes to `blocked(hostiles)` 25–30% and `blocked(sleep)` 26–28%. Both are deliberate: night
+and raids are right to stand the colony down. So the question the next round should put is not
+"what is wrong with the Steward" but **"is `3a`'s build-rate pin measuring a colony that is
+mostly asleep or under threat, and is that the floor?"** — which is a design question about the
+day length and the raid cadence, not a marking question. Answering it either accepts the pins as
+they stand or opens a deliberate brief against the invariant floor. That is a human call.
 
-It changes `src/sim`, so it re-measures: land every `src/` edit first, then `npm run measure`
-(about 100 minutes, detached to a log, nothing else on the box), then `npm run balance`, then
-re-pin and re-commit `.eval/measurements.json`. The grid is currently fresh at `4ca9864e`.
+Until it is taken, the remaining rounds in `PLAN.md` are the ones that do not depend on it:
+`3e-fix-label`, then the body rounds (`1b`, `1c`, `1d`) and the frame and look rounds (`2a`–`2e`).
+Any of those can be taken now; none needs the Steward question settled first.
 
-After that: `3e-fix-label`, then the body rounds (`1b`, `1c`, `1d`) and the frame and look
-rounds (`2a`–`2e`). The box is a serial resource: the suite runs alone, `measure` runs alone,
-and GPU timing wants no contention. Note two long runs were killed for memory on 2026-09-16 —
-Hytale (~2.9 GB) and leaked `chrome-headless-shell` processes were the cause; check `ps -Ao
-rss,comm -r | head` before starting a long one.
+The box is a serial resource: the suite runs alone, `measure` runs alone, GPU timing wants no
+contention. Check `ps -Ao rss,comm -r | head` before a long one — two runs were killed for memory
+on 2026-09-16, and the cause was a running game at ~2.9 GB, not process count.
+
+The grid is fresh at `4ca9864e`; `3c`, `3f` and `3d` all left `src/sim` untouched, so nothing
+owes a re-measure. The first round that changes `src/sim` again pays the ~100 minutes.

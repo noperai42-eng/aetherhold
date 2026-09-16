@@ -4,6 +4,123 @@ One round, one measured gap, one fix. Newest first.
 
 ---
 
+## 2026-09-16 — Rule 4 is a latch, not a dial, and the cliff is the first step off zero
+
+**The gap.** `3f` left rule 4 as the one lock in `tickSteward` that could move: `stewardLoad
+> 0` returns on 36% of passes, and `steward.ts:2168` refuses to mark while *one* frame of
+its own is unfinished. Its comment argues that as a binary against "two dozen", which
+measurably killed hauling. `PLAN.md` carried the obvious reading for three rounds — nobody
+has tried the middle — and this round tried it.
+
+**The instrument had to be fixed first.** `scripts/probe-dispatch.ts` counted `haulTicks` as
+one bucket over both `haulToBlueprint` and `haulToStockpile`. Those two are substitutes by
+construction: `haulToBlueprint` is a `construct` job and `construct` outranks `haul`, so any
+open frame outranks every sack on the ground. When frames stay open the blueprint half rises
+by roughly what the stockpile half loses and the merged column barely moves — so the one
+instrument that should have watched for the failure the gate exists to prevent was summing
+it away. The probe now counts the two as separate pawn-ticks (`toFrame`, `toStore`) and
+prints stockpile pawn-ticks a day over the foreman-on arms, which is the units the gate
+comment's own number is in. `scripts/` is not fingerprinted; the grid on disk is untouched.
+
+**What it measured.** Three bundles built from one source differing only in the gate literal,
+each verified to carry its own gate, run on seeds 7 and 99001, both difficulties, foreman on
+and off — 8 arms, 20 days, identical arms across the three.
+
+| | headroom 1 (today) | headroom 2 | headroom 4 |
+|---|---|---|---|
+| stockpile pawn-ticks/day | **1280.9** | **727.0** | **670.0** |
+| haul pawn-ticks → frame | 69,371 | 98,914 | 112,694 |
+| haul pawn-ticks → store | 172,454 | 128,148 | 123,580 |
+| total haul pawn-ticks | 241,825 | 227,062 | 236,274 |
+| share of the day hauling | 21.05% | 20.11% | 21.04% |
+
+The five-seed baseline sits at 1178.6 stockpile pawn-ticks a day, so the two-seed subset is
+representative of the arm it was cut from.
+
+**There is no middle.** Total haul work is flat across all three columns — the colony does
+not do more, it does the same and points it somewhere less useful. And the collapse is
+almost entirely the first step off zero: −43% from 1 to 2, then −8% more from 2 to 4. A
+quantity would spread its damage across the range. A latch drops it all at the first notch,
+which is what this does, and the reason is mechanical: ambitions mark in batches of roughly
+eight, so any headroom ≥ 2 refills the board before it drains and the zero-load window —
+the only window in which a sack can outrank a frame — never reopens again.
+
+**The gate's comment mis-states its own mechanism**, and that is what kept the question open.
+It argues "one versus two dozen", which reads as a quantity and invites a middle. The
+mechanism is the existence of a zero-load window, which has no middle. The count was never
+the operative variable.
+
+**A second instrument finding.** `idleBoardShare` reads 6.18% → 9.74% → 10.28% across the
+three, and none of that is usable. Both `idleBoardTicks` and `idleTakeableTicks` are
+incremented only when `boardOpen(world)` is true, and headroom makes the board open nearly
+always — so the treatment moves the counters' own gating condition, and reclassification is
+indistinguishable from a colony that idles more. Same family as the merged `haulTicks` above,
+different mechanism: one sums two substitutes, the other conditions on a quantity the
+experiment changes. Neither can be read as a flat number across a treatment that touches it.
+
+**What did not change.** `src/sim/steward.ts` is byte-identical to `f0c5008`; the patch existed
+only inside the throwaway bundles and a working copy that was restored to its pristine hash.
+The grid stays fresh at `4ca9864e` and no re-measure is owed.
+
+**The guards say the same thing, and they say it by name.** With the gate at 2, the five
+files that hold this behaviour run 150 passed / 3 failed — and each failure is a harm the
+gate's own comment predicts in words:
+
+| failing guard | reading | what `steward.ts:2168` says about it |
+|---|---|---|
+| `spoilage > the larder, played > keeps the cold-stored one` | `larder.rot` 0 → **0.183** | "a colony with a cold store it never uses, food rotting in the cabin while every new harvest is routed correctly past it" |
+| `colony-eval > builds, grows rooms and idles at a pinned rate on harsh/99001` | `roomsPerDay` 0.03 → **−0.03** | the ring stops closing; the colony loses rooms on net |
+| `colony-eval > steward > gets a fire into the cabin before the settlers need one` | 17.03 against a floor of 17.33 | "with two dozen up the order stops meaning anything and the fire the settlers need tonight is raised after the fence" |
+
+`roomsPerDay` is the one that ends the argument: not slower, *negative*. And the larder is the
+same assertion that read 0.0012 under `3c`'s bounded attempt — here it reads 0.183, a hundred
+and fifty times worse, from a change that is nominally one notch.
+
+**Recorded as a refutation, not a fix.** Nothing in `src/sim` ships. Re-pinning three guards to
+accommodate a change that makes the colony rot its food, lose rooms and light its fire late is
+the precise move "tests are never weakened" exists to stop. `PLAN.md`'s standing line — nobody
+has tried the middle — is answered and should be struck: the middle was tried at 2 and at 4,
+and the axis has no middle in it.
+
+**And the design the gate actually ruled is not licensed either.** The re-aimed brief in
+`CURRENT_WORK.md` asked for headroom, which is what the table above tests. But `PLAN.md:170`
+ruled something narrower at the `/solve` gate: *a second mark when at least K takeable hands
+stand idle and the open ambition is haul-blocked* — and it made that conditional on `3b`'s
+partition showing that marking-wait behind a haul-blocked ambition **dominates** idle-board
+ticks. It does not. Marking-wait ticks with an idle, takeable hand standing by:
+
+| arms | share |
+|---|---|
+| baseline, five seeds | 16,584 / 220,718 — **7.5%** |
+| baseline, two seeds | 6,621 / 91,555 — **7.2%** |
+| headroom 2 | 14,999 / 92,834 — 16.2% |
+| headroom 4 | 12,923 / 76,040 — 17.0% |
+
+7.2–7.5% against `3b`'s 5.9% on its own arms: consistent, and not a thing that dominates
+anything. Headroom does not relieve it either — it doubles it, because a board that never
+drains is a board with more moments where a hand is idle under an ambition that is still
+open. So the precondition the human attached to reopening rule 4 is measurably unmet, and
+both readings of this segment are closed by the same numbers.
+
+**So the segment ends where `PLAN.md` said it could.** Its own words: *"'Measured, rule 4 is
+the ceiling and stays' is an acceptable outcome, written as such."* This is that outcome,
+written as such. Rule 4 stays at zero. Nothing in `src/sim` ships, and re-pinning three
+guards to accommodate a change that makes the colony rot its food, lose rooms and light its
+fire late is the precise move "tests are never weakened" exists to stop.
+
+**What is left standing for the next round.** Not rule 4. The three gates in front of it are
+where the Steward's time actually goes — `blocked(hostiles)` 25–30% and `blocked(sleep)`
+26–28% — and both are deliberate: night and raids are right to stand the colony down.
+`3b`'s `idleTakeableShare` of ~1.1% says dispatch is fine, `3c` refuted dispatch directly,
+and `3f` says the ambitions answer when asked. Four rounds have now looked for a ceiling in
+the Steward and found the colony behaving as designed at every gate. The honest reading is
+that `3a`'s build-rate pin measures a colony that is mostly asleep or under threat, and the
+next round should either accept that number as the floor it is, or go after the gates that
+are actually large — which is a question about how much of the day is night and how often
+raiders stand on the map, not about marking.
+
+---
+
 ## 2026-09-16 — The board is empty because the Steward is asked and says nothing, 92% of the time
 
 **The gap.** `3c` refuted dispatch and left one lead standing: `3b`'s `idleTakeableShare`

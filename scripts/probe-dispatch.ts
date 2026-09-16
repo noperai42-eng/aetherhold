@@ -162,6 +162,19 @@ interface DayRow {
   idleBoardTicks: number;
   idleTakeableTicks: number;
   haulTicks: number;
+  /**
+   * Pawn-ticks, split by which errand the sack is for.
+   *
+   * `haulTicks` above is a per-tick boolean over the whole colony and merges
+   * the two, which makes it blind to the one failure `steward.ts`'s rule-4
+   * comment exists to warn about: `haulToBlueprint` is a `construct` job and
+   * outranks `haul`, so when frames stay open the blueprint half rises by
+   * exactly as much as the stockpile half falls and the merged column barely
+   * moves. The number that comment cites — "51 on the first day and then 6, 0,
+   * 0, 0, 0" — is stockpile pawn-ticks a day, so that is what is counted here.
+   */
+  blueprintPawnTicks: number;
+  stockpilePawnTicks: number;
 }
 
 interface ArmResult {
@@ -199,7 +212,15 @@ function runArm(seed: number, difficulty: Difficulty, foreman: boolean, totalDay
   };
 
   for (let d = 0; d < totalDays; d++) {
-    const row: DayRow = { day: d, awakeTicks: 0, idleBoardTicks: 0, idleTakeableTicks: 0, haulTicks: 0 };
+    const row: DayRow = {
+      day: d,
+      awakeTicks: 0,
+      idleBoardTicks: 0,
+      idleTakeableTicks: 0,
+      haulTicks: 0,
+      blueprintPawnTicks: 0,
+      stockpilePawnTicks: 0,
+    };
 
     for (let t = 0; t < TICKS_PER_DAY; t++) {
       const nextTick = world.tick + 1;
@@ -322,7 +343,13 @@ function runArm(seed: number, difficulty: Difficulty, foreman: boolean, totalDay
         } else {
           const job = world.jobs.find((j) => j.id === p.jobId);
           if (job?.kind === 'build') building = true;
-          else if (job?.kind === 'haulToBlueprint' || job?.kind === 'haulToStockpile') hauling = true;
+          else if (job?.kind === 'haulToBlueprint') {
+            hauling = true;
+            row.blueprintPawnTicks++;
+          } else if (job?.kind === 'haulToStockpile') {
+            hauling = true;
+            row.stockpilePawnTicks++;
+          }
         }
       }
       if (hauling) row.haulTicks++;
@@ -364,7 +391,7 @@ function runArm(seed: number, difficulty: Difficulty, foreman: boolean, totalDay
 
 function printArm(r: ArmResult): void {
   console.log(`\n=== seed ${r.seed}  ${r.difficulty}  foreman ${r.foreman ? 'on' : 'off'} ===`);
-  const head = ['day', 'idleBoard%', 'idleTake%', 'haul%'];
+  const head = ['day', 'idleBoard%', 'idleTake%', 'haul%', 'toFrame', 'toStore'];
   console.log(head.map((h) => h.padStart(11)).join(''));
   for (const row of r.days) {
     const denom = Math.max(1, row.awakeTicks);
@@ -373,6 +400,8 @@ function printArm(r: ArmResult): void {
       ((row.idleBoardTicks / denom) * 100).toFixed(1),
       ((row.idleTakeableTicks / denom) * 100).toFixed(1),
       ((row.haulTicks / TICKS_PER_DAY) * 100).toFixed(1),
+      row.blueprintPawnTicks,
+      row.stockpilePawnTicks,
     ];
     console.log(cells.map((v) => String(v).padStart(11)).join(''));
   }
@@ -413,6 +442,13 @@ let grandIdleBoard = 0;
 let grandIdleTakeable = 0;
 let grandHaulTicks = 0;
 let grandHaulDenomTicks = 0;
+// Split by errand, and separately for foreman-on arms, because the number the
+// rule-4 comment holds the gate against is stockpile pawn-ticks a day under a
+// Steward that is actually marking.
+let grandBlueprintPawnTicks = 0;
+let grandStockpilePawnTicks = 0;
+let grandForemanStockpilePawnTicks = 0;
+let grandForemanDays = 0;
 let grandMarkingWait = 0;
 let grandMarkingWaitIdleTakeable = 0;
 const grandAmbition: Record<string, Record<string, number>> = {};
@@ -433,6 +469,12 @@ for (const r of armResults) {
     grandIdleTakeable += row.idleTakeableTicks;
     grandHaulTicks += row.haulTicks;
     grandHaulDenomTicks += TICKS_PER_DAY;
+    grandBlueprintPawnTicks += row.blueprintPawnTicks;
+    grandStockpilePawnTicks += row.stockpilePawnTicks;
+    if (r.foreman) {
+      grandForemanStockpilePawnTicks += row.stockpilePawnTicks;
+      grandForemanDays++;
+    }
   }
   grandMarkingWait += r.markingWaitTicks;
   grandMarkingWaitIdleTakeable += r.markingWaitIdleTakeable;
@@ -446,6 +488,14 @@ console.log('\n=== grand totals, every arm ===');
 console.log(`idleBoardShare  ${((grandIdleBoard / Math.max(1, grandAwake)) * 100).toFixed(2)}%`);
 console.log(`idleTakeableShare  ${((grandIdleTakeable / Math.max(1, grandAwake)) * 100).toFixed(2)}%`);
 console.log(`share of the day hauling  ${((grandHaulTicks / Math.max(1, grandHaulDenomTicks)) * 100).toFixed(2)}%`);
+console.log(
+  `  of which, pawn-ticks: to a frame ${grandBlueprintPawnTicks}, to a stockpile ${grandStockpilePawnTicks}`,
+);
+console.log(
+  `stockpile pawn-ticks a day, foreman-on arms  ${(
+    grandForemanStockpilePawnTicks / Math.max(1, grandForemanDays)
+  ).toFixed(1)}`,
+);
 console.log(`idleReason breakdown: ${fmtTally(grandReason)}`);
 console.log(`ASSIGN_INTERVAL cadence: ${fmtTally(grandCadence)}`);
 console.log(`STEWARD_INTERVAL gate, foreman-on arms only: ${fmtTally(grandGate)}`);
