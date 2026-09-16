@@ -11,3 +11,4 @@ Anything that should change the *next* segment goes here; PR comments cover the 
 (none yet)
 
 - **3b-sim-probe-why shipped.** Commit `09397dff3a41727da87ab74855013c04344a69fb`, PR #7 opened, merge_state OPEN, awaiting board publish (no coverage gap).
+- **3e-measure-label shipped.** Commit `7dce88e6431a4ffafa227a1fc4d9e0ea42c8ecba`, PR #10 opened, merge_state OPEN, awaiting board publish (no coverage gap).
