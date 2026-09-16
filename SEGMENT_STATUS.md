@@ -11,7 +11,8 @@ The EXECUTE workflow that built the first four rows was stopped on 2026-09-14 wi
 | 0-hud-escape-html | Escape the pawn's name before the HUD prints it | merged | `c530a40`, PR #6. Shipped outside the pass’s segment count, as agreed at the gate. |
 | 3e-measure-label | Measure 'nothing fun to do' before touching it | merged | PR #10 + e3c1529522945ed679c286eaf5a6fe9b5fe09c63 + board clean |
 | 3c-sim-fix-dispatch | One fix in dispatch, or a recorded no-op | complete | recorded no-op — both ways of ranking raise-over-fetch measured worse (9 and 6 suite failures); no sim change, refutation kept as two tests in `tests/hauling.test.ts` |
-| 3d-sim-fix-steward | The Steward's rule 4, reopened only if the probe names it | not-started | promoted by 3c — the gap is upstream of dispatch, in how little reaches the board |
+| 3f-sim-probe-board-empty | Why the board is empty, before anyone widens it | complete | new segment, added 2026-09-16 after 3c — probe only; rule 4 36%, hostiles 30%, sleep 26%, ambitions reached on ~1-2% of passes |
+| 3d-sim-fix-steward | The Steward's rule 4, reopened only if the probe names it | not-started | named by 3f — rule 4 is the one lock of the three that can move; try headroom above zero, not two dozen |
 | 3e-fix-label | Fix the branch the label round named | not-started | |
 | 1a-feel-trace | A scripted walk traced at three frame rates, pinned as it is | merged | `28789ef`, PR #4. Clean review. |
 | 1e-feel-interp-phase | The bob stops stepping at 20 Hz | merged | `fbba520`, PR #5. `tests/pawns-interp.test.ts` added to exercise the real `PawnsView`. |

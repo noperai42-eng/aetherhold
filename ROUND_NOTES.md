@@ -4,6 +4,57 @@ One round, one measured gap, one fix. Newest first.
 
 ---
 
+## 2026-09-16 — The board is empty because the Steward is asked and says nothing, 92% of the time
+
+**The gap.** `3c` refuted dispatch and left one lead standing: `3b`'s `idleTakeableShare`
+of 1.02% against an `idleBoardShare` of 10.60%, and an assignment cadence declining 83% of
+the times it fired because there was genuinely nothing for that settler to take. The board
+is empty. Nothing in `PLAN.md` asks why, so this is a new segment, and a probe rather than
+a fix — `3c` was a fix written on a measurement nobody had traced to its cause.
+
+**No new instrument.** `scripts/probe-dispatch.ts` already sampled which of `tickSteward`'s
+gates returned on every `STEWARD_INTERVAL` pass, including a `no-ambition-marked` bucket for
+"every gate open, the cursor walked all twenty-six ambitions, not one wanted anything". It
+printed the tally per arm and aggregated everything *except* that, so `3b` read rule 4 off
+the marking-wait number and never asked how often the Steward reached rule 4 at all. The
+only change here is six lines that sum the existing tally across arms (`scripts/` is not
+fingerprinted, so the grid on disk is untouched and no re-measure is owed).
+
+**What it measured.** `40 days`, the five seeds `3b` used, both difficulties, foreman on and
+off — the same arms, so the numbers sit beside `3b`'s. Across the foreman-on arms:
+
+| gate | share of passes |
+|---|---|
+| `stewardLoad > 0` — rule 4, one batch at a time | **36%** |
+| `blocked(hostiles)` | **30%** (14%–49% per arm) |
+| `blocked(sleep)` | **26%** |
+| `no-ambition-marked` | 4% |
+| `!playerClear` | 1% |
+| every `marked(...)` together | **~1–2%** |
+
+**Two things this rules out.** The colony is *not* out of things to want:
+`no-ambition-marked` is 4%, so when the Steward reaches its list the ambitions almost always
+have an answer. And the hostiles gate is *not* over-broad — the reading this round opened
+with was that a wandering predator freezes colony planning, and `world.ts:440` says
+otherwise: `hostiles()` excludes `fauna`, `trader`, `prisoner`, the dead and the downed,
+with a comment saying exactly why. 30% means raiders are genuinely standing on the map
+during 30% of the Steward's opportunities, which is its own question and not this one.
+
+**What it leaves.** The Steward marks work on one or two passes in a hundred, and the three
+things stopping it are all deliberate: it stands down at night, it stands down while a raid
+is live, and it will not mark anything while one frame of its own is unfinished. Night and
+raids are right. Rule 4 is the one worth reopening, and `steward.ts:2168`'s own comment
+argues it as a binary — one open frame against "two dozen", where two dozen measurably
+killed hauling (`51, 6, 0, 0, 0, 0` pawn-ticks a day carrying to a stockpile). Nobody has
+tried the middle. A cap of a batch or two of headroom, instead of exactly zero, is one
+literal number, it is bounded on both sides by measurements that already exist, and it is
+the only one of the three locks that can move without making the colony do something stupid.
+
+**What shipped.** No sim change; `src/sim` is untouched and the grid stays at `4ca9864e`.
+Six lines in `scripts/probe-dispatch.ts` and this note.
+
+---
+
 ## 2026-09-16 — The haul-to-build ratio is arithmetic, not a dispatch defect
 
 **The gap.** `3c-sim-fix-dispatch` was written to act on `3b`'s probe: haul time met or

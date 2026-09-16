@@ -416,9 +416,17 @@ let grandHaulDenomTicks = 0;
 let grandMarkingWait = 0;
 let grandMarkingWaitIdleTakeable = 0;
 const grandAmbition: Record<string, Record<string, number>> = {};
+// Which gate in `tickSteward` returned, summed over every foreman-on arm. The
+// per-arm line above has always printed this; nothing aggregated it, so 3b read
+// rule 4 off the marking-wait number and never asked how often the Steward got
+// as far as rule 4 at all. `no-ambition-marked` is the bucket that matters here:
+// every gate open, the cursor walked all twenty-six ambitions, and not one of
+// them wanted anything.
+const grandGate = tally();
 for (const r of armResults) {
   for (const [k, n] of Object.entries(r.reasonTally)) bump(grandReason, k, n);
   for (const [k, n] of Object.entries(r.cadenceTally)) bump(grandCadence, k, n);
+  if (r.foreman) for (const [k, n] of Object.entries(r.stewardGateTally)) bump(grandGate, k, n);
   for (const row of r.days) {
     grandAwake += row.awakeTicks;
     grandIdleBoard += row.idleBoardTicks;
@@ -440,6 +448,7 @@ console.log(`idleTakeableShare  ${((grandIdleTakeable / Math.max(1, grandAwake))
 console.log(`share of the day hauling  ${((grandHaulTicks / Math.max(1, grandHaulDenomTicks)) * 100).toFixed(2)}%`);
 console.log(`idleReason breakdown: ${fmtTally(grandReason)}`);
 console.log(`ASSIGN_INTERVAL cadence: ${fmtTally(grandCadence)}`);
+console.log(`STEWARD_INTERVAL gate, foreman-on arms only: ${fmtTally(grandGate)}`);
 console.log('per-ambition wall time, foreman-on arms only, all seeds/difficulties:');
 for (const [id, t] of Object.entries(grandAmbition).sort((a, b) => sum(b[1]) - sum(a[1]))) {
   console.log(`  ${id.padEnd(14)} ${fmtTally(t)}`);

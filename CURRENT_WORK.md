@@ -33,30 +33,31 @@ bottleneck; the cart is"; the instrument is `scripts/probe-dispatch.ts`.
 
 ## Next action
 
-`3d-sim-fix-steward` — **promoted**, because 3c refuted the reading that put it second.
-3c ranked raising a supplied frame above fetching for a nearer one, two ways: outright
-(nine suite failures — `roomsPerDay` to nothing, no turret in three weeks, the Steward's
-fence stuck at its first batch of eight, a month-old colony with no wood left) and bounded
-by the shorter walk (six failures — enclosures and turrets back, `builtPerDay` still cut
-from 4.8 to 2.8). Both directions lose, so the current nearest-first rule is a local
-optimum and the haul-to-build ratio is arithmetic, not a dispatch defect. `src/sim/jobs.ts`
-is unchanged; the refutation is kept as two characterization tests in
-`tests/hauling.test.ts` and the round note "The haul-to-build ratio is arithmetic, not a
-dispatch defect".
+`3d-sim-fix-steward`, reopened and re-aimed by `3f-sim-probe-board-empty` — **rule 4's
+headroom**, which is one literal number in `src/sim/steward.ts:2168`.
 
-So the gap 3a pinned is **upstream of dispatch, in how much the Steward ever puts on the
-board** — `idleTakeableShare` 1.02% with the cadence declining 83% of the time because
-there is genuinely nothing takeable. 3b read that as a second symptom; it was the answer.
-`PLAN.md` queued 3d as the likely no-op behind 3c; the two have swapped places, and 3d
-should be taken against the emptiness of the board rather than against rule 4's
-marking-wait (which 3b measured at 5.9% colony-wide and did not show as the ceiling).
+3f measured which of `tickSteward`'s gates returns, on 3b's own arms. The Steward marks work
+on **one or two passes in a hundred**; the rest is `stewardLoad > 0` 36%, `blocked(hostiles)`
+30%, `blocked(sleep)` 26%, `no-ambition-marked` 4%. Two readings are already dead: the colony
+is not out of things to want (ambitions answer when asked), and the hostiles gate is not
+over-broad (`world.ts:440` excludes fauna, traders, prisoners, the dead and the downed — it
+counts real raiders only). Night and raids are right to stand the colony down. Rule 4 is the
+one lock left that can move.
 
-The grid on disk is current — fingerprint `4ca9864e`, `tests/measurements.test.ts` green,
-`npm run measure` not owed. It becomes owed again the moment any `.ts` under `src/sim` or
-`src/eval` changes by even a comment, so land every `src/` edit first, then
-`npm run measure` (about 100 minutes, detached to a log, nothing else on the box), then
-`npm run balance`, then re-commit `.eval/measurements.json`.
+The brief: `steward.ts:2168` refuses to mark while *one* frame of its own is unfinished, and
+its comment argues that as a binary against "two dozen" — which measurably killed hauling
+(51, 6, 0, 0, 0, 0 pawn-ticks a day carried to a stockpile, seed 20260729). Nobody has tried
+the middle. Give it a batch or two of headroom instead of exactly zero, red-first, and watch
+both ends: the 3a pins (`roomsPerDay` 0.03, `builtPerDay` 4.8) should rise, and the hauling
+number must not collapse. If both cannot hold at once, that is the finding and the round is
+recorded as one, the way 3c was.
 
-After 3d: `3e-fix-label`, then the body rounds (`1b`, `1c`, `1d`) and the frame and look
-rounds (`2a`–`2e`). The box is a serial resource: the suite runs alone, `measure` runs
-alone, and GPU timing wants no contention.
+It changes `src/sim`, so it re-measures: land every `src/` edit first, then `npm run measure`
+(about 100 minutes, detached to a log, nothing else on the box), then `npm run balance`, then
+re-pin and re-commit `.eval/measurements.json`. The grid is currently fresh at `4ca9864e`.
+
+After that: `3e-fix-label`, then the body rounds (`1b`, `1c`, `1d`) and the frame and look
+rounds (`2a`–`2e`). The box is a serial resource: the suite runs alone, `measure` runs alone,
+and GPU timing wants no contention. Note two long runs were killed for memory on 2026-09-16 —
+Hytale (~2.9 GB) and leaked `chrome-headless-shell` processes were the cause; check `ps -Ao
+rss,comm -r | head` before starting a long one.
