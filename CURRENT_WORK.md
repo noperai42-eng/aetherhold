@@ -4,41 +4,47 @@ Read this first at session start. It says where the work stands and what the nex
 action is. Everything durable lives in the files it points at; this page is a map, not
 a copy.
 
-**Updated:** 2026-09-13 · **`main` at write time:** the spine commit directly above
-`edd648b` (the sub-loom adoption).
+**Updated:** 2026-09-16 · branch `colony-death-spiral`, `main` merged through PR #12.
 
 ---
 
 ## Where it stands
 
-The pass at the physics, the graphics and the simulator went through `/solve` on
-2026-09-13. The plan is `PLAN.md`: Path B, the colony group first, then the feel of the
-driven body, then the frame; sixteen one-round segments plus the HUD escape fix, one PR
-each, in the order of its table. The status table is `SEGMENT_STATUS.md` and the
-rolling log is `INBOX.md`. The EXECUTE workflow builds the segments in that order, each
-on its own branch off `origin/main`, and merges a segment itself only under the vault's
-standing `ARM_AUTOMERGE` (tier cap 2: a clean gate, a board publish with no coverage
-gap, and at tier 2 an independent verifier's AGREE); anything else stops at an open PR.
+A pass at the simulator, the feel of the driven body and the frame. The rounds are
+listed in `PLAN.md` in the order they are meant to be taken; `SEGMENT_STATUS.md` is the
+status table and `INBOX.md` the rolling log. One round, one measured gap, one fix
+(`METHODOLOGY.md`); a round ends with a `ROUND_NOTES.md` entry and, if a player could
+see the change, an `ACCEPTANCE.md` row.
 
-Before the pass, the forge bench (`FORGING.md`) had run through stage 5 (every
-procedural building a recipe with its numbers pinned, `FrontPlate` shared), and the look
-loop (`LOOK.md`) had six briefs untaken. Three of those briefs are segments of the pass
-(hair value break, walking feet, arms against the pitch); the other three (eight pile
-shapes, per-blade grass phase, the animals' space) and the exponential-damp A/B stay the
-Next briefs at the top of `ROUND_NOTES.md`.
+Six rounds are merged: `3a-sim-pin-build-rate` (the build-rate and idle pins),
+`3b-sim-probe-why` (the per-tick dispatch probe), `0-hud-escape-html`, `1a-feel-trace`,
+`1e-feel-interp-phase`, `3e-measure-label`.
+
+**What 3b found, and it decides what happens next.** Sampling every tick across twenty
+arms, dispatch is *not* the gap — `idleTakeableShare` is 1.09% against an
+`idleBoardShare` of 10.60%, and the `ASSIGN_INTERVAL` cadence declines 85% of the times
+it fires on an idle pawn because there is genuinely nothing takeable. Nor is the
+Steward's rule 4: marking-wait with an idle takeable hand standing by is 5.9%
+colony-wide, worst arm 17.4%. What the probe does name is **hauling** — haul time meets
+or beats build time in 18 of the 19 ambitions the Steward opened, and hauling costs
+17.91% of every day. The round note is `ROUND_NOTES.md`, "The Steward isn't the
+bottleneck; the cart is"; the instrument is `scripts/probe-dispatch.ts`.
 
 ## Next action
 
-1. Reconcile before touching anything: `python3 ~/LoomVault/bin/resume.py reconcile
-   --repo . --json`, then read `SEGMENT_STATUS.md` and `INBOX.md`, and `gh pr list` for
-   what is open.
-2. If the EXECUTE run is still going, leave the working tree alone: its agents check
-   branches out in this directory.
-3. If it halted, the run result's `haltedAt` names the segment and the reason. The two
-   known halts are the vault's readonly test lock (`~/LoomVault/.loom/readonly-paths`,
-   the `#@additions-ok` globs: any deletion inside `tests/` aborts the gate, and every
-   pin-moving round rewrites a test literal) and a board coverage gap holding a merge.
-   Both are the human's to clear. Then relaunch the execute workflow, resuming from the
-   run id or fresh with the segments of `PLAN.md`.
-4. When every row of `SEGMENT_STATUS.md` reads merged, close the pass: confirm the
-   retro's lessons reached the vault (`vault.py reindex`), and write the next pointer.
+`3c-sim-fix-dispatch` — one fix against the 3a pin, in the **haul-vs-build ordering in
+`src/sim/jobs.ts`'s `assignJob`**, not in the `tick.ts` cadence its PLAN.md text was
+written against (3b ruled that out). Red-first unit test; the pin moves by a literal
+(`idleTakeableShare` down and/or `roomsPerDay` up) or the round is recorded as
+"measured, not the gap" with numbers and no code change.
+
+It re-measures the grid, so before starting: all `src/` edits land first, then
+`npm run measure` (about 100 minutes — run it detached to a log, nothing else on the
+box), then `npm run balance`, then re-commit `.eval/measurements.json`. `src/eval/run.ts`
+is fingerprinted; `tests/measurements.test.ts` fails if the grid on disk no longer
+describes the sim on disk.
+
+After 3c: `3d-sim-fix-steward` (likely a recorded no-op — 3b did not show rule 4 as the
+ceiling), `3e-fix-label`, then the body rounds (`1b`, `1c`, `1d`) and the frame and look
+rounds (`2a`–`2e`). The box is a serial resource: the suite runs alone, `measure` runs
+alone, and GPU timing wants no contention.

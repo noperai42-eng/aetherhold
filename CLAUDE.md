@@ -22,8 +22,33 @@ are the map, and this file only says which one to open.
 - **What has been checked and by whom:** [ACCEPTANCE.md](ACCEPTANCE.md); the hands-on
   browser script: [PLAYTEST.md](PLAYTEST.md).
 
-## Loom
-This repo is a **Loom sub-loom** — lane map + invariant floor in `LOOM.md`
-(read it at session start). Resume pointer: `CURRENT_WORK.md`. Operating
-posture + session-start onboarding: workspace `~/CLAUDE.md` (single source —
-never restate it here).
+## The invariant floor
+
+Six things this repo does not bend. Changing one is a deliberate brief, never a
+side effect — say so out loud and expect the change to be checked hard.
+
+- **One world, one clock, one collision.** `grid.isSolid` is the only gate a body
+  passes; `moveWithCollision` in `src/sim/movement.ts` is the only writer of
+  `animPhase`; the first-person controller never scans `world.buildings`.
+  `tests/gait.test.ts` and `tests/architecture.test.ts` hold this.
+- **The 20 Hz split.** The sim advances only in `TICK_DT` steps through
+  `src/client/pace.ts`; paused means zero; the renderer reads interpolated state and
+  writes none. A tick's cost ceiling is pinned in `tests/colony-run.test.ts`.
+- **The seed contract and save/load.** A seed reproduces the valley; a save loads
+  into the same colony. `src/sim/worldgen.ts`, `src/sim/rng.ts`, the save path.
+- **The fingerprint contract** ([METHODOLOGY.md](METHODOLOGY.md)). The eval and
+  balance numbers are pinned as measured, not as they should be; a retune is a
+  brief, never a silent change.
+- **Tests are never weakened.** The golden is the floor, not the ceiling; a pin is a
+  literal number; anything a player sees is judged by the frames ([LOOK.md](LOOK.md)).
+- **Nothing is downloaded into the box.** No model, texture or audio file enters the
+  repo; every asset is procedural (`tests/architecture.test.ts`).
+
+## Ports
+
+`5062` is the play server (the built bundle, on the LAN — saves live in `localStorage`
+keyed by origin, so it never moves) and `5063` is dev with HMR; both `strictPort` in
+`vite.config.ts`. Test servers bind `:0`. Never restart a dev server another session
+started.
+
+Where the work stands: [CURRENT_WORK.md](CURRENT_WORK.md).
