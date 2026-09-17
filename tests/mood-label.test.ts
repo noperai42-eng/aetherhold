@@ -24,9 +24,11 @@
  *   settlers on purpose (`run.ts:405`); `moodBreakdown` never asks. The row
  *   fires on every one of those ticks, and this time `isIdlePawn` says no.
  *
- * No fix lands here — the branch is only named, per `PLAN.md`'s `3e-fix-label`
- * split. Fingerprint unchanged: nothing under `src/sim` or `src/eval` is
- * touched, only read.
+ * `3e-measure-label` named the branch and left it open; `3e-fix-label` closed
+ * it at `needs.ts:554`, and the drafted literal below moved from 4800 to 0.
+ * Both trips are kept exactly as they were driven — the fix had to close the
+ * drafted one without disturbing the ordinary gap, and this file is what says
+ * so.
  */
 
 import { describe, expect, it } from 'vitest';
@@ -123,7 +125,7 @@ describe('reproducing "nothing fun to do" before touching it (3e-measure-label)'
     expect(sightings.every((s) => s.idleBy3a)).toBe(true);
   });
 
-  it('names the branch: setDrafted clears jobId and never sets it back, so the row fires on a settler isIdlePawn calls not-idle — every tick, all day', () => {
+  it('closes the branch: setDrafted clears jobId and never sets it back, and the row now reads tired of working on a drafted settler — every tick, all day', () => {
     const world = createWorld(20260801);
     const streams = makeStreams(world);
     const p = livingColonists(world)[0]!;
@@ -159,6 +161,7 @@ describe('reproducing "nothing fun to do" before touching it (3e-measure-label)'
     expect(isIdlePawn(world, pawn)).toBe(false);
 
     const sightings: Sighting[] = [];
+    let mismatches = 0;
     for (let i = 0; i < TICKS_PER_DAY; i++) {
       stepWorld(world, streams);
       pawn = livingColonists(world).find((q) => q.id === id)!;
@@ -166,15 +169,28 @@ describe('reproducing "nothing fun to do" before touching it (3e-measure-label)'
       // nothing in the sim ever sets jobId again while this holds.
       expect(pawn.jobId).toBeNull();
       const label = recreationLabel(pawn);
-      if (label === 'nothing fun to do') sightings.push(sightingOf(world, pawn, label));
+      if (label !== null) sightings.push(sightingOf(world, pawn, label));
+      if (label === 'nothing fun to do') mismatches++;
     }
 
-    // The literal: every tick of the drafted day mismatches. `needs.ts:554`
-    // asks `jobId === null` and nothing else; `run.ts:405` (`isIdlePawn`)
-    // excludes `pawn.drafted` first. This is the branch: 4800 of 4800, and
-    // `isIdlePawn`, called live each tick above, says not-idle every time.
+    // The literal `3e-measure-label` pinned, and the one `3e-fix-label` moved
+    // it to. It read 4800 of 4800 mismatches: `needs.ts:554` asked
+    // `jobId === null` and nothing else, so a drafted settler was told they
+    // had nothing fun to do for every tick of the draft, while `run.ts:405`
+    // (`isIdlePawn`) excluded `pawn.drafted` first and called them not-idle.
+    // It now reads 0.
+    expect(mismatches).toBe(0);
+
+    // The row still fires every one of those ticks, and that is the point of
+    // keeping the count here rather than deleting it: the recreation need is
+    // real, the amount never depended on the words, and a fix that silenced
+    // the row would have changed the settler's mood instead of the sentence.
     expect(sightings.length).toBe(TICKS_PER_DAY);
+    expect(sightings.every((s) => s.label === 'tired of working')).toBe(true);
     expect(sightings.every((s) => s.drafted && s.jobId === null)).toBe(true);
+
+    // `isIdlePawn` still says not-idle every tick — it always was right. What
+    // changed is that the mood row agrees with it now.
     expect(sightings.every((s) => s.idleBy3a === false)).toBe(true);
 
     // Leg three, closing the trip: undraft, and the colony hands them a job

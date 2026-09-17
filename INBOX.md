@@ -4,6 +4,22 @@ Anything that should change the *next* round goes here; PR comments cover the cu
 
 ## Open
 
+- **2026-09-16 — 3e-fix-label is closed, and it names one leftover.** The mood row picked its
+  sentence on `pawn.jobId === null`, which answers *are they holding work* where the row means
+  *was the colony free to give them any*. `needs.ts:554` now asks
+  `jobId === null && !drafted && !manual`, the two states `isIdlePawn` (`run.ts:405`) excludes
+  first; the drafted literal moved **4,800 → 0** and the row still fires all 4,800 ticks, because
+  the amount never depended on the words. It had to land in `src/sim`, not the HUD: `MOOD_REMEDY`
+  (`alerts.ts:79`) keys the player's *hint* off the label string and lives in the sim, so a
+  client-side patch would have left the alert panel recommending furniture to a settler the player
+  had standing on a firing line. **What this changes about the next round:** `jobs.ts:406`
+  withholds work from `playerControlled` exactly as it does from `drafted` and `manual`, so the
+  same lie is presumably reachable that way — left out on purpose, because `isIdlePawn` does not
+  exclude it either and adding it would close one mismatch by opening another. It wants its own
+  measured round, and it drags `isIdlePawn` in with it, which is a one-way door onto two grid
+  columns. The wider version of the same question: eleven other rows in `moodBreakdown` have never
+  been checked against the states a player can put a settler into.
+
 - **2026-09-16 - 3d is a recorded no-op, and it closes the Steward line.** Rule 4's headroom was tried at 2 and at 4 on identical arms: stockpile hauling falls 1280.9 -> 727.0 -> 670.0 pawn-ticks a day while *total* haul work stays flat (241.8k / 227.1k / 236.3k), so the colony does the same work pointed somewhere less useful, and 84% of the loss lands at the first notch off zero. Three guards go red and each names a harm `steward.ts:2168`'s comment predicts in prose - `larder.rot` 0 -> 0.183, `roomsPerDay` 0.03 -> **-0.03**, the cabin fire at 17.03 against a floor of 17.33 - and all three are green at pristine. The mechanism is a latch, not a dial: ambitions mark in batches of ~8, so any headroom >= 2 refills the board before it drains and the zero-load window never reopens. The conditional design ruled at the `/solve` gate (`PLAN.md:170`) is not licensed either: its precondition was marking-wait behind a haul-blocked ambition *dominating* idle-board ticks, and that is 7.2-7.5% (3b measured 5.9%). **What this changes about the next round:** stop looking for a ceiling inside the Steward. Four rounds have now checked dispatch (3c), the board (3f) and rule 4 (3d) and found the colony behaving as designed at every gate. What is actually large is `blocked(hostiles)` 25-30% and `blocked(sleep)` 26-28%, both deliberate - so the open question is whether `3a`'s build-rate pin is simply measuring a colony that is mostly asleep or under threat, and should be accepted as the floor it is.
 
 - **2026-09-16 — 3f says the Steward is asked and says nothing, 92% of the time.** A new probe-only segment taken after 3c, on 3b's own arms. The Steward marks work on one or two passes in a hundred: `stewardLoad > 0` 36%, `blocked(hostiles)` 30%, `blocked(sleep)` 26%, `no-ambition-marked` 4%. So the colony is not out of things to want, and the hostiles gate is not over-broad (`world.ts:440` counts real raiders only — fauna, traders, prisoners, the dead and the downed are all excluded). What this changes about the next round: `3d-sim-fix-steward` is no longer about rule 4's *marking-wait*, it is about rule 4's *headroom*. `steward.ts:2168` refuses to mark while one frame of its own is unfinished and argues that as a binary against two dozen, which killed hauling. Try the middle, red-first, and hold both ends — the 3a pins up, the hauling number not collapsing.

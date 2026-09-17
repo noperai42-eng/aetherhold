@@ -550,8 +550,25 @@ export function moodBreakdown(pawn: Pawn): MoodFactor[] {
   // `nothing to do` reads as the game plainly lying. The amount is the same
   // either way, which is why `computeMood` needs no branch: it carries the
   // number and never the words.
+  //
+  // `jobId === null` alone was not the question, though. It answers "are they
+  // holding work", and the row needs "was the colony free to give them any".
+  // `setDrafted` (`orders.ts:383`) cancels the job the instant the player
+  // presses T and `tick.ts:316` never runs the job pass again while the draft
+  // holds, so a drafted settler standing on the line read `nothing fun to do`
+  // for every tick of it — measured at 4800 of 4800 by `3e-measure-label`, and
+  // pinned in `tests/mood-label.test.ts`. `setManual` is the same shape.
+  // These are the two states `isIdlePawn` (`src/eval/run.ts:405`) excludes
+  // before anything else, and the row agreeing with that predicate is the
+  // point; `src/sim` cannot import from `src/eval`, so the pair is restated
+  // here rather than shared. Deliberately narrower than `isIdlePawn`: sleeping
+  // and breaking settlers are left alone because nobody measured them, and
+  // `playerControlled` — which `jobs.ts:406` withholds work from just as it
+  // does these two — is left out because `isIdlePawn` does not exclude it, and
+  // this row's job is to agree with that predicate, not to outrun it.
+  const workWithheld = pawn.drafted || (pawn.manual ?? false);
   put(
-    pawn.jobId === null ? 'nothing fun to do' : 'tired of working',
+    pawn.jobId === null && !workWithheld ? 'nothing fun to do' : 'tired of working',
     -(1 - n.recreation) * 0.24,
   );
   // The flat penalties for a need that has actually bottomed out. Separate rows

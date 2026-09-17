@@ -52,7 +52,7 @@ loud when a new instrument is written.
 |---|---|---|---|
 | 1 | `npm test` — the vitest suite | Does this unit do what it is supposed to? | ~15 min |
 | 2 | `npm run eval` — one colony, real world | Does a colony boot, tick, and survive? | minutes |
-| 3 | `npm run measure` + `npm run balance` — the sixty-day grid | Is the *game* good, across seeds and difficulties? | ~90 min |
+| 3 | `npm run measure -- --days 60 --past-founding` + `npm run balance` — the sixty-day grid | Is the *game* good, across seeds and difficulties? | ~90 min |
 | 4 | `scripts/probe-*.ts` — one colony, one tick at a time | *Why* did the grid say that? | ~2 min |
 | 5 | The browser — [PLAYTEST.md](PLAYTEST.md) | Does it feel like anything? | a human |
 
@@ -86,14 +86,20 @@ npm run eco        # ECO=1 — the moor with nobody in it, census each night
 npm run sweep      # SWEEP=1 — the survival sweep
 npm run pool       # POOL=1 — the eval pool
 
-npm run measure    # plays the grid across worker threads → .eval/measurements.json
+npm run measure -- --days 60 --past-founding   # the pinned grid → .eval/measurements.json
 npm run balance    # BALANCE=1 — judges that file against the principles
 ```
 
-`measure` takes the arguments the grid is actually run with: `npm run measure -- --days
-60 --past-founding`, and `--serial` to play the same specs on one thread when a worker
-pool would confuse a measurement. `--steward` is opt-in, which matters more than it
-looks — see below.
+**Those two flags are not optional.** `measure`'s own defaults are thirty days, stopping
+at founding; the grid pinned in `measurements.json` is sixty days played past founding.
+A bare `npm run measure` therefore finishes, writes a perfectly valid file, and moves
+every number in the repo — not because the sim changed but because a different sweep was
+played. It is not a failure you can see in the output: the run succeeds, the fingerprint
+check goes green, and only a diff against the committed grid shows `days: 60 -> 30` at
+the top of seven hundred changed leaves. Always pass both, and diff `sweep.days` and
+`sweep.playPastFounding` before trusting a re-measure. `--serial` plays the same specs on
+one thread when a worker pool would confuse a measurement, and `--steward` is opt-in,
+which matters more than it looks — see below.
 
 **The default arm is unmanaged.** `runColony` opens `opts.steward ?? true`, but
 `measurements.json` records `steward: false` for every cell, because `npm run measure`

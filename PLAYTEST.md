@@ -1820,6 +1820,35 @@ whether that reads as a promise or as a tease is the thing to write down.
 Pinned by `tests/corpse-card.test.ts` and `tests/kit-card.test.ts`. The two cards can be looked
 at without a raid: `npm run dev`, then `npm run look:review`.
 
+## 9vv. Draft somebody and ask what they are missing (~3 minutes)
+
+Let a colony run until the settlers have been awake a while and the recreation bars are
+off full — an hour of game time is plenty. Pick one who is visibly working, hauling or
+building, and open their card. **Expect the recreation row under *why that mood* to read
+`tired of working`** — they are holding a job and the table is the thing they never get
+to.
+
+Now press **T** and draft them. The job is cancelled the instant you do it, and for as
+long as the draft holds the colony never offers them another one.
+
+**Expect the row to keep reading `tired of working`.** It is the same sentence, and that
+is the whole of the step: a drafted settler is not a settler with nothing to do, and the
+card must not tell you they are. **Expect the mood number itself not to move** when you
+press T — the penalty is the same either way, and only the words change.
+
+Open the alerts panel while they are still drafted and find their morale line if one is
+up. **Expect the hint to be about the hours, not the furniture** — *Nothing but work.
+Build somewhere to sit, and leave them the hours to use it* — rather than the one that
+tells you to build a table, which is advice for a settler who looked for a seat and could
+not reach one. That settler is standing on the line with a rifle.
+
+Undraft them, leave them alone, and let the colony hand them work again. The row is
+unchanged through all of it; what you are checking is that it never once said `nothing
+fun to do` while you had hold of them.
+
+Pinned by `tests/mood-label.test.ts`, which drives both trips — the ordinary gap between
+two jobs and the drafted day — tick by tick on seed `20260801`.
+
 ## 10. Save it, break it, load it
 
 Press **Save** in the top bar. Now do something destructive and obvious — pause, mash a few
@@ -1839,7 +1868,9 @@ load — the save lives in localStorage.
   bed rest is how they win. They get up for raids and for an empty stomach.
 - Recreation drops for every settler who is awake, at work or not — the card row reads
   `tired of working` for one holding a job and `nothing fun to do` for one who looked for
-  a seat and found none. They only break off for a seat when the work board is empty or
+  a seat and found none. A drafted settler, or one you have taken manual hold of, reads
+  `tired of working` too: the colony is not withholding a seat from them, it is not
+  offering them anything at all, and step 9vv is that case. They only break off for a seat when the work board is empty or
   when they are properly bored, so build seats: one each plus a spare.
 - Fires spread. Firefight priority matters more than it looks like it should.
 - Quality preset (top bar) drops shadows and effects on slower machines. Try `low` if the

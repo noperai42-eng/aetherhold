@@ -496,8 +496,10 @@ describe('why that mood', () => {
     content(p);
     p.needs.recreation = 0.4;
 
-    // Any job at all. The breakdown asks only whether there is one, because that
-    // is the whole of what separates the two cases.
+    // Any job at all. Neither settler here is drafted or manual, so the only
+    // question left for the breakdown is whether they hold work — which is
+    // what separates the two cases for a settler the colony is free to
+    // dispatch. `tests/mood-label.test.ts` holds the drafted case.
     p.jobId = 1;
     const working = moodBreakdown(p).find((f) => f.label === 'tired of working')!;
     expect(working).toBeDefined();

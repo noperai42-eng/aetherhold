@@ -4,6 +4,108 @@ One round, one measured gap, one fix. Newest first.
 
 ---
 
+## 2026-09-16 — The card asked whether they were holding work, when it meant whether anyone had offered any
+
+**The gap.** `3e-measure-label` named a branch and left it open, which is what that split
+was for. The mood card's recreation row picks between two sentences — `nothing fun to do`
+for a settler who went looking for a seat and found none, `tired of working` for one whose
+board is full and never gets to the table — and it picked on `pawn.jobId === null` and
+nothing else. That question is *are they holding work*. The row needs *was the colony free
+to give them any*. Those are the same question right up until the player takes hold of
+somebody, and then they come apart completely: `setDrafted` (`orders.ts:374-389`) cancels
+the job the instant you press T, and `tick.ts:316` skips the whole job/idle pass for as long
+as the draft holds, so nothing in the sim ever sets `jobId` again. Measured last round at
+**4,800 of 4,800 ticks** of a drafted day on seed `20260801` — a settler stood at the wall
+with a rifle, being told in their own mood breakdown that there was nothing fun to do, for
+every tick they were on watch — while `isIdlePawn` (`run.ts:403`), which excludes
+`pawn.drafted` on line 405 on purpose, called them not-idle every one of those ticks.
+
+**Where it had to land, and why it was not a choice.** `PLAN.md:194` posed this as a fork:
+`hud.ts`/`alerts.ts` is client-side and the fingerprint holds, `needs.ts` is fingerprinted
+and the grid re-measures. It is not really a fork, because the label has three consumers and
+only one of them is the HUD:
+
+| consumer | what it does with the string |
+|---|---|
+| `hud.ts:4031` | renders the row on the card |
+| `needs.ts:615` `worstMoodFactor` | finds the worst negative factor that is not a trait |
+| `alerts.ts:79` `MOOD_REMEDY` | **keys the player's hint off the label string** |
+
+`MOOD_REMEDY` lives in `src/sim`, not the client. A `hud.ts`-only patch would have fixed the
+card and left the alert panel telling a drafted settler *a table and chairs, near where they
+live* — furniture advice for somebody the player has standing on a firing line. So the fix
+went to the one place that chooses, `needs.ts:554`, and all three surfaces came right at
+once. The ~100-minute re-measure is the price of that, and `PLAN.md` had already priced it.
+
+**What the fix asks.** `jobId === null && !drafted && !manual` — the two states `isIdlePawn`
+excludes before anything else. `src/sim` cannot import from `src/eval` (the dependency runs
+the other way), so the pair is restated in `needs.ts` rather than shared, which is what the
+measure round's **Next** sanctioned: *a narrower version of them*. Narrower is literal here,
+and deliberately so on both edges:
+
+- `isIdlePawn` also excludes sleeping and breaking settlers. Those are left alone. Nobody
+  measured them, and the segment brief says fix only the branch `3e-measure` named.
+- `jobs.ts:406` withholds work from `playerControlled` exactly as it does from `drafted` and
+  `manual`, so the same lie is presumably reachable that way. It is **left out on purpose**:
+  this row's job is to agree with `isIdlePawn`, and `isIdlePawn` does not exclude it either.
+  Adding it would have closed one mismatch by opening another. Logged, not silently fixed —
+  it wants its own measured round, and it wants `isIdlePawn` looked at in the same breath,
+  which is a one-way door onto two grid columns.
+
+**The literal moved, 4,800 → 0, and the row kept firing.** That second half is the part worth
+writing down. The count of ticks where the recreation row appears at all is still 4,800 —
+what changed is only which sentence it carries. The amount was always identical between the
+two branches, which is why `computeMood` needs no branch here, and a "fix" that had silenced
+the row would have quietly changed a drafted settler's mood instead of correcting a sentence.
+The test now pins both halves: `mismatches` at 0, and `sightings.length` still at
+`TICKS_PER_DAY`. The ordinary `ASSIGN_INTERVAL` trip on the same settler is untouched at 293
+sightings with `isIdlePawn` agreeing every time, which is the control — the fix had to close
+the drafted case without disturbing the honest one.
+
+**No measured number could move, and the grid re-ran anyway.** Worth being explicit about
+why, because it is the fingerprint contract doing exactly its job rather than a formality
+worth skipping. Three checks said the numbers were safe before the run started: `src/eval`
+never reads a mood label at all (`moodBreakdown`, `worstMoodFactor` and both strings are
+absent from the whole directory); the two branches carry an identical `amount`, so which
+factor `worstMoodFactor` calls worst cannot change; and the trait labels it filters against
+are capitalised nouns (`Pessimist`, `Glutton`), so neither sentence can ever collide with
+one. The contract does not take that argument on faith, and should not — the fingerprint is
+over bytes, the bytes changed, and the grid owes a re-measure.
+
+**The grid came back with three changed leaves, and none of them is a number.** 39
+colonies, sixty days, played past founding: `fingerprint` `4ca9864e` → `e61c7f10`,
+`seconds` 6223.073 → 6077.867, `taken` 2026-09-15 → 2026-09-17. That is the whole diff.
+Every measured value across every colony is identical, which is the prediction above
+confirmed and, incidentally, a clean demonstration that the sweep is deterministic across
+two runs a day apart. `npm run balance` is unchanged too: 16 enforced principles, 15 hold,
+and `on-their-feet-at-zero-is-a-walk-home` broken with a detail string byte-identical to
+the committed one — the same three runs at the same 28.3, 45.2 and 34.6 hours. It was
+broken before this round and it is broken in exactly the same way after it.
+
+**The re-measure had to be run twice, and the first one is the finding.** `npm run measure`
+bare defaults to **thirty** days stopping at founding; the grid pinned in
+`measurements.json` is **sixty**, played past founding. The bare run finished in 26 minutes,
+exited 0, wrote a perfectly valid file, and left `tests/measurements.test.ts` green at 9 of
+9 — while having moved seven hundred and twenty-five leaves. Nothing in the repo catches
+that. The fingerprint contract guards the *sim* a grid was measured against; it does not
+guard the *sweep* it was measured with, and no check compares `sweep.days` against the
+grid it is replacing. Committing it would have retuned every pin in the repo under a round
+whose entire sim diff is one boolean in a mood label — the silent retune the invariant
+floor exists to forbid, arrived at through a green test rather than a red one. What caught
+it was diffing the new grid against `git show HEAD:.eval/measurements.json` instead of
+trusting the freshness check, and the diff opening `days: 60 -> 30` above everything else.
+`METHODOLOGY.md` now carries the flags in the tier-3 row and in the command block, and says
+plainly that a bare run succeeds and moves everything anyway; it had named them before, but
+as *the arguments the grid is actually run with*, which reads as an option and not a
+requirement. **Diff the sweep config before believing a re-measure.**
+
+**Next.** `playerControlled` is the one named leftover above. Beyond it, the honest open
+question is the one the measure round did not ask: `moodBreakdown` has a dozen rows and this
+round only checked that one of them says something true when the player is holding the reins.
+Nothing says the others were checked against the states the player can put a settler into.
+
+---
+
 ## 2026-09-16 — Rule 4 is a latch, not a dial, and the cliff is the first step off zero
 
 **The gap.** `3f` left rule 4 as the one lock in `tickSteward` that could move: `stewardLoad
