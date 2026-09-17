@@ -4,7 +4,7 @@ Read this first at session start. It says where the work stands and what the nex
 action is. Everything durable lives in the files it points at; this page is a map, not
 a copy.
 
-**Updated:** 2026-09-16 · branch `colony-death-spiral`, `main` merged through PR #12.
+**Updated:** 2026-09-17 · branch `main`, at `671551d`.
 
 ---
 
@@ -16,10 +16,11 @@ status table and `INBOX.md` the rolling log. One round, one measured gap, one fi
 (`METHODOLOGY.md`); a round ends with a `ROUND_NOTES.md` entry and, if a player could
 see the change, an `ACCEPTANCE.md` row.
 
-Nine rounds are taken: `3a-sim-pin-build-rate` (the build-rate and idle pins),
+Ten rounds are taken: `3a-sim-pin-build-rate` (the build-rate and idle pins),
 `3b-sim-probe-why` (the per-tick dispatch probe), `0-hud-escape-html`, `1a-feel-trace`,
-`1e-feel-interp-phase`, `3e-measure-label`, `3c-sim-fix-dispatch`, `3f-sim-probe-board-empty`
-and `3d-sim-fix-steward` — the last three of them measurements that changed no sim code.
+`1e-feel-interp-phase`, `3e-measure-label`, `3c-sim-fix-dispatch`, `3f-sim-probe-board-empty`,
+`3d-sim-fix-steward` — three of those measurements that changed no sim code — and
+`3e-fix-label`, which closed the branch the label round named.
 
 **The colony line is closed, and that is the finding.** `3a` pinned a build rate; `3b`, `3c`,
 `3f` and `3d` then went looking for what caps it and found nothing broken. Dispatch is fine
@@ -51,12 +52,23 @@ day length and the raid cadence, not a marking question. Answering it either acc
 they stand or opens a deliberate brief against the invariant floor. That is a human call.
 
 Until it is taken, the remaining rounds in `PLAN.md` are the ones that do not depend on it:
-`3e-fix-label`, then the body rounds (`1b`, `1c`, `1d`) and the frame and look rounds (`2a`–`2e`).
-Any of those can be taken now; none needs the Steward question settled first.
+the body rounds (`1b-feel-eye-ease`, `1c-feel-accel`, `1d-feel-bob-sway-run`) and the frame and
+look rounds (`2a-frame-gpu-timer`, `2b-frame-census-grass-budget`, `2c-look-hair-value-break`,
+`2d-look-walking-feet`, `2e-look-arms-against-pitch`). Any of those can be taken now; none needs
+the Steward question settled first. `3e-fix-label` is done — it was the last of the colony-line
+rounds.
 
 The box is a serial resource: the suite runs alone, `measure` runs alone, GPU timing wants no
 contention. Check `ps -Ao rss,comm -r | head` before a long one — two runs were killed for memory
 on 2026-09-16, and the cause was a running game at ~2.9 GB, not process count.
 
-The grid is fresh at `4ca9864e`; `3c`, `3f` and `3d` all left `src/sim` untouched, so nothing
-owes a re-measure. The first round that changes `src/sim` again pays the ~100 minutes.
+The grid is fresh at `e61c7f10`, re-measured by `3e-fix-label`, which changed `src/sim/needs.ts`
+and moved no measured number — three differing leaves across 39 colonies and sixty days, all of
+them metadata. The first round that changes `src/sim` again pays the ~100 minutes.
+
+**When you pay them, pass the flags.** `npm run measure` bare plays a thirty-day grid stopping at
+founding; the pinned grid is `npm run measure -- --days 60 --past-founding`. The bare run exits 0,
+writes a valid file and leaves the freshness check green at 9/9 while having moved seven hundred
+leaves, and nothing in the repo catches it — the fingerprint contract guards the sim a grid was
+measured against, not the sweep. Diff `sweep.days` and `sweep.playPastFounding` against
+`git show HEAD:.eval/measurements.json` before believing any re-measure.
