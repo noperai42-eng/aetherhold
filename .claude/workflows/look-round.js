@@ -101,9 +101,15 @@ const SHOTS = {
     consoleErrors: { type: 'integer' },
     errorSamples: { type: 'array', items: { type: 'string' } },
     stood: { type: 'integer' },
+    // The harness's own Cost line, verbatim: draw calls, triangles, the empty
+    // instanced pools, and what the frame cost the card. Carried as a string rather
+    // than parsed into numbers on purpose — it is quoted into the round note, and a
+    // number pulled out of it here would be a second place for the format to drift.
+    // `gpu n/a` is a legitimate value and must be reported as it stands, never as 0.
+    cost: { type: 'string' },
     output: { type: 'string' },
   },
-  required: ['ok', 'consoleErrors', 'errorSamples', 'stood', 'output'],
+  required: ['ok', 'consoleErrors', 'errorSamples', 'stood', 'cost', 'output'],
 }
 const JUDGE = {
   type: 'object',
@@ -133,7 +139,7 @@ const JUDGE = {
 const shotPrompt = (l) => `Run the screenshot harness for Aetherhold and report what it printed. Exactly this, in one Bash call with a 600000 ms timeout (chain with && — a hook rejects ';'):
 cd ${LOOK} && (pkill -f "Chrome for Testing" || true) && URL=${URL} node shot.mjs ${SHOTS_DIR}/${l} ${l}${args.zoo ? ` && (pkill -f "Chrome for Testing" || true) && URL=${URL} node zoo.mjs ${SHOTS_DIR}/${l}-zoo ${l}` : ''}
 Headless Chrome uses the GPU, so each harness finishes in under two minutes; a stale headless Chrome from an earlier run stalls the next one on the GPU, which is what the pkill is for. If the command has printed nothing for four minutes, it has stalled: run (pkill -f "node shot.mjs" || true) && (pkill -f "node zoo.mjs" || true) && (pkill -f "Chrome for Testing" || true), wait ten seconds with a python loop (no sleep), and run the exact command once more; report a second stall as ok=false. Then run: ls -la ${SHOTS_DIR}/${l}${args.zoo ? ` ${SHOTS_DIR}/${l}-zoo` : ''}
-ok = the command exited 0, printed "0 console errors", and all five PNGs (${FRAMES.join(', ')}) exist and are over 50 KB. Put the harness's printed line and the ls listing in output. Do not edit anything.`
+ok = the command exited 0, printed "0 console errors", and all five PNGs (${FRAMES.join(', ')}) exist and are over 50 KB. Put the harness's printed line and the ls listing in output, and put the Cost half of that printed line — from "colony frame" to the end, including the gpu reading — in cost, copied exactly. If it says "gpu n/a", copy that; do not substitute a number or a zero. Do not edit anything.`
 
 const gatePrompt = `Run Aetherhold's typecheck and render tests and report the result faithfully. One Bash call, chained with && (a hook rejects ';'), timeout 300000 ms:
 cd ${REPO} && npx tsc --noEmit && npx vitest run ${RENDER_TESTS}
@@ -180,7 +186,7 @@ if (args.baseline) {
   phase('Baseline')
   const base = await agent(shotPrompt(prev), { agentType: 'gate-runner', effort: 'low', schema: SHOTS, label: `shots:${prev}`, phase: 'Baseline' })
   if (!base || !base.ok) return { round, aborted: 'baseline capture failed', base }
-  log(`baseline ${prev}: ${base.stood} buildings stood, ${base.consoleErrors} console errors`)
+  log(`baseline ${prev}: ${base.stood} buildings stood, ${base.consoleErrors} console errors, ${base.cost}`)
 }
 
 // ---- Build ---------------------------------------------------------------
@@ -203,7 +209,7 @@ for (let i = 0; i < 2 && (!gate || !gate.ok); i++) {
 if (!gate || !gate.ok) return { round, aborted: 'gate still red after two fixes', gate, fixes, builders }
 const shots = await agent(shotPrompt(label), { agentType: 'gate-runner', effort: 'low', schema: SHOTS, label: `shots:${label}`, phase: 'Gate' })
 if (!shots || !shots.ok) return { round, aborted: 'screenshot capture failed', shots, gate, fixes, builders }
-log(`${label}: ${shots.stood} buildings stood, ${shots.consoleErrors} console errors`)
+log(`${label}: ${shots.stood} buildings stood, ${shots.consoleErrors} console errors, ${shots.cost}`)
 
 // ---- Judge ---------------------------------------------------------------
 phase('Judge')

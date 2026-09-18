@@ -4,6 +4,144 @@ One round, one measured gap, one fix. Newest first.
 
 ---
 
+## 2026-09-18 — The card that was listed, answering, sixty-four bits wide, and wrong by five times
+
+**The gap.** For ten rounds the only cost this harness measured was a wall-clock
+millisecond taken across ten `requestAnimationFrame` callbacks, which is the swap interval
+and nothing else: the display hands out frames at its own 60 Hz, so every frame that fits
+the budget reads 17 ms and so does every other one. The change that first ran under it took
+the colony frame from 189 draw calls to 123 without moving the number at all. `2a` asked for
+the other half — how long the card was actually busy — and for the instrument to name its
+method, never print a bare number, and never print a zero.
+
+**The brief expected the extension to be absent. It is present, and that is worse.** The
+brief's research step said to check `getSupportedExtensions()` and expect nothing, on the
+documented macOS history: Safari's ANGLE-Metal lists no `EXT_disjoint_timer_query_webgl2`,
+so the fence was designed as the primary path. Asked directly, this box answers the other
+way. Chrome for Testing on `--use-angle=metal` lists the extension, reports **64** counter
+bits, answers every query, and never once flagged `GPU_DISJOINT_EXT` across 24 samples. So
+the timer became primary and the fence the fallback — the brief's design inverted, with both
+paths still built — and the first readings came back `gpu 7.4/10.9 ms (timer)` and
+`gpu 9.8/9.9 ms (timer)`.
+
+**The cross-check the brief ordered is what saved the round.** One line of the brief —
+*cross-check once against a `gl.finish()` stall* — put a second instrument on the same frame,
+and it read **2.2 ms median** against the timer's 9.8. `gl.finish()` is an *upper* bound: it
+is the CPU recording the commands plus the whole queue draining, so elapsed time on the card
+cannot exceed it. The two could not both be right, and the timer's median-equal-to-max
+flatness in the second run was the tell nobody would have read as a tell without the
+disagreement.
+
+**What settled it.** Render the same frame N times inside one measured window, both
+instruments watching the same draws:
+
+| N | `gl.finish()` | per render | `TIME_ELAPSED_EXT` | per render |
+|---|---|---|---|---|
+| 1 | 1.8 ms | 1.8 | 5.479 ms | 5.5 |
+| 2 | 3.2 ms | 1.6 | 17.229 ms | 8.6 |
+| 4 | 6.8 ms | 1.7 | 34.946 ms | 8.7 |
+| 8 | 31.3 ms | 3.9 | 71.805 ms | 9.0 |
+
+The stall is linear in the work: `1.7·N + 0.1`, a real per-frame cost with about a tenth of a
+millisecond of overhead for asking. The timer query is proportional to nothing — it sits near
+8.7 ms a render however many renders are in the window, takes a different ratio at N=1, and
+is not repeatable with itself: **7.40 ms and then 5.06 ms for the identical frame at the
+identical size**, in one session, minutes apart. An earlier probe had changed the load the
+other way, rendering at a sixteenth of the fragments; the timer halved (7.40 → 3.59) while
+the stall barely moved (1.70 → 1.40), which is not the stall going blind but this frame being
+geometry-bound — 8.35 million triangles across 122 draws — and is a second way of seeing that
+the two instruments are not watching the same thing. (N=8 breaks the stall's linearity too, at
+3.9 a render. The instrument measures N=1; the fit is taken over 1–4 and the row is left in
+because a table that hides its own edge is not evidence.)
+
+**So the timer was removed — not demoted, removed.** Not primary, not fallback, and not
+printed beside the real number either. A wrong number that looks this healthy is worse than no
+number: `n/a` sends nobody anywhere, while `gpu 9.8 ms` in a round note is how a later round
+gets sent hunting a regression that never happened, or accepts a real one because the figure
+did not move. This is the vault scar — *degrade in the product, fail in the measurement* —
+arriving one layer above where the reducer was built to catch it. `gpu.mjs` already refused a
+counter stuck at zero; it had no way to refuse a counter that moves convincingly and lies
+about magnitude. Nothing in software could have caught that. Only a second instrument could,
+and the brief had asked for one.
+
+**What ships.** The stall, tagged `(finish)`, and the tag is the point: the number is not the
+card's own counter for the draw but the wall time from submitting one frame's commands to the
+queue standing empty again. `viewport.render` is hooked rather than a frame being drawn here —
+`app.ts` calls it from three places and a frame this harness drew itself would be one the app
+did not, with a camera it did not choose — and the hook is removed before the measurement
+returns, restoring an own property or deleting it exactly as it was found. A frame the app
+did not draw (`renderer.info.render.calls === 0`) is counted as spoiled rather than sampled:
+it is not a cheap frame, it is not a frame.
+
+**Cost — the baseline every later look round compares against.**
+
+```
+r22: 0 console errors, 26 showcase buildings stood, 5 ms/frame,
+colony frame 122 draw calls / 8357240 triangles / 0 points / 0 lines,
+192 geometries, 2 textures, 15 of 151 instanced meshes empty (13 of those hidden),
+gpu 3.0/3.8 ms (finish), 16/16 frames (all) []
+```
+
+**`gpu 3.0/3.8 ms (finish)` on the colony frame is the number.** Read it as a median of 24
+samples on one named frame, not as a constant: a probe on a younger colony of nearly the same
+triangle count read ~1.7 ms, so framing and colony age move it, and a later round comparing
+against this must re-shoot the same frame rather than quote across frames. The wall clock beside
+it says 5 ms and the card says 3.0 — the first time in this repo those two numbers have been
+able to disagree.
+
+**`--disable-gpu-vsync` is not adopted, and the reason changed.** It was in the brief to rescue
+the rAF-polled fence, which resolves to one display frame — about 16.7 ms, ten times coarser
+than the 1.7 ms it would have to measure. A synchronous stall does not poll on animation frames
+at all, so the flag buys nothing, and the sixteen-frame pixel-identity re-verification that
+`chrome.mjs:41-54` established as the price of a new launch flag is not owed. The rAF fence is
+not shipped either, for the same resolution reason.
+
+**A success criterion went moot, and is recorded rather than quietly dropped.** The brief asks
+that *disjoint discard* be unit-tested. `GPU_DISJOINT_EXT` belongs to the extension that was
+removed, so there is nothing left to discard. The criterion's shape is kept against a spoiler
+that does exist — the no-draw frame above — which the reducer carries as `spoiled`, and the
+test that replaced it pins the removal instead: `reduceGpu({ method: 'timer', … })` returns
+`n/a` however clean the batch looks, so the extension cannot quietly come back through a later
+edit. Eight tests, no browser, no GPU; `gpu.mjs` imports nothing, which is what keeps
+`scripts/look/node_modules` out of a vitest worker.
+
+**Discovered, not fixed — and it stopped the round dead before it started.** `npm run look`
+could not navigate at all: `page.goto(URL, { waitUntil: 'networkidle2' })` timed out at its
+full sixty seconds, every run, having taken no frames. The dev server's HMR client opens a
+WebSocket and holds it open for the life of the page, and puppeteer counts that socket as a
+request that never finishes, so network never goes idle. Measured: zero HTTP requests in flight
+eight seconds after DOMContentLoaded, `networkidle2` still timing out at twenty-five seconds,
+`load` firing in **539 ms**. Both of `shot.mjs`'s navigations now wait on `load` — the second
+being the phone-layout `page.reload`, which sits inside the `try` that owns all eight phone
+frames and would have eaten them next. Nothing is lost: the readiness this harness needs is not
+*the network went quiet* but *the app has painted and the sim has ticked*, which is waited for
+properly a few lines down. **The other nine harnesses are still broken this way** — `zoo.mjs`,
+`crew.mjs`, `heads.mjs`, `hollow.mjs`, `stress.mjs`, `diag-hang.mjs` and `trouble.mjs` (twice)
+on `networkidle2`, `forge.mjs` and `review.mjs` on the stricter `networkidle0`. They are outside
+this round's writeSet and want a round of their own; the trap is written into LOOK.md's *What
+will bite*.
+
+**Verified.** Sixteen frames in `.look/shots/r22/`, 0 console errors, 26 showcase buildings
+stood, 16/16 with an empty missing-list. Looked at, not just counted: `r22-3-colony` is the
+settlement from above — brick walls, the three beds and the tables and lamp inside them, the
+showcase rows along the south side, two settlers, the tree cluster and the rock outcrop, ground
+revealed and no shroud haze, which is the frame the 3.0 ms is measured on. `r22-5-dusk` is the
+same camera an hour before sundown and differs from it, so the clock moved and the stall did not
+leave the renderer stalling — the frames taken *after* the measurement are ordinary, which is
+the hook's restore working. Reducer 8/8 green on its own; `npm run typecheck` green with the
+hand-written `gpu.d.mts` (`tests/` is included under `strict` with no `allowJs`, so the
+`tests → scripts` import is TS7016 without it). No file under `src/` changed, so the fingerprint
+holds at `e61c7f10` and no re-measure is owed.
+
+**Next.** `2b-frame-census-grass-budget` now has a GPU millisecond to put its triangle census
+beside, which was the whole reason it depends on this round. Two other briefs fell out of this
+one and neither is in it: the nine harnesses that cannot navigate, and the question of whether
+`TIME_ELAPSED_EXT` is wrong only here or wrong on this whole platform — the second matters
+because if it is the platform, the number is wrong in every browser profiler on this box, and
+that is worth knowing before trusting one.
+
+---
+
 ## 2026-09-16 — The card asked whether they were holding work, when it meant whether anyone had offered any
 
 **The gap.** `3e-measure-label` named a branch and left it open, which is what that split

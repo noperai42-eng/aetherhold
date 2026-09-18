@@ -4,7 +4,7 @@ Read this first at session start. It says where the work stands and what the nex
 action is. Everything durable lives in the files it points at; this page is a map, not
 a copy.
 
-**Updated:** 2026-09-17 · branch `main`, at `671551d`.
+**Updated:** 2026-09-18 · branch `main`, at `4215647`.
 
 ---
 
@@ -16,11 +16,22 @@ status table and `INBOX.md` the rolling log. One round, one measured gap, one fi
 (`METHODOLOGY.md`); a round ends with a `ROUND_NOTES.md` entry and, if a player could
 see the change, an `ACCEPTANCE.md` row.
 
-Ten rounds are taken: `3a-sim-pin-build-rate` (the build-rate and idle pins),
+Eleven rounds are taken: `3a-sim-pin-build-rate` (the build-rate and idle pins),
 `3b-sim-probe-why` (the per-tick dispatch probe), `0-hud-escape-html`, `1a-feel-trace`,
 `1e-feel-interp-phase`, `3e-measure-label`, `3c-sim-fix-dispatch`, `3f-sim-probe-board-empty`,
-`3d-sim-fix-steward` — three of those measurements that changed no sim code — and
-`3e-fix-label`, which closed the branch the label round named.
+`3d-sim-fix-steward` — three of those measurements that changed no sim code — `3e-fix-label`,
+which closed the branch the label round named, and `2a-frame-gpu-timer`, the first of the frame
+rounds.
+
+**The frame now has a cost the swap interval cannot hide.** `2a` put `gl.finish()` around a
+hooked `viewport.render` and printed `gpu <median>/<max> ms (finish)` under the look frames;
+the colony frame's baseline is **`gpu 3.0/3.8 ms (finish)`** at 122 draw calls and 8,357,240
+triangles, and every later look round re-shoots that same frame to compare. The round's finding
+is the instrument it rejected: `EXT_disjoint_timer_query_webgl2` is listed on this box with 64
+counter bits, answers every query, and overstates by about five times — caught only by the
+brief's `gl.finish()` cross-check and settled by rendering one frame N times in one window
+(stall linear at `1.7·N + 0.1`; timer proportional to nothing). It was removed, and
+`tests/look-gpu.test.ts` pins the removal.
 
 **The colony line is closed, and that is the finding.** `3a` pinned a build rate; `3b`, `3c`,
 `3f` and `3d` then went looking for what caps it and found nothing broken. Dispatch is fine
@@ -52,11 +63,21 @@ day length and the raid cadence, not a marking question. Answering it either acc
 they stand or opens a deliberate brief against the invariant floor. That is a human call.
 
 Until it is taken, the remaining rounds in `PLAN.md` are the ones that do not depend on it:
-the body rounds (`1b-feel-eye-ease`, `1c-feel-accel`, `1d-feel-bob-sway-run`) and the frame and
-look rounds (`2a-frame-gpu-timer`, `2b-frame-census-grass-budget`, `2c-look-hair-value-break`,
+the body rounds (`1b-feel-eye-ease`, `1c-feel-accel`, `1d-feel-bob-sway-run`) and the rest of the
+frame and look rounds (`2b-frame-census-grass-budget`, `2c-look-hair-value-break`,
 `2d-look-walking-feet`, `2e-look-arms-against-pitch`). Any of those can be taken now; none needs
-the Steward question settled first. `3e-fix-label` is done — it was the last of the colony-line
-rounds.
+the Steward question settled first. `2a-frame-gpu-timer` is done, and `2b` is the round it
+unblocked — the triangle census now has a GPU millisecond to sit beside. `3e-fix-label` was the
+last of the colony-line rounds.
+
+**Two briefs fell out of `2a` and are in neither.** Nine look harnesses cannot navigate at all —
+`zoo`, `crew`, `heads`, `hollow`, `stress`, `diag-hang` and `trouble` (twice) wait on
+`networkidle2`, `forge` and `review` on `networkidle0`, and the dev server's HMR WebSocket is a
+request that never finishes, so each burns its full timeout and takes no frames. `shot.mjs` is
+fixed (`load`, 539 ms) because it blocked the round; the rest want one of their own, and the trap
+is written into `LOOK.md`'s *What will bite*. Separately: whether `TIME_ELAPSED_EXT` is wrong
+only under this harness or on this whole platform — if the platform, every browser profiler on
+this box is reading the same wrong number.
 
 The box is a serial resource: the suite runs alone, `measure` runs alone, GPU timing wants no
 contention. Check `ps -Ao rss,comm -r | head` before a long one — two runs were killed for memory

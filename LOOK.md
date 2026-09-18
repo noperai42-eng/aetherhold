@@ -57,7 +57,8 @@ owns `:5063`, say), every command below takes `URL=http://localhost:<port>/`.
 
 | Instrument | What it does | Run |
 |---|---|---|
-| `scripts/look/shot.mjs` | The five standard frames of one colony | `npm run look -- .look/shots/r5 r5` |
+| `scripts/look/shot.mjs` | The sixteen standard frames of one colony, and the Cost line under them: draw calls, triangles, empty instanced pools, and what the frame cost the card | `npm run look -- .look/shots/r5 r5` |
+| `scripts/look/gpu.mjs` | The reducer behind the Cost line's `gpu` reading — median and max over the clean samples, or `n/a`. Pure and import-free, so `tests/look-gpu.test.ts` judges it without a browser | (no command; read by `shot.mjs`) |
 | `scripts/look/zoo.mjs` | Staged scenes: every animal, crop stage and loose item, laid out on clear ground | `npm run look:zoo -- .look/shots/r5-zoo r5` |
 | `scripts/look/crew.mjs` | Seven settlers in a row, one per state of hands and attention | `npm run look:crew -- .look/shots/r12-crew r12` |
 | `scripts/look/heads.mjs` | Eight settlers at eight facings, for judging what a head's outline says | `LOOK_HAIR=long npm run look:heads -- .look/shots/r13 r13` |
@@ -67,6 +68,21 @@ owns `:5063`, say), every command below takes `URL=http://localhost:<port>/`.
 | `scripts/look/grain.mjs` | Whether a change reached the frame at all | `node scripts/look/grain.mjs .look/shots/r5/r5-3-colony.png .look/shots/r6/r6-3-colony.png` |
 | `scripts/look/diag-hang.mjs` | The stopwatch for when a capture stalls | `node scripts/look/diag-hang.mjs .look/hang` |
 | `.claude/workflows/look-round.js` | One whole round, steps 2–5, as a workflow | see below |
+
+The `gpu` reading is the one number in that line that had to be argued for, and the
+argument is worth carrying: it is **not** the card's own counter for the draw. This box's
+Chrome lists `EXT_disjoint_timer_query_webgl2`, reports 64 counter bits, answers every
+query and never flags a spoiled batch — and overstates the frame by about five times.
+Rendering the same frame one, two and four times inside a single measured window, a
+`gl.finish()` stall reads 1.8, 3.2 and 6.8 ms (linear, `1.7·N + 0.1`) where the timer
+query reads 5.5, 17.2 and 34.9 (about 8.7 a render, whatever N is), and the timer is not
+even repeatable with itself — 7.40 ms and then 5.06 ms for the same frame at the same
+size. So the extension is not used, not even printed beside the real number: a plausible
+wrong number in a round note is how a later round gets sent after a regression that never
+happened. What is printed is the stall — submit one frame's commands, wait for the queue
+to stand empty, take the wall time — tagged `(finish)` so that the claim travels with the
+number. **A reading with no method on it, or a bare `gpu 0.0`, is a bug, not a fast
+frame.** `gpu n/a` is a legitimate and honest answer, and it is quoted as `n/a`.
 
 `grain.mjs` is for one question, and it is a question the eye is bad at: *did anything
 arrive?* It fits a plane to every 32×32 tile of a frame and reports what is left over,
@@ -340,6 +356,20 @@ Each of these cost a round or an hour. They are listed so that they cost nothing
   frames against fifteen seconds and, on a loss, prints the main-thread liveness, the
   JS stack, and the draw calls attributed to shader programs — a stall with a live main
   thread is the GPU; one with a stack is yours.
+- **`networkidle2` never fires against the dev server.** The HMR client opens a
+  WebSocket and holds it open for the life of the page, and puppeteer counts that
+  socket as a request that never finishes — so `page.goto(URL, { waitUntil:
+  'networkidle2' })` spends its whole sixty seconds waiting for a connection that is
+  doing its job by staying open, and the run dies at line one having taken no frames.
+  It reads like a hung browser and it is not one. Measured 2026-09-18: zero HTTP
+  requests in flight eight seconds after DOMContentLoaded, `networkidle2` still timing
+  out at twenty-five seconds, `load` firing in 539 ms. `shot.mjs` waits on `load` at
+  both its navigations for this reason. **The other harnesses have not been fixed** —
+  `zoo.mjs`, `crew.mjs`, `heads.mjs`, `hollow.mjs`, `stress.mjs`, `diag-hang.mjs` and
+  `trouble.mjs` (twice) still wait on `networkidle2`, and `forge.mjs` and `review.mjs`
+  on the stricter `networkidle0`. Any of them run against a dev server will hang the
+  same way; that is a round of its own, not a side effect of one.
+
 - **Capture only after the gate.** The dev server serves the tree as it is; a frame
   taken while builders are mid-edit is of a program that does not compile.
 - **The vitest suite is not a builder's tool.** Alone it takes about fifteen minutes;

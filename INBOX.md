@@ -4,6 +4,28 @@ Anything that should change the *next* round goes here; PR comments cover the cu
 
 ## Open
 
+- **2026-09-18 — 2a shipped a GPU millisecond, and the first instrument it tried was lying.**
+  The Cost line now carries `gpu <median>/<max> ms (finish)`; the colony frame reads
+  **`gpu 3.0/3.8 ms (finish)`** at 122 draw calls and 8,357,240 triangles, and that is the baseline
+  every later look round re-shoots the same frame to compare against. The round's finding is what it
+  *didn't* ship: `EXT_disjoint_timer_query_webgl2` is listed on this box with 64 counter bits, answers
+  every query, never flags disjoint — and overstates by about five times. Only the brief's mandated
+  `gl.finish()` cross-check caught it (2.2 ms against the timer's 9.8), and an N-renders decider
+  settled it: the stall is linear in the work (`1.7·N + 0.1` for N = 1, 2, 4), the timer is
+  proportional to nothing (~8.7 ms a render at every N, and 7.40 then 5.06 ms for the identical frame
+  minutes apart). It was removed rather than demoted, and the removal is pinned in
+  `tests/look-gpu.test.ts`. **What this changes about the next round:** `2b-frame-census-grass-budget`
+  now has a card number to put its triangle census beside, which was the whole reason it depends on
+  this one — but read 3.0 ms as a median of 24 samples on one *named* frame, not a constant (a
+  younger colony of nearly the same triangle count read ~1.7 ms), so a comparison that quotes across
+  frames is worthless. Two briefs fell out of this round and neither is in it: (1) **nine look
+  harnesses cannot navigate at all** — `zoo`, `crew`, `heads`, `hollow`, `stress`, `diag-hang` and
+  `trouble` (×2) on `networkidle2`, `forge` and `review` on `networkidle0`; the dev server's HMR
+  WebSocket is a request that never finishes, so they burn their full timeout and take no frames.
+  `shot.mjs` is fixed (`load`, 539 ms); the rest want a round. (2) **Is `TIME_ELAPSED_EXT` wrong only
+  here, or wrong on this whole platform?** If it is the platform, the number is wrong in every browser
+  profiler on this box, which is worth knowing before trusting one.
+
 - **2026-09-16 — 3e-fix-label is closed, and it names one leftover.** The mood row picked its
   sentence on `pawn.jobId === null`, which answers *are they holding work* where the row means
   *was the colony free to give them any*. `needs.ts:554` now asks

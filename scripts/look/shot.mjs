@@ -1,4 +1,5 @@
 import { launch, URL } from './chrome.mjs';
+import { formatGpu, reduceGpu } from './gpu.mjs';
 import { copyFileSync, mkdirSync } from 'node:fs';
 const out = process.argv[2] ?? 'shots'; const label = process.argv[3] ?? 'r0';
 mkdirSync(out, { recursive: true });
@@ -74,7 +75,17 @@ const pause = async () => {
 // photographed at all. A switch rather than a blank — the world frames still put
 // it down, and the interface frames at the end put it back up.
 const hud = (on) => page.evaluate((v) => { document.getElementById('hud').style.display = v ? '' : 'none'; }, on);
-await page.goto(URL, { waitUntil: 'networkidle2', timeout: 60000 }); await sleep(3500);
+// `load`, not `networkidle2`. The dev server's HMR client opens a WebSocket and holds
+// it open for the life of the page, and puppeteer counts that socket as a request that
+// never finishes — so network never goes idle, `goto` spends its whole sixty seconds
+// waiting for a connection that is doing its job by staying open, and the run dies at
+// line one having taken no frames. Measured on this page 2026-09-18: zero HTTP requests
+// in flight eight seconds after DOMContentLoaded, `networkidle2` still timing out at
+// twenty-five seconds, `load` firing in 539 ms. Nothing was lost by the change — the
+// readiness this harness actually needs is not "the network went quiet" but "the app
+// has painted and the sim has ticked", and that is waited for properly thirteen lines
+// down (two animation frames, then `world.tick >= 1800`).
+await page.goto(URL, { waitUntil: 'load', timeout: 60000 }); await sleep(3500);
 // 0. The help card, which is the first thing every player sees and the last thing
 // anybody has looked at: twenty-odd rows of keyboard manual over a valley the
 // player has not met yet, and it is dismissed on the very next line. Taken before
@@ -150,25 +161,123 @@ await page.evaluate((h) => window.aether.look(h.x, h.y), home); await zoomTo(3);
 // for zero pixels, and `hidden` is how many of those the renderer was actually
 // spared. `aetherhold` is the app itself, hung on the window by `main.ts` for
 // exactly this kind of console work; `aether` next to it is the sim-side console.
-const cost = await page.evaluate(() => new Promise((resolve) => {
+//
+// And how long the card was busy drawing it, which is the number the wall clock
+// cannot give. Both readings are taken here and land in the same `cost` object: a
+// second measurement pass would be a second frame, and the point is to describe one.
+//
+// The method was chosen by measuring, and the measurement threw one out. `2a`'s brief
+// expected ANGLE-Metal to expose no timestamp queries — the documented macOS history —
+// and built a fence around that absence. The opposite is true here, and it is worse
+// than absence: Chrome for Testing on `--use-angle=metal` lists
+// `EXT_disjoint_timer_query_webgl2` with 64 counter bits, answers every query, never
+// flags a disjoint batch, moves its counter with the load — and overstates the frame
+// by about five times. Rendering the same frame N times inside one measured window:
+//
+//     N    gl.finish()   per render     TIME_ELAPSED_EXT   per render
+//     1      1.8 ms         1.8            5.479 ms           5.5
+//     2      3.2 ms         1.6           17.229 ms           8.6
+//     4      6.8 ms         1.7           34.946 ms           8.7
+//
+// The stall is linear in the work, `1.7·N + 0.1`. The timer query is proportional to
+// nothing — near 8.7 ms a render however many renders are in the window, a different
+// ratio at N=1, and not repeatable with itself (7.40 ms and then 5.06 ms for the same
+// frame at the same size). It cannot be the frame's GPU time in any case: the stall
+// bounds the same draws at 1.8 ms, and time on the card cannot exceed a wall-clock
+// window that opens before the commands are recorded and closes after all of them have
+// completed. So the extension is not used — not as a primary, not as a fallback, and
+// not printed beside the real number, because a plausible wrong number in a log is how
+// a later round gets sent after a regression that never happened.
+//
+// What is left is the stall, and it is honest about what it is: not the card's own
+// counter for the draw, but the wall time from submitting one frame's commands to the
+// queue standing empty again. That is an upper bound, and the table above puts it
+// within about a tenth of a millisecond of the real per-frame cost. The line says
+// `(finish)` so that a round reading it later knows which claim it is holding.
+//
+// The rAF-polled fence the brief designed is not used either, for a quieter reason: it
+// resolves to one display frame, about 16.7 ms, ten times coarser than the 1.7 ms it
+// would have to measure. `--disable-gpu-vsync` was in the brief to rescue exactly that,
+// and it is why the flag is not adopted — a synchronous stall does not poll on frames,
+// so there is nothing for the flag to buy and no reason to re-verify sixteen frames
+// for pixel-identity under it.
+//
+// The stall hooks `viewport.render` rather than drawing a frame of its own. `app.ts`
+// calls it from three places — the first-person camera, the orbit camera and the review
+// view — and a frame this harness drew itself would be a frame the app did not, with a
+// camera it did not choose. The hook is removed before this returns.
+const cost = await page.evaluate(() => {
   const app = window.aetherhold;
-  if (!app?.viewport) return resolve(null);
-  const info = app.viewport.renderer.info;
-  let tries = 0;
-  const read = () => {
-    // A frame in which the app did not draw reports zero calls, and reporting that
-    // as the colony's cost would be a lie the size of the whole measurement.
-    if (info.render.calls === 0 && ++tries < 12) return requestAnimationFrame(read);
-    let instanced = 0, empty = 0, hidden = 0;
-    app.viewport.scene.traverse((o) => {
-      if (!o.isInstancedMesh) return;
-      instanced++;
-      if (o.count === 0) { empty++; if (!o.visible) hidden++; }
-    });
-    resolve({ calls: info.render.calls, triangles: info.render.triangles, points: info.render.points, lines: info.render.lines, geometries: info.memory.geometries, textures: info.memory.textures, instanced, empty, hidden });
-  };
-  requestAnimationFrame(read);
-}));
+  if (!app?.viewport) return null;
+  const vp = app.viewport;
+  const info = vp.renderer.info;
+
+  /** Above the reducer's floor of 10 with room for batches the driver spoils. */
+  const WANT = 24;
+  /** About ten seconds of frames. A run that cannot fill WANT by then says n/a. */
+  const PATIENCE = 600;
+
+  const counts = () => new Promise((resolve) => {
+    let tries = 0;
+    const read = () => {
+      // A frame in which the app did not draw reports zero calls, and reporting that
+      // as the colony's cost would be a lie the size of the whole measurement.
+      if (info.render.calls === 0 && ++tries < 12) return requestAnimationFrame(read);
+      let instanced = 0, empty = 0, hidden = 0;
+      vp.scene.traverse((o) => {
+        if (!o.isInstancedMesh) return;
+        instanced++;
+        if (o.count === 0) { empty++; if (!o.visible) hidden++; }
+      });
+      resolve({ calls: info.render.calls, triangles: info.render.triangles, points: info.render.points, lines: info.render.lines, geometries: info.memory.geometries, textures: info.memory.textures, instanced, empty, hidden });
+    };
+    requestAnimationFrame(read);
+  });
+
+  const timeGpu = () => new Promise((resolve) => {
+    let gl = null;
+    try { gl = vp.renderer.getContext(); } catch (e) { gl = null; }
+    if (!gl) return resolve(null);
+
+    const hadOwn = Object.prototype.hasOwnProperty.call(vp, 'render');
+    const orig = vp.render.bind(vp);
+    const samples = [];
+    let spoiled = 0, waited = 0;
+
+    vp.render = (cam) => {
+      if (samples.length >= WANT) return orig(cam);
+      const t0 = performance.now();
+      orig(cam);
+      // The stall. Everything recorded above is submitted and drained before this
+      // returns, so the wall time across the pair is one frame's cost plus the cost of
+      // asking — measured at about a tenth of a millisecond, which is why this is a
+      // usable number and the rAF-polled fence was not.
+      gl.finish();
+      const ms = performance.now() - t0;
+      // A frame in which the app drew nothing is not a cheap frame, it is not a frame,
+      // and letting one in would drag the median toward a cost no player ever waited
+      // for. `renderer.info` is reset at the top of every `render`, so this reads the
+      // call count of the draw that just happened.
+      if (info.render.calls === 0) spoiled++; else samples.push(ms);
+    };
+
+    const watch = () => {
+      if (samples.length >= WANT || ++waited > PATIENCE) {
+        // Put the renderer back exactly as it was found, whichever way it was found:
+        // an own property left behind would outlive this measurement and shadow the
+        // prototype for every frame after it — and every frame after it would then be
+        // stalling on the GPU for a measurement nobody asked for.
+        if (hadOwn) vp.render = orig; else delete vp.render;
+        return resolve({ method: 'finish', samples, spoiled });
+      }
+      requestAnimationFrame(watch);
+    };
+    requestAnimationFrame(watch);
+  });
+
+  return counts().then((c) => timeGpu().then((gpu) => (c ? { ...c, gpu } : null)));
+});
+
 // 5. the same colony an hour before sundown. Noon is the fairest light to judge a
 // model in and the least revealing about the light itself: the sun is overhead, the
 // shadows are short, and the warm band at the horizon never appears at all. A round
@@ -220,7 +329,10 @@ await shot('7-hud-selected');
 try {
 await page.setViewport({ width: 390, height: 844, deviceScaleFactor: 3, isMobile: true, hasTouch: true });
 mid = { x: 195, y: 400 };
-await page.reload({ waitUntil: 'networkidle2', timeout: 60000 });
+// `load` here for the same reason as the first navigation: the HMR socket never
+// closes, so network never goes idle, and this reload is inside the try that owns
+// the eight phone frames — it would have eaten all of them.
+await page.reload({ waitUntil: 'load', timeout: 60000 });
 await sleep(3500);
 if (!(await page.evaluate(() => document.getElementById('hud')?.classList.contains('phone')))) {
   // Said out loud rather than swallowed: a desk layout photographed at phone size
@@ -281,8 +393,9 @@ if (!(await page.evaluate(() => document.getElementById('hud')?.classList.contai
 } catch (e) {
   console.log(`${label}: the phone half failed — ${e && e.message ? e.message : e}`);
 }
+const gpuMs = cost ? reduceGpu(cost.gpu) : null;
 const gpu = cost
-  ? `colony frame ${cost.calls} draw calls / ${cost.triangles} triangles / ${cost.points} points / ${cost.lines} lines, ${cost.geometries} geometries, ${cost.textures} textures, ${cost.empty} of ${cost.instanced} instanced meshes empty (${cost.hidden} of those hidden)`
+  ? `colony frame ${cost.calls} draw calls / ${cost.triangles} triangles / ${cost.points} points / ${cost.lines} lines, ${cost.geometries} geometries, ${cost.textures} textures, ${cost.empty} of ${cost.instanced} instanced meshes empty (${cost.hidden} of those hidden), ${formatGpu(gpuMs)}${gpuMs && gpuMs.spoiled ? ` [${gpuMs.spoiled} spoiled]` : ''}`
   : 'colony frame not counted — window.aetherhold was not there to ask';
 const missed = WANTED.filter((n) => !took.includes(n));
 console.log(`${label}: ${errs.length} console errors, ${site.n} showcase buildings stood, ${frameMs.toFixed(0)} ms/frame, ${gpu}, ${took.length}/${WANTED.length} frames${missed.length ? `, MISSING ${missed.join(' ')}` : ' (all)'}`, errs.slice(0, 3));
