@@ -440,6 +440,52 @@ describe('what a blade and a stone are made of', () => {
     view.dispose();
   });
 
+  it('spends a fifth of a colony frame on the grass, in one draw, and says so as a number', () => {
+    // The grass budget, pinned as a literal after `2a` gave the frame a GPU
+    // millisecond to put a triangle count beside.
+    //
+    // The premise this pin was written to correct: `TUFTS_PER_CELL`'s comment says the
+    // seven-tuft field is "5.7 % on a colony frame of 8,000,822", and 5.7 % is the right
+    // number for what that sentence is about — the *increment* from five tufts to seven,
+    // 457,140 triangles. The comment is correct and is not edited. What it does not say,
+    // and what a round looking for triangles to cut would want said, is the total: the
+    // same arithmetic puts 1,599,990 grass triangles on that frame, which is 20.0 % of
+    // it. A fifth of the frame is not a rounding error, and `2b`'s census measured the
+    // grass at the top of the colony frame's pools by a wide margin.
+    //
+    // Three things are held here, and they are three because they fail apart:
+    //
+    // 1. The pool's triangle cost, as the literal it works out to on the standard
+    //    meadow. Written as the product it is — instances times the geometry's own
+    //    triangles — and then again as the number, so that a change to either half has
+    //    to come here and be argued for rather than cancelling out against the other.
+    // 2. One draw. The whole defence of a fifth of the frame is that it costs a single
+    //    bind: a grass that became two pools would double the CPU side of it while the
+    //    triangle count sat still, which is exactly the swap the wall clock used to miss.
+    // 3. It does not cast. A pool that casts is drawn again in the shadow pass, so a
+    //    grass with `castShadow` on would be two fifths of the frame, not one, and the
+    //    `2b` census flags the column for that reason.
+    //
+    // Proven red by raising `TUFTS_PER_CELL` from 7 to 8 in `decor.ts` (restored): the
+    // instance count and the total both move, and the assertion names both numbers.
+    const world = meadow();
+    const view = new DecorView(world);
+    const { tufts } = meshes(view);
+    const perTuft = triangles(tufts.geometry);
+    expect(perTuft).toBe(15);
+    expect(tufts.count).toBe(world.width * world.height * 7);
+    expect(tufts.count * perTuft).toBe(3870720);
+
+    // One pool, and it is the first child of the group — the stones are the second, and
+    // nothing else in the scatter draws at all.
+    const grassPools = view.group.children.filter(
+      (o) => (o as THREE.InstancedMesh).isInstancedMesh && (o as THREE.InstancedMesh).geometry === tufts.geometry,
+    );
+    expect(grassPools).toHaveLength(1);
+    expect(tufts.castShadow).toBe(false);
+    view.dispose();
+  });
+
   it('lights a blade as a curved sheet, seen from either side', () => {
     // A blade is a sheet with no back, so it has to draw from both sides or it
     // vanishes for half a turn in first person; and it is welded and smooth

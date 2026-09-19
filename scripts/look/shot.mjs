@@ -275,7 +275,98 @@ const cost = await page.evaluate(() => {
     requestAnimationFrame(watch);
   });
 
-  return counts().then((c) => timeGpu().then((gpu) => (c ? { ...c, gpu } : null)));
+  // Where the triangles actually are. The total alone says a colony frame costs
+  // eight million and says nothing about what to do with that, and the one number
+  // everyone reaches for — the grass — turns out to be a fifth of it rather than the
+  // twentieth a misread of `decor.ts`'s own comment suggested. So the census names
+  // pools: one row per drawn mesh, its cost being the triangles of its geometry times
+  // the instances it draws, sorted, top ten kept. Nothing in `src/client/render` names
+  // more than a handful of its meshes, so the label is built from what is there — the
+  // nearest named ancestor if the graph has one, otherwise the path of types and child
+  // indices down from the scene — and it is read together with `instances` and `geoTris`,
+  // which is what makes a row recognisable: 258,048 instances of a fifteen-triangle
+  // geometry is the grass and cannot be anything else.
+  //
+  // `castShadow` is on the row because a pool that casts pays twice, once in the colour
+  // pass and once more in the shadow pass, and the pool at the top of this census is not
+  // the pool to cut if it is the one that does not.
+  const label = (o) => {
+    const parts = [];
+    for (let n = o; n && n !== vp.scene; n = n.parent) {
+      if (n.name) { parts.unshift(n.name); break; }
+      const i = n.parent ? n.parent.children.indexOf(n) : -1;
+      parts.unshift(`${n.type}[${i}]`);
+    }
+    return parts.join('/');
+  };
+
+  const census = () => {
+    const rows = [];
+    vp.scene.traverse((o) => {
+      const geo = o.geometry;
+      if (!geo || !o.visible) return;
+      const attr = geo.index ?? geo.getAttribute('position');
+      if (!attr) return;
+      const geoTris = Math.floor(attr.count / 3);
+      const instances = o.isInstancedMesh ? o.count : 1;
+      if (geoTris === 0 || instances === 0) return;
+      rows.push({ label: label(o), geoTris, instances, tris: geoTris * instances, castShadow: !!o.castShadow });
+    });
+    rows.sort((a, b) => b.tris - a.tris);
+    // The scene's own total, not `renderer.info`'s: this one counts what is in the graph
+    // and visible, where the renderer counts what survived the frustum. They are close on
+    // the colony frame and they are not the same number, so the percentages below are of
+    // this total and say so.
+    const tris = rows.reduce((n, r) => n + r.tris, 0);
+    const castTris = rows.reduce((n, r) => (r.castShadow ? n + r.tris : n), 0);
+    let lights = 0;
+    vp.scene.traverse((o) => { if (o.isLight && o.castShadow) lights++; });
+    return { top: rows.slice(0, 10), pools: rows.length, tris, castTris, lights };
+  };
+
+  // What the shadow pass costs — and the first two ways of asking both had to be thrown
+  // out, which is the second time in two rounds that the instrument was the finding.
+  //
+  // The brief's method was `renderer.info.render.triangles` with `shadowMap.enabled` on
+  // and then off. It reported 0.0 %: 8,357,240 triangles with the pass and 8,357,240
+  // without, the same total to the digit. That is not a frame with no shadows in it.
+  // Waiting the flip out — watching the draw-call count until it fell, rather than
+  // assuming one animation frame was one render — did not rescue it either; the count
+  // never fell in twenty frames. The reason is in three's own source, and it is
+  // deliberate: `WebGLRenderer.render` calls `shadowMap.render(...)` and only *then*
+  // calls `info.reset()` (`WebGLRenderer.js:1606` and `:1612` in 0.180). The shadow pass
+  // is excluded from `renderer.info` by construction. No on/off comparison of that object
+  // can ever measure it, and a round that trusted the 0.0 % would have concluded the
+  // colony casts no shadows.
+  //
+  // So the share is taken two ways that can answer, and both are printed:
+  //
+  //   * **Triangles.** Every mesh that casts is drawn a second time into the depth map,
+  //     so the census's own `castShadow` column, summed over the whole scene rather than
+  //     the top ten, is the count of triangles the frame draws twice. It is exact and it
+  //     is free — it is the census already taken, read down a different column.
+  //   * **Milliseconds.** `2a`'s stall wraps the whole `render` call, the depth pass
+  //     included, so timing the frame with shadows and then without is a real before and
+  //     after. `shadowMap.enabled` is flipped without touching any material's
+  //     `needsUpdate`: the programs stay exactly as compiled, still sampling a shadow map
+  //     that has stopped being updated, so the colour pass costs what it always cost and
+  //     the only thing removed from the measurement is the depth pass itself. It is put
+  //     back before this returns, and the frames taken afterwards are unaffected.
+  const withoutShadows = () => new Promise((resolve) => {
+    const sm = vp.renderer.shadowMap;
+    if (!sm || !sm.enabled) return resolve(null);
+    sm.enabled = false;
+    timeGpu().then((raw) => { sm.enabled = true; resolve(raw); });
+  });
+
+  // The census is taken the instant the counts land, not after the GPU timing: twenty-four
+  // frames later the pawns have walked, the crops have grown and the pools have resized,
+  // and a census of a different frame from the triangle total above would be worse than none.
+  return counts().then((c) => {
+    if (!c) return null;
+    const scene = census();
+    return timeGpu().then((gpu) => withoutShadows().then((gpuNoShadow) => ({ ...c, scene, gpu, gpuNoShadow })));
+  });
 });
 
 // 5. the same colony an hour before sundown. Noon is the fairest light to judge a
@@ -394,9 +485,33 @@ if (!(await page.evaluate(() => document.getElementById('hud')?.classList.contai
   console.log(`${label}: the phone half failed — ${e && e.message ? e.message : e}`);
 }
 const gpuMs = cost ? reduceGpu(cost.gpu) : null;
+const gpuNoShadowMs = cost ? reduceGpu(cost.gpuNoShadow) : null;
+// The shadow pass, said twice because the two halves answer different questions and
+// neither substitutes for the other: how much of the frame's geometry is drawn a second
+// time into the depth map, and what that second drawing actually costs in milliseconds.
+// A triangle share alone would over-report — depth-only draws are cheap per triangle —
+// and a millisecond share alone would not say what to cut.
+const shadow = cost && cost.scene
+  ? `, ${((cost.scene.castTris / cost.scene.tris) * 100).toFixed(1)}% of scene triangles cast (${cost.scene.castTris} of ${cost.scene.tris} across ${cost.scene.pools} pools, ${cost.scene.lights} shadow light${cost.scene.lights === 1 ? '' : 's'})`
+  : '';
+const shadowMs = gpuMs && gpuNoShadowMs && gpuMs.method === 'finish' && gpuNoShadowMs.method === 'finish'
+  ? `, shadow pass ${(gpuMs.median - gpuNoShadowMs.median).toFixed(1)} ms of it (${gpuNoShadowMs.median.toFixed(1)} ms without)`
+  : ', shadow pass n/a';
 const gpu = cost
-  ? `colony frame ${cost.calls} draw calls / ${cost.triangles} triangles / ${cost.points} points / ${cost.lines} lines, ${cost.geometries} geometries, ${cost.textures} textures, ${cost.empty} of ${cost.instanced} instanced meshes empty (${cost.hidden} of those hidden), ${formatGpu(gpuMs)}${gpuMs && gpuMs.spoiled ? ` [${gpuMs.spoiled} spoiled]` : ''}`
+  ? `colony frame ${cost.calls} draw calls / ${cost.triangles} triangles / ${cost.points} points / ${cost.lines} lines, ${cost.geometries} geometries, ${cost.textures} textures, ${cost.empty} of ${cost.instanced} instanced meshes empty (${cost.hidden} of those hidden), ${formatGpu(gpuMs)}${gpuMs && gpuMs.spoiled ? ` [${gpuMs.spoiled} spoiled]` : ''}${shadowMs}${shadow}`
   : 'colony frame not counted — window.aetherhold was not there to ask';
+// The census prints above the Cost line and one pool a line, because ten rows wrapped
+// into one line is a paragraph nobody reads and the whole point of it is to be scanned
+// down. The share is of the scene's own visible total, which is not `renderer.info`'s —
+// that one counts what survived the frustum — so the rows are read as "this pool against
+// the whole valley", not "this pool against what was on screen".
+if (cost && cost.scene && cost.scene.top.length) {
+  console.log(`${label}: where the colony frame's triangles are — top ${cost.scene.top.length} of ${cost.scene.pools} visible pools, ${cost.scene.tris} triangles in the scene`);
+  for (const r of cost.scene.top) {
+    const pct = ((r.tris / cost.scene.tris) * 100).toFixed(1);
+    console.log(`${label}:   ${String(r.tris).padStart(9)} tri  ${pct.padStart(5)}%  ${String(r.instances).padStart(7)} × ${String(r.geoTris).padStart(5)}  ${r.castShadow ? 'casts' : '     '}  ${r.label}`);
+  }
+}
 const missed = WANTED.filter((n) => !took.includes(n));
 console.log(`${label}: ${errs.length} console errors, ${site.n} showcase buildings stood, ${frameMs.toFixed(0)} ms/frame, ${gpu}, ${took.length}/${WANTED.length} frames${missed.length ? `, MISSING ${missed.join(' ')}` : ' (all)'}`, errs.slice(0, 3));
 await browser.close();

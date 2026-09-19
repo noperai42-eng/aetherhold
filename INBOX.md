@@ -4,6 +4,32 @@ Anything that should change the *next* round goes here; PR comments cover the cu
 
 ## Open
 
+- **2026-09-18 — 2b measured where the triangles are, and the grass is not the answer.** The
+  colony frame's census: **the rock first at 23.0 %** (`TerrainView.rocks`, `terrain.ts:598` —
+  8,414 instances of a 234-triangle block, and it casts), the grass second at 18.7 % (106,547
+  tufts of 15, drawn once and casting nothing), seven `BuildingsView` pools 29.0 % between them,
+  the shroud 5.2 %. The brief's premise correction stands — `TUFTS_PER_CELL`'s "5.7 %" is the
+  five-to-seven *increment*, the total is a fifth of the frame — and the comment is correct and
+  was not edited. The grass is pinned three ways in `tests/decor-view.test.ts`; nothing under
+  `src/` changed. **What this changes about the next round:** `2b`'s own Next brief is the rock,
+  as the gate ruled — it is the top pool, it casts, and 8,414 blocks of 234 triangles is a lot of
+  geometry for something a player reads as a cliff face. Two others fell out and are in neither:
+  (1) the seven building pools are 29.0 % between them, more than the rock and more than the
+  grass, which is one question under seven census rows; (2) `r23-5-dusk` carries **no shadows at
+  all** — and neither did `r22-5-dusk`, so it predates this round — while the colony goes on
+  paying 0.6 ms a frame for a depth pass; the frame that exists to judge the light is showing
+  none of it, and that is a lighting round, not a frame round.
+
+- **2026-09-18 — and 2a's baseline does not reproduce, which is a caution for every look round
+  after it.** `2a` published `gpu 3.0/3.8 ms (finish)` as the number later rounds compare
+  against. Four readings of that same frame on the same box came back 1.6, 1.5, 1.6 and 1.8 ms —
+  tight among themselves, half of the published figure, with no file under `src/` changed in
+  between. The 3.0 was a loaded box, and nothing in a round note can distinguish a loaded box
+  from a heavier frame. **The stall is repeatable within a shoot and not across them.** Take the
+  before and the after in the *same* shoot, on the same named frame, and compare those; the
+  absolute figure is worth writing down only as the order of magnitude it is. `LOOK.md`'s *What
+  will bite* and the `2a` acceptance row both say so now.
+
 - **2026-09-18 — 2a shipped a GPU millisecond, and the first instrument it tried was lying.**
   The Cost line now carries `gpu <median>/<max> ms (finish)`; the colony frame reads
   **`gpu 3.0/3.8 ms (finish)`** at 122 draw calls and 8,357,240 triangles, and that is the baseline

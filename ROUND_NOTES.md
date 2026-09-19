@@ -4,6 +4,124 @@ One round, one measured gap, one fix. Newest first.
 
 ---
 
+## 2026-09-18 — A fifth of the frame is grass, and it is not the biggest thing in it
+
+**The gap.** `2a` gave the colony frame a millisecond and no way to spend it. Eight and a
+half million triangles is not a number anyone can act on: it says the frame is heavy and
+nothing at all about which pool to open first. The round that would open one has to guess,
+and the pool everyone guesses is the grass.
+
+**The premise `2b` was briefed to correct, and it was the brief that was right.**
+`TUFTS_PER_CELL`'s comment says the seven-tuft field is "5.7 % on a colony frame of
+8,000,822", and a round reading that quickly comes away believing the grass is a twentieth
+of the frame and not worth touching. 5.7 % is the correct number for what that sentence is
+about — the *increment* from five tufts to seven, 457,140 triangles — and the comment is
+correct and is not edited. What it does not say is the total, and the same arithmetic gives
+it: 1,599,990 triangles, **20.0 %** of that frame. A fifth, not a twentieth.
+
+**Measured, it is 18.7 %** — 1,598,205 triangles, 106,547 tufts of fifteen triangles each,
+against a scene of 8,541,790. The comment's estimate was 106,666 tufts; it was off by 119,
+which is the cells a colony has built on or plowed since. So the arithmetic holds and the
+premise correction holds.
+
+**And the census refuted the round's own expectation anyway. The grass is second.**
+
+```
+top 10 of 1866 visible pools, 8541790 triangles in the scene
+  1968876 tri   23.0%     8414 ×   234  casts  Group[0]/Group[0]/Mesh[1]     the rock
+  1598205 tri   18.7%   106547 ×    15         Group[0]/Group[1]/Mesh[0]     the grass
+   684880 tri    8.0%     2446 ×   280  casts  Group[0]/Group[2]/Mesh[124]
+   442368 tri    5.2%    36864 ×    12         Group[0]/Group[6]/Mesh[0]     the shroud
+   416304 tri    4.9%     1239 ×   336  casts  Group[0]/Group[2]/Mesh[120]
+   416304 tri    4.9%     1239 ×   336  casts  Group[0]/Group[2]/Mesh[121]
+   416304 tri    4.9%     1239 ×   336  casts  Group[0]/Group[2]/Mesh[122]
+   416304 tri    4.9%     1239 ×   336  casts  Group[0]/Group[2]/Mesh[123]
+   405552 tri    4.7%     1207 ×   336  casts  Group[0]/Group[2]/Mesh[125]
+   405552 tri    4.7%     1207 ×   336  casts  Group[0]/Group[2]/Mesh[126]
+```
+
+The top pool is `TerrainView.rocks` (`terrain.ts:598`): **8,414 instances of a 234-triangle
+block, 23.0 % of the frame, and it casts** — so the depth pass draws all 1.97 million of
+them again, where the grass is drawn once and `decor.ts:394` has said why since round 10.
+Seven of the ten rows sit under `BuildingsView` — six of 336 triangles at about 1,240
+instances each and one of 280 at 2,446; the shroud is 36,864 cells of twelve. Nothing in `src/client/render` names more than a
+handful of its meshes, so a row is labelled by its path of types and child indices from the
+scene and read together with `instances × geoTris` — 106,547 instances of a fifteen-triangle
+geometry is the grass and cannot be anything else.
+
+**The shadow share could not be measured the way the brief asked, and the reason is in
+three's source.** The brief said: `renderer.info` triangles with `shadowMap.enabled` on and
+then off. It reported **0.0 %** — 8,357,240 with the pass and 8,357,240 without, the same
+total to the digit. That is not a frame with no shadows in it. Waiting the flip out rather
+than assuming one animation frame was one render did not rescue it either: the draw-call
+count never fell in twenty frames. `WebGLRenderer.render` calls `shadowMap.render(...)` and
+only *then* calls `info.reset()` — `WebGLRenderer.js:1606` and `:1612` in the installed
+0.180 — so the shadow pass is excluded from `renderer.info` **by construction**, and no
+on/off comparison of that object can ever see it. A round that had trusted the 0.0 % would
+have concluded the colony casts nothing.
+
+**So it is measured two ways that can answer, and both are printed.** The census's own
+`castShadow` column, summed over the whole scene rather than the top ten: **73.0 % of the
+colony frame's triangles are drawn a second time into the depth map**, against one
+shadow-casting light. And `2a`'s stall, run a second time with `shadowMap.enabled` false:
+**0.6 ms of a 1.6 ms frame**. Neither substitutes for the other — a triangle share alone
+over-reports, because a depth-only draw is cheap per triangle, and a millisecond share alone
+does not say what to cut — and read together they agree, which is the closest thing to a
+cross-check either has. The flip touches no material's `needsUpdate`, so the programs stay
+exactly as compiled and only the depth pass leaves the measurement; it is put back before
+the collector returns, and `6-hud-colony`, shot afterwards, has its wall, fence, lamp and
+tree shadows.
+
+**A correction to `2a`, from this round's own readings.** `2a` published
+`gpu 3.0/3.8 ms (finish)` as "the baseline every later look round compares against". Four
+readings of that same frame here came back **1.6, 1.5, 1.6** and — in `2a`'s own N-table at
+N=1 — **1.8 ms**, tight among themselves and about half of the published figure. The frame
+did not get lighter; nothing under `src/` changed. The 3.0 was a loaded box. **The stall is
+repeatable within a shoot and not across them**, which means the number is a within-run
+comparator and the way to use it is a before and an after taken in the *same* shoot on the
+same named frame. `LOOK.md`'s *What will bite* now says so, and the `2a` acceptance row is
+corrected rather than left standing. This is the second time in two rounds that the
+instrument, not the frame, was the finding.
+
+**What is pinned.** No triangle was removed this round; `src/` is untouched. The grass is
+pinned in `tests/decor-view.test.ts` as three things, because they fail apart:
+
+- **the cost, as the product it is and then as the literal it works out to** — `tufts.count
+  × 15 === 3_870_720` on the standard meadow, so a change to either half has to come here
+  and be argued for instead of cancelling against the other;
+- **one draw** — the whole defence of a fifth of the frame is that it costs a single bind,
+  and a grass that became two pools would double the CPU side while the triangle count sat
+  still, which is exactly the swap the wall clock used to miss;
+- **it does not cast** — with 73 % of the frame already drawn twice, a grass with
+  `castShadow` on would be two fifths of the frame rather than one.
+
+Proven red twice by raising `TUFTS_PER_CELL` from 7 to 8 in `decor.ts` and restoring it:
+258,048 → 294,912 instances, and 3,870,720 → 4,423,680 triangles. The `≤ 16` triangle
+ceiling on the blade is unchanged and still green.
+
+**Verified.** Sixteen frames in `.look/shots/r23/`, 0 console errors, 26 showcase buildings
+stood, 16/16 with an empty missing-list. Looked at, not counted: `r23-3-colony` is the
+settlement from above with the brick walls, the three beds, the tables and lamp, two
+settlers, the tree cluster and the rock outcrop at bottom left — the outcrop being the pool
+the census puts first — and it carries its shadows, which is the frame the census and both
+shadow readings are taken on. `r23-6-hud-colony` is the manager with every panel up, taken
+*after* the shadow flip, and the wall, fence, lamp and tree shadows are all there, which is
+the restore working. `r23-5-dusk` carries **no shadows at all** — and neither does
+`r22-5-dusk`, shot before any of this round's changes, so it is not the instrument. Suite
+green alone: 132 files, 2840 passed, 13 skipped. Typecheck green. No file under `src/`
+changed, so the fingerprint holds at `e61c7f10` and no re-measure is owed.
+
+**Next — and the census names it.** The rock is the top pool at 23.0 %, it casts, and 8,414
+instances of 234 triangles is a lot of block for something a player reads as a cliff face;
+that is `2b`'s own Next brief and it is not this round's fix, which was ruled at the gate.
+Two others fell out and are in neither: the dusk frame casts no shadow while the colony goes
+on paying 0.6 ms for a depth pass — the frame that exists specifically to judge the light
+shows none of it — and the seven building pools are **29.0 %** of the frame between
+them, more than the rock and more than the grass, which is seven census rows and one
+question underneath them.
+
+---
+
 ## 2026-09-18 — The card that was listed, answering, sixty-four bits wide, and wrong by five times
 
 **The gap.** For ten rounds the only cost this harness measured was a wall-clock

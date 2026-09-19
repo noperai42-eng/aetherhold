@@ -57,7 +57,7 @@ owns `:5063`, say), every command below takes `URL=http://localhost:<port>/`.
 
 | Instrument | What it does | Run |
 |---|---|---|
-| `scripts/look/shot.mjs` | The sixteen standard frames of one colony, and the Cost line under them: draw calls, triangles, empty instanced pools, and what the frame cost the card | `npm run look -- .look/shots/r5 r5` |
+| `scripts/look/shot.mjs` | The sixteen standard frames of one colony, the Cost line under them — draw calls, triangles, empty instanced pools, what the frame cost the card, and what the shadow pass cost of that — and above it the triangle census: the ten heaviest pools in the scene, each with its instance count, its geometry's own triangles and whether it casts | `npm run look -- .look/shots/r5 r5` |
 | `scripts/look/gpu.mjs` | The reducer behind the Cost line's `gpu` reading — median and max over the clean samples, or `n/a`. Pure and import-free, so `tests/look-gpu.test.ts` judges it without a browser | (no command; read by `shot.mjs`) |
 | `scripts/look/zoo.mjs` | Staged scenes: every animal, crop stage and loose item, laid out on clear ground | `npm run look:zoo -- .look/shots/r5-zoo r5` |
 | `scripts/look/crew.mjs` | Seven settlers in a row, one per state of hands and attention | `npm run look:crew -- .look/shots/r12-crew r12` |
@@ -83,6 +83,33 @@ happened. What is printed is the stall — submit one frame's commands, wait for
 to stand empty, take the wall time — tagged `(finish)` so that the claim travels with the
 number. **A reading with no method on it, or a bare `gpu 0.0`, is a bug, not a fast
 frame.** `gpu n/a` is a legitimate and honest answer, and it is quoted as `n/a`.
+
+The census above the Cost line answers the question the total cannot: *where*. Eight and a
+half million triangles is not a number anyone can act on, and the pool everybody reaches
+for first is the grass — which `2b` measured at **18.7 %** of the colony frame, a fifth of
+it rather than the twentieth a misreading of `decor.ts`'s own comment suggests, and still
+not the largest. The largest is the rock, at **23.0 %**: 8,414 instances of a 234-triangle
+block, and unlike the grass it casts. Nothing in `src/client/render` names more than a
+handful of its meshes, so each row is labelled by the path of types and child indices down
+from the scene and read together with its `instances × geoTris` — 106,547 instances of a
+fifteen-triangle geometry is the grass and can be nothing else. `Group[0]` under the scene
+is `world-view.ts`'s root, and its children are in the order that file adds them: terrain,
+decor, buildings, landmarks, pawns, pickies, shroud, sky, fx, weather.
+
+The shadow pass is reported twice, and it has to be, because the obvious way of asking it
+is a trap. **`renderer.info` does not count the shadow pass** — `WebGLRenderer.render`
+calls `shadowMap.render(...)` and only then calls `info.reset()` (`WebGLRenderer.js:1606`
+and `:1612` in 0.180), so the pass is excluded by construction and a comparison of
+`info.render.triangles` with shadows on and off returns *the same total to the digit*.
+That is not a frame without shadows; it is the same frame read twice, and it is what this
+harness printed as `shadow pass 0.0%` before the method was thrown out. What is printed
+now is the census's own `castShadow` column summed over the whole scene — **73.0 % of the
+colony frame's triangles are drawn a second time into the depth map**, against one
+shadow-casting light — and, separately, the `2a` stall run again with `shadowMap.enabled`
+false: **0.6 ms of a 1.6 ms frame**. The two are not substitutes. A triangle share alone
+over-reports, because a depth-only draw is cheap per triangle; a millisecond share alone
+does not say what to cut. Read together they agree, which is the closest thing to a
+cross-check either of them has.
 
 `grain.mjs` is for one question, and it is a question the eye is bad at: *did anything
 arrive?* It fits a plane to every 32×32 tile of a frame and reports what is left over,
@@ -369,6 +396,23 @@ Each of these cost a round or an hour. They are listed so that they cost nothing
   `trouble.mjs` (twice) still wait on `networkidle2`, and `forge.mjs` and `review.mjs`
   on the stricter `networkidle0`. Any of them run against a dev server will hang the
   same way; that is a round of its own, not a side effect of one.
+
+- **`renderer.info` excludes the shadow pass, so an on/off comparison of it measures
+  nothing.** three calls `shadowMap.render(...)` and only then `info.reset()`
+  (`WebGLRenderer.js:1606` and `:1612` in 0.180). Flip `shadowMap.enabled` and the
+  triangle total does not move by one, which reads as *this colony casts no shadows* and
+  is in fact *this object never counted them*. Waiting the flip out does not rescue it —
+  the draw-call count does not fall either, because those are the colour pass's calls.
+  The shadow pass is measurable two ways and neither is that one: sum the scene's own
+  casting geometry, or time the frame with the pass and without it.
+
+- **The `gpu` millisecond is a within-run comparator, not a constant across rounds.**
+  `2a` published `gpu 3.0/3.8 ms (finish)` as the colony frame's baseline. Four later
+  readings of the same frame on the same box came back 1.5, 1.6, 1.6 and 1.8 ms, tight
+  among themselves and half of it, so the 3.0 was a loaded box and not a heavier frame —
+  and no round can tell those apart from a number quoted in a previous round's note. Take
+  a before and an after **in the same shoot**, on the same named frame, and compare those.
+  The absolute figure is worth writing down only as the order of magnitude it is.
 
 - **Capture only after the gate.** The dev server serves the tree as it is; a frame
   taken while builders are mid-edit is of a program that does not compile.
