@@ -2159,3 +2159,8 @@ tour, [ACCEPTANCE.md](ACCEPTANCE.md) for what the build promised and which test 
 promise down, and [ENDGAME.md](ENDGAME.md) for what is still missing at the far end of a
 run. If you came for the models rather than the game, [ASSETS.md](ASSETS.md) turns the
 whole set into `.glb` with one command and says what another project needs to know.
+
+## License
+
+MIT — see [LICENSE](LICENSE). Every asset in here is procedural, generated in code at load
+time, so the licence covers the whole thing: nothing was downloaded into the box.

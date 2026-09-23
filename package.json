@@ -2,6 +2,7 @@
   "name": "aetherhold",
   "private": true,
   "version": "1.0.0",
+  "license": "MIT",
   "type": "module",
   "description": "Aetherhold — a colony sim you can also walk around inside. Dual-view: manager overhead + first-person colonist.",
   "scripts": {
