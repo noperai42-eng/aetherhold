@@ -7,7 +7,7 @@
 > second half describes. Every line number and constant below was read out of the
 > files named beside it.
 >
-> Like [DECIDING.md](DECIDING.md), this is **a code-surface reading, not a measured
+> Like the deciding-screen plan it sits beside, this is **a code-surface reading, not a measured
 > grid.** No colony was run to produce it. The instrument that settles most of it
 > is the one in [LOOK.md](LOOK.md): photograph the frames, look at them. Where a
 > claim here could be wrong, the section says which frame would show it.
@@ -16,8 +16,7 @@
 [ARCHITECTURE.md](ARCHITECTURE.md) is how the code is laid out,
 [ASSETS.md](ASSETS.md) is how the models leave the game as `.glb`,
 [LOOK.md](LOOK.md) is the loop that judges anything a player sees,
-[DECIDING.md](DECIDING.md) and [ENDGAME.md](ENDGAME.md) are the other two forward
-plans, and [METHODOLOGY.md](METHODOLOGY.md) is how a change gets measured.
+[ENDGAME.md](ENDGAME.md) is the other published forward plan, and [METHODOLOGY.md](METHODOLOGY.md) is how a change gets measured.
 
 ## Contents
 
@@ -862,7 +861,7 @@ no bench is a refactor, and a bench with no comparison is a viewer. Stages 3 and
 only pay off once there is something worth comparing. Stage 5 is open-ended and
 should be driven by the contact sheet, not by this table.
 
-Nothing here blocks or is blocked by [DECIDING.md](DECIDING.md). They touch
+Nothing here blocks or is blocked by the deciding-screen plan. They touch
 different files entirely — that plan is `src/client/ui/`, this one is
 `src/client/render/` — and the only shared surface is the look loop, which both
 feed.

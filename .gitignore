@@ -36,3 +36,15 @@ chrome-profile/
 # `npm run export:models` writes here. Generated from the renderer on demand,
 # so a checked-in copy is a copy that goes stale the first time a model changes.
 models/
+
+# The working notes: the segment board, the round log, the resume pointer, the
+# rolling inbox and the open decisions. They are how the work is driven in this
+# box, not part of what the repository ships — they stay on disk and out of the
+# remote. Anything in them a reader needs is in README.md, ARCHITECTURE.md,
+# METHODOLOGY.md or ACCEPTANCE.md instead.
+PLAN.md
+SEGMENT_STATUS.md
+CURRENT_WORK.md
+INBOX.md
+ROUND_NOTES.md
+DECIDING.md

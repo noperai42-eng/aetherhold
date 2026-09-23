@@ -207,4 +207,4 @@ Read [LOOK.md](LOOK.md) before editing geometry. Everything a player sees in thi
 project is changed through a loop that photographs the same sixteen frames before
 and after and judges the pictures, and the models in this export are the output of
 eleven of those rounds. [ARCHITECTURE.md](ARCHITECTURE.md) says where the render
-code lives; [ROUND_NOTES.md](ROUND_NOTES.md) says what each round changed and why.
+code lives; the round log, kept in the box, says what each round changed and why.

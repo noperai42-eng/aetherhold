@@ -14,7 +14,6 @@ place. [ARCHITECTURE.md](ARCHITECTURE.md) is how it is built.
 [METHODOLOGY.md](METHODOLOGY.md) is how it gets changed — the round, the instruments, and
 which one to reach for when the grid goes red.
 [ENDGAME.md](ENDGAME.md) is the plan for what the game becomes after the founding, and
-[DECIDING.md](DECIDING.md) is the plan for what the player is told while deciding it, and
 [FORGING.md](FORGING.md) is the plan for a bench to shape the things it is all made of.
 
 ## Contents

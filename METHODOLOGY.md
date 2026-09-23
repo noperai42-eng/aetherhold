@@ -8,8 +8,7 @@ round actually runs, and which instrument answers which question.
 system works, [ARCHITECTURE.md](ARCHITECTURE.md) is how the code is laid out and why,
 [PLAYTEST.md](PLAYTEST.md) is the hands-on browser script, [ACCEPTANCE.md](ACCEPTANCE.md)
 is what has been checked and by whom, [ENDGAME.md](ENDGAME.md) is the plan for after the
-founding, and [ROUND_NOTES.md](ROUND_NOTES.md) is the log of rounds this file describes
-the shape of. [LOOK.md](LOOK.md) is how the rendered game is looked at, round by round,
+founding. The log of rounds this file describes the shape of stays in the box, unpublished. [LOOK.md](LOOK.md) is how the rendered game is looked at, round by round,
 and the harness that photographs it.
 
 ## Contents
@@ -26,8 +25,8 @@ and the harness that photographs it.
 
 ## One round, one measured gap, one fix
 
-The unit of work is a **round**, and [ROUND_NOTES.md](ROUND_NOTES.md) is the log of
-them, newest first. A round is not "a feature" and not "a sprint". It is one gap that
+The unit of work is a **round**, and the round log is the record of them, newest first —
+kept locally, not in the repository. A round is not "a feature" and not "a sprint". It is one gap that
 an instrument measured, and the change that closes it.
 
 The discipline that makes the log worth keeping is that the gap is **measured before
@@ -269,7 +268,7 @@ the owner before killing any port, and only ever kill one in your own lane.
 
 When the round lands, three files move, and which one gets what is not arbitrary:
 
-- **[ROUND_NOTES.md](ROUND_NOTES.md)** — the round itself, newest first: the measured
+- **The round log** (local, gitignored) — the round itself, newest first: the measured
   gap, the arithmetic that named it, the fix, and the numbers before and after. Any
   fingerprint change is recorded here as `old → new` with the colony count and wall
   clock. This is the file that makes a later round able to attribute a regression.

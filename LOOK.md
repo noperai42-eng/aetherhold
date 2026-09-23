@@ -34,7 +34,7 @@ One round is one brief, built, gated, photographed, and looked at:
    better, what is worse, and what still reads wrong, each observation anchored to an
    object in a frame. A regression outranks any win.
 7. **Decide, fix, commit, log.** Small bugs the driver fixes; the rest becomes the next
-   brief. The round is written into [ROUND_NOTES.md](ROUND_NOTES.md).
+   brief. The round is written into the round log.
 
 The discipline that makes it work is step 6. Builders report `green: true` and a
 summary; a judge panel can be bolted on; none of that substitutes for the driver
@@ -442,7 +442,7 @@ Each of these cost a round or an hour. They are listed so that they cost nothing
 
 ## How a look round is written down
 
-In [ROUND_NOTES.md](ROUND_NOTES.md), newest first, under a heading of the form
+In the round log, newest first, under a heading of the form
 `YYYY-MM-DD — Look round N: <what changed, in a phrase>`:
 
 - **Compared:** the two frame labels, and which lanes ran with what brief (a sentence

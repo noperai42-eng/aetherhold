@@ -6,7 +6,8 @@ are the map, and this file only says which one to open.
 - **What the game is and how each system works:** [README.md](README.md). **How the code
   is laid out and why:** [ARCHITECTURE.md](ARCHITECTURE.md).
 - **How a change is made and measured** — rounds, the ladder of instruments, the
-  commands: [METHODOLOGY.md](METHODOLOGY.md). The log of rounds: [ROUND_NOTES.md](ROUND_NOTES.md).
+  commands: [METHODOLOGY.md](METHODOLOGY.md). The log of rounds itself is kept in the
+  box and not published; what a round promised ends up in ACCEPTANCE.md.
 - **Anything a player sees — models, materials, the HUD, a new screen, the feel of a
   frame — is iterated with the look loop in [LOOK.md](LOOK.md):** photograph the same
   frames before and after, look at them yourself, write the next brief from what you
@@ -51,4 +52,5 @@ keyed by origin, so it never moves) and `5063` is dev with HMR; both `strictPort
 `vite.config.ts`. Test servers bind `:0`. Never restart a dev server another session
 started.
 
-Where the work stands: [CURRENT_WORK.md](CURRENT_WORK.md).
+Where the work stands is tracked in the box — the segment board, the round log, the
+resume pointer and the open decisions are gitignored, so a clone starts clean.
