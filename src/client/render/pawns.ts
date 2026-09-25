@@ -265,6 +265,29 @@ export interface SettlerRecipe {
   readonly bob: number;
   /** How far a settler leans over a job. Adds to the head's aim, not replaces it. */
   readonly stoop: number;
+  /**
+   * How far the knee folds at the middle of a leg's swing, in radians.
+   *
+   * The leg was one tube from hip to boot, so a walk was two compasses taking
+   * turns: the foot that came forward did it straight-legged, dragging an arc
+   * through the ground the bob had to lift the body clear of. A knee that folds
+   * while its foot is in the air and straightens before it lands is the single
+   * shape that reads as walking rather than as being wound up.
+   */
+  readonly knee: number;
+  /**
+   * How far an elbow is bent when nothing asks it to be more, in radians. A
+   * plumb straight arm is the other half of the wooden soldier.
+   */
+  readonly elbow: number;
+  /**
+   * How far the chest turns against the hips over a stride, as a fraction of the
+   * hip's swing. The shoulder over the leg that is back comes forward, which is
+   * what the counter-swinging arms were saying on their own.
+   */
+  readonly twist: number;
+  /** How far the chest leans into a walk, in radians, pivoting at the hips. */
+  readonly lean: number;
 }
 
 /** What the colony on the map is drawn by today. */
@@ -283,6 +306,10 @@ export const SETTLER_DEFAULT: SettlerRecipe = {
   carryZ: 0.4,
   bob: 0.035,
   stoop: 0.3,
+  knee: 0.9,
+  elbow: 0.2,
+  twist: 0.3,
+  lean: 0.07,
 };
 
 /**
@@ -377,13 +404,26 @@ export function settlerBob(phase: number, r: SettlerRecipe = SETTLER_DEFAULT): n
  */
 export interface SettlerParts {
   readonly group: THREE.Group;
+  /**
+   * Everything above the legs, pivoting at the hips: the tunic with its belt
+   * and hem, neck, head, arms and the load. It turns against the stride and
+   * leans into the walk. The hem goes with it, because a torso that turned
+   * inside a hem that did not tore straight through the cloth (r28).
+   */
+  readonly chest: THREE.Group;
   readonly torso: THREE.Mesh;
   /** Carries the hair and the eyes, so a nod takes the whole face with it. */
   readonly head: THREE.Mesh;
+  /** The thighs, which swing from the hip. Each carries its shin, and the shin its boot. */
   readonly legL: THREE.Mesh;
   readonly legR: THREE.Mesh;
+  readonly shinL: THREE.Mesh;
+  readonly shinR: THREE.Mesh;
+  /** The upper arms, which swing from the shoulder. Each carries its forearm, and the forearm its hand. */
   readonly armL: THREE.Mesh;
   readonly armR: THREE.Mesh;
+  readonly forearmL: THREE.Mesh;
+  readonly forearmR: THREE.Mesh;
   /** Stock and action, or a club, riding the right hand. Null when unarmed. */
   readonly weapon: THREE.Group | null;
   /** The caravan's freight, on the ground. Null for everybody who is not a trader. */
@@ -447,26 +487,56 @@ export function assembleSettler(
   neck.name = 'neck';
   const belt = new THREE.Mesh(shared.belt, leatherMat);
   belt.name = 'belt';
+  // The tunic's skirt, below the belt. Open at both ends and seen from inside
+  // whenever the camera looks down past the hem, so its cloth is two-sided.
+  const skirtMat = clothMat.clone();
+  skirtMat.side = THREE.DoubleSide;
+  mats.push(skirtMat);
+  const hem = new THREE.Mesh(shared.hem, skirtMat);
+  hem.name = 'hem';
   const legL = new THREE.Mesh(shared.leg, trouserMat);
   const legR = new THREE.Mesh(shared.leg, trouserMat);
   legL.name = 'leg';
   legR.name = 'leg';
+  const shinL = new THREE.Mesh(shared.shin, trouserMat);
+  const shinR = new THREE.Mesh(shared.shin, trouserMat);
+  shinL.name = 'shin';
+  shinR.name = 'shin';
   const armL = new THREE.Mesh(shared.arm, sleeveMat);
   const armR = new THREE.Mesh(shared.arm, sleeveMat);
   armL.name = 'arm';
   armR.name = 'arm';
+  const forearmL = new THREE.Mesh(shared.forearm, sleeveMat);
+  const forearmR = new THREE.Mesh(shared.forearm, sleeveMat);
+  forearmL.name = 'forearm';
+  forearmR.name = 'forearm';
 
-  torso.position.y = r.torsoY;
-  head.position.y = r.headY;
+  // The upper body hangs from the hips, so it can turn and lean over legs that
+  // keep walking straight. Everything in it is placed at the height it always
+  // was, less the hip's, so a body at rest is the body it was before it bent.
+  const chest = new THREE.Group();
+  chest.name = 'chest';
+  chest.position.y = r.leg;
+  torso.position.y = r.torsoY - r.leg;
+  head.position.y = r.headY - r.leg;
   // The neck rises from the torso's rounded top and flares up into the skull,
   // and the belt sits where the lathe pinches in, so both are placed off the
   // torso rather than by eye.
-  neck.position.y = r.torsoY + 0.29;
-  belt.position.y = r.torsoY - 0.15;
+  neck.position.y = r.torsoY + 0.29 - r.leg;
+  belt.position.y = r.torsoY - 0.15 - r.leg;
+  hem.position.y = r.torsoY - 0.15 - HEM_DROP / 2 - r.leg;
   legL.position.set(-0.11, r.leg, 0);
   legR.position.set(0.11, r.leg, 0);
-  armL.position.set(-0.27, r.shoulderY, 0);
-  armR.position.set(0.27, r.shoulderY, 0);
+  shinL.position.y = -kneeOf(r);
+  shinR.position.y = -kneeOf(r);
+  legL.add(shinL);
+  legR.add(shinR);
+  armL.position.set(-0.27, r.shoulderY - r.leg, 0);
+  armR.position.set(0.27, r.shoulderY - r.leg, 0);
+  forearmL.position.y = -elbowOf(r);
+  forearmR.position.y = -elbowOf(r);
+  armL.add(forearmL);
+  armR.add(forearmR);
   // The roll is set once and never written again: the pose only ever touches
   // `rotation.x`, so the splay survives the walk, the nod and lying down. Euler
   // order is XYZ, which applies the roll in the arm's own frame first and then
@@ -489,33 +559,44 @@ export function assembleSettler(
     eye.position.set(side * 0.05, -0.05, 0.147);
     head.add(eye);
   }
+  // A nose, which is the one thing that says which way a face points from a
+  // camera above it. Ears were tried beside it in r28 and cut: the hair's hem
+  // hides them from every camera the game has, and the ninety-six triangles
+  // they cost were what the knees needed to stay inside the budget.
+  const nose = new THREE.Mesh(shared.nose, skinMat);
+  nose.name = 'nose';
+  nose.position.set(0, -0.025, 0.158);
+  head.add(nose);
 
-  // Hands and boots ride their limbs, so they swing from the same pivot. The
-  // hand is cut with its thumb toward -X, which is the midline for the right
-  // arm; the left wears the same buffer mirrored, so both thumbs face in.
-  for (const [side, arm] of [
-    [-1, armL],
-    [1, armR],
+  // Hands and boots ride the far end of their limbs, so they follow the elbow
+  // and the knee. The hand is cut with its thumb toward -X, which is the
+  // midline for the right arm; the left wears the same buffer mirrored, so both
+  // thumbs face in.
+  for (const [side, forearm] of [
+    [-1, forearmL],
+    [1, forearmR],
   ] as const) {
     const hand = new THREE.Mesh(shared.hand, skinMat);
     hand.name = 'hand';
-    hand.position.y = r.wristY;
+    hand.position.y = r.wristY + elbowOf(r);
     hand.scale.x = side;
     hand.castShadow = true;
-    arm.add(hand);
+    forearm.add(hand);
   }
-  for (const leg of [legL, legR]) {
+  for (const shin of [shinL, shinR]) {
     const boot = new THREE.Mesh(shared.boot, bootMat);
     boot.name = 'boot';
-    boot.position.set(0, -r.leg + 0.049, 0.025); // toe forward, sole on the floor
+    boot.position.set(0, -(r.leg - kneeOf(r)) + 0.049, 0.025); // toe forward, sole on the floor
     boot.castShadow = true;
-    leg.add(boot);
+    shin.add(boot);
   }
 
-  for (const m of [torso, neck, belt, head, legL, legR, armL, armR]) {
+  for (const m of [torso, neck, belt, hem, head, armL, armR]) {
     m.castShadow = true;
-    group.add(m);
+    chest.add(m);
   }
+  for (const m of [legL, legR, shinL, shinR, forearmL, forearmR]) m.castShadow = true;
+  group.add(legL, legR, chest);
 
   let arms: THREE.Group | null = null;
   if (weapon !== 'none') {
@@ -535,7 +616,10 @@ export function assembleSettler(
     }
     arms.children[0]!.name = weapon === 'rifle' ? 'stock' : 'club';
     if (arms.children[1]) arms.children[1].name = 'action';
-    armR.add(arms); // rides the hand, so it swings with the arm
+    // Cut for a hand hung straight from the shoulder, so it is set back up the
+    // forearm by the elbow's own drop: unbent, the weapon is where it always was.
+    arms.position.y = elbowOf(r);
+    forearmR.add(arms); // rides the hand, so it swings with the forearm
   }
 
   // What a hauler is carrying. `carryingItemId` has been on the pawn since
@@ -555,10 +639,10 @@ export function assembleSettler(
   const load = new THREE.Mesh(shared.crate, sackMat);
   load.name = 'load';
   load.scale.setScalar(0.85);
-  load.position.set(0, r.carryY, r.carryZ);
+  load.position.set(0, r.carryY - r.leg, r.carryZ);
   load.castShadow = true;
   load.visible = false;
-  group.add(load);
+  chest.add(load); // held in the arms, so it turns and leans with them
 
   // The caravan. Everything else the player learns about a pawn comes from its
   // silhouette, and until now a trader was a settler in a different shade of
@@ -595,7 +679,24 @@ export function assembleSettler(
     group.add(freight);
   }
 
-  return { group, torso, head, legL, legR, armL, armR, weapon: arms, freight, load, mats };
+  return {
+    group,
+    chest,
+    torso,
+    head,
+    legL,
+    legR,
+    shinL,
+    shinR,
+    armL,
+    armR,
+    forearmL,
+    forearmR,
+    weapon: arms,
+    freight,
+    load,
+    mats,
+  };
 }
 
 /** Everything about a settler that changes the shape of it, and nothing else. */
@@ -611,12 +712,27 @@ export interface SettlerStance {
   readonly cooldown: number;
 }
 
-/** How a settler is standing this frame: four limb angles and three facts about the body. */
+/**
+ * How a settler is standing this frame: the hips and shoulders, the knees and
+ * elbows below them, the chest above, and three facts about the body.
+ *
+ * Every angle is a `rotation.x` or a turn, in radians. A knee folds the shin
+ * back for a positive number and an elbow brings the forearm forward for a
+ * negative one — the same sign the hip and shoulder already swing by.
+ */
 export interface SettlerPose {
   readonly legL: number;
   readonly legR: number;
   readonly armL: number;
   readonly armR: number;
+  readonly kneeL: number;
+  readonly kneeR: number;
+  readonly elbowL: number;
+  readonly elbowR: number;
+  /** The chest turned against the hips, about the spine. */
+  readonly twist: number;
+  /** The chest tipped forward from the hips. */
+  readonly lean: number;
   /** Above the floor: the walk's bob, or the lift that keeps a lying body out of the ground. */
   readonly lift: number;
   /** Added to the head's aim over a bench, and zero everywhere else. */
@@ -649,7 +765,23 @@ export function settlerPose(s: SettlerStance, r: SettlerRecipe = SETTLER_DEFAULT
   // lies on, by half its own thickness. The tipping is the rig's, because it
   // turns the whole group and this only ever speaks about parts of it.
   if (s.prone) {
-    return { legL: 0, legR: 0, armL: 0.15, armR: -0.15, lift: 0.16, stoop: 0, prone: true };
+    // Slack is not straight: a body lying down has its knees and elbows a
+    // little bent, and one lying with both locked reads as a plank.
+    return {
+      legL: 0,
+      legR: 0,
+      armL: 0.15,
+      armR: -0.15,
+      kneeL: 0.25,
+      kneeR: 0.12,
+      elbowL: -0.35,
+      elbowR: -0.2,
+      twist: 0,
+      lean: 0,
+      lift: 0.16,
+      stoop: 0,
+      prone: true,
+    };
   }
 
   const ph = s.phase;
@@ -659,38 +791,66 @@ export function settlerPose(s: SettlerStance, r: SettlerRecipe = SETTLER_DEFAULT
   let swing = 0;
   let legL = 0;
   let legR = 0;
+  let kneeL = 0;
+  let kneeR = 0;
   let lift = 0;
+  let lean = 0;
   switch (s.activity) {
     case 'walking': {
-      swing = Math.sin(ph * phaseScale(r.leg, r.swing)) * r.swing;
+      const t = ph * phaseScale(r.leg, r.swing);
+      swing = Math.sin(t) * r.swing;
       legL = swing;
       legR = -swing;
+      // A leg is in the air while its hip swings it forward, which is while
+      // its angle is falling: the left's when cos(t) is negative, the right's
+      // when it is positive. The knee folds over that half and is straight
+      // again at either end of it, so the planted leg is always the straight
+      // one and the foot lands where the stride put it.
+      kneeL = r.knee * Math.max(0, -Math.cos(t));
+      kneeR = r.knee * Math.max(0, Math.cos(t));
       lift = settlerBob(ph, r);
+      lean = r.lean;
       break;
     }
+    // Standing at a job, the weight is on soft knees and the chest is over the
+    // work; standing to fight, the knees are softer and the chest lower still.
     case 'working':
       legL = 0.05;
       legR = -0.05;
+      kneeL = 0.12;
+      kneeR = 0.12;
+      lean = r.lean * 2;
       break;
     case 'fighting':
       legL = 0.12;
       legR = -0.12;
+      kneeL = 0.25;
+      kneeR = 0.3;
+      lean = r.lean * 1.5;
       break;
     case 'eating':
       legL = 0.35;
       legR = -0.35;
+      kneeL = 0.2;
       break;
     case 'relaxing':
       legL = 0.3;
       legR = -0.3;
+      kneeL = 0.15;
+      lean = -r.lean;
       break;
     // A slow trudge. Readable from the isometric camera at a glance, which is
     // the only place the player will notice it.
-    case 'breaking':
-      swing = Math.sin(ph * 0.14) * 0.16;
+    case 'breaking': {
+      const t = ph * 0.14;
+      swing = Math.sin(t) * 0.16;
       legL = swing;
       legR = -swing;
+      kneeL = 0.2 + 0.25 * Math.max(0, -Math.cos(t));
+      kneeR = 0.2 + 0.25 * Math.max(0, Math.cos(t));
+      lean = r.lean * 3;
       break;
+    }
     default:
       swing = Math.sin(ph * 0.25) * 0.06;
       legL = swing;
@@ -703,40 +863,61 @@ export function settlerPose(s: SettlerStance, r: SettlerRecipe = SETTLER_DEFAULT
   // put a crate in, whatever else you are doing with your legs.
   let armL = 0;
   let armR = 0;
+  let elbowL = -r.elbow;
+  let elbowR = -r.elbow;
   if (s.handsFull) {
     armL = r.carryArm;
     armR = r.carryArm;
+    // Carrying leans back over the load rather than into the walk.
+    lean = -r.lean * 0.5;
   } else {
     switch (s.activity) {
       case 'walking':
         armL = -swing * 0.75;
         armR = swing * 0.75;
+        // The arm coming forward bends further than the one going back, the
+        // way a swung arm does: the forearm trails the shoulder's lead.
+        elbowL = -r.elbow - 0.6 * Math.max(0, -armL);
+        elbowR = -r.elbow - 0.6 * Math.max(0, -armR);
         break;
       case 'working': {
         const a = Math.sin(ph * 0.8) * 0.3;
         armL = -1.15 + a;
         armR = -1.05 - a;
+        // Hands down to the bench, and the elbows working rather than the
+        // shoulders alone.
+        elbowL = -0.45 + a * 0.8;
+        elbowR = -0.45 - a * 0.8;
         break;
       }
       case 'fighting': {
         const recoil = Math.min(0.35, s.cooldown * 0.02);
         armL = -1.42 + recoil;
         armR = -1.42 + recoil;
+        elbowL = -0.25;
+        elbowR = -0.1 - recoil * 0.5;
         break;
       }
       case 'eating': {
         const a = Math.sin(ph * 0.5) * 0.2;
         armL = -1.5 + a;
         armR = -0.6;
+        // The hand that has the food comes up to the mouth.
+        elbowL = -0.7 - a;
+        elbowR = -0.6;
         break;
       }
       case 'relaxing':
         armL = -0.5;
         armR = -0.5;
+        elbowL = -0.55;
+        elbowR = -0.55;
         break;
       case 'breaking':
         armL = 0.42 + swing * 0.3;
         armR = 0.42 - swing * 0.3;
+        elbowL = -0.35;
+        elbowR = -0.35;
         break;
       default:
         armL = 0.08 + swing;
@@ -745,18 +926,55 @@ export function settlerPose(s: SettlerStance, r: SettlerRecipe = SETTLER_DEFAULT
     }
   }
 
-  return { legL, legR, armL, armR, lift, stoop: s.activity === 'working' ? r.stoop : 0, prone: false };
+  return {
+    legL,
+    legR,
+    armL,
+    armR,
+    kneeL,
+    kneeR,
+    elbowL,
+    elbowR,
+    // The chest turns only against a stride. A settler standing still is
+    // square to the way they face, which is where the aim says to look.
+    // Nor while both hands hold a crate, which would swing the crate with it.
+    twist: s.activity === 'walking' && !s.handsFull ? swing * r.twist : 0,
+    lean,
+    lift,
+    stoop: s.activity === 'working' ? r.stoop : 0,
+    prone: false,
+  };
+}
+
+/**
+ * Puts a pose on a body: every joint the pose names, and nothing else.
+ *
+ * The rig and the bench both call this, so the settler on the page and the one
+ * on the map cannot be bent by two lists of joints that have drifted apart —
+ * which is how a bench whose settler had knees could stand beside a colony
+ * whose settlers had none. Where the body stands, which way it faces, the head
+ * and whether it is lying down stay with the caller, because each of the two
+ * answers those differently.
+ */
+export function poseSettler(parts: SettlerParts, pose: SettlerPose): void {
+  parts.legL.rotation.x = pose.legL;
+  parts.legR.rotation.x = pose.legR;
+  parts.shinL.rotation.x = pose.kneeL;
+  parts.shinR.rotation.x = pose.kneeR;
+  parts.armL.rotation.x = pose.armL;
+  parts.armR.rotation.x = pose.armR;
+  parts.forearmL.rotation.x = pose.elbowL;
+  parts.forearmR.rotation.x = pose.elbowR;
+  parts.chest.rotation.set(pose.lean, pose.twist, 0);
 }
 
 /** One settler's body. Parts are plain meshes so limbs can swing independently. */
 class PawnRig implements Rig {
   readonly group: THREE.Group;
+  /** The body as it was assembled, which `poseSettler` bends. */
+  private readonly parts: SettlerParts;
   /** Carries the hair and the eyes, so a nod takes the whole face with it. */
   private readonly head: THREE.Mesh;
-  private readonly legL: THREE.Mesh;
-  private readonly legR: THREE.Mesh;
-  private readonly armL: THREE.Mesh;
-  private readonly armR: THREE.Mesh;
   /** Stock and action, or a club, riding the right hand. Null when unarmed. */
   private readonly weapon: THREE.Group | null;
   /** The caravan's freight, on the ground. Null for everybody who is not a trader. */
@@ -773,12 +991,9 @@ class PawnRig implements Rig {
 
   constructor(pawn: Pawn, shared: SharedGeometry) {
     const parts = assembleSettler(pawn.faction, pawn.colorSeed, pawn.weapon, shared);
+    this.parts = parts;
     this.group = parts.group;
     this.head = parts.head;
-    this.legL = parts.legL;
-    this.legR = parts.legR;
-    this.armL = parts.armL;
-    this.armR = parts.armR;
     this.weapon = parts.weapon;
     this.freight = parts.freight;
     this.load = parts.load;
@@ -839,10 +1054,7 @@ class PawnRig implements Rig {
       handsFull,
       cooldown: pawn.attackCooldown,
     });
-    this.legL.rotation.x = pose.legL;
-    this.legR.rotation.x = pose.legR;
-    this.armL.rotation.x = pose.armL;
-    this.armR.rotation.x = pose.armR;
+    poseSettler(this.parts, pose);
     g.position.y = floor + pose.lift;
 
     if (pose.prone) {
@@ -855,7 +1067,7 @@ class PawnRig implements Rig {
       return;
     }
 
-    this.driveHead(world, pawn, x, z, floor, facing, dt, pose.stoop);
+    this.driveHead(world, pawn, x, z, floor, facing, dt, pose);
   }
 
   /**
@@ -875,7 +1087,7 @@ class PawnRig implements Rig {
     floor: number,
     facing: number,
     dt: number,
-    stoop: number,
+    pose: SettlerPose,
   ): void {
     if (world.tick !== this.lookTick) {
       this.lookTick = world.tick;
@@ -903,7 +1115,11 @@ class PawnRig implements Rig {
     // `rotation.x`, so down is positive here while up is positive in the aim —
     // which is why the pitch arrives negated. `head-aim.ts` says why it is not
     // written upside down at the source instead.
-    this.head.rotation.set(stoop - this.aim.pitch, this.aim.yaw, 0);
+    //
+    // The head rides the chest, so the chest's lean and turn are taken back
+    // out of it: the body sways under a head that stays on what it is looking
+    // at, which is what a walking person's head does.
+    this.head.rotation.set(pose.stoop - this.aim.pitch - pose.lean, this.aim.yaw - pose.twist, 0);
   }
 
   dispose(): void {
@@ -1575,9 +1791,13 @@ export interface SettlerGeometry {
   hairLong: THREE.BufferGeometry;
   eye: THREE.BufferGeometry;
   leg: THREE.BufferGeometry;
+  shin: THREE.BufferGeometry;
   boot: THREE.BufferGeometry;
   arm: THREE.BufferGeometry;
+  forearm: THREE.BufferGeometry;
   hand: THREE.BufferGeometry;
+  hem: THREE.BufferGeometry;
+  nose: THREE.BufferGeometry;
   rifleStock: THREE.BufferGeometry;
   rifleAction: THREE.BufferGeometry;
   club: THREE.BufferGeometry;
@@ -1640,6 +1860,17 @@ function makeTorso(): THREE.BufferGeometry {
     [0, 0.29],
   ].map(([r, y]) => new THREE.Vector2(r, y));
   const g = new THREE.LatheGeometry(profile, 20);
+  g.scale(1, 1, 0.62);
+  return g;
+}
+
+/**
+ * The tunic's skirt: an open band from the belt down past the hip, a little
+ * wider at the bottom than the top, squashed front to back the way the torso
+ * is. The top edge sits under the belt, so the belt covers the seam.
+ */
+function makeHem(): THREE.BufferGeometry {
+  const g = new THREE.CylinderGeometry(0.208, 0.24, HEM_DROP, 20, 1, true);
   g.scale(1, 1, 0.62);
   return g;
 }
@@ -1765,6 +1996,10 @@ function makeHair(long: boolean): THREE.BufferGeometry {
  * the neck on every meridian, so one of the two was a ring of vertices nothing
  * could ever see; the thirty-two triangles it cost went into rounding the
  * rifle's receiver, which sits in the open under the manager camera.
+ *
+ * Twelve round, not sixteen: the manager camera sees the neck only as the
+ * sliver between the chin and the collar, and the thirty-two triangles went
+ * to the knees and elbows when the limbs were jointed.
  */
 function makeNeck(): THREE.BufferGeometry {
   const profile = [
@@ -1774,7 +2009,7 @@ function makeNeck(): THREE.BufferGeometry {
     [0.082, 0.09],
     [0.1, 0.12],
   ].map(([r, y]) => new THREE.Vector2(r, y));
-  return new THREE.LatheGeometry(profile, 16);
+  return new THREE.LatheGeometry(profile, 12);
 }
 
 /**
@@ -2592,6 +2827,19 @@ export function animalFittings(): AnimalFittings {
  * bench that stretched the leg and kept the thigh would draw a settler whose
  * knee had come out through the trouser.
  */
+/** How far below the hip the knee is: halfway to the sole, as it is on a person. */
+export function kneeOf(r: SettlerRecipe = SETTLER_DEFAULT): number {
+  return r.leg / 2;
+}
+
+/** How far below the shoulder the elbow is: halfway to the wrist. */
+export function elbowOf(r: SettlerRecipe = SETTLER_DEFAULT): number {
+  return -r.wristY / 2;
+}
+
+/** How far the tunic's skirt hangs below the belt's centre. */
+const HEM_DROP = 0.16;
+
 export function settlerGeometry(r: SettlerRecipe = SETTLER_DEFAULT): SettlerGeometry {
   // The belt is an open band a hair wider than the waist of the lathe, squashed
   // the same way, so it hugs the cloth instead of cutting through it.
@@ -2624,10 +2872,31 @@ export function settlerGeometry(r: SettlerRecipe = SETTLER_DEFAULT): SettlerGeom
     eye: new THREE.SphereGeometry(0.016, 6, 5),
     // Three rings on the caps: the top of a leg is inside the torso and the
     // bottom inside a boot, so the fourth was paid for and never seen.
-    leg: limb(0.075, r.leg, 12, 3),
+    //
+    // Each limb is two, jointed halfway. The upper half runs a little past the
+    // joint and the lower starts at it, so the rounded end of one sits inside
+    // the other at any bend and the knee or elbow shows as a joint rather than
+    // a gap. The lower half is a shade narrower, as a calf and a forearm are.
+    //
+    // Four limbs where there were two, inside the same 3,000 — a trader with a
+    // rifle and the bundle is the body that sets the number. The upper halves
+    // are ten round, because they are what the manager camera sees the most
+    // of; the lower halves are eight, and one ring on each cap, because both
+    // of their ends are buried — the top inside the thigh or the upper arm at
+    // any bend, the bottom inside the boot or the hand.
+    leg: limb(0.078, kneeOf(r) + 0.04, 10, 2),
+    shin: limb(0.066, r.leg - kneeOf(r) - 0.02, 8, 1),
     boot: makeBoot(),
-    arm: limb(0.065, r.sleeve, 12, 3),
+    arm: limb(0.066, elbowOf(r) + 0.035, 10, 3),
+    forearm: limb(0.062, r.sleeve - elbowOf(r), 8, 1),
     hand: makeHand(),
+    // A tunic skirt from the belt to the top of the thigh, flaring a little. A
+    // straight lathe torso over two tubes was a peg doll; a hem is where the
+    // shirt stops being a barrel and becomes clothes.
+    hem: makeHem(),
+    // A small ellipsoid on the face, six round so it is mirror-symmetric: an odd
+    // count puts a meridian on one cheek and a face on the other.
+    nose: new THREE.SphereGeometry(0.024, 6, 4).scale(0.8, 1, 1.1),
     rifleStock: makeRifleStock(),
     rifleAction: makeRifleAction(),
     club: makeClub(),

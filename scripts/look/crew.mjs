@@ -36,7 +36,7 @@ page.on('pageerror', (e) => errs.push(String(e)));
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const key = async (code) => { await page.keyboard.down(code); await sleep(60); await page.keyboard.up(code); await sleep(150); };
 
-await page.goto(URL, { waitUntil: 'networkidle2', timeout: 60000 });
+await page.goto(URL, { waitUntil: 'load', timeout: 60000 });
 await sleep(3500);
 await page.evaluate(() => { const box = document.querySelector('input.seedbox'); if (box) box.value = '4242'; const play = [...document.querySelectorAll('button')].find((b) => b.textContent?.trim() === 'Play'); play?.click(); });
 await sleep(1500);

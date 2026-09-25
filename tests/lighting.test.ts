@@ -861,16 +861,29 @@ describe('what a body is made of', () => {
     // The stride arithmetic in `gait.ts` assumes a leg hangs from the hip and
     // reaches `SETTLER_LEG` below it. A limb whose geometry starts above or
     // below its pivot would swing about the wrong point and scrub its foot.
+    //
+    // The leg is two since r28: a thigh from the hip and a shin from the knee,
+    // halfway down. So the length the gait assumes is the chain's, not one
+    // mesh's — the knee where the thigh says, and the shin reaching from there
+    // into the boot, which carries the sole the last two centimetres.
     const { view } = bodies();
     const box = new THREE.Box3();
     let limbs = 0;
     view.group.traverse((o) => {
-      if (!(o instanceof THREE.Mesh) || o.position.y !== SETTLER_LEG) return;
-      // A leg: its own geometry's top is the pivot, and its length is the gait's.
+      if (!(o instanceof THREE.Mesh) || o.name !== 'shin') return;
+      const thigh = o.parent as THREE.Mesh;
+      expect(thigh.position.y, 'the thigh hangs from the hip').toBe(SETTLER_LEG);
+      thigh.geometry.computeBoundingBox();
+      box.copy(thigh.geometry.boundingBox!);
+      expect(box.max.y, 'thigh pivots at its top').toBeCloseTo(0, 6);
+      expect(box.min.y, 'thigh runs past the knee, so the joint is covered').toBeLessThan(o.position.y);
+      expect(o.position.y, 'the knee is halfway down the leg').toBeCloseTo(-SETTLER_LEG / 2, 6);
       o.geometry.computeBoundingBox();
       box.copy(o.geometry.boundingBox!);
-      expect(box.max.y, 'leg pivots at its top').toBeCloseTo(0, 6);
-      expect(box.min.y, 'leg reaches the floor').toBeCloseTo(-SETTLER_LEG, 6);
+      expect(box.max.y, 'shin pivots at its top').toBeCloseTo(0, 6);
+      const reach = o.position.y + box.min.y;
+      expect(reach, 'the shin stops short of the floor').toBeGreaterThan(-SETTLER_LEG);
+      expect(reach, 'and inside the boot, two centimetres up').toBeCloseTo(-SETTLER_LEG + 0.02, 6);
       limbs++;
     });
     expect(limbs).toBeGreaterThan(0);
@@ -1472,7 +1485,9 @@ describe('what a body is made of', () => {
         tip.set(box.min.x, 0, 0);
         hand.localToWorld(tip);
         rig.worldToLocal(tip);
-        const arm = hand.parent as THREE.Object3D;
+        // The hand rides the forearm, which hangs from the elbow on the arm's
+        // own axis; the shoulder's offset from the midline is on the upper arm.
+        const arm = hand.parent!.parent as THREE.Object3D;
         expect(Math.abs(tip.x), 'the thumb points in toward the body, not out').toBeLessThan(Math.abs(arm.position.x));
       }
       expect(mirrored.size, 'the two hands are mirrored, so both thumbs face in').toBe(2);
@@ -1497,7 +1512,8 @@ describe('what a body is made of', () => {
       const pawn = world.pawns.find((p) => p.x === rig.position.x && p.y === rig.position.z)!;
       if (pawn.animal) continue;
       settlers++;
-      const arm = part(rig, 'arm');
+      // The cuff is the end of the forearm since the arm was jointed at the elbow.
+      const arm = part(rig, 'forearm');
       const hand = part(arm, 'hand');
       arm.geometry.computeBoundingBox();
       hand.geometry.computeBoundingBox();
@@ -1750,7 +1766,9 @@ describe('what a body is made of', () => {
     // so the arm and the shirt shared one outline with no notch in it. The roll
     // is a constant at the shoulder and the pose table only ever writes
     // `rotation.x`, so the clearance below is the same in the walk, at the bench
-    // and lying down: `rotation.x` cannot move a point's x.
+    // and lying down: `rotation.x` cannot move a point's x. The elbow is a
+    // `rotation.x` too, so the forearm keeps the roll the shoulder gave it;
+    // the chest's twist is the one yaw, and only a walking settler takes it.
     const { view, world } = bodies();
     let arms = 0;
     view.group.updateMatrixWorld(true);
@@ -1760,7 +1778,7 @@ describe('what a body is made of', () => {
       const sleeves = drawn(rig).filter((m) => m.name === 'arm');
       expect(sleeves, 'two arms').toHaveLength(2);
       for (const sleeve of sleeves) {
-        const hand = sleeve.children.find((o): o is THREE.Mesh => o instanceof THREE.Mesh && o.name === 'hand')!;
+        const hand = part(sleeve, 'hand'); // on the forearm, below the elbow
         // In the rig's own frame, where +X is the settler's left-to-right.
         const wrist = rig.worldToLocal(hand.getWorldPosition(new THREE.Vector3()));
         expect(Math.sign(wrist.x), 'the wrist stays on its own side').toBe(Math.sign(sleeve.position.x));

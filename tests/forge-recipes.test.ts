@@ -67,6 +67,7 @@ import {
   poseLegs,
   settlerBob,
   settlerGeometry,
+  poseSettler,
   settlerPose,
   type SettlerParts,
   type SettlerPose,
@@ -207,21 +208,30 @@ const GOLDEN: Readonly<Record<string, string>> = {
   'animal.fenwolf.lining0': 'verts=42 idx=180 hash=c8dc699c box=[-0.0499,-0.0073,0..0.0499,0.1455,0.0251]',
   'animal.fenwolf.leg': 'verts=40 idx=162 hash=7a466b91 box=[-0.05,-0.58,-0.0492..0.047,0,0.0492]',
   'animal.fenwolf.hoof': 'verts=40 idx=126 hash=a202a50 box=[-0.0632,0,-0.067..0.057,0.0605,0.067]',
-  // The settler. Sixteen buffers, of which two are cut to a length the recipe
-  // names — the thigh to `leg` and the sleeve to `sleeve` — so these two lines
-  // are the ones that move when the bench stretches a body rather than the ones
-  // that stay put while it does.
+  // The settler. Twenty buffers, of which four are cut to a length the recipe
+  // names — the thigh and the shin to `leg`, jointed at the knee halfway down,
+  // and the upper arm and the forearm to `sleeve` and the wrist — so these four
+  // lines are the ones that move when the bench stretches a body rather than the
+  // ones that stay put while it does.
+  //
+  // Re-pinned in r28, deliberately, when the limbs were jointed: the leg and
+  // arm are now the upper halves (ten round), the shin, forearm, hem and nose
+  // are new, and the neck went from sixteen round to twelve to pay for them.
   'settler.torso': 'verts=189 idx=960 hash=72a7a692 box=[-0.235,-0.29,-0.1457..0.235,0.29,0.1457]',
   'settler.belt': 'verts=42 idx=120 hash=942d5bd6 box=[-0.22,-0.03,-0.1364..0.22,0.03,0.1364]',
-  'settler.neck': 'verts=85 idx=384 hash=2cf88dc6 box=[-0.1,-0.07,-0.1..0.1,0.12,0.1]',
+  'settler.neck': 'verts=65 idx=288 hash=62287bca box=[-0.1,-0.07,-0.1..0.1,0.12,0.1]',
   'settler.head': 'verts=231 idx=1080 hash=91277a12 box=[-0.13,-0.1378,-0.1664..0.13,0.1378,0.1664]',
   'settler.hair': 'verts=200 idx=936 hash=f284523c box=[-0.1477,-0.0627,-0.1885..0.1477,0.158,0.1896]',
   'settler.hairLong': 'verts=200 idx=936 hash=7abdcd2c box=[-0.1474,-0.1278,-0.1883..0.1474,0.158,0.1896]',
   'settler.eye': 'verts=42 idx=144 hash=e01a56de box=[-0.0152,-0.016,-0.0132..0.0152,0.016,0.0132]',
-  'settler.leg': 'verts=104 idx=504 hash=a24d96e0 box=[-0.075,-0.74,-0.075..0.075,0,0.075]',
+  'settler.leg': 'verts=66 idx=300 hash=ce717741 box=[-0.078,-0.41,-0.0742..0.078,0,0.0742]',
+  'settler.shin': 'verts=36 idx=144 hash=1f50e3df box=[-0.066,-0.35,-0.066..0.066,0,0.066]',
   'settler.boot': 'verts=78 idx=360 hash=aaaf0c2 box=[-0.0694,-0.049,-0.122..0.0694,0.049,0.1366]',
-  'settler.arm': 'verts=104 idx=504 hash=dcdd36e9 box=[-0.065,-0.53,-0.065..0.065,0,0.065]',
+  'settler.arm': 'verts=88 idx=420 hash=e548b66a box=[-0.066,-0.3225,-0.0628..0.066,0,0.0628]',
+  'settler.forearm': 'verts=36 idx=144 hash=3f4c6057 box=[-0.062,-0.2425,-0.062..0.062,0,0.062]',
   'settler.hand': 'verts=408 idx=0 hash=f5e2fb75 box=[-0.0734,-0.0821,-0.074..0.0547,0.0821,0.074]',
+  'settler.hem': 'verts=42 idx=120 hash=e97c4c9b box=[-0.24,-0.08,-0.1488..0.24,0.08,0.1488]',
+  'settler.nose': 'verts=35 idx=108 hash=40f7e602 box=[-0.0192,-0.024,-0.0229..0.0192,0.024,0.0229]',
   'settler.rifleStock': 'verts=504 idx=0 hash=5f366205 box=[-0.024,-0.63,-0.1..0.024,-0.53,0.482]',
   'settler.rifleAction': 'verts=576 idx=0 hash=79f35144 box=[-0.025,-0.575,0.1..0.025,-0.481,0.72]',
   'settler.club': 'verts=648 idx=0 hash=45d9b923 box=[-0.052,-0.922,0.008..0.052,-0.53,0.112]',
@@ -617,16 +627,21 @@ function stand(activity: PawnActivity, phase = 0): SettlerPose {
   return settlerPose({ activity, prone: false, phase, handsFull: false, cooldown: 0 });
 }
 
-/** The lowest point of either boot, above whatever the settler is standing on. */
+/**
+ * The lowest point of either boot, above whatever the settler is standing on.
+ *
+ * Posed the way the game poses it, through `poseSettler`, since the leg was
+ * jointed: a hip angle alone leaves the knee straight and measures a stiff leg
+ * the rig no longer draws.
+ */
 function soleAt(parts: SettlerParts, pose: SettlerPose): number {
-  parts.legL.rotation.x = pose.legL;
-  parts.legR.rotation.x = pose.legR;
+  poseSettler(parts, pose);
   parts.group.position.y = pose.lift;
   parts.group.updateMatrixWorld(true);
   const box = new THREE.Box3();
-  for (const leg of [parts.legL, parts.legR]) {
-    box.expandByObject(leg.children.find((c) => c.name === 'boot')!);
-  }
+  parts.group.traverse((o) => {
+    if (o.name === 'boot') box.expandByObject(o);
+  });
   return Math.round(box.min.y * 1e4) / 1e4;
 }
 
@@ -768,11 +783,19 @@ describe('how a settler is posed and how far off the ground it ends up', () => {
    * question and not an arithmetic one: dropping the body by the sole's own rise
    * plants the foot and dips the hip at the splay, and whether that reads as a
    * walk or as a limp is what the look loop is for. FORGING.md carries the brief.
+   *
+   * Re-pinned in r28, when the knee was jointed, and worse at two eighths for
+   * a reason worth writing down. The swing knee folds, so the trailing foot —
+   * the one lifting off, which was the lowest boot at 3/8 and 7/8 — is now
+   * where a lifting foot should be, off the ground. What is left lowest is the
+   * straight leading leg reaching forward, and it is sixty-four millimetres up.
+   * The knee did not lift it; it stopped a lower foot from hiding it. Which is
+   * the hip-dip brief again, with less cover.
    */
   it('walks a settler through the air for all but three instants of a stride', () => {
     const parts = assembleSettler('colony', 4931, 'none', settlerGeometry());
     const soles = [0, 1, 2, 3, 4, 5, 6, 7, 8].map((i) => soleAt(parts, stand('walking', (i / 8) * cycle)));
-    expect(soles).toEqual([0, 0.0364, 0.0438, 0.0364, 0, 0.0364, 0.0438, 0.0364, 0]);
+    expect(soles).toEqual([0, 0.0364, 0.0438, 0.0638, 0, 0.0364, 0.0438, 0.0638, 0]);
 
     // And the bob is a quarter-cycle out with it: highest where the feet are
     // near the ground, flat where they are furthest off it.
@@ -782,6 +805,99 @@ describe('how a settler is posed and how far off the ground it ends up', () => {
     // A settler who is not walking stands on the floor, which is what makes the
     // above a fact about the gait rather than about the boot's own origin.
     expect(soleAt(parts, stand('idle'))).toBe(0);
+  });
+});
+
+describe('how the knees, elbows and chest move — a settler that walks like a wooden soldier is two hinges short', () => {
+  const cycle = (2 * Math.PI) / phaseScale(SETTLER_DEFAULT.leg, SETTLER_DEFAULT.swing);
+  const samples = Array.from({ length: 64 }, (_, i) => (i / 64) * cycle);
+
+  it('folds only the knee of the leg swinging through, and keeps the other straight to stand on', () => {
+    // A knee that bends on the planted leg is a settler sinking into a crouch
+    // at every step; one that never bends is the stiff-legged march this round
+    // was briefed against. The leg swinging through is the one whose hip angle
+    // is falling — positive `rotation.x` is backward, so falling is forward.
+    let folded = 0;
+    for (const ph of samples) {
+      const now = stand('walking', ph);
+      const next = stand('walking', ph + 1e-3);
+      expect(Math.min(now.kneeL, now.kneeR), 'one knee is always straight').toBe(0);
+      for (const [knee, hip, ahead] of [
+        [now.kneeL, now.legL, next.legL],
+        [now.kneeR, now.legR, next.legR],
+      ] as const) {
+        expect(knee, 'a knee never folds forward').toBeGreaterThanOrEqual(0);
+        if (knee > 1e-9) {
+          expect(ahead, 'only the leg coming forward bends').toBeLessThan(hip);
+          folded++;
+        }
+      }
+    }
+    expect(folded, 'and it does fold, most of the stride').toBeGreaterThan(samples.length * 0.8);
+    // Standing still, both legs are straight.
+    const idle = stand('idle');
+    expect([idle.kneeL, idle.kneeR]).toEqual([0, 0]);
+  });
+
+  it('bends the elbow further on the arm swinging forward, as a relaxed arm does', () => {
+    const rest = -SETTLER_DEFAULT.elbow;
+    let forward = 0;
+    for (const ph of samples) {
+      const p = stand('walking', ph);
+      for (const [arm, elbow] of [
+        [p.armL, p.elbowL],
+        [p.armR, p.elbowR],
+      ] as const) {
+        if (arm < -1e-6) {
+          expect(elbow, 'forward of the body the forearm comes up').toBeLessThan(rest);
+          forward++;
+        } else {
+          expect(elbow, 'behind it the elbow keeps its rest bend').toBeCloseTo(rest, 10);
+        }
+      }
+    }
+    expect(forward).toBeGreaterThan(0);
+  });
+
+  it('turns the chest against the hips only while walking with empty hands', () => {
+    // The counter-rotation is what makes a walk read as a person's; on a
+    // settler holding a crate in both hands it would swing the crate, and at a
+    // standstill it would be a twitch.
+    const twists = samples.map((ph) => stand('walking', ph).twist);
+    expect(Math.max(...twists)).toBeCloseTo(SETTLER_DEFAULT.swing * SETTLER_DEFAULT.twist, 6);
+    // And it turns the right way: the shoulder whose arm is swinging forward
+    // comes forward with it, which is the one over the trailing foot. Turned
+    // the other way the torso fights the arms, and reads as a shuffle.
+    const parts = assembleSettler('colony', 4931, 'none', settlerGeometry());
+    const at = new THREE.Vector3();
+    for (const ph of samples) {
+      const p = stand('walking', ph);
+      if (Math.abs(p.armL) < 1e-3) continue;
+      poseSettler(parts, p);
+      parts.group.updateMatrixWorld(true);
+      const zL = parts.armL.getWorldPosition(at).z;
+      const zR = parts.armR.getWorldPosition(at).z;
+      // Negative `rotation.x` is forward, so the arm with the smaller angle leads.
+      expect(Math.sign(zL - zR), 'the shoulder of the leading arm leads').toBe(Math.sign(p.armR - p.armL));
+    }
+    const carrying = settlerPose({ activity: 'walking', prone: false, phase: cycle / 4, handsFull: true, cooldown: 0 });
+    expect(carrying.twist).toBe(0);
+    for (const a of ['idle', 'working', 'eating', 'relaxing'] as const) expect(stand(a, cycle / 4).twist).toBe(0);
+  });
+
+  it('writes every joint the pose names onto the rig', () => {
+    // One writer for the game and the bench both, so a joint added to the pose
+    // and not to `poseSettler` is a hinge that is drawn at rest forever.
+    const parts = assembleSettler('colony', 4931, 'none', settlerGeometry());
+    const p = stand('walking', cycle * 0.3);
+    poseSettler(parts, p);
+    expect([parts.legL, parts.legR, parts.shinL, parts.shinR].map((o) => o.rotation.x)).toEqual(
+      [p.legL, p.legR, p.kneeL, p.kneeR],
+    );
+    expect([parts.armL, parts.armR, parts.forearmL, parts.forearmR].map((o) => o.rotation.x)).toEqual(
+      [p.armL, p.armR, p.elbowL, p.elbowR],
+    );
+    expect([parts.chest.rotation.x, parts.chest.rotation.y]).toEqual([p.lean, p.twist]);
   });
 });
 
@@ -1308,9 +1424,11 @@ describe('the bench builds what the page asks it for', () => {
     for (let pose = 0; pose < settler.grid!; pose++) {
       const made = forge(settler, { ...settler.defaults, pose, carrying: 1 }, protos);
       expect(made.problems).toEqual([]);
-      const load = made.group!.children.find((c) => c.name === 'load')!;
+      // The load rides the chest since r28, so it leans and turns with the arms
+      // that hold it; it is found by name, wherever it hangs.
+      const load = made.group!.getObjectByName('load')!;
       expect(load.visible).toBe(true);
-      expect(forge(settler, { ...settler.defaults, pose }, protos).group!.children.find((c) => c.name === 'load')!.visible).toBe(false);
+      expect(forge(settler, { ...settler.defaults, pose }, protos).group!.getObjectByName('load')!.visible).toBe(false);
     }
   });
 
@@ -1335,12 +1453,19 @@ describe('the bench builds what the page asks it for', () => {
     const settler = benchByName('settler')!;
     const made = forge(settler, { ...settler.defaults, leg: 1 }, protos);
     expect(made.problems).toEqual([]);
+    //
+    // Jointed since r28: the thigh is cut to the knee, halfway down, and runs
+    // four centimetres past it; the shin hangs from the knee and carries the
+    // boot. So the metre is the chain's — hip to knee plus knee to ankle.
     const leg = made.group!.children.find((c) => c.name === 'leg') as THREE.Mesh;
     expect(leg.position.y).toBeCloseTo(1, 6);
     leg.geometry.computeBoundingBox();
-    expect(leg.geometry.boundingBox!.min.y).toBeCloseTo(-1, 6);
+    expect(leg.geometry.boundingBox!.min.y).toBeCloseTo(-0.54, 6);
+    const shin = leg.children.find((c) => c.name === 'shin') as THREE.Mesh;
+    expect(shin.position.y, 'the knee halfway down the longer leg').toBeCloseTo(-0.5, 6);
     // And the boot is still on the end of it rather than where the old one ended.
-    expect(leg.children.find((c) => c.name === 'boot')!.position.y).toBeCloseTo(-0.951, 6);
+    const boot = shin.children.find((c) => c.name === 'boot')!;
+    expect(shin.position.y + boot.position.y).toBeCloseTo(-0.951, 6);
   });
 
   it('gives a trader freight and gives nobody else any', () => {

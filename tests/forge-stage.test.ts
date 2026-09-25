@@ -634,7 +634,7 @@ describe('how much of a bench frame the subject gets', () => {
       ['tree', 6, 48],
       ['stack', 3, 34],
       ['animal', 1, 17],
-      ['settler', 0, 22],
+      ['settler', 0, 23], // 22 before r28: a bent knee and a hem are a wider body
       ['building', 0, 14],
     ]);
     expect(rows.reduce((t, r) => t + (r[1] as number), 0)).toBe(11);
@@ -782,7 +782,7 @@ describe('how much of a bench frame the subject gets', () => {
       ['tree', 447, false],
       ['stack', 36, true],
       ['animal', 30, true],
-      ['settler', 85, true],
+      ['settler', 82, true], // 85 before r28 jointed the limbs
       ['building', 74, true],
     ]);
     // The buildings are the row where maxing changes nothing, and the reason is
@@ -839,7 +839,7 @@ describe('how much of a bench frame the subject gets', () => {
       ['tree', 138, 0.329, 1],
       ['stack', 27, 0, 0],
       ['animal', 32, 0, 0],
-      ['settler', 57, 0.055, 0.184],
+      ['settler', 57, 0.057, 0.19], // 0.055 and 0.184 before r28 jointed the limbs
       ['building', 98, 0.194, 0.647],
     ]);
   });

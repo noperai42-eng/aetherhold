@@ -616,6 +616,36 @@ computes — is 0.12628. The shipped body sits five per cent under its own ceili
 right side of the line and it is a narrower margin than the doc reads as, so the bench refuses
 anything past it and a drill that nudged the splay by one hundredth turned nine tests red.
 
+**Built — knees, elbows and a chest, 2026-09-25 (r28).** The brief was one line from the
+player: *not just like wooden soldiers.* The frames said why they were — a lathe barrel on two
+straight tubes and two more straight tubes, every one of them hinged at one end only, so a
+walk was four pendulums. Each limb is now two: a thigh and a shin jointed at the knee halfway
+down (`kneeOf`), an upper arm and a forearm jointed halfway to the wrist (`elbowOf`), the boot
+on the shin and the hand and the weapon on the forearm. The torso, neck, head, belt, arms and
+the carried load ride a `chest` group pivoting at the hip, so the body can lean and turn over
+the legs, and a tunic hem hangs from the belt past the top of the thigh. It started on the
+hips, and the first contact sheet showed the shirt tearing at the waist every time the chest
+turned. Four more recipe fields, eighteen now — `knee`, `elbow`, `twist`, `lean` — and one
+writer, `poseSettler`, which the game and the bench both call. The swing knee folds by
+`max(0, ∓cos)` of the stride, so the planted leg is always straight. The elbow keeps a rest
+bend and curls further on the arm swinging forward. The chest turns against the hips only when
+walking with empty hands, and the head takes back the lean and the twist, so it still looks
+where it was looking.
+
+It fits the same 3,000 triangles; a trader with a rifle and the bundle is the body that sets
+that number. The ears that were tried beside the nose were cut. The upper halves of the limbs
+are ten round, the lower halves eight with one ring on each buried cap, and the neck went from
+sixteen round to twelve. The leg, arm and neck goldens were re-pinned deliberately and the
+shin, forearm, hem and nose were added.
+
+The hip-dip brief above is still open, and the knee made it easier to see. At 3/8 and 7/8 of a
+stride the lowest boot used to be the straight trailing leg at 36 mm; that leg now folds into
+its swing, so what is left lowest is the straight leading leg at 64 mm. The knee did not lift
+it — it stopped a lower foot from hiding it. What the frames still show: the elbow and knee
+read as a mannequin's joints, because the round end of the upper half meets a slightly
+narrower lower half with no skin over the seam. The next step past that is a skinned mesh,
+which is its own brief.
+
 **Built — the stage, 2026-09-09.** Not a family. The room every family is
 photographed in, taken on because the contact sheet asked for it three rounds
 running and `src/forge/stage.ts` was the one file on the bench that no test had

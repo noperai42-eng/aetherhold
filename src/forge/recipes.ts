@@ -59,6 +59,7 @@ import {
   assembleSettler,
   growAnimal,
   poseLegs,
+  poseSettler,
   settlerGeometry,
   settlerPose,
   speciesModels,
@@ -858,7 +859,7 @@ const SETTLER_SEED = 4931;
  * pose, where in it, what is in the hands, what is on the shoulder and who this
  * is — the way the herd's `species` and `grown` are.
  *
- * Every one of the recipe's own fourteen is here. This is the most complicated
+ * Every one of the recipe's own eighteen is here. This is the most complicated
  * body in the game and the bench is the only place any of them can be seen to
  * move; the two that also cut the buffers, `leg` and `sleeve`, rebuild the
  * geometry rather than stretching the body around it.
@@ -883,6 +884,10 @@ const SETTLER_FIELDS: readonly Field[] = [
   { key: 'carryZ', label: 'load out', min: 0, max: 0.9, step: 0.005 },
   { key: 'bob', label: 'bob', min: 0, max: 0.2, step: 0.001 },
   { key: 'stoop', label: 'stoop', min: 0, max: 1.2, step: 0.01 },
+  { key: 'knee', label: 'knee fold', min: 0, max: 1.8, step: 0.01 },
+  { key: 'elbow', label: 'elbow bend', min: 0, max: 1.2, step: 0.01 },
+  { key: 'twist', label: 'chest turn', min: 0, max: 1, step: 0.01 },
+  { key: 'lean', label: 'lean', min: -0.3, max: 0.5, step: 0.005 },
 ];
 
 function settlerRecipe(k: Knobs): SettlerRecipe {
@@ -901,6 +906,10 @@ function settlerRecipe(k: Knobs): SettlerRecipe {
     carryZ: k.carryZ!,
     bob: k.bob!,
     stoop: k.stoop!,
+    knee: k.knee!,
+    elbow: k.elbow!,
+    twist: k.twist!,
+    lean: k.lean!,
   };
 }
 
@@ -977,11 +986,9 @@ const SETTLER: Bench = {
       { activity, prone: activity === 'sleeping', phase: k.phase!, handsFull, cooldown: 0 },
       r,
     );
-    parts.legL.rotation.x = pose.legL;
-    parts.legR.rotation.x = pose.legR;
-    parts.armL.rotation.x = pose.armL;
-    parts.armR.rotation.x = pose.armR;
-    parts.head.rotation.x = pose.stoop;
+    poseSettler(parts, pose);
+    // The rig's head, less its aim: a bench has nothing to look at.
+    parts.head.rotation.set(pose.stoop - pose.lean, -pose.twist, 0);
     parts.load.visible = handsFull;
     if (parts.weapon) parts.weapon.visible = !handsFull;
 
