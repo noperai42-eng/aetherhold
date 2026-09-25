@@ -352,6 +352,15 @@ const cost = await page.evaluate(() => {
   //     that has stopped being updated, so the colour pass costs what it always cost and
   //     the only thing removed from the measurement is the depth pass itself. It is put
   //     back before this returns, and the frames taken afterwards are unaffected.
+  // The post chain the same way: off, timed, back on — in this shoot, against this
+  // frame, because a millisecond from another run is not a comparator (see LOOK.md).
+  const withoutPost = () => new Promise((resolve) => {
+    const post = vp.post;
+    if (!post || !post.enabled) return resolve(null);
+    post.enabled = false;
+    timeGpu().then((raw) => { post.enabled = true; resolve(raw); });
+  });
+
   const withoutShadows = () => new Promise((resolve) => {
     const sm = vp.renderer.shadowMap;
     if (!sm || !sm.enabled) return resolve(null);
@@ -365,7 +374,8 @@ const cost = await page.evaluate(() => {
   return counts().then((c) => {
     if (!c) return null;
     const scene = census();
-    return timeGpu().then((gpu) => withoutShadows().then((gpuNoShadow) => ({ ...c, scene, gpu, gpuNoShadow })));
+    return timeGpu().then((gpu) => withoutShadows().then((gpuNoShadow) =>
+      withoutPost().then((gpuNoPost) => ({ ...c, scene, gpu, gpuNoShadow, gpuNoPost }))));
   });
 });
 
@@ -486,6 +496,10 @@ if (!(await page.evaluate(() => document.getElementById('hud')?.classList.contai
 }
 const gpuMs = cost ? reduceGpu(cost.gpu) : null;
 const gpuNoShadowMs = cost ? reduceGpu(cost.gpuNoShadow) : null;
+const gpuNoPostMs = cost ? reduceGpu(cost.gpuNoPost) : null;
+const postMs = gpuMs && gpuNoPostMs && gpuMs.method === 'finish' && gpuNoPostMs.method === 'finish'
+  ? `, post ${(gpuMs.median - gpuNoPostMs.median).toFixed(1)} ms of it (${gpuNoPostMs.median.toFixed(1)} ms without)`
+  : ', post off';
 // The shadow pass, said twice because the two halves answer different questions and
 // neither substitutes for the other: how much of the frame's geometry is drawn a second
 // time into the depth map, and what that second drawing actually costs in milliseconds.
@@ -498,7 +512,7 @@ const shadowMs = gpuMs && gpuNoShadowMs && gpuMs.method === 'finish' && gpuNoSha
   ? `, shadow pass ${(gpuMs.median - gpuNoShadowMs.median).toFixed(1)} ms of it (${gpuNoShadowMs.median.toFixed(1)} ms without)`
   : ', shadow pass n/a';
 const gpu = cost
-  ? `colony frame ${cost.calls} draw calls / ${cost.triangles} triangles / ${cost.points} points / ${cost.lines} lines, ${cost.geometries} geometries, ${cost.textures} textures, ${cost.empty} of ${cost.instanced} instanced meshes empty (${cost.hidden} of those hidden), ${formatGpu(gpuMs)}${gpuMs && gpuMs.spoiled ? ` [${gpuMs.spoiled} spoiled]` : ''}${shadowMs}${shadow}`
+  ? `colony frame ${cost.calls} draw calls / ${cost.triangles} triangles / ${cost.points} points / ${cost.lines} lines, ${cost.geometries} geometries, ${cost.textures} textures, ${cost.empty} of ${cost.instanced} instanced meshes empty (${cost.hidden} of those hidden), ${formatGpu(gpuMs)}${gpuMs && gpuMs.spoiled ? ` [${gpuMs.spoiled} spoiled]` : ''}${shadowMs}${postMs}${shadow}`
   : 'colony frame not counted — window.aetherhold was not there to ask';
 // The census prints above the Cost line and one pool a line, because ten rows wrapped
 // into one line is a paragraph nobody reads and the whole point of it is to be scanned

@@ -6,6 +6,7 @@
 
 import * as THREE from 'three';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
+import { PostChain } from './post';
 
 export type Quality = 'high' | 'medium' | 'low';
 
@@ -24,12 +25,19 @@ export interface QualitySettings {
    * Costs a handful of texture lookups per fragment, so low goes without.
    */
   environment: boolean;
+  /**
+   * The screen-space chain after the scene — occlusion and a levels grade
+   * (`post.ts`). A half-float target the size of the screen and a few
+   * milliseconds of card time, so low goes without and draws the scene
+   * straight to the canvas as it always did.
+   */
+  post: boolean;
 }
 
 export const QUALITY: Record<Quality, QualitySettings> = {
-  high: { maxPixelRatio: 2, shadows: true, shadowMapSize: 2048, antialias: true, decor: true, environment: true },
-  medium: { maxPixelRatio: 1.5, shadows: true, shadowMapSize: 1024, antialias: true, decor: true, environment: true },
-  low: { maxPixelRatio: 1, shadows: false, shadowMapSize: 512, antialias: false, decor: false, environment: false },
+  high: { maxPixelRatio: 2, shadows: true, shadowMapSize: 2048, antialias: true, decor: true, environment: true, post: true },
+  medium: { maxPixelRatio: 1.5, shadows: true, shadowMapSize: 1024, antialias: true, decor: true, environment: true, post: true },
+  low: { maxPixelRatio: 1, shadows: false, shadowMapSize: 512, antialias: false, decor: false, environment: false, post: false },
 };
 
 /** Layer 0 is drawn by both cameras. These are view-specific overlays. */
@@ -52,10 +60,15 @@ export class Viewport {
   private settings: QualitySettings;
   /** The prefiltered environment, built once and kept until quality drops it. */
   private environment: THREE.Texture | null = null;
+  /** The chain after the scene, or null where quality draws straight to the canvas. */
+  post: PostChain | null = null;
+  /** Fixed at context creation, and the post chain's scene target needs to know it. */
+  private readonly antialias: boolean;
 
   constructor(canvas: HTMLCanvasElement, quality: Quality) {
     this.quality = quality;
     this.settings = QUALITY[quality];
+    this.antialias = this.settings.antialias;
     this.renderer = new THREE.WebGLRenderer({
       canvas,
       antialias: this.settings.antialias,
@@ -79,6 +92,17 @@ export class Viewport {
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, s.maxPixelRatio));
     this.renderer.shadowMap.enabled = s.shadows;
     this.applyEnvironment();
+    this.applyPost();
+  }
+
+  private applyPost(): void {
+    if (!this.settings.post) {
+      this.post?.dispose();
+      this.post = null;
+      return;
+    }
+    if (this.post) this.post.setSize();
+    else this.post = new PostChain(this.renderer, this.scene, this.antialias);
   }
 
   /**
@@ -129,10 +153,12 @@ export class Viewport {
 
   resize(width: number, height: number): void {
     this.renderer.setSize(width, height, false);
+    this.post?.setSize();
   }
 
   render(camera: THREE.Camera): void {
-    this.renderer.render(this.scene, camera);
+    if (this.post?.enabled) this.post.render(camera);
+    else this.renderer.render(this.scene, camera);
   }
 
   /**
@@ -144,6 +170,8 @@ export class Viewport {
   }
 
   dispose(): void {
+    this.post?.dispose();
+    this.post = null;
     this.environment?.dispose();
     this.environment = null;
     this.scene.environment = null;

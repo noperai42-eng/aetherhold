@@ -57,7 +57,7 @@ owns `:5063`, say), every command below takes `URL=http://localhost:<port>/`.
 
 | Instrument | What it does | Run |
 |---|---|---|
-| `scripts/look/shot.mjs` | The sixteen standard frames of one colony, the Cost line under them — draw calls, triangles, empty instanced pools, what the frame cost the card, and what the shadow pass cost of that — and above it the triangle census: the ten heaviest pools in the scene, each with its instance count, its geometry's own triangles and whether it casts | `npm run look -- .look/shots/r5 r5` |
+| `scripts/look/shot.mjs` | The sixteen standard frames of one colony, the Cost line under them — draw calls, triangles, empty instanced pools, what the frame cost the card, what the shadow pass cost of that, and what the post chain cost of it — and above it the triangle census: the ten heaviest pools in the scene, each with its instance count, its geometry's own triangles and whether it casts | `npm run look -- .look/shots/r5 r5` |
 | `scripts/look/gpu.mjs` | The reducer behind the Cost line's `gpu` reading — median and max over the clean samples, or `n/a`. Pure and import-free, so `tests/look-gpu.test.ts` judges it without a browser | (no command; read by `shot.mjs`) |
 | `scripts/look/zoo.mjs` | Staged scenes: every animal, crop stage and loose item, laid out on clear ground | `npm run look:zoo -- .look/shots/r5-zoo r5` |
 | `scripts/look/crew.mjs` | Seven settlers in a row, one per state of hands and attention | `npm run look:crew -- .look/shots/r12-crew r12` |
@@ -110,6 +110,14 @@ false: **0.6 ms of a 1.6 ms frame**. The two are not substitutes. A triangle sha
 over-reports, because a depth-only draw is cheap per triangle; a millisecond share alone
 does not say what to cut. Read together they agree, which is the closest thing to a
 cross-check either of them has.
+
+The post chain (`src/client/render/post.ts`: occlusion and the grade) is read the same
+way as the shadow pass. The same stall is run again with `viewport.post.enabled` false,
+and the line prints `post X ms of it (Y ms without)`. `renderer.info` cannot see the chain
+either: the chain snapshots the scene draw's counters and puts them back after its own
+passes. So the draw calls and triangles on the Cost line still describe the colony and
+nothing else. As with every GPU reading here, compare it only against another reading
+from the same shoot. r27 read 0.8 ms and r26 read 3.2 ms on identical code.
 
 `grain.mjs` is for one question, and it is a question the eye is bad at: *did anything
 arrive?* It fits a plane to every 32×32 tile of a frame and reports what is left over,
