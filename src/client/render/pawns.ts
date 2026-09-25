@@ -20,6 +20,7 @@ import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeom
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 
 import { ANIMAL_COLOR, FACTION_COLOR, SKIN_TONES, pawnTint } from './palette';
+import { EYE_Y, faceMaterial, hairMaterial } from './face';
 import { SETTLER_LEG, SETTLER_SWING, phaseScale } from '../gait';
 import { ANIMALS } from '../../sim/wildlife';
 import { isRipe } from '../../sim/husbandry';
@@ -466,7 +467,11 @@ export function assembleSettler(
     roughness: 0.82,
   });
   const skinMat = new THREE.MeshStandardMaterial({ color: skin, roughness: 0.62 });
-  const hairMat = new THREE.MeshStandardMaterial({ color: hairCol, roughness: 0.9 });
+  // The face and the strands are painted per pixel (see `face.ts`), because
+  // the budget has no triangles left for either. A beard on one in four.
+  const style = hairStyleOf(colorSeed);
+  const faceMat = faceMaterial(skin, hairCol, ((colorSeed >> 16) & 3) === 1 ? 0.85 : 0);
+  const hairMat = hairMaterial(hairCol, style === 'swept' ? 1 : 0, HAIR_PARTING[style]);
   const gearMat = new THREE.MeshStandardMaterial({ color: 0x3b3f45, roughness: 0.5, metalness: 0.3 });
   // The belt is a dark strap and the boots are darker still, each in its own
   // leather rather than a shade of the cloth: a band that is the shirt again,
@@ -474,12 +479,11 @@ export function assembleSettler(
   const leatherMat = new THREE.MeshStandardMaterial({ color: 0x4a3323, roughness: 0.62 });
   const bootMat = new THREE.MeshStandardMaterial({ color: 0x2c221c, roughness: 0.55 });
   const eyeMat = new THREE.MeshStandardMaterial({ color: 0x14100e, roughness: 0.35 });
-  mats.push(clothMat, sleeveMat, trouserMat, skinMat, hairMat, gearMat, leatherMat, bootMat, eyeMat);
+  mats.push(clothMat, sleeveMat, trouserMat, skinMat, faceMat, hairMat, gearMat, leatherMat, bootMat, eyeMat);
 
   const torso = new THREE.Mesh(shared.torso, clothMat);
-  const head = new THREE.Mesh(shared.head, skinMat);
-  // Cropped or to the jaw, on one more bit of the same seed.
-  const hair = new THREE.Mesh((colorSeed >> 12) & 1 ? shared.hairLong : shared.hair, hairMat);
+  const head = new THREE.Mesh(shared.head, faceMat);
+  const hair = new THREE.Mesh(HAIR_GEOMETRY[style](shared), hairMat);
   const neck = new THREE.Mesh(shared.neck, skinMat);
   torso.name = 'torso';
   head.name = 'head';
@@ -556,7 +560,7 @@ export function assembleSettler(
   for (const side of [-1, 1] as const) {
     const eye = new THREE.Mesh(shared.eye, eyeMat);
     eye.name = 'eye';
-    eye.position.set(side * 0.05, -0.05, 0.147);
+    eye.position.set(side * 0.05, EYE_Y, 0.157);
     head.add(eye);
   }
   // A nose, which is the one thing that says which way a face points from a
@@ -565,7 +569,7 @@ export function assembleSettler(
   // they cost were what the knees needed to stay inside the budget.
   const nose = new THREE.Mesh(shared.nose, skinMat);
   nose.name = 'nose';
-  nose.position.set(0, -0.025, 0.158);
+  nose.position.set(0, EYE_Y - 0.015, 0.1536);
   head.add(nose);
 
   // Hands and boots ride the far end of their limbs, so they follow the elbow
@@ -1789,6 +1793,8 @@ export interface SettlerGeometry {
   head: THREE.BufferGeometry;
   hair: THREE.BufferGeometry;
   hairLong: THREE.BufferGeometry;
+  hairSwept: THREE.BufferGeometry;
+  hairShaggy: THREE.BufferGeometry;
   eye: THREE.BufferGeometry;
   leg: THREE.BufferGeometry;
   shin: THREE.BufferGeometry;
@@ -1935,50 +1941,147 @@ function hemOf(keys: [number, number][]): (phi: number) => number {
 /**
  * The hair: a shell a little larger than the skull all round, so nothing here
  * is coplanar with the skin, whose hem is what makes it hair. At the front it
- * hangs to the brow in a fringe that is deeper over one temple than the other,
- * a swept wedge with a visible edge, and stays clear of the eyes; at the back
- * it is a nape. Round the head with a straight rim it was a skull cap, and
- * from the manager camera a skull cap over a face is a bald head in a second
- * colour — the colour has to change along a line that looks like a hairline.
+ * hangs to the brow in a fringe and stays clear of the eyes; at the back it is
+ * a nape. Round the head with a straight rim it was a skull cap, and from the
+ * manager camera a skull cap over a face is a bald head in a second colour —
+ * the colour has to change along a line that looks like a hairline.
  *
- * Cropped, the nape stops at the collar and the ears show; long, it carries on
- * down the sides and back to the jaw. Two shapes on one seed bit is the
- * cheapest thing that keeps a crew from being the same silhouette six times.
+ * Four cuts, on two bits of the seed (`hairStyleOf`), every one the same grid of
+ * the same 312 triangles, so the choice costs nothing against the budget:
+ *
+ *  - **crop**: nape at the collar, a fringe deeper over one temple.
+ *  - **long**: down the sides and back to the jaw, flaring out at the ends.
+ *  - **swept**: parted over one temple (the parting is drawn by `hairMaterial`)
+ *    and combed across the brow, a little lower over the other. It was fuller
+ *    on that side too, and that tipped the head's long axis off the way the
+ *    settler faces by more than the ten degrees `head-read` allows, so the
+ *    shape stays near symmetrical and the sweep is in the strands.
+ *  - **shaggy**: past the collar, with heavy locks all round and some lift.
+ *
+ * What made r28's two cuts one helmet was the hem: a smooth curve, the same
+ * distance off the skull all the way down. So the hem here is cut into locks —
+ * every other meridian runs further down than its neighbours, by an amount that
+ * varies from lock to lock and is smallest over the face, so the fringe breaks
+ * into points without reaching the eyes — and the shell stands further off the
+ * skull towards the ends than at the crown, which is how hair hangs rather than
+ * how paint dries. The last rows are baked a little darker into the vertex
+ * colours, where hair thins and sits in its own shadow.
  */
-function makeHair(long: boolean): THREE.BufferGeometry {
-  const hem = long
-    ? hemOf([
-        [0, 0.66],
-        [0.18, 0.56],
-        [0.32, 0.55],
-        [0.5, 0.52],
-        [0.64, 0.49],
-        [0.78, 0.6],
-        [1, 0.66],
-        [1.25, 0.78],
-        [1.5, 0.8],
-        [1.75, 0.78],
-        [2, 0.66],
-      ])
-    : hemOf([
-        [0, 0.48],
-        [0.2, 0.48],
-        [0.32, 0.55],
-        [0.5, 0.52],
-        [0.64, 0.49],
-        [0.76, 0.47],
-        [1, 0.48],
-        [1.2, 0.6],
-        [1.5, 0.63],
-        [1.8, 0.6],
-        [2, 0.48],
-      ]);
+export type HairStyle = 'crop' | 'long' | 'swept' | 'shaggy';
+export const HAIR_STYLES: readonly HairStyle[] = ['crop', 'long', 'swept', 'shaggy'];
+
+/** Where each cut's buffer lives in the shared set. */
+const HAIR_GEOMETRY: Record<HairStyle, (g: SettlerGeometry) => THREE.BufferGeometry> = {
+  crop: (g) => g.hair,
+  long: (g) => g.hairLong,
+  swept: (g) => g.hairSwept,
+  shaggy: (g) => g.hairShaggy,
+};
+
+/**
+ * Which cut a seed wears. Bit twelve is the length it always was — short or to
+ * the jaw — so every settler in a save keeps the length they had; bit thirteen,
+ * which nothing read, chooses between the two cuts of that length.
+ */
+export function hairStyleOf(colorSeed: number): HairStyle {
+  const long = (colorSeed >> 12) & 1;
+  const alt = (colorSeed >> 13) & 1;
+  return HAIR_STYLES[long + alt * 2]!;
+}
+
+/** How each cut hangs: its hem, how deep its locks are, and how far it stands off. */
+const HAIR_CUTS: Record<
+  HairStyle,
+  { hem: [number, number][]; lock: number; faceLock: number; flare: number; lift: number; back: number }
+> = {
+  crop: {
+    hem: [[0, 0.48], [0.2, 0.48], [0.32, 0.5], [0.5, 0.46], [0.64, 0.44], [0.76, 0.45], [1, 0.48], [1.2, 0.6], [1.5, 0.63], [1.8, 0.6], [2, 0.48]],
+    lock: 0.035,
+    faceLock: 0.012,
+    flare: 0.05,
+    lift: 0.03,
+    back: 0.12,
+  },
+  long: {
+    hem: [[0, 0.66], [0.18, 0.56], [0.32, 0.5], [0.5, 0.47], [0.64, 0.45], [0.78, 0.6], [1, 0.66], [1.25, 0.78], [1.5, 0.8], [1.75, 0.78], [2, 0.66]],
+    lock: 0.05,
+    faceLock: 0.012,
+    flare: 0.09,
+    lift: 0.04,
+    back: 0.18,
+  },
+  swept: {
+    hem: [[0, 0.56], [0.2, 0.54], [0.32, 0.485], [0.45, 0.47], [0.58, 0.45], [0.7, 0.43], [0.8, 0.46], [1, 0.5], [1.25, 0.62], [1.5, 0.65], [1.75, 0.63], [2, 0.56]],
+    lock: 0.03,
+    faceLock: 0.01,
+    flare: 0.06,
+    lift: 0.07,
+    back: 0.2,
+  },
+  shaggy: {
+    hem: [[0, 0.6], [0.2, 0.56], [0.35, 0.5], [0.5, 0.47], [0.65, 0.5], [0.8, 0.56], [1, 0.6], [1.25, 0.72], [1.5, 0.74], [1.75, 0.72], [2, 0.6]],
+    lock: 0.07,
+    faceLock: 0.014,
+    flare: 0.1,
+    lift: 0.06,
+    back: 0.2,
+  },
+};
+
+/**
+ * Where each cut parts, across the head in metres, or null: the long cut down
+ * the middle, the swept one on the side it is combed away from.
+ */
+const HAIR_PARTING: Record<HairStyle, number | null> = { crop: null, long: 0, swept: 0.05, shaggy: null };
+
+/** A fixed wobble per lock, so the points are not a comb. */
+function lockDepth(j: number): number {
+  const s = Math.sin(j * 12.9898) * 43758.5453;
+  return 0.6 + 0.4 * (s - Math.floor(s));
+}
+
+function makeHair(style: HairStyle): THREE.BufferGeometry {
+  const cut = HAIR_CUTS[style];
+  const COLS = 24;
+  const ROWS = 7;
+  const base = hemOf(cut.hem);
+  // Every other meridian is a lock and runs down past the hem; its neighbours
+  // stop short of it. Over the face, where phi is half a turn, they are
+  // shallowest, so the fringe is broken but still clears the eyes.
+  const hem = (phi: number): number => {
+    const j = Math.round((phi / (Math.PI * 2)) * COLS) % COLS;
+    const overFace = Math.exp(-(((phi / Math.PI - 0.5) / 0.22) ** 2));
+    const amp = cut.lock + (cut.faceLock - cut.lock) * overFace;
+    const zig = j % 2 === 0 ? lockDepth(j) : -0.35;
+    return base(phi) + amp * zig * Math.PI;
+  };
+  const g = skullPatch(hem, COLS, ROWS);
+  const pos = g.attributes.position!;
+  const colors: number[] = [];
+  for (let i = 0; i <= ROWS; i++) {
+    const t = i / ROWS;
+    for (let j = 0; j <= COLS; j++) {
+      const k = i * (COLS + 1) + j;
+      const x = pos.getX(k);
+      // Standing further off towards the ends, higher at the crown, and fuller over the back of the
+      // skull, where a head is longest: the raised r29 hairline took length off
+      // the front, and from overhead that length is what says which way a
+      // settler faces. Only ever outward, so every vertex stays outside the skull.
+      const swell = 1 + cut.flare * t * t;
+      const z = pos.getZ(k);
+      const occiput = z < 0 ? 1 + cut.back * Math.sin(t * Math.PI * 0.85) : 1;
+      pos.setXYZ(k, x * swell, pos.getY(k) * (1 + cut.lift * (1 - t)), z * swell * occiput);
+      const shade = 1 - 0.22 * Math.max(0, (t - 0.45) / 0.55) ** 1.5;
+      colors.push(shade, shade, shade);
+    }
+  }
+  g.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
   // The skull is 0.13 round and 6% taller; the shell is that plus a finger's
   // width, so every vertex is outside the skin and the crown has some volume.
-  const g = skullPatch(hem, 24, 7).scale(0.148, 0.158, 0.19);
+  g.scale(0.148, 0.158, 0.178);
   g.computeVertexNormals();
   const n = g.attributes.normal!;
-  for (let j = 0; j <= 24; j++) n.setXYZ(j, 0, 1, 0);
+  for (let j = 0; j <= COLS; j++) n.setXYZ(j, 0, 1, 0);
   return g;
 }
 
@@ -2859,8 +2962,10 @@ export function settlerGeometry(r: SettlerRecipe = SETTLER_DEFAULT): SettlerGeom
     // camera eleven cells up. Eighty triangles for a curve no player is ever in
     // a position to see, on the part of the rig that already spent the most.
     head: new THREE.SphereGeometry(0.13, 20, 10).scale(1, 1.06, 1.28),
-    hair: makeHair(false),
-    hairLong: makeHair(true),
+    hair: makeHair('crop'),
+    hairLong: makeHair('long'),
+    hairSwept: makeHair('swept'),
+    hairShaggy: makeHair('shaggy'),
     // The one bead on a settler's face, and it was standing off it. At 0.022 of
     // radius, seated where it is on a skull of 0.13, the outermost point of the
     // eye stood 26 millimetres proud of the skin — a fifth of the head's own

@@ -176,6 +176,11 @@ would have been wrong in any table maintained by hand.
   injected into the material at compile time. glTF has nowhere to put a vertex
   program, so exporting a blade would hand you a stiff green dart and call it
   grass. If you want the effect, port the shader; the geometry alone is not it.
+- **Faces and hair strands.** A settler's brows, eye whites, mouth, beard, hair
+  strands and parting are painted by a fragment program (`src/client/render/face.ts`),
+  not modelled, so an exported `head` is plain skin with its eye beads and nose,
+  and an exported `hair` is its colour with darker ends baked into the vertex
+  colours. The export has one settler, so it carries one of the four cuts.
 - **Effects.** Smoke, fire glow, muzzle flashes and weather are billboards and
   canvas-drawn textures built at runtime, and none of them are models.
 - **Landmarks.** The four survey props are close cousins of the scatter stones

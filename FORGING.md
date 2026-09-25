@@ -646,6 +646,44 @@ read as a mannequin's joints, because the round end of the upper half meets a sl
 narrower lower half with no skin over the seam. The next step past that is a skinned mesh,
 which is its own brief.
 
+**Built — faces and hair, 2026-09-25 (r29).** The next brief, again one line: *improve their
+faces and hair.* Twelve triangles were left under the 3,000, so none were spent. A face at
+manager distance is twenty pixels across, and at that size a face is a few changes of colour in
+the right places. `src/client/render/face.ts` paints them in the fragment shader of the head's
+own material from the position on the skull: an almond white either side of each eye bead, a
+lid line, arched brows in the hair's colour, a shallow mouth, a flush under each eye, and for a
+quarter of the seeds (bits 16–17) a beard. Every edge is widened by `fwidth`, so a feature
+finer than a pixel fades instead of crawling. The eyes moved up to `EYE_Y`, just below the
+middle of the skull. r28 had them a third of the way up from the chin, where from fifty degrees
+overhead the fringe covered them.
+
+The hair keeps its 24×7 grid, but the hem is cut into locks, alternate meridians running
+deeper by a hashed amount and shallowest over the face. The hairline is raised clear of the
+eyes, the shell stands further off towards the ends, the back of the skull is fuller, and the
+ends are baked darker into the vertex colours. Four cuts now, on bits 12 and 13 (`hairStyleOf`):
+crop, long, swept and shaggy. Bit 12 is still the length, so a saved settler keeps it. The
+hair's material draws strands along the meridians, and for the long and swept cuts a parting,
+since the top of the head is most of what the manager camera sees of a settler.
+
+Three things the frames and the tests settled:
+- The swept cut was first built lopsided: lower over one temple and fuller on that side.
+  `head-read` measured its long axis twelve degrees off the facing, against a ten-degree
+  limit, so the shape went back to near-symmetrical and the sweep is now in the strands and
+  the parting.
+- Raising the hairline took length off the front, and the crop's overhead outline dropped to
+  1.09 against the 1.1 floor. The fuller occiput (`back`) is what restored it.
+- `head-read` and the fringe test in `lighting` were written for two cuts on one bit, so they
+  saw whichever two the valley dealt. Both now go round all four.
+
+From the game camera the strands and the parting show on light and red hair and barely on
+black. The face shows only when a settler faces the camera. Close up, the brows and whites make
+it a face; from overhead it is still mostly hair.
+
+`scripts/look/heads.mjs` cannot judge this. It clones one armed template, so all eight heads
+have the same hair, and combat or the tick turns them before the shot. The r29 frames came
+from a scratch harness that gave each settler its own seed, disarmed them, and orbited the
+camera half a turn. Folding that into `heads.mjs` is its own small brief.
+
 **Built — the stage, 2026-09-09.** Not a family. The room every family is
 photographed in, taken on because the contact sheet asked for it three rounds
 running and `src/forge/stage.ts` was the one file on the bench that no test had

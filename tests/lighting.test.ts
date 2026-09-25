@@ -38,7 +38,8 @@ import {
   SUN_DUSK,
   pawnTint,
 } from '../src/client/render/palette';
-import { HAIR_TONES, PawnsView, hideTint, sleeveOf } from '../src/client/render/pawns';
+import { HAIR_TONES, PawnsView, hairStyleOf, hideTint, sleeveOf } from '../src/client/render/pawns';
+import type { HairStyle } from '../src/client/render/pawns';
 import { PickiesView } from '../src/client/render/pickies';
 import { SETTLER_LEG } from '../src/client/gait';
 import { POOF_TICKS, summonPicky } from '../src/sim/pickies';
@@ -1640,46 +1641,51 @@ describe('what a body is made of', () => {
   it('hangs the fringe to the brow and no lower — hair over the eyes is a helmet, hair above them is a hairline', () => {
     // The face has to show below the hair for the head to read as a head with
     // hair on it, and the eyes are the face. The fringe's hem sits at the
-    // brow, above the top of both eyes and below the crown, on both crops —
-    // which the map's seed does not promise to deal out, so bit twelve of the
-    // seed, the crop, is set by hand on every other settler before the bodies
-    // are built.
-    const world = createWorld(SEED);
-    world.pawns.filter((p) => !p.animal).forEach((p, i) => {
-      p.colorSeed = (p.colorSeed & ~0x1000) | (i & 1 ? 0x1000 : 0);
-    });
-    const view = new PawnsView();
-    view.onTick(world);
-    view.sync(world, 0, null, 0);
+    // brow, above the top of both eyes and below the crown, on every cut —
+    // which the map's seed does not promise to deal out, so bits twelve and
+    // thirteen of the seed, the cut (`hairStyleOf`), are set by hand round the
+    // four of them before the bodies are built. Until r29 there were two cuts
+    // on bit twelve alone. The valley starts with three settlers, so the
+    // colony is dealt twice, the second time two cuts along.
+    const cuts = new Set<HairStyle>();
     const v = new THREE.Vector3();
-    const crops = new Set<THREE.BufferGeometry>();
-    for (const rig of view.group.children) {
-      const pawn = world.pawns.find((p) => p.x === rig.position.x && p.y === rig.position.z)!;
-      if (pawn.animal) continue;
-      const head = part(rig, 'head');
-      const hair = part(rig, 'hair');
-      crops.add(hair.geometry);
-      const eyes = head.children.filter((o): o is THREE.Mesh => o instanceof THREE.Mesh && o.name === 'eye');
-      expect(eyes).toHaveLength(2);
-      let brow = -Infinity;
-      for (const eye of eyes) {
-        eye.geometry.computeBoundingSphere();
-        brow = Math.max(brow, eye.position.y + eye.geometry.boundingSphere!.radius);
+    for (const shift of [0, 2]) {
+      const world = createWorld(SEED);
+      world.pawns.filter((p) => !p.animal).forEach((p, n) => {
+        const i = n + shift;
+        p.colorSeed = (p.colorSeed & ~0x3000) | ((i & 1) << 12) | (((i >> 1) & 1) << 13);
+      });
+      const view = new PawnsView();
+      view.onTick(world);
+      view.sync(world, 0, null, 0);
+      for (const rig of view.group.children) {
+        const pawn = world.pawns.find((p) => p.x === rig.position.x && p.y === rig.position.z)!;
+        if (pawn.animal) continue;
+        const head = part(rig, 'head');
+        const hair = part(rig, 'hair');
+        cuts.add(hairStyleOf(pawn.colorSeed));
+        const eyes = head.children.filter((o): o is THREE.Mesh => o instanceof THREE.Mesh && o.name === 'eye');
+        expect(eyes).toHaveLength(2);
+        let brow = -Infinity;
+        for (const eye of eyes) {
+          eye.geometry.computeBoundingSphere();
+          brow = Math.max(brow, eye.position.y + eye.geometry.boundingSphere!.radius);
+        }
+        // The hem over the face: the lowest hair vertex on the front of the head
+        // within the eyes' span, in the head's own frame — the hair is its child.
+        const pos = hair.geometry.attributes.position!;
+        let hem = Infinity;
+        for (let i = 0; i < pos.count; i++) {
+          v.fromBufferAttribute(pos, i);
+          if (v.z > 0.08 && Math.abs(v.x) < 0.08) hem = Math.min(hem, v.y);
+        }
+        expect(hem, 'fringe clears the eyes').toBeGreaterThan(brow);
+        head.geometry.computeBoundingBox();
+        expect(hem, 'fringe comes down the forehead').toBeLessThan(head.geometry.boundingBox!.max.y * 0.5);
       }
-      // The hem over the face: the lowest hair vertex on the front of the head
-      // within the eyes' span, in the head's own frame — the hair is its child.
-      const pos = hair.geometry.attributes.position!;
-      let hem = Infinity;
-      for (let i = 0; i < pos.count; i++) {
-        v.fromBufferAttribute(pos, i);
-        if (v.z > 0.08 && Math.abs(v.x) < 0.08) hem = Math.min(hem, v.y);
-      }
-      expect(hem, 'fringe clears the eyes').toBeGreaterThan(brow);
-      head.geometry.computeBoundingBox();
-      expect(hem, 'fringe comes down the forehead').toBeLessThan(head.geometry.boundingBox!.max.y * 0.5);
+      view.dispose();
     }
-    expect(crops.size, 'the map has both crops to check').toBe(2);
-    view.dispose();
+    expect(cuts.size, 'the map has all four cuts to check').toBe(4);
   });
 
   it('breaks the settler into four bands — shirt, trousers, belt and boots are four colours, the leather darker than the cloth', () => {

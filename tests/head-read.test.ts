@@ -41,8 +41,16 @@ function screenBasis(): { right: THREE.Vector3; up: THREE.Vector3; v: THREE.Vect
   return { right, up: v.clone().cross(right).normalize(), v };
 }
 
+/**
+ * The four cuts, by the two seed bits `hairStyleOf` reads: bit 12 is the
+ * length it always was, bit 13 the second axis r29 added. Until r29 this was a
+ * `long` flag setting bit 12 alone, which after the change photographed
+ * whichever two of the four cuts the valley's first settler happened to carry.
+ */
+const CUTS = [0, 1, 2, 3];
+
 /** One settler on a real map, pointed a given way, with the head left straight. */
-function facing(rad: number, long: boolean): View {
+function facing(rad: number, cut: number): View {
   const world = createWorld(SEED);
   const pawn = world.pawns.find((p) => !p.animal)!;
   world.pawns = [pawn];
@@ -54,7 +62,7 @@ function facing(rad: number, long: boolean): View {
   pawn.dead = false;
   pawn.downed = false;
   pawn.facing = rad;
-  pawn.colorSeed = long ? pawn.colorSeed | 0x1000 : pawn.colorSeed & ~0x1000;
+  pawn.colorSeed = (pawn.colorSeed & ~0x3000) | ((cut & 1) << 12) | ((cut >> 1) << 13);
   const view = new PawnsView();
   view.onTick(world);
   view.sync(world, 1, null, 1 / 60);
@@ -151,10 +159,10 @@ describe('a head under the manager camera', () => {
     // facing rather than at it: the head's long axis lies along the camera's own
     // azimuth twice in a turn, and there it foreshortens by the sine of the
     // pitch however long the skull is. That is projection, not a flat head.
-    for (const long of [false, true]) {
+    for (const cut of CUTS) {
       for (const rad of COMPASS) {
-        const { aspect } = outline(survey(facing(rad, long)).pts);
-        expect(aspect, `facing ${rad}, long ${long}`).toBeGreaterThan(1.1);
+        const { aspect } = outline(survey(facing(rad, cut)).pts);
+        expect(aspect, `facing ${rad}, cut ${cut}`).toBeGreaterThan(1.1);
       }
     }
   });
@@ -164,10 +172,10 @@ describe('a head under the manager camera', () => {
     // a direction, so this compares undirected lines: the head names which way
     // the body is pointed to within a few degrees, and it is the same answer
     // from in front and from behind.
-    for (const long of [false, true]) {
+    for (const cut of CUTS) {
       for (const rad of COMPASS) {
-        const { angle } = outline(survey(facing(rad, long)).pts);
-        expect(axisGap(angle, forwardAngle(rad)), `facing ${rad}, long ${long}`).toBeLessThan(10);
+        const { angle } = outline(survey(facing(rad, cut)).pts);
+        expect(axisGap(angle, forwardAngle(rad)), `facing ${rad}, cut ${cut}`).toBeLessThan(10);
       }
     }
   });
@@ -192,21 +200,23 @@ describe('a head under the manager camera', () => {
     // ellipsoids rather than two spheres, and two ellipsoids can be scaled apart
     // on one axis and into each other on another without anyone noticing until a
     // frame shows a scalp flickering through a fringe.
-    const view = facing(0, false);
-    const meshes = headMeshes(view);
-    const s = semiAxes(meshes.find((m) => m.name === 'head')!);
-    const hair = meshes.find((m) => m.name === 'hair')!;
-    const hp = hair.geometry.getAttribute('position');
-    const local = new THREE.Vector3();
     let worst = 0;
-    for (let i = 0; i < hp.count; i += 1) {
-      local.fromBufferAttribute(hp, i);
-      // Both sit at the head's own origin and in its own frame, so a shell
-      // vertex is outside the skin exactly when it is outside the ellipsoid.
-      // Measured in that frame and not in the world's: the group carries the
-      // body's yaw, and a rotated box is not a set of semi-axes.
-      const q = (local.x / s.x) ** 2 + (local.y / s.y) ** 2 + (local.z / s.z) ** 2;
-      worst = Math.max(worst, 1 - q);
+    for (const cut of CUTS) {
+      const view = facing(0, cut);
+      const meshes = headMeshes(view);
+      const s = semiAxes(meshes.find((m) => m.name === 'head')!);
+      const hair = meshes.find((m) => m.name === 'hair')!;
+      const hp = hair.geometry.getAttribute('position');
+      const local = new THREE.Vector3();
+      for (let i = 0; i < hp.count; i += 1) {
+        local.fromBufferAttribute(hp, i);
+        // Both sit at the head's own origin and in its own frame, so a shell
+        // vertex is outside the skin exactly when it is outside the ellipsoid.
+        // Measured in that frame and not in the world's: the group carries the
+        // body's yaw, and a rotated box is not a set of semi-axes.
+        const q = (local.x / s.x) ** 2 + (local.y / s.y) ** 2 + (local.z / s.z) ** 2;
+        worst = Math.max(worst, 1 - q);
+      }
     }
     expect(worst).toBeLessThanOrEqual(0);
   });
@@ -216,7 +226,7 @@ describe('a head under the manager camera', () => {
     // stood 26 mm proud and a head read as a face pressed against glass, and
     // 0.016 was chosen because it stands 20. Moving the eye forward to follow a
     // longer skull is exactly the change that can quietly undo that.
-    const view = facing(0, false);
+    const view = facing(0, 0);
     const meshes = headMeshes(view);
     const s = semiAxes(meshes.find((m) => m.name === 'head')!);
     const eye = meshes.find((m) => m.name === 'eye')!;
