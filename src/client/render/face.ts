@@ -169,11 +169,13 @@ const FACE_GLSL = /* glsl */ `
 `;
 
 /**
- * The hair's strands: fine stripes running from the crown down to the hem,
- * each a shade darker or lighter than the colour, so a shell of one colour
- * reads as hair lying in a direction rather than as a painted helmet. The
- * stripes wander a little along their length and fade out wherever they would
- * be finer than a pixel. From the manager camera the top of the head is most
+ * The hair's strands: fine stripes running from a whorl behind the crown down
+ * to the hem, curling a little as they leave it, so a shell of one colour
+ * reads as hair lying in a direction rather than as a painted helmet. Every
+ * strand has a shade of its own, the strands lie together in locks with a
+ * shadowed gap between one lock and the next, and `HAIR_BUMP_GLSL` raises the
+ * same strands in relief. The stripes wander a little along their length and
+ * fade out wherever they would be finer than a pixel. From the manager camera the top of the head is most
  * of what a player sees of a settler, so the stripes are coarse and strong
  * enough to survive at twenty pixels, and a parted cut draws its parting: a
  * dark line from the hairline back to the crown, on the middle for the long
@@ -182,14 +184,30 @@ const FACE_GLSL = /* glsl */ `
 const HAIR_GLSL = /* glsl */ `
   {
     vec3 q = vHairPos;
-    float a = atan(q.x, q.z);
-    float s = a * 30.0 + sin(a * 5.0 + q.y * 30.0) * 1.4 + q.y * 12.0 * uSweep;
+    // The whorl sits behind the crown, where hair grows from, not on top.
+    // Every angular term is a whole multiple of a, so the seam at the back
+    // of the head, where a wraps, draws nothing.
+    float a = atan(q.x, q.z + 0.1);
+    float s = a * 48.0 + sin(a * 5.0 + q.y * 30.0) * 1.4 + q.y * 12.0 * uSweep + length(q.xz + vec2(0.0, 0.1)) * 70.0;
     float fine = 1.0 - smoothstep(0.35, 1.0, fwidth(s));
-    float strand = sin(s) * 0.5 + sin(s * 2.3 + 1.7) * 0.25;
-    diffuseColor.rgb *= 1.0 + strand * 0.26 * fine;
-    // Locks: each hank a shade lighter or darker than its neighbours, so the
-    // head is several masses of hair and not one shell.
-    diffuseColor.rgb *= 1.0 + 0.1 * sin(a * 7.0 + 1.3) * sin(a * 3.0 + q.y * 20.0);
+    // Each strand has its own shade and its own lie: the id wraps with a, so
+    // the strands either side of the seam are the same strand.
+    float id = mod(floor(s / 6.2832), 48.0);
+    float h1 = fract(sin(id * 12.9898) * 43758.5453);
+    float h2 = fract(sin(id * 78.233) * 12543.123);
+    float strand = sin(s + h2 * 2.0) * 0.4 + sin(s * 2.3 + 1.7 + h1 * 3.0) * 0.2 + (h1 - 0.5) * 0.5;
+    diffuseColor.rgb *= 1.0 + strand * 0.3 * fine;
+    // Locks: strands lie together four at a time, each lock a shade of its
+    // own, with a shadowed gap where one lock parts from the next.
+    float c = s / 25.1327;
+    float lid = mod(floor(c), 12.0);
+    float lf = fract(c);
+    float lh = fract(sin(lid * 39.346 + 11.0) * 24634.634);
+    float lockFine = 1.0 - smoothstep(0.08, 0.3, fwidth(c));
+    float gap = 1.0 - smoothstep(0.0, 0.18, min(lf, 1.0 - lf));
+    diffuseColor.rgb *= 1.0 + (lh - 0.5) * 0.22 - 0.2 * gap * lockFine;
+    // The same strands and gaps as relief, in metres, for the normal below.
+    hairH = (sin(s) * 0.5 * fine - gap * lockFine) * 0.0012;
     // Sheen: the band round the head where hair catches the light, broken up
     // by the strands. Lifted rather than scaled, or black hair would have none.
     float sheen = exp(-pow((q.y - 0.105) / 0.022, 2.0)) * (0.55 + 0.45 * strand) * fine;
@@ -199,6 +217,25 @@ const HAIR_GLSL = /* glsl */ `
     float parting = (1.0 - smoothstep(0.0035, 0.0035 + pa * 1.5, abs(q.x - uPart.x)))
                   * smoothstep(0.05, 0.09, q.y) * smoothstep(-0.05, 0.02, q.z);
     diffuseColor.rgb *= 1.0 - 0.5 * uPart.y * parting;
+  }
+`;
+
+/**
+ * The strands in relief: the height the colour block left in `hairH` tilts the
+ * normal, as a bump map would, so the light catches each lock's ridge and the
+ * gaps between them fall into shade. Three's own bump code only compiles with
+ * a bump texture, so its screen-space derivative form is written out here.
+ */
+const HAIR_BUMP_GLSL = /* glsl */ `
+  {
+    vec3 hp = -vViewPosition;
+    vec3 dPdx = dFdx(hp);
+    vec3 dPdy = dFdy(hp);
+    vec3 r1 = cross(dPdy, normal);
+    vec3 r2 = cross(normal, dPdx);
+    float det = dot(dPdx, r1) * faceDirection;
+    vec3 grad = sign(det) * (dFdx(hairH) * r1 + dFdy(hairH) * r2);
+    normal = normalize(abs(det) * normal - grad);
   }
 `;
 
@@ -283,8 +320,9 @@ export function hairMaterial(hair: THREE.Color, sweep: number, part: number | nu
       .replace('void main() {', 'varying vec3 vHairPos;\nvoid main() {')
       .replace('#include <begin_vertex>', '#include <begin_vertex>\nvHairPos = position;');
     shader.fragmentShader = shader.fragmentShader
-      .replace('void main() {', 'varying vec3 vHairPos;\nuniform float uSweep;\nuniform vec2 uPart;\nvoid main() {')
-      .replace('#include <color_fragment>', `#include <color_fragment>\n${HAIR_GLSL}`);
+      .replace('void main() {', 'varying vec3 vHairPos;\nuniform float uSweep;\nuniform vec2 uPart;\nvoid main() {\nfloat hairH = 0.0;')
+      .replace('#include <color_fragment>', `#include <color_fragment>\n${HAIR_GLSL}`)
+      .replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>\n${HAIR_BUMP_GLSL}`);
   };
   mat.customProgramCacheKey = () => HAIR_KEY;
   mat.userData.hair = { sweep: uSweep, part: uPart };

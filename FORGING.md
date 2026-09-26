@@ -733,6 +733,20 @@ and a lower exposure: in the game's own noon light the chin and mouth are lit, s
 lighting was changed. Frames from here on are taken in game light. Zero triangles.
 Frames: `.look/shots/r32/` against `r32-before/`.
 
+**Built — hair texture, 2026-09-26 (r33).** The hair was one stripe repeated thirty times
+round the head, and every stripe met at the top, so from the manager camera a head of hair
+was a star on a helmet. `HAIR_GLSL` in `face.ts` now measures the strand angle about a
+whorl 10 cm behind the head's centre and curls it a little with distance from there. There
+are 48 strands; each has a hashed shade of its own. They lie in locks of four, each lock a
+shade, with a shadowed gap between locks. The ids are wrapped at the same count the angle
+multiplies by, so the seam at the back draws nothing. The colour pass also leaves a height,
+and `HAIR_BUMP_GLSL`, after three's `normal_fragment_maps`, tilts the normal by its
+screen-space slope, three's bump-map derivation written out, because three's own
+needs a bump texture. That lets the light catch each lock and shade the gaps. The height
+uses only the smooth part of the stripe; the per-strand phase jumps at every strand's edge
+and drew dotted lines when it was in. One program still covers every head of hair. Zero
+triangles, no goldens moved. Frames: `.look/shots/r33/` against `r33-before/`.
+
 **Built — the stage, 2026-09-09.** Not a family. The room every family is
 photographed in, taken on because the contact sheet asked for it three rounds
 running and `src/forge/stage.ts` was the one file on the bench that no test had

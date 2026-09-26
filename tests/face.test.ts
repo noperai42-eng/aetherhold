@@ -76,6 +76,26 @@ describe('a settler’s face and hair', () => {
     expect(shader.uniforms.uPart).toBeDefined();
   });
 
+  it('raises the strands in relief after the normal is known — before it, the tilt would be overwritten; after lighting, it would light nothing', () => {
+    const f = compiled(hairMaterial(new THREE.Color(0x3a2616), 0, null)).fragmentShader;
+    const declared = f.indexOf('float hairH = 0.0;');
+    const set = f.indexOf('hairH = (');
+    const bump = f.indexOf('dFdx(hairH)');
+    expect(declared).toBeGreaterThan(-1);
+    expect(set).toBeGreaterThan(declared);
+    expect(bump).toBeGreaterThan(f.indexOf('#include <normal_fragment_maps>'));
+    expect(bump).toBeLessThan(f.indexOf('#include <lights_fragment_begin>'));
+  });
+
+  it('gives each strand and each lock its own shade, wrapped so the seam at the back of the head draws nothing', () => {
+    const f = compiled(hairMaterial(new THREE.Color(0x3a2616), 0, null)).fragmentShader;
+    // 48 strands in four-strand locks: the ids wrap at the same count the
+    // angle multiplies by, so the strand either side of the seam is one strand.
+    expect(f).toContain('a * 48.0');
+    expect(f).toContain('mod(floor(s / 6.2832), 48.0)');
+    expect(f).toContain('mod(floor(c), 12.0)');
+  });
+
   it('gives every face one program, whatever its colours — a program per settler would compile forty times on load', () => {
     const a = faceMaterial(new THREE.Color(0xf1c9a5), new THREE.Color(0x111111));
     const b = faceMaterial(new THREE.Color(0x5a3825), new THREE.Color(0xe0d0a0), { beard: 0.85, moustache: 0, stubble: 0, freckles: 1, age: 1 });
