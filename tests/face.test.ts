@@ -17,13 +17,17 @@
  * r30 paints the eye bead too — iris, pupil, white and lid — so the same holds
  * for it: the patch lands, one program serves every eye, and the iris is dealt
  * from the seed so a colony has more than one eye colour.
+ *
+ * r31 gives the skull a jaw and a chin, and a settler their own marks — a
+ * moustache or stubble, freckles, the lines of age — dealt so that nobody who
+ * had a beard loses it, and so that age goes with grey hair and nothing else.
  */
 
 import * as THREE from 'three';
 import { describe, expect, it } from 'vitest';
 
-import { IRIS_TONES, eyeMaterial, faceMaterial, hairMaterial, irisOf } from '../src/client/render/face';
-import { HAIR_STYLES, PawnsView, hairStyleOf } from '../src/client/render/pawns';
+import { IRIS_TONES, eyeMaterial, faceMaterial, faceTraitsOf, hairMaterial, irisOf } from '../src/client/render/face';
+import { HAIR_STYLES, HAIR_TONES, PawnsView, hairStyleOf, settlerGeometry } from '../src/client/render/pawns';
 import type { HairStyle } from '../src/client/render/pawns';
 import { createWorld } from '../src/sim/worldgen';
 
@@ -54,7 +58,7 @@ describe('a settler’s face and hair', () => {
   // --- functional
 
   it('patches the face into the standard shader — a missing anchor would leave a plain egg and compile clean', () => {
-    const shader = compiled(faceMaterial(new THREE.Color(0xd9a07a), new THREE.Color(0x3a2616), 0));
+    const shader = compiled(faceMaterial(new THREE.Color(0xd9a07a), new THREE.Color(0x3a2616)));
     expect(shader.vertexShader).toContain('vFacePos = position;');
     expect(shader.fragmentShader).toContain('uniform vec3 uHair;');
     // The face block itself, after the colour is read and before lighting uses it.
@@ -73,8 +77,8 @@ describe('a settler’s face and hair', () => {
   });
 
   it('gives every face one program, whatever its colours — a program per settler would compile forty times on load', () => {
-    const a = faceMaterial(new THREE.Color(0xf1c9a5), new THREE.Color(0x111111), 0);
-    const b = faceMaterial(new THREE.Color(0x5a3825), new THREE.Color(0xe0d0a0), 0.85);
+    const a = faceMaterial(new THREE.Color(0xf1c9a5), new THREE.Color(0x111111));
+    const b = faceMaterial(new THREE.Color(0x5a3825), new THREE.Color(0xe0d0a0), { beard: 0.85, moustache: 0, stubble: 0, freckles: 1, age: 1 });
     expect(a.customProgramCacheKey()).toBe(b.customProgramCacheKey());
     const h = hairMaterial(new THREE.Color(0x111111), 0, null);
     const k = hairMaterial(new THREE.Color(0xe0d0a0), 1, 0);
@@ -98,7 +102,7 @@ describe('a settler’s face and hair', () => {
     const a = eyeMaterial(size, new THREE.Color(0x5b3a22), new THREE.Color(0xd9a07a), new THREE.Color(0x111111));
     const b = eyeMaterial(size, new THREE.Color(0x4d6440), new THREE.Color(0x5a3422), new THREE.Color(0x221100));
     expect(a.customProgramCacheKey()).toBe(b.customProgramCacheKey());
-    expect(a.customProgramCacheKey()).not.toBe(faceMaterial(new THREE.Color(), new THREE.Color(), 0).customProgramCacheKey());
+    expect(a.customProgramCacheKey()).not.toBe(faceMaterial(new THREE.Color(), new THREE.Color()).customProgramCacheKey());
   });
 
   it('deals the iris from the seed — the same settler keeps their eyes, and a colony has every tone', () => {
@@ -106,6 +110,47 @@ describe('a settler’s face and hair', () => {
     const seen = new Set<number>();
     for (let seed = 0; seed < 4096; seed++) seen.add(irisOf(seed));
     expect(seen.size).toBe(new Set(IRIS_TONES).size);
+  });
+
+  it('deals the marks so the bearded keep their beards and nobody has two kinds of facial hair', () => {
+    let moustache = 0;
+    let stubble = 0;
+    let freckles = 0;
+    const N = 1 << 20;
+    for (let seed = 0; seed < N; seed += 7) {
+      const t = faceTraitsOf(seed, false);
+      expect(t.beard > 0, 'the beard is bits 16–17 as it was').toBe(((seed >> 16) & 3) === 1);
+      expect((t.beard > 0 ? 1 : 0) + t.moustache + t.stubble).toBeLessThanOrEqual(1);
+      expect(t.age).toBe(0);
+      moustache += t.moustache;
+      stubble += t.stubble;
+      freckles += t.freckles;
+    }
+    const n = Math.ceil(N / 7);
+    expect(moustache / n).toBeCloseTo(1 / 8, 2);
+    expect(stubble / n).toBeCloseTo(1 / 8, 2);
+    expect(freckles / n).toBeCloseTo(1 / 5, 2);
+    expect(faceTraitsOf(1234, true).age).toBe(1);
+  });
+
+  it('gives the skull a chin under the mouth and leaves the face above it where it was', () => {
+    const head = settlerGeometry().head;
+    const plain = new THREE.SphereGeometry(0.13, 20, 10).scale(1, 1.06, 1.28);
+    const a = head.attributes.position!;
+    const b = plain.attributes.position!;
+    expect(a.count).toBe(b.count);
+    let chin = 0;
+    for (let i = 0; i < a.count; i++) {
+      // Everything from a little below the eyes up is the egg it was, so the
+      // eye beads and the nose sit in the skin as they did.
+      if (b.getY(i) > -0.03) {
+        expect(a.getX(i)).toBeCloseTo(b.getX(i), 6);
+        expect(a.getZ(i)).toBeCloseTo(b.getZ(i), 6);
+      }
+      // Under the mouth, at the front: forward of where the egg ran round.
+      if (b.getY(i) < -0.1 && b.getZ(i) > 0.08) chin = Math.max(chin, a.getZ(i) - b.getZ(i));
+    }
+    expect(chin, 'the chin comes forward by at least a centimetre').toBeGreaterThan(0.01);
   });
 
   it('keeps the length a save already has — bit twelve is still short or long', () => {
@@ -151,6 +196,10 @@ describe('a settler’s face and hair', () => {
         expect(head.userData.face, 'the head wears the face').toBeDefined();
         const eye = part(rig, 'eye').material as THREE.MeshStandardMaterial;
         expect(eye.userData.eye.uIris.value.getHex(), 'the eye wears its iris').toBe(irisOf(pawn.colorSeed));
+        const grey = HAIR_TONES[(pawn.colorSeed >> 8) % HAIR_TONES.length] === 0xe9e6e2;
+        const marks = faceTraitsOf(pawn.colorSeed, grey);
+        expect(head.userData.face.traits.value.toArray(), 'the face wears its marks').toEqual([marks.moustache, marks.stubble, marks.freckles, marks.age]);
+        expect(head.userData.face.beard.value).toBe(marks.beard);
         const hair = part(rig, 'hair').material as THREE.MeshStandardMaterial;
         const parted = hair.userData.hair.part.value.y === 1;
         expect(parted, style).toBe(style === 'long' || style === 'swept');

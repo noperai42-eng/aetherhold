@@ -221,13 +221,17 @@ const GOLDEN: Readonly<Record<string, string>> = {
   // The hair re-pinned in r29, deliberately, when the hem was cut into locks,
   // the hairline raised clear of the eyes and the back of the skull filled out;
   // the swept and shaggy cuts are new, on the same grid, so the counts hold.
+  //
+  // Re-pinned in r31, deliberately: the head got a jaw and a chin (the same
+  // sphere reshaped below the eyes, so the counts and the box hold), and the
+  // crop and swept cuts got sideburns in their hems.
   'settler.torso': 'verts=189 idx=960 hash=72a7a692 box=[-0.235,-0.29,-0.1457..0.235,0.29,0.1457]',
   'settler.belt': 'verts=42 idx=120 hash=942d5bd6 box=[-0.22,-0.03,-0.1364..0.22,0.03,0.1364]',
   'settler.neck': 'verts=65 idx=288 hash=62287bca box=[-0.1,-0.07,-0.1..0.1,0.12,0.1]',
-  'settler.head': 'verts=231 idx=1080 hash=91277a12 box=[-0.13,-0.1378,-0.1664..0.13,0.1378,0.1664]',
-  'settler.hair': 'verts=200 idx=936 hash=a39f8eca box=[-0.1554,-0.0761,-0.2024..0.1554,0.1627,0.1861]',
+  'settler.head': 'verts=231 idx=1080 hash=3bdf92bd box=[-0.13,-0.1378,-0.1664..0.13,0.1378,0.1664]',
+  'settler.hair': 'verts=200 idx=936 hash=e318cc56 box=[-0.1551,-0.0761,-0.2024..0.155,0.1627,0.1861]',
   'settler.hairLong': 'verts=200 idx=936 hash=2050868e box=[-0.1548,-0.1391,-0.2158..0.1548,0.1643,0.1936]',
-  'settler.hairSwept': 'verts=200 idx=936 hash=c7d80961 box=[-0.1545,-0.0829,-0.2178..0.1566,0.1691,0.188]',
+  'settler.hairSwept': 'verts=200 idx=936 hash=1e92c370 box=[-0.1545,-0.0829,-0.2178..0.1556,0.1691,0.188]',
   'settler.hairShaggy': 'verts=200 idx=936 hash=f2497ff7 box=[-0.1569,-0.1278,-0.2185..0.1566,0.1675,0.1955]',
   'settler.eye': 'verts=42 idx=144 hash=e01a56de box=[-0.0152,-0.016,-0.0132..0.0152,0.016,0.0132]',
   'settler.leg': 'verts=66 idx=300 hash=ce717741 box=[-0.078,-0.41,-0.0742..0.078,0,0.0742]',

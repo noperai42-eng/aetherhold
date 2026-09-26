@@ -49,6 +49,13 @@ const glslFloat = (n: number): string => (Number.isInteger(n) ? n.toFixed(1) : S
  *  - A mouth: a short, shallow smile in a darker, redder skin.
  *  - Cheeks: a warm flush under each eye.
  *  - A beard, for some: the lower face and the jaw in the hair's colour.
+ *
+ * r30 found that at that much a face is a mask: brows, eyes and a mouth on an
+ * even skin. So the modelling a face has in shadow is painted too — each eye
+ * set in a socket, a fold from the nose to each corner of the mouth, a shadow
+ * under the lower lip — and a settler's own marks ride on `uTraits`:
+ * a moustache or stubble instead of a beard, freckles across the nose, and on
+ * the grey-haired the lines of age at the eyes and round the mouth.
  */
 const FACE_GLSL = /* glsl */ `
   {
@@ -58,17 +65,51 @@ const FACE_GLSL = /* glsl */ `
     vec3 skin = diffuseColor.rgb;
     vec3 brow = mix(uHair, vec3(0.02, 0.015, 0.012), 0.35);
 
-    // Beard: below the cheekbones on the front and round the jaw.
-    float jaw = 1.0 - smoothstep(-0.036 - aa, -0.024 + aa, p.y);
+    // Beard: below the cheekbones on the front and round the jaw. Its top
+    // edge rides up the cheeks and dips under the nose, and fades over a few
+    // millimetres, because a straight hard line across the face is a mask.
+    float beardTop = -0.028 - 0.014 * (1.0 - smoothstep(0.015, 0.06, abs(p.x)));
+    float jaw = 1.0 - smoothstep(beardTop - 0.008, beardTop + 0.002 + aa, p.y);
     float beard = uBeard * jaw * smoothstep(-0.02, 0.05, p.z);
-    vec3 col = mix(skin, uHair * 0.8, beard);
+    float bcomb = 1.0 + 0.18 * sin(p.x * 700.0 + p.y * 240.0) * (1.0 - smoothstep(0.3, 0.8, fwidth(p.x * 700.0)));
+    vec3 col = mix(skin, uHair * 0.8 * bcomb, beard);
+
+    // Stubble: a shadow of the hair's colour where a beard would be and
+    // over the lip.
+    float lipZone = (1.0 - smoothstep(0.03, 0.036, abs(p.x)))
+                  * (1.0 - smoothstep(0.007, 0.009, abs(p.y + 0.045)));
+    col = mix(col, uHair * 0.7, 0.3 * uTraits.y * max(jaw, lipZone) * smoothstep(-0.02, 0.05, p.z));
+
+    // Freckles over the nose and the tops of the cheeks, fading out where
+    // they would be finer than a pixel.
+    vec2 fc = p.xy * 260.0;
+    vec2 fi = floor(fc);
+    float fh = fract(sin(dot(fi, vec2(12.9898, 78.233))) * 43758.5453);
+    vec2 fj = vec2(fh, fract(fh * 17.13)) * 0.5 - 0.25;
+    float speck = step(0.74, fh) * (1.0 - smoothstep(0.14, 0.26, length(fract(fc) - 0.5 - fj)));
+    float field = 1.0 - smoothstep(0.7, 1.0, length(vec2(p.x / 0.075, (p.y + 0.022) / 0.018)));
+    float ffine = 1.0 - smoothstep(0.25, 0.6, fwidth(fc.x));
+    col = mix(col, skin * vec3(0.8, 0.52, 0.34), 0.7 * uTraits.z * speck * field * ffine * front);
 
     // Cheeks.
     float cheek = 1.0 - smoothstep(0.0, 0.03, length(vec2(abs(p.x) - 0.066, p.y + 0.03)));
     col = mix(col, col * vec3(1.0, 0.8, 0.76), 0.4 * cheek * front * (1.0 - beard));
 
-    // Eyes: the white, then the lid over it.
+    // Eyes: set in a socket, then the white, then the lid over it.
     vec2 e = vec2(abs(p.x) - 0.05, p.y);
+    float socket = 1.0 - smoothstep(0.8, 1.9, length((e - vec2(0.0, 0.004)) / vec2(0.027, 0.02)));
+    col *= 1.0 - 0.16 * socket * front;
+    // Age: a bag line under each eye and crow's feet at the outer corner.
+    float bag = abs(length((e + vec2(0.0, 0.002)) / vec2(0.024, 0.02)) - 1.0) * 0.02;
+    float bagLine = (1.0 - smoothstep(0.0012, 0.0012 + aa * 1.5, bag)) * smoothstep(0.0, -0.01, e.y)
+                  * (1.0 - smoothstep(0.012, 0.02, abs(e.x)));
+    vec2 cf = vec2(e.x - 0.028, e.y);
+    float cfa = atan(cf.y, cf.x);
+    float cfr = length(cf);
+    float crow = (1.0 - smoothstep(0.12, 0.2, abs(fract(cfa / 0.45 + 0.5) - 0.5)))
+               * smoothstep(0.001, 0.003, cfr) * (1.0 - smoothstep(0.008, 0.011, cfr))
+               * (1.0 - smoothstep(0.7, 0.9, abs(cfa)));
+    col = mix(col, col * 0.72, 0.8 * uTraits.w * max(bagLine, crow * step(0.0, cf.x)) * front);
     float r = length(e / vec2(0.023, 0.0135));
     float white = 1.0 - smoothstep(1.0 - aa / 0.0135, 1.0 + aa / 0.0135, r);
     col = mix(col, vec3(0.8, 0.77, 0.72), white * front);
@@ -90,6 +131,19 @@ const FACE_GLSL = /* glsl */ `
     // a darker line, on dark skin a warmer, lighter one. The skin darkened
     // alone was black on black, and the darkest faces had no mouth.
     vec3 lip = mix(skin * vec3(0.62, 0.38, 0.36), vec3(0.42, 0.16, 0.15), 0.35);
+    // The fold from beside the nose to each corner of the mouth: faint on the
+    // young, a line on the old.
+    vec2 fa = vec2(0.02, -0.03);
+    vec2 fb = vec2(0.033, -0.062);
+    vec2 fp = vec2(abs(p.x), p.y) - fa;
+    vec2 fd = fb - fa;
+    float fold = length(fp - fd * clamp(dot(fp, fd) / dot(fd, fd), 0.0, 1.0));
+    float foldLine = 1.0 - smoothstep(0.0015, 0.0045 + aa, fold);
+    col = mix(col, col * 0.72, (0.5 + 0.5 * uTraits.w) * foldLine * front * (1.0 - beard));
+    // The shadow under the lower lip, where the chin comes forward.
+    float under = (1.0 - smoothstep(0.012, 0.02, abs(p.x)))
+                * (1.0 - smoothstep(0.0, 0.005, abs(p.y + 0.0705)));
+    col = mix(col, col * 0.8, 0.6 * under * front * (1.0 - beard));
     float mx = p.x / 0.028;
     float my = p.y + 0.056 - 0.005 * mx * mx;
     float mw = 1.0 - smoothstep(0.75, 1.0, abs(mx));
@@ -98,6 +152,17 @@ const FACE_GLSL = /* glsl */ `
                 * (1.0 - smoothstep(0.003, 0.003 + aa * 2.0, abs(my + 0.0065)));
     col = mix(col, mix(skin, vec3(0.6, 0.34, 0.32), 0.35), lower * front * (1.0 - beard));
     col = mix(col, lip, mouth * front);
+
+    // A moustache: wider than the mouth and drooping past its corners, full
+    // in the middle and tapering to the ends. A short block under the nose is
+    // a shape with its own history, and one curving up reads as a grin.
+    float tx = p.x / 0.036;
+    float my2 = p.y + 0.0445 + 0.006 * tx * tx;
+    float th = 0.0068 * (1.0 - 0.45 * tx * tx);
+    float tache = (1.0 - smoothstep(0.92, 1.0, abs(tx)))
+                * (1.0 - smoothstep(th, th + aa * 1.5, abs(my2)));
+    float comb = 1.0 + 0.22 * sin(p.x * 900.0 + my2 * 300.0) * (1.0 - smoothstep(0.3, 0.8, fwidth(p.x * 900.0)));
+    col = mix(col, uHair * mix(0.55, 0.85, smoothstep(-th, th, my2)) * comb, uTraits.x * tache * front);
 
     diffuseColor.rgb = col;
   }
@@ -122,6 +187,13 @@ const HAIR_GLSL = /* glsl */ `
     float fine = 1.0 - smoothstep(0.35, 1.0, fwidth(s));
     float strand = sin(s) * 0.5 + sin(s * 2.3 + 1.7) * 0.25;
     diffuseColor.rgb *= 1.0 + strand * 0.26 * fine;
+    // Locks: each hank a shade lighter or darker than its neighbours, so the
+    // head is several masses of hair and not one shell.
+    diffuseColor.rgb *= 1.0 + 0.1 * sin(a * 7.0 + 1.3) * sin(a * 3.0 + q.y * 20.0);
+    // Sheen: the band round the head where hair catches the light, broken up
+    // by the strands. Lifted rather than scaled, or black hair would have none.
+    float sheen = exp(-pow((q.y - 0.105) / 0.022, 2.0)) * (0.55 + 0.45 * strand) * fine;
+    diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * 1.45 + 0.035, 0.45 * sheen);
 
     float pa = max(fwidth(q.x), 1e-5);
     float parting = (1.0 - smoothstep(0.0035, 0.0035 + pa * 1.5, abs(q.x - uPart.x)))
@@ -134,26 +206,63 @@ const HAIR_GLSL = /* glsl */ `
 const FACE_KEY = 'settler-face';
 const HAIR_KEY = 'settler-hair';
 
+/** A settler's own marks on the face, each nought or one. */
+export interface FaceTraits {
+  beard: number;
+  moustache: number;
+  stubble: number;
+  freckles: number;
+  /** The lines of age: on the grey-haired. */
+  age: number;
+}
+
+export const NO_TRAITS: FaceTraits = { beard: 0, moustache: 0, stubble: 0, freckles: 0, age: 0 };
+
+/**
+ * Which marks a seed has. The facial hair is dealt from bits sixteen and
+ * seventeen as the beard always was, so every bearded settler keeps the beard;
+ * of the three in four who had none, bit eighteen gives one in eight a
+ * moustache and one in eight stubble. Freckles are one in five, from a hash
+ * of the whole seed (it is twenty bits, and the top bits alone would give
+ * them to half the colony). Age is the hair: `grey` is whether it has gone white.
+ */
+export function faceTraitsOf(colorSeed: number, grey: boolean): FaceTraits {
+  const facial = (colorSeed >> 16) & 3;
+  const alt = (colorSeed >> 18) & 1;
+  return {
+    beard: facial === 1 ? 0.85 : 0,
+    moustache: facial === 2 && alt === 1 ? 1 : 0,
+    stubble: facial === 3 && alt === 1 ? 1 : 0,
+    freckles: (Math.imul(colorSeed ^ 0x5bd1e995, 0x85ebca6b) >>> 16) % 5 === 0 ? 1 : 0,
+    age: grey ? 1 : 0,
+  };
+}
+
 /**
  * The skin of a settler's head, with the face on it. `hair` colours the brows
- * and any beard; `beard` is how much of one, nought to one.
+ * and any facial hair; `traits` are the settler's own marks.
  */
-export function faceMaterial(skin: THREE.Color, hair: THREE.Color, beard: number): THREE.MeshStandardMaterial {
+export function faceMaterial(skin: THREE.Color, hair: THREE.Color, traits: FaceTraits = NO_TRAITS): THREE.MeshStandardMaterial {
   const mat = new THREE.MeshStandardMaterial({ color: skin, roughness: 0.62 });
   const uHair = { value: hair.clone() };
-  const uBeard = { value: beard };
+  const uBeard = { value: traits.beard };
+  const uTraits = { value: new THREE.Vector4(traits.moustache, traits.stubble, traits.freckles, traits.age) };
   mat.onBeforeCompile = (shader) => {
     shader.uniforms.uHair = uHair;
     shader.uniforms.uBeard = uBeard;
+    shader.uniforms.uTraits = uTraits;
     shader.vertexShader = shader.vertexShader
       .replace('void main() {', 'varying vec3 vFacePos;\nvoid main() {')
       .replace('#include <begin_vertex>', '#include <begin_vertex>\nvFacePos = position;');
     shader.fragmentShader = shader.fragmentShader
-      .replace('void main() {', 'varying vec3 vFacePos;\nuniform vec3 uHair;\nuniform float uBeard;\nvoid main() {')
+      .replace(
+        'void main() {',
+        'varying vec3 vFacePos;\nuniform vec3 uHair;\nuniform float uBeard;\nuniform vec4 uTraits;\nvoid main() {',
+      )
       .replace('#include <color_fragment>', `#include <color_fragment>\n${FACE_GLSL}`);
   };
   mat.customProgramCacheKey = () => FACE_KEY;
-  mat.userData.face = { hair: uHair, beard: uBeard };
+  mat.userData.face = { hair: uHair, beard: uBeard, traits: uTraits };
   return mat;
 }
 

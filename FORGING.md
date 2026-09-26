@@ -699,6 +699,25 @@ darker one: the r29 line vanished on dark skin in the shadow under the brow, and
 catches the light reads on every skin. Zero triangles. Frames: `.look/shots/r30/` against
 `r30-before/`.
 
+**Built — a chin, marks and sheen, 2026-09-26 (r31).** One more pass on the hair, the chin
+and the face's features. The head was a scaled sphere, an egg with no jaw. `makeHead()` in
+`pawns.ts` reshapes the same 20×10 sphere: below the mouth the jaw narrows, and the chin
+drops a little and comes forward about 1.5 cm. Every point above y = -0.03 stays where it
+was, so the eyes, brows and nose keep their anchors, and `tests/face.test.ts` holds that. The
+crop and swept hems grow sideburns in front of the ears. The hair shader gained a sheen band
+across the crown and a slow variation between locks: flat black hair was the complaint at game
+pitch. The face shader now takes `FaceTraits` from `faceTraitsOf(colorSeed, grey)`. The
+moustache and stubble share bits 16–17 with the beard, and bit 18 chooses between them, so a
+bearded settler in an old save keeps the beard and nobody gets two kinds of facial hair.
+Freckles go to one in five, from a hash of the whole seed; a bit would have tied them to
+skin or cloth. Grey hair brings bags under the eyes and crow's feet. Every face gains an eye
+socket, a smile fold and a shadow under the lower lip. The beard's top edge is curved and
+soft instead of a straight cut. Zero triangles. Three goldens were re-pinned on purpose:
+`head` (hash only, same box), `hair` and `hairSwept` (hash and box, from the sideburns).
+Left: the lower face is dark under the scene light, freckles and stubble are faint on dark
+skin, and a black moustache reads as a solid shape. Frames: `.look/shots/r31/` against
+`r31-before/`.
+
 **Built — the stage, 2026-09-09.** Not a family. The room every family is
 photographed in, taken on because the contact sheet asked for it three rounds
 running and `src/forge/stage.ts` was the one file on the bench that no test had

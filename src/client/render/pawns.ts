@@ -20,7 +20,7 @@ import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeom
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 
 import { ANIMAL_COLOR, FACTION_COLOR, SKIN_TONES, pawnTint } from './palette';
-import { EYE_Y, eyeMaterial, faceMaterial, hairMaterial, irisOf } from './face';
+import { EYE_Y, eyeMaterial, faceMaterial, faceTraitsOf, hairMaterial, irisOf } from './face';
 import { SETTLER_LEG, SETTLER_SWING, phaseScale } from '../gait';
 import { ANIMALS } from '../../sim/wildlife';
 import { isRipe } from '../../sim/husbandry';
@@ -354,6 +354,8 @@ const WORK_HEIGHT = 0.55;
  * `lighting.test.ts` holds the margin at seven.
  */
 export const HAIR_TONES = [0x1d1714, 0x2b2119, 0xa67546, 0xc26545, 0x9e7a2c, 0xe9e6e2];
+/** The one hair tone that has gone white: its settlers wear the lines of age (see `faceTraitsOf`). */
+const HAIR_GREY = 0xe9e6e2;
 
 /**
  * Trousers, in tones that are nobody's colours. The shirt and sleeves carry
@@ -468,9 +470,11 @@ export function assembleSettler(
   });
   const skinMat = new THREE.MeshStandardMaterial({ color: skin, roughness: 0.62 });
   // The face and the strands are painted per pixel (see `face.ts`), because
-  // the budget has no triangles left for either. A beard on one in four.
+  // the budget has no triangles left for either. A beard on one in four, and
+  // the rest of a face's marks from the seed (`faceTraitsOf`).
   const style = hairStyleOf(colorSeed);
-  const faceMat = faceMaterial(skin, hairCol, ((colorSeed >> 16) & 3) === 1 ? 0.85 : 0);
+  const grey = HAIR_TONES[(colorSeed >> 8) % HAIR_TONES.length] === HAIR_GREY;
+  const faceMat = faceMaterial(skin, hairCol, faceTraitsOf(colorSeed, grey));
   const hairMat = hairMaterial(hairCol, style === 'swept' ? 1 : 0, HAIR_PARTING[style]);
   const gearMat = new THREE.MeshStandardMaterial({ color: 0x3b3f45, roughness: 0.5, metalness: 0.3 });
   // The belt is a dark strap and the boots are darker still, each in its own
@@ -1958,7 +1962,8 @@ function hemOf(keys: [number, number][]): (phi: number) => number {
  * Four cuts, on two bits of the seed (`hairStyleOf`), every one the same grid of
  * the same 312 triangles, so the choice costs nothing against the budget:
  *
- *  - **crop**: nape at the collar, a fringe deeper over one temple.
+ *  - **crop**: nape at the collar, a fringe deeper over one temple, and
+ *    sideburns in front of where the ears would be.
  *  - **long**: down the sides and back to the jaw, flaring out at the ends.
  *  - **swept**: parted over one temple (the parting is drawn by `hairMaterial`)
  *    and combed across the brow, a little lower over the other. It was fuller
@@ -2004,7 +2009,7 @@ const HAIR_CUTS: Record<
   { hem: [number, number][]; lock: number; faceLock: number; flare: number; lift: number; back: number }
 > = {
   crop: {
-    hem: [[0, 0.48], [0.2, 0.48], [0.32, 0.5], [0.5, 0.46], [0.64, 0.44], [0.76, 0.45], [1, 0.48], [1.2, 0.6], [1.5, 0.63], [1.8, 0.6], [2, 0.48]],
+    hem: [[0, 0.5], [0.1, 0.57], [0.2, 0.48], [0.32, 0.5], [0.5, 0.46], [0.64, 0.44], [0.76, 0.45], [0.9, 0.57], [1, 0.5], [1.2, 0.6], [1.5, 0.63], [1.8, 0.6], [2, 0.5]],
     lock: 0.035,
     faceLock: 0.012,
     flare: 0.05,
@@ -2020,7 +2025,7 @@ const HAIR_CUTS: Record<
     back: 0.18,
   },
   swept: {
-    hem: [[0, 0.56], [0.2, 0.54], [0.32, 0.485], [0.45, 0.47], [0.58, 0.45], [0.7, 0.43], [0.8, 0.46], [1, 0.5], [1.25, 0.62], [1.5, 0.65], [1.75, 0.63], [2, 0.56]],
+    hem: [[0, 0.56], [0.1, 0.58], [0.2, 0.54], [0.32, 0.485], [0.45, 0.47], [0.58, 0.45], [0.7, 0.43], [0.8, 0.46], [0.9, 0.57], [1, 0.52], [1.25, 0.62], [1.5, 0.65], [1.75, 0.63], [2, 0.56]],
     lock: 0.03,
     faceLock: 0.01,
     flare: 0.06,
@@ -2091,6 +2096,50 @@ function makeHair(style: HairStyle): THREE.BufferGeometry {
   g.computeVertexNormals();
   const n = g.attributes.normal!;
   for (let j = 0; j <= COLS; j++) n.setXYZ(j, 0, 1, 0);
+  return g;
+}
+
+/**
+ * The skull: a sphere drawn a touch tall and long, with a jaw and a chin worked
+ * into its lower half. As a plain egg it had no chin at all — in profile the
+ * face ran round into the throat like the front of a ball, and from the front
+ * the lower face was as wide as the brow. So below the eyes the sides draw in
+ * towards the jaw, and the front of the two rings under the mouth comes forward
+ * and a little down, which is a chin: a point for the face to end on and a
+ * shadow line under it. Nothing above the eyes moves, so the eye beads and the
+ * nose sit where they did. The same twenty by ten, so the same triangles.
+ */
+function makeHead(): THREE.BufferGeometry {
+  const g = new THREE.SphereGeometry(1, 20, 10);
+  const pos = g.attributes.position!;
+  const ramp = (a: number, b: number, x: number): number => {
+    const t = Math.min(1, Math.max(0, (x - a) / (b - a)));
+    return t * t * (3 - 2 * t);
+  };
+  for (let i = 0; i < pos.count; i++) {
+    const x = pos.getX(i);
+    const y = pos.getY(i);
+    const z = pos.getZ(i);
+    const jaw = ramp(-0.25, -0.95, y);
+    const chin = ramp(-0.45, -0.85, y) * ramp(0.1, 0.8, z);
+    pos.setXYZ(i, x * (1 - 0.12 * jaw) * 0.13, (y - 0.06 * chin) * 0.1378, (z + 0.22 * chin) * 0.1664);
+  }
+  g.computeVertexNormals();
+  // The sphere's seam and poles are doubled vertices; their normals are
+  // averaged, or the seam shows as a crease down the back of the skull.
+  const n = g.attributes.normal!;
+  const at = new Map<string, number[]>();
+  for (let i = 0; i < pos.count; i++) {
+    const k = `${pos.getX(i).toFixed(5)},${pos.getY(i).toFixed(5)},${pos.getZ(i).toFixed(5)}`;
+    at.set(k, [...(at.get(k) ?? []), i]);
+  }
+  for (const ids of at.values()) {
+    if (ids.length < 2) continue;
+    const v = new THREE.Vector3();
+    for (const i of ids) v.add(new THREE.Vector3(n.getX(i), n.getY(i), n.getZ(i)));
+    v.normalize();
+    for (const i of ids) n.setXYZ(i, v.x, v.y, v.z);
+  }
   return g;
 }
 
@@ -2970,7 +3019,7 @@ export function settlerGeometry(r: SettlerRecipe = SETTLER_DEFAULT): SettlerGeom
     // hair covers, and the underside of the jaw, which nothing looks at from a
     // camera eleven cells up. Eighty triangles for a curve no player is ever in
     // a position to see, on the part of the rig that already spent the most.
-    head: new THREE.SphereGeometry(0.13, 20, 10).scale(1, 1.06, 1.28),
+    head: makeHead(),
     hair: makeHair('crop'),
     hairLong: makeHair('long'),
     hairSwept: makeHair('swept'),
