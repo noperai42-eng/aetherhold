@@ -718,6 +718,21 @@ Left: the lower face is dark under the scene light, freckles and stubble are fai
 skin, and a black moustache reads as a solid shape. Frames: `.look/shots/r31/` against
 `r31-before/`.
 
+**Built — eyes set in the face, 2026-09-26 (r32).** The eye bead stood about 2 cm off the
+skull, and from the side, at three-quarter and from the manager camera it was a ball stuck
+on a face. The same 6×5 sphere is now pressed to 40% depth, a lens 5 mm deep. `EYE_SEAT` in
+`pawns.ts` seats it on the skull's ellipsoid at the eye's height and spacing, turned along
+the normal there, with its centre 2.3 mm under the skin: its front stands about 3 mm proud
+and its rim is buried. The left eye is the right one mirrored. The lens faces outward and
+down, so `EYE_GLSL` paints the iris towards the nose and a little up, and raises the lid
+line to match; the eyes still look forward. `tests/head-read.test.ts` now measures every
+vertex of both lenses against the skull (under 6 mm, front at least 1 mm out); it fails on
+the old bead at 21.7 mm. The `settler.eye` golden was re-pinned on purpose. The r31 "dark
+lower face" turned out to be the capture harness, which had no fill light or environment
+and a lower exposure: in the game's own noon light the chin and mouth are lit, so no
+lighting was changed. Frames from here on are taken in game light. Zero triangles.
+Frames: `.look/shots/r32/` against `r32-before/`.
+
 **Built — the stage, 2026-09-09.** Not a family. The room every family is
 photographed in, taken on because the contact sheet asked for it three rounds
 running and `src/forge/stage.ts` was the one file on the bench that no test had

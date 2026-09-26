@@ -570,10 +570,17 @@ export function assembleSettler(
   // Set low on the face, a third of the way up from the chin. The fringe
   // comes down to the brow and the eyes have to clear it, and a forehead
   // with hair over it is what makes the hairline show from overhead.
+  // Each eye is a shallow lens laid on the skull and turned to face along the
+  // skin's normal there, so it sits in the face instead of on it: its front
+  // stands a few millimetres proud and its rim is under the skin. The left
+  // eye is the right one mirrored, so the iris painted towards the nose in
+  // the bead's frame is towards the nose on both (see `EYE_GLSL`).
   for (const side of [-1, 1] as const) {
     const eye = new THREE.Mesh(shared.eye, eyeMat);
     eye.name = 'eye';
-    eye.position.set(side * 0.05, EYE_Y, 0.157);
+    eye.position.copy(EYE_SEAT.position).setX(side * EYE_SEAT.position.x);
+    eye.rotation.set(EYE_SEAT.pitch, side * EYE_SEAT.yaw, 0);
+    eye.scale.x = side;
     head.add(eye);
   }
   // A nose, which is the one thing that says which way a face points from a
@@ -2099,6 +2106,28 @@ function makeHair(style: HairStyle): THREE.BufferGeometry {
   return g;
 }
 
+/** How deep the eye lens is, as a share of the sphere it is pressed from. */
+const EYE_FLAT = 0.4;
+/** How far the lens's centre sits under the skin: its front stands about 3 mm proud. */
+const EYE_SINK = 0.0023;
+
+/**
+ * Where the right eye sits on the skull and which way it faces. The skull
+ * there is the plain egg (`makeHead` only reshapes below the mouth), so the
+ * seat is solved on the ellipsoid: the point on its surface at the eye's
+ * height and spacing, the normal there, and the yaw and pitch that turn a
+ * lens's +Z onto that normal. The left eye mirrors it.
+ */
+const EYE_SEAT = (() => {
+  const a = 0.13, b = 0.1378, c = 0.1664;
+  const x = 0.05, y = EYE_Y;
+  const z = c * Math.sqrt(1 - (x / a) ** 2 - (y / b) ** 2);
+  const n = new THREE.Vector3(x / a ** 2, y / b ** 2, z / c ** 2).normalize();
+  const yaw = Math.asin(n.x);
+  const pitch = Math.asin(-n.y / Math.cos(yaw));
+  return { position: new THREE.Vector3(x, y, z).addScaledVector(n, -EYE_SINK), yaw, pitch };
+})();
+
 /**
  * The skull: a sphere drawn a touch tall and long, with a jaw and a chin worked
  * into its lower half. As a plain egg it had no chin at all — in profile the
@@ -3032,7 +3061,11 @@ export function settlerGeometry(r: SettlerRecipe = SETTLER_DEFAULT): SettlerGeom
     // 0.016 it stands 20, which is under the skin's own curvature at that angle
     // and reads as an eye set in a face. Six by five is a bead this size: the
     // count that stops being visible once the sphere stops sticking out.
-    eye: new THREE.SphereGeometry(0.016, 6, 5),
+    //
+    // r32: it stood out still. From three-quarter and from the manager camera
+    // a bead is a ball stuck on a face whatever it is painted. So the same
+    // sphere is pressed flat into a lens 5 mm deep and seated by `EYE_SEAT`.
+    eye: new THREE.SphereGeometry(0.016, 6, 5).scale(1, 1, EYE_FLAT),
     // Three rings on the caps: the top of a leg is inside the torso and the
     // bottom inside a boot, so the fourth was paid for and never seen.
     //

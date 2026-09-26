@@ -306,12 +306,18 @@ export function hairMaterial(hair: THREE.Color, sweep: number, part: number | nu
  *    lash line along its edge. The lid covers the top of the iris, as a lid
  *    does, and it is also what the camera sees from above: skin with a line on
  *    it, not a black ball.
+ *
+ * Since r32 the bead is a shallow lens turned outward and down along the
+ * skull's normal (`EYE_SEAT` in `pawns.ts`), with the left one mirrored. An
+ * iris painted in the middle of it would look out and down with it, so the
+ * iris sits towards the nose and a little up, and the lid line is raised to
+ * match.
  */
 const EYE_GLSL = /* glsl */ `
   {
     vec3 n = vEyePos / uEyeSize;
     float ea = max(fwidth(n.x), 1e-4);
-    float r = length(n.xy);
+    float r = length(n.xy - vec2(-0.2, 0.1));
     float facing = smoothstep(0.0, 0.25, n.z);
     vec3 col = vec3(0.8, 0.77, 0.72);
     float iris = (1.0 - smoothstep(0.62 - ea, 0.62 + ea, r)) * facing;
@@ -319,8 +325,8 @@ const EYE_GLSL = /* glsl */ `
     col = mix(col, irisCol, iris);
     float pupil = (1.0 - smoothstep(0.27 - ea, 0.27 + ea, r)) * facing;
     col = mix(col, vec3(0.012, 0.01, 0.01), pupil);
-    float lid = smoothstep(0.42 - ea, 0.42 + ea, n.y);
-    float lash = (1.0 - smoothstep(0.07, 0.07 + ea * 1.5, abs(n.y - 0.42)));
+    float lid = smoothstep(0.52 - ea, 0.52 + ea, n.y);
+    float lash = (1.0 - smoothstep(0.07, 0.07 + ea * 1.5, abs(n.y - 0.52)));
     col = mix(col, uLid, lid);
     col = mix(col, uLash, lash);
     diffuseColor.rgb = col;

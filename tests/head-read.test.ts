@@ -222,23 +222,35 @@ describe('a head under the manager camera', () => {
   });
 
   it('leaves the eye set in the face rather than standing off it', () => {
-    // The file tuned this by hand once already: at 0.022 of radius the bead
-    // stood 26 mm proud and a head read as a face pressed against glass, and
-    // 0.016 was chosen because it stands 20. Moving the eye forward to follow a
-    // longer skull is exactly the change that can quietly undo that.
+    // The file tuned this by hand twice. At 0.022 of radius the bead stood
+    // 26 mm proud and a head read as a face pressed against glass; 0.016
+    // stood 20, and at three-quarter and from the manager camera that was
+    // still a ball stuck on a face (r32). The eye is now a lens seated along
+    // the skin's normal, so every point of it is measured, not just its
+    // centre: nothing may stand more than 6 mm off the skull, which is what
+    // "set in" means, and its front must still clear the skin by 1 mm, or
+    // the skull swallows the iris.
     const view = facing(0, 0);
     const meshes = headMeshes(view);
     const s = semiAxes(meshes.find((m) => m.name === 'head')!);
-    const eye = meshes.find((m) => m.name === 'eye')!;
-    const c = eye.position;
-    const r = semiAxes(eye).x;
-    // How far the outermost point of the bead stands off the skin: the length
-    // of its centre, less where the skull's surface is along that same
-    // direction, plus its own radius.
-    const len = c.length();
-    const u = c.clone().divideScalar(len);
-    const t = 1 / Math.sqrt((u.x / s.x) ** 2 + (u.y / s.y) ** 2 + (u.z / s.z) ** 2);
-    expect(len - t + r).toBeGreaterThan(0.015);
-    expect(len - t + r).toBeLessThan(0.025);
+    const eyes = meshes.filter((m) => m.name === 'eye');
+    expect(eyes).toHaveLength(2);
+    for (const eye of eyes) {
+      eye.updateMatrix();
+      const pos = eye.geometry.getAttribute('position');
+      const p = new THREE.Vector3();
+      let proud = -Infinity;
+      for (let i = 0; i < pos.count; i++) {
+        p.fromBufferAttribute(pos, i).applyMatrix4(eye.matrix);
+        // How far this point stands off the skin: its length, less where
+        // the skull's surface is along the same direction.
+        const len = p.length();
+        const u = p.clone().divideScalar(len);
+        const t = 1 / Math.sqrt((u.x / s.x) ** 2 + (u.y / s.y) ** 2 + (u.z / s.z) ** 2);
+        proud = Math.max(proud, len - t);
+      }
+      expect(proud).toBeGreaterThan(0.001);
+      expect(proud).toBeLessThan(0.006);
+    }
   });
 });

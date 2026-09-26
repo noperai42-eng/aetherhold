@@ -179,7 +179,7 @@ would have been wrong in any table maintained by hand.
 - **Faces and hair strands.** A settler's brows, eye whites, mouth, beard, moustache,
   stubble, freckles, age lines, hair strands, sheen and parting are painted by a fragment
   program (`src/client/render/face.ts`), not modelled, and so are the eyeballs on the eye
-  beads, so an exported `head` is plain skin with its nose and its chin and its eyes are plain beads,
+  beads, so an exported `head` is plain skin with its nose and its chin and its eyes are plain flattened lenses,
   and an exported `hair` is its colour with darker ends baked into the vertex
   colours. The export has one settler, so it carries one of the four cuts.
 - **Effects.** Smoke, fire glow, muzzle flashes and weather are billboards and

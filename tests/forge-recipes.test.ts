@@ -225,6 +225,10 @@ const GOLDEN: Readonly<Record<string, string>> = {
   // Re-pinned in r31, deliberately: the head got a jaw and a chin (the same
   // sphere reshaped below the eyes, so the counts and the box hold), and the
   // crop and swept cuts got sideburns in their hems.
+  //
+  // Re-pinned in r32, deliberately: the eye bead was pressed into a lens 5 mm
+  // deep, so it sits in the face instead of standing off it (the same sphere,
+  // so the counts hold; only the depth of the box changed).
   'settler.torso': 'verts=189 idx=960 hash=72a7a692 box=[-0.235,-0.29,-0.1457..0.235,0.29,0.1457]',
   'settler.belt': 'verts=42 idx=120 hash=942d5bd6 box=[-0.22,-0.03,-0.1364..0.22,0.03,0.1364]',
   'settler.neck': 'verts=65 idx=288 hash=62287bca box=[-0.1,-0.07,-0.1..0.1,0.12,0.1]',
@@ -233,7 +237,7 @@ const GOLDEN: Readonly<Record<string, string>> = {
   'settler.hairLong': 'verts=200 idx=936 hash=2050868e box=[-0.1548,-0.1391,-0.2158..0.1548,0.1643,0.1936]',
   'settler.hairSwept': 'verts=200 idx=936 hash=1e92c370 box=[-0.1545,-0.0829,-0.2178..0.1556,0.1691,0.188]',
   'settler.hairShaggy': 'verts=200 idx=936 hash=f2497ff7 box=[-0.1569,-0.1278,-0.2185..0.1566,0.1675,0.1955]',
-  'settler.eye': 'verts=42 idx=144 hash=e01a56de box=[-0.0152,-0.016,-0.0132..0.0152,0.016,0.0132]',
+  'settler.eye': 'verts=42 idx=144 hash=673274e6 box=[-0.0152,-0.016,-0.0053..0.0152,0.016,0.0053]',
   'settler.leg': 'verts=66 idx=300 hash=ce717741 box=[-0.078,-0.41,-0.0742..0.078,0,0.0742]',
   'settler.shin': 'verts=36 idx=144 hash=1f50e3df box=[-0.066,-0.35,-0.066..0.066,0,0.066]',
   'settler.boot': 'verts=78 idx=360 hash=aaaf0c2 box=[-0.0694,-0.049,-0.122..0.0694,0.049,0.1366]',
