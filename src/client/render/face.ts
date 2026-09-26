@@ -85,12 +85,19 @@ const FACE_GLSL = /* glsl */ `
                    * (1.0 - smoothstep(thick, thick + aa * 1.5, abs(by)));
     col = mix(col, brow, browMask * front);
 
-    // Mouth: a shallow smile.
+    // Mouth: a shallow smile, and a softer lower lip under it. The colour is
+    // the skin darkened and pulled towards a fixed rose: on pale skin that is
+    // a darker line, on dark skin a warmer, lighter one. The skin darkened
+    // alone was black on black, and the darkest faces had no mouth.
+    vec3 lip = mix(skin * vec3(0.62, 0.38, 0.36), vec3(0.42, 0.16, 0.15), 0.35);
     float mx = p.x / 0.028;
     float my = p.y + 0.056 - 0.005 * mx * mx;
-    float mouth = (1.0 - smoothstep(0.75, 1.0, abs(mx)))
-                * (1.0 - smoothstep(0.0028, 0.0028 + aa * 1.5, abs(my)));
-    col = mix(col, skin * vec3(0.55, 0.34, 0.33), mouth * front);
+    float mw = 1.0 - smoothstep(0.75, 1.0, abs(mx));
+    float mouth = mw * (1.0 - smoothstep(0.0028, 0.0028 + aa * 1.5, abs(my)));
+    float lower = (1.0 - smoothstep(0.55, 0.8, abs(mx)))
+                * (1.0 - smoothstep(0.003, 0.003 + aa * 2.0, abs(my + 0.0065)));
+    col = mix(col, mix(skin, vec3(0.6, 0.34, 0.32), 0.35), lower * front * (1.0 - beard));
+    col = mix(col, lip, mouth * front);
 
     diffuseColor.rgb = col;
   }
@@ -172,5 +179,83 @@ export function hairMaterial(hair: THREE.Color, sweep: number, part: number | nu
   };
   mat.customProgramCacheKey = () => HAIR_KEY;
   mat.userData.hair = { sweep: uSweep, part: uPart };
+  return mat;
+}
+
+/**
+ * The eye, painted on its own bead. A black bead with a glint is a button: it
+ * stares, and from the manager camera, which looks down on it, it is a black
+ * ball standing out under the fringe. This paints an eyeball on it, in the
+ * bead's own frame (which faces +Z like the head's), measured on the bead as a
+ * unit sphere:
+ *
+ *  - an iris in the settler's eye colour, with a darker ring round its edge and
+ *    a pupil in the middle;
+ *  - the white of the eye everywhere else on the bead, so the bead joins the
+ *    whites the face paints round it instead of sitting on them;
+ *  - an upper lid in the skin's colour over the top of the bead, with a dark
+ *    lash line along its edge. The lid covers the top of the iris, as a lid
+ *    does, and it is also what the camera sees from above: skin with a line on
+ *    it, not a black ball.
+ */
+const EYE_GLSL = /* glsl */ `
+  {
+    vec3 n = vEyePos / uEyeSize;
+    float ea = max(fwidth(n.x), 1e-4);
+    float r = length(n.xy);
+    float facing = smoothstep(0.0, 0.25, n.z);
+    vec3 col = vec3(0.8, 0.77, 0.72);
+    float iris = (1.0 - smoothstep(0.62 - ea, 0.62 + ea, r)) * facing;
+    vec3 irisCol = mix(uIris, uIris * 0.45, smoothstep(0.4, 0.62, r));
+    col = mix(col, irisCol, iris);
+    float pupil = (1.0 - smoothstep(0.27 - ea, 0.27 + ea, r)) * facing;
+    col = mix(col, vec3(0.012, 0.01, 0.01), pupil);
+    float lid = smoothstep(0.42 - ea, 0.42 + ea, n.y);
+    float lash = (1.0 - smoothstep(0.07, 0.07 + ea * 1.5, abs(n.y - 0.42)));
+    col = mix(col, uLid, lid);
+    col = mix(col, uLash, lash);
+    diffuseColor.rgb = col;
+  }
+`;
+
+const EYE_KEY = 'settler-eye';
+
+/**
+ * The eye colours a settler can have, weighted: brown twice and dark brown
+ * twice, then hazel, grey and green once each.
+ */
+export const IRIS_TONES = [0x5b3a22, 0x5b3a22, 0x2e1c10, 0x2e1c10, 0x6f5b2c, 0x5d6f7c, 0x4d6440] as const;
+
+/** Which of `IRIS_TONES` a seed has: a hash of the whole seed, so it is not tied to any other colour. */
+export function irisOf(colorSeed: number): number {
+  return IRIS_TONES[(Math.imul(colorSeed, 0x9e3779b1) >>> 16) % IRIS_TONES.length]!;
+}
+
+/**
+ * The eye bead's material. `size` is the bead's own semi-axes, `lid` the skin it
+ * is set in and `lash` the colour of the lid's edge.
+ */
+export function eyeMaterial(size: THREE.Vector3, iris: THREE.Color, lid: THREE.Color, lash: THREE.Color): THREE.MeshStandardMaterial {
+  const mat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.35 });
+  const uniforms = {
+    uEyeSize: { value: size.clone() },
+    uIris: { value: iris.clone() },
+    uLid: { value: lid.clone() },
+    uLash: { value: lash.clone() },
+  };
+  mat.onBeforeCompile = (shader) => {
+    Object.assign(shader.uniforms, uniforms);
+    shader.vertexShader = shader.vertexShader
+      .replace('void main() {', 'varying vec3 vEyePos;\nvoid main() {')
+      .replace('#include <begin_vertex>', '#include <begin_vertex>\nvEyePos = position;');
+    shader.fragmentShader = shader.fragmentShader
+      .replace(
+        'void main() {',
+        'varying vec3 vEyePos;\nuniform vec3 uEyeSize;\nuniform vec3 uIris;\nuniform vec3 uLid;\nuniform vec3 uLash;\nvoid main() {',
+      )
+      .replace('#include <color_fragment>', `#include <color_fragment>\n${EYE_GLSL}`);
+  };
+  mat.customProgramCacheKey = () => EYE_KEY;
+  mat.userData.eye = uniforms;
   return mat;
 }

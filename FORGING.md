@@ -684,6 +684,21 @@ have the same hair, and combat or the tick turns them before the shot. The r29 f
 from a scratch harness that gave each settler its own seed, disarmed them, and orbited the
 camera half a turn. Folding that into `heads.mjs` is its own small brief.
 
+**Built — eyes and a mouth, 2026-09-25 (r30).** One more pass on the face details. Close up,
+the r29 eye beads read as buttons: black, glossy, and staring out of the painted whites. From
+the game camera they were black balls poking out under the fringe. The bead keeps its shape and
+position, because `head-read` and `lighting` pin both. What changed is `eyeMaterial` in
+`face.ts`, which paints an eyeball on the bead in the bead's own frame. There is an iris with
+a darker rim and a pupil, the white of the eye everywhere else, and an upper lid in the skin's
+colour with a lash line at its edge. The lid covers the top of the iris, so the settler looks
+out rather than stares. From above, the camera now sees lid and lash instead of a black ball.
+The iris is `irisOf(colorSeed)`: a hash of the whole seed into five tones (brown and dark
+brown weighted double, then hazel, grey and green), so it isn't tied to skin, hair or cloth.
+Every eye shares one program. The mouth's lower lip became a warm mid-tone rather than a
+darker one: the r29 line vanished on dark skin in the shadow under the brow, and a lip that
+catches the light reads on every skin. Zero triangles. Frames: `.look/shots/r30/` against
+`r30-before/`.
+
 **Built — the stage, 2026-09-09.** Not a family. The room every family is
 photographed in, taken on because the contact sheet asked for it three rounds
 running and `src/forge/stage.ts` was the one file on the bench that no test had

@@ -13,12 +13,16 @@
  * The rest is what the round claims: the cut is dealt by two seed bits and the
  * old one keeps the length a save already has, a thousand faces share one
  * program, and the parted cuts draw a parting and the others do not.
+ *
+ * r30 paints the eye bead too — iris, pupil, white and lid — so the same holds
+ * for it: the patch lands, one program serves every eye, and the iris is dealt
+ * from the seed so a colony has more than one eye colour.
  */
 
 import * as THREE from 'three';
 import { describe, expect, it } from 'vitest';
 
-import { faceMaterial, hairMaterial } from '../src/client/render/face';
+import { IRIS_TONES, eyeMaterial, faceMaterial, hairMaterial, irisOf } from '../src/client/render/face';
 import { HAIR_STYLES, PawnsView, hairStyleOf } from '../src/client/render/pawns';
 import type { HairStyle } from '../src/client/render/pawns';
 import { createWorld } from '../src/sim/worldgen';
@@ -78,6 +82,32 @@ describe('a settler’s face and hair', () => {
     expect(h.customProgramCacheKey()).not.toBe(a.customProgramCacheKey());
   });
 
+  it('patches the eyeball into the standard shader, before lighting reads the colour', () => {
+    const c = new THREE.Color(0x5b3a22);
+    const shader = compiled(eyeMaterial(new THREE.Vector3(0.0152, 0.016, 0.0132), c, c, c));
+    expect(shader.vertexShader).toContain('vEyePos = position;');
+    expect(shader.fragmentShader).toContain('uniform vec3 uIris;');
+    const eye = shader.fragmentShader.indexOf('vec3 n = vEyePos / uEyeSize');
+    expect(eye).toBeGreaterThan(shader.fragmentShader.indexOf('#include <color_fragment>'));
+    expect(eye).toBeLessThan(shader.fragmentShader.indexOf('#include <lights_fragment_begin>'));
+    expect(shader.uniforms.uEyeSize).toBeDefined();
+  });
+
+  it('gives every eye one program, whatever its iris', () => {
+    const size = new THREE.Vector3(0.0152, 0.016, 0.0132);
+    const a = eyeMaterial(size, new THREE.Color(0x5b3a22), new THREE.Color(0xd9a07a), new THREE.Color(0x111111));
+    const b = eyeMaterial(size, new THREE.Color(0x4d6440), new THREE.Color(0x5a3422), new THREE.Color(0x221100));
+    expect(a.customProgramCacheKey()).toBe(b.customProgramCacheKey());
+    expect(a.customProgramCacheKey()).not.toBe(faceMaterial(new THREE.Color(), new THREE.Color(), 0).customProgramCacheKey());
+  });
+
+  it('deals the iris from the seed — the same settler keeps their eyes, and a colony has every tone', () => {
+    expect(irisOf(8706)).toBe(irisOf(8706));
+    const seen = new Set<number>();
+    for (let seed = 0; seed < 4096; seed++) seen.add(irisOf(seed));
+    expect(seen.size).toBe(new Set(IRIS_TONES).size);
+  });
+
   it('keeps the length a save already has — bit twelve is still short or long', () => {
     // Bit twelve chose between two cuts before r29, one short and one to the
     // jaw. A settler loaded from an old save keeps that length and may only
@@ -119,6 +149,8 @@ describe('a settler’s face and hair', () => {
         seen.add(style);
         const head = part(rig, 'head').material as THREE.MeshStandardMaterial;
         expect(head.userData.face, 'the head wears the face').toBeDefined();
+        const eye = part(rig, 'eye').material as THREE.MeshStandardMaterial;
+        expect(eye.userData.eye.uIris.value.getHex(), 'the eye wears its iris').toBe(irisOf(pawn.colorSeed));
         const hair = part(rig, 'hair').material as THREE.MeshStandardMaterial;
         const parted = hair.userData.hair.part.value.y === 1;
         expect(parted, style).toBe(style === 'long' || style === 'swept');

@@ -178,7 +178,8 @@ would have been wrong in any table maintained by hand.
   grass. If you want the effect, port the shader; the geometry alone is not it.
 - **Faces and hair strands.** A settler's brows, eye whites, mouth, beard, hair
   strands and parting are painted by a fragment program (`src/client/render/face.ts`),
-  not modelled, so an exported `head` is plain skin with its eye beads and nose,
+  not modelled, and so are the eyeballs on the eye beads, so an exported `head` is plain
+  skin with its nose and its eyes are plain beads,
   and an exported `hair` is its colour with darker ends baked into the vertex
   colours. The export has one settler, so it carries one of the four cuts.
 - **Effects.** Smoke, fire glow, muzzle flashes and weather are billboards and

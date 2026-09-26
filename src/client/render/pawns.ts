@@ -20,7 +20,7 @@ import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeom
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 
 import { ANIMAL_COLOR, FACTION_COLOR, SKIN_TONES, pawnTint } from './palette';
-import { EYE_Y, faceMaterial, hairMaterial } from './face';
+import { EYE_Y, eyeMaterial, faceMaterial, hairMaterial, irisOf } from './face';
 import { SETTLER_LEG, SETTLER_SWING, phaseScale } from '../gait';
 import { ANIMALS } from '../../sim/wildlife';
 import { isRipe } from '../../sim/husbandry';
@@ -478,7 +478,16 @@ export function assembleSettler(
   // only dimmer, is a fold, and a band in another material is a belt.
   const leatherMat = new THREE.MeshStandardMaterial({ color: 0x4a3323, roughness: 0.62 });
   const bootMat = new THREE.MeshStandardMaterial({ color: 0x2c221c, roughness: 0.55 });
-  const eyeMat = new THREE.MeshStandardMaterial({ color: 0x14100e, roughness: 0.35 });
+  // An eyeball painted on the bead — iris, pupil, white and an upper lid in
+  // the settler's own skin — so it is an eye and not a button (see `face.ts`).
+  if (!shared.eye.boundingBox) shared.eye.computeBoundingBox();
+  const eyeSize = shared.eye.boundingBox!.max;
+  const eyeMat = eyeMaterial(
+    eyeSize,
+    new THREE.Color(irisOf(colorSeed)),
+    skin.clone().multiplyScalar(0.9),
+    hairCol.clone().multiplyScalar(0.4),
+  );
   mats.push(clothMat, sleeveMat, trouserMat, skinMat, faceMat, hairMat, gearMat, leatherMat, bootMat, eyeMat);
 
   const torso = new THREE.Mesh(shared.torso, clothMat);
