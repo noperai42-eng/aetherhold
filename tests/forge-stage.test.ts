@@ -621,8 +621,8 @@ describe('how much of a bench frame the subject gets', () => {
     // are footprint questions and both are a different round from this one.
     //
     // r35 made a twelfth, a settler: the Hume stood taller on the same pitch and
-    // one pose in the back row went more than half behind the one in front. r36's
-    // longer thigh moved the grid's box and it is back to none; written as measured.
+    // one pose in the back row went more than half behind the one in front. In
+    // r36 it is back to none; written as measured.
     const rows = BENCHES.map((b) => {
       const { shown, dist } = grid(b);
       const each = hiddenBehind(shown, dist);
@@ -695,7 +695,7 @@ describe('how much of a bench frame the subject gets', () => {
       ['tree', 3, 0],
       ['stack', 3, 0],
       ['animal', 3, 1],
-      ['settler', 4, 3], // 4 before r36's longer thigh
+      ['settler', 4, 3], // 4 before r36
       ['building', 4, 0],
     ]);
   });

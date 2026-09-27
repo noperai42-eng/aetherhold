@@ -784,7 +784,7 @@ are both dark, the bracers read flat, and the face is only scaled. Frames:
 
 **Built — the Hume's legs and leather, 2026-09-27 (r36).** Three of r35's
 not-done items. The trousers are a step lighter (`TROUSER_TONES` are now tans and
-slates at sRGB lightness 0.44 to 0.49, where they were 0.28 to 0.34) so the leg is
+slates at sRGB lightness 0.41 to 0.48, where they were 0.28 to 0.35) so the leg is
 no longer one dark column into the boot; the boots keep their dark, which the
 lighting test holds. The thigh runs 11 cm past the knee and the upper arm 9.5 cm
 past the elbow, where both were 6, so the limb above is still at full width where
@@ -793,8 +793,10 @@ bent, the overrun is the kneecap and the point of the elbow. The bracer is a ban
 with a rolled rim at each end and a raised welt round the middle, and the
 pauldrons, bracers and bandolier are cut from a saddle-leather `kitMat` (0x6e4a2e)
 a step lighter than the belt, because in the belt's own dark they read as black
-boxes. The settler goes from 7,573 to 8,277 triangles. Not done: a small tone step
-at the knee, from the hem's shadow rather than the geometry; the boots are still
+boxes. The settler goes from 7,573 to 8,277 triangles. Not done: a tone line at
+the knee, visible in the side view too, so not the hem's shadow; the cause is
+not isolated, and the seam where the thigh's cap meets the shin is the likelier
+reading; the boots are still
 plain; and the face is only scaled. Frames: `.look/shots/r36/` against `r35/`.
 
 **Built — the stage, 2026-09-09.** Not a family. The room every family is
