@@ -243,17 +243,18 @@ const GOLDEN: Readonly<Record<string, string>> = {
   'settler.hairSwept': 'verts=308 idx=1287 hash=c665b413 box=[-0.1545,-0.0998,-0.237..0.1556,0.1691,0.188]',
   'settler.hairShaggy': 'verts=380 idx=1521 hash=a2d33bc0 box=[-0.1569,-0.1919,-0.2732..0.1566,0.1675,0.1955]',
   'settler.eye': 'verts=42 idx=144 hash=673274e6 box=[-0.0152,-0.016,-0.0053..0.0152,0.016,0.0053]',
-  'settler.leg': 'verts=170 idx=864 hash=c2165253 box=[-0.086,-0.47,-0.086..0.086,0,0.086]',
+  // r36: the thigh and upper arm run on past the joint to cover the limb below.
+  'settler.leg': 'verts=187 idx=960 hash=90b3d1af box=[-0.086,-0.52,-0.086..0.086,0,0.086]',
   'settler.shin': 'verts=187 idx=960 hash=c9ceb5b1 box=[-0.062,-0.39,-0.062..0.062,0,0.062]',
   'settler.boot': 'verts=78 idx=360 hash=aaaf0c2 box=[-0.0694,-0.049,-0.122..0.0694,0.049,0.1366]',
-  'settler.arm': 'verts=170 idx=864 hash=5cbbcd9a box=[-0.058,-0.3375,-0.058..0.058,0,0.058]',
+  'settler.arm': 'verts=187 idx=960 hash=58c5a7a9 box=[-0.058,-0.3825,-0.058..0.058,0,0.058]', // r36, with the leg
   'settler.forearm': 'verts=153 idx=768 hash=fbc3f979 box=[-0.047,-0.2425,-0.047..0.047,0,0.047]',
   'settler.hand': 'verts=408 idx=0 hash=1a249b85 box=[-0.0624,-0.0698,-0.0629..0.0465,0.0698,0.0629]',
   'settler.hem': 'verts=132 idx=576 hash=5d9415f8 box=[-0.25,-0.11,-0.16..0.25,0.11,0.16]',
   'settler.nose': 'verts=35 idx=108 hash=40f7e602 box=[-0.0192,-0.024,-0.0229..0.0192,0.024,0.0229]',
   // r35: the FFXI Hume kit, new parts; torso, belt, neck, limbs, hand and hem re-pinned with it.
   'settler.pauldron': 'verts=189 idx=900 hash=bb1a014e box=[-0.0778,-0.0161,-0.0758..0.0778,0.052,0.0758]',
-  'settler.bracer': 'verts=102 idx=480 hash=80c8e056 box=[-0.055,-0.235,-0.055..0.055,-0.098,0.055]',
+  'settler.bracer': 'verts=255 idx=1344 hash=93da08a2 box=[-0.061,-0.242,-0.061..0.061,-0.097,0.061]', // r36: rolled rims and a welt
   'settler.bootShaft': 'verts=136 idx=672 hash=1680f015 box=[-0.074,-0.4,-0.074..0.074,-0.182,0.074]',
   'settler.collar': 'verts=84 idx=360 hash=57e363f3 box=[-0.088,-0.02,-0.0792..0.088,0.03,0.0792]',
   'settler.hemTrim': 'verts=66 idx=192 hash=d3585d8a box=[-0.254,-0.014,-0.1626..0.254,0.014,0.1626]',
@@ -1488,12 +1489,12 @@ describe('the bench builds what the page asks it for', () => {
     expect(made.problems).toEqual([]);
     //
     // Jointed since r28: the thigh is cut to the knee, halfway down, and runs
-    // six centimetres past it (four until r35 tapered it); the shin hangs from the knee and carries the
+    // eleven centimetres past it (four until r35 tapered it, six until r36 ran it on to cover the shin's cap); the shin hangs from the knee and carries the
     // boot. So the metre is the chain's — hip to knee plus knee to ankle.
     const leg = made.group!.children.find((c) => c.name === 'leg') as THREE.Mesh;
     expect(leg.position.y).toBeCloseTo(1, 6);
     leg.geometry.computeBoundingBox();
-    expect(leg.geometry.boundingBox!.min.y).toBeCloseTo(-0.56, 6);
+    expect(leg.geometry.boundingBox!.min.y).toBeCloseTo(-0.61, 6);
     const shin = leg.children.find((c) => c.name === 'shin') as THREE.Mesh;
     expect(shin.position.y, 'the knee halfway down the longer leg').toBeCloseTo(-0.5, 6);
     // And the boot is still on the end of it rather than where the old one ended.

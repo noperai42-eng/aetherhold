@@ -374,7 +374,7 @@ const HAIR_GREY = 0xe9e6e2;
  * figure breaks at the belt into two garments instead of being one column
  * of cloth with a head on it.
  */
-const TROUSER_TONES = [0x5b4d3f, 0x46474b, 0x585b3c, 0x6b5747];
+const TROUSER_TONES = [0x8a765c, 0x6c6e74, 0x7a7e52, 0x967a60];
 
 /**
  * The shirt's own colour taken `sleeveStep` down: one garment in two tones,
@@ -510,9 +510,10 @@ export function assembleSettler(
     metalness: 0.45,
     side: THREE.DoubleSide,
   });
-  // The leather kit, both sides for the pauldron's open underside.
-  const kitMat = leatherMat.clone();
-  kitMat.side = THREE.DoubleSide;
+  // The kit is saddle leather, a step lighter than the belt's: in the belt's
+  // own dark the pauldrons and bracers read as black boxes (r35). Both sides,
+  // for the pauldron's open underside.
+  const kitMat = new THREE.MeshStandardMaterial({ color: 0x6e4a2e, roughness: 0.55, side: THREE.DoubleSide });
   mats.push(clothMat, sleeveMat, trouserMat, skinMat, faceMat, hairMat, gearMat, leatherMat, bootMat, eyeMat, trimMat, kitMat);
 
   const torso = new THREE.Mesh(shared.torso, clothMat);
@@ -599,7 +600,7 @@ export function assembleSettler(
     pauldron.rotation.z = side * -0.4;
     pauldron.castShadow = true;
     arm.add(pauldron);
-    const bracer = new THREE.Mesh(shared.bracer, leatherMat);
+    const bracer = new THREE.Mesh(shared.bracer, kitMat);
     bracer.name = 'bracer';
     bracer.castShadow = true;
     forearm.add(bracer);
@@ -3542,10 +3543,14 @@ export function settlerGeometry(r: SettlerRecipe = SETTLER_DEFAULT): SettlerGeom
     // r35: shaped, not capsules — a thigh that thins to the knee, a calf that
     // swells below it, an upper arm that narrows to the elbow and a forearm
     // to the wrist — and sixteen round, since the triangle ceiling is gone.
-    leg: shapedLimb(kneeOf(r) + 0.06, [[0, 0.086], [0.3, 0.082], [0.72, 0.066], [1, 0.056]], 16),
+    //
+    // r36: the thigh and the upper arm run on past the joint until the limb
+    // below is at its full width, so the two round caps no longer meet in a
+    // notch; bent, the overrun is the kneecap and the point of the elbow.
+    leg: shapedLimb(kneeOf(r) + 0.11, [[0, 0.086], [0.3, 0.082], [0.72, 0.066], [0.88, 0.058], [1, 0.056]], 16),
     shin: shapedLimb(r.leg - kneeOf(r) - 0.02, [[0, 0.055], [0.22, 0.062], [0.5, 0.055], [0.85, 0.043], [1, 0.04]], 16),
     boot: makeBoot(),
-    arm: shapedLimb(elbowOf(r) + 0.05, [[0, 0.058], [0.25, 0.057], [0.7, 0.05], [1, 0.045]], 16),
+    arm: shapedLimb(elbowOf(r) + 0.095, [[0, 0.058], [0.25, 0.057], [0.6, 0.05], [0.85, 0.046], [1, 0.045]], 16),
     forearm: shapedLimb(r.sleeve - elbowOf(r), [[0, 0.045], [0.3, 0.047], [1, 0.036]], 16),
     hand: makeHand(),
     // A tunic skirt from the belt to the top of the thigh, flaring a little. A
@@ -3557,8 +3562,17 @@ export function settlerGeometry(r: SettlerRecipe = SETTLER_DEFAULT): SettlerGeom
     nose: new THREE.SphereGeometry(0.024, 6, 4).scale(0.8, 1, 1.1),
     // A leather cap over the shoulder, riding the arm, open underneath.
     pauldron: new THREE.SphereGeometry(1, 20, 8, 0, Math.PI * 2, 0, Math.PI * 0.6).scale(0.078, 0.052, 0.076),
-    // Leather on the lower forearm, with a rolled rim at the elbow end.
-    bracer: band([[0.04, -0.235], [0.046, -0.2], [0.05, -0.13], [0.055, -0.11], [0.055, -0.098], [0.048, -0.098]], 16),
+    // Leather on the lower forearm: a rolled rim at each end and a raised
+    // welt round the middle, so the light has edges to catch (r36 — a smooth
+    // sleeve of it read as a flat dark box).
+    bracer: band(
+      [
+        [0.043, -0.242], [0.05, -0.238], [0.051, -0.228], [0.047, -0.222], [0.048, -0.2],
+        [0.051, -0.172], [0.055, -0.168], [0.055, -0.16], [0.051, -0.156], [0.053, -0.13],
+        [0.055, -0.118], [0.061, -0.114], [0.061, -0.102], [0.054, -0.097], [0.049, -0.098],
+      ],
+      16,
+    ),
     // A boot's shaft up to mid-shin, with a turned-down cuff: the boot below
     // is only the foot, and a foot on a trouser leg is a slipper.
     bootShaft: band(

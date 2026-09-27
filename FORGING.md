@@ -782,6 +782,21 @@ Not done: the knee and elbow pinch where two lathes meet, the trousers and boots
 are both dark, the bracers read flat, and the face is only scaled. Frames:
 `.look/shots/r35/` against `r35-before/` (body views) and `r34/` (head views).
 
+**Built — the Hume's legs and leather, 2026-09-27 (r36).** Three of r35's
+not-done items. The trousers are a step lighter (`TROUSER_TONES` are now tans and
+slates at sRGB lightness 0.44 to 0.49, where they were 0.28 to 0.34) so the leg is
+no longer one dark column into the boot; the boots keep their dark, which the
+lighting test holds. The thigh runs 11 cm past the knee and the upper arm 9.5 cm
+past the elbow, where both were 6, so the limb above is still at full width where
+the one below reaches its own: the notch where two round caps met is gone, and
+bent, the overrun is the kneecap and the point of the elbow. The bracer is a band
+with a rolled rim at each end and a raised welt round the middle, and the
+pauldrons, bracers and bandolier are cut from a saddle-leather `kitMat` (0x6e4a2e)
+a step lighter than the belt, because in the belt's own dark they read as black
+boxes. The settler goes from 7,573 to 8,277 triangles. Not done: a small tone step
+at the knee, from the hem's shadow rather than the geometry; the boots are still
+plain; and the face is only scaled. Frames: `.look/shots/r36/` against `r35/`.
+
 **Built — the stage, 2026-09-09.** Not a family. The room every family is
 photographed in, taken on because the contact sheet asked for it three rounds
 running and `src/forge/stage.ts` was the one file on the bench that no test had
