@@ -747,6 +747,24 @@ uses only the smooth part of the stripe; the per-strand phase jumps at every str
 and drew dotted lines when it was in. One program still covers every head of hair. Zero
 triangles, no goldens moved. Frames: `.look/shots/r33/` against `r33-before/`.
 
+**Built — locks in the silhouette, 2026-09-26 (r34).** r33's hair was still a smooth
+shell. `makeLocks` in `pawns.ts` now grows solid tapered locks over the back of every cut:
+a ridged cross-section swept from a root near the crown, down past the hem to a point,
+with the tip flicked out. Each cut has its own rows (`HAIR_LOCKS`), and the long cut's
+tuck lets its locks follow the skull in rather than hang out like a skirt. There are
+none forward of the ears. Laid over the brow, a lock short enough to clear the eyes was
+a leaf on the fringe and looked like a paper cutout. Hanging over the ear, it widened
+the head so that from the manager camera the outline no longer showed which way it faced
+(`tests/head-read.test.ts`, which the first cuts failed at 10.4°). Locks are placed in
+mirror pairs so the cut is as symmetric as the skull. Every vertex is held 12% outside
+the skull. One more fix: GTAO rebuilds normals from depth, so it read a lock
+hanging behind the cheek as a crevice and painted it near black. The hair now writes
+`AO_EXEMPT_ALPHA` into the scene target's alpha, and the final pass in `post.ts` takes
+`AO.hair` (none) of the occlusion there. Triangles: +117 for the short cuts and +195 for
+the long and shaggy. The settler's 3,000 ceiling in `tests/lighting.test.ts` is gone, by
+the owner's call (see ACCEPTANCE). Goldens `settler.hair`, `hairLong`, `hairSwept` and
+`hairShaggy` were re-pinned. Frames: `.look/shots/r34/` against `r33/`.
+
 **Built — the stage, 2026-09-09.** Not a family. The room every family is
 photographed in, taken on because the contact sheet asked for it three rounds
 running and `src/forge/stage.ts` was the one file on the bench that no test had

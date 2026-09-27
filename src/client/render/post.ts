@@ -21,6 +21,9 @@
  *   carry it. GTAO's own output is switched off: it would copy the scene into
  *   a second full-screen buffer and multiply the occlusion over it in a third
  *   pass, and the final pass can do that multiply for the price of one lookup.
+ *   A surface can opt out: the scene target's alpha is a marker, not coverage
+ *   (`AO_EXEMPT_ALPHA`), and the multiply takes `AO.hair` of the occlusion
+ *   where it finds one. Only the hair writes it (r34, `face.ts`).
  * - **Output and grade, one pass** — the tone map and sRGB that the renderer
  *   applies when it draws to the canvas (a render target is drawn linear, so
  *   they move here), then levels in display space. The frame's trouble is
@@ -77,7 +80,22 @@ export const AO = {
   blend: 1.0,
   /** The occlusion buffer is this fraction of the screen along each side. */
   scale2d: 0.5,
+  /**
+   * How much of it a surface marked `AO_EXEMPT_ALPHA` takes. Hair: its side
+   * locks hang a few centimetres behind the cheek, and depth-only occlusion
+   * reads that as a crevice and paints them near black at any close camera
+   * (r34). The strands bake their own gaps; they need none of this.
+   */
+  hair: 0,
 };
+
+/**
+ * The scene target's alpha is not coverage — the canvas is opaque and the final
+ * pass writes 1 — so a material may write this there to say "leave me out of
+ * the occlusion". Opaque materials are drawn without blending, so the value
+ * lands as written; anything blended over it keeps alpha at 1.
+ */
+export const AO_EXEMPT_ALPHA = 0.5;
 
 /** Levels on one display value, the curve the final pass applies per channel. */
 export function levels(v: number): number {
@@ -91,6 +109,7 @@ const FinalShader = {
     tDiffuse: { value: null as THREE.Texture | null },
     tAO: { value: null as THREE.Texture | null },
     aoIntensity: { value: AO.blend },
+    aoExempt: { value: AO.hair },
     toneMappingExposure: { value: 1 },
     black: { value: GRADE.black },
     white: { value: GRADE.white },
@@ -116,6 +135,7 @@ const FinalShader = {
     uniform sampler2D tDiffuse;
     uniform sampler2D tAO;
     uniform float aoIntensity;
+    uniform float aoExempt;
     uniform float black;
     uniform float white;
     uniform float gamma;
@@ -128,9 +148,12 @@ const FinalShader = {
     void main() {
       vec4 src = texture2D(tDiffuse, vUv);
       // GTAO's own blend (GTAOBlendShader), in linear light before the curve.
-      src.rgb *= mix(vec3(1.0), texture2D(tAO, vUv).rgb, aoIntensity);
+      // A marked surface (AO_EXEMPT_ALPHA) takes aoExempt of it; the resolve
+      // averages alpha along its edge, so the step there is a ramp.
+      float aoWeight = aoIntensity * mix(aoExempt, 1.0, smoothstep(${AO_EXEMPT_ALPHA.toFixed(2)}, 1.0, src.a));
+      src.rgb *= mix(vec3(1.0), texture2D(tAO, vUv).rgb, aoWeight);
       // The renderer's own curve and transfer, exactly as OutputPass applies them.
-      vec4 c = vec4(ACESFilmicToneMapping(src.rgb), src.a);
+      vec4 c = vec4(ACESFilmicToneMapping(src.rgb), 1.0);
       c = sRGBTransferOETF(c);
       vec3 g = pow(clamp((c.rgb - black) / (white - black), 0.0, 1.0), vec3(gamma));
       g = max(g, c.rgb * toe);
@@ -138,7 +161,7 @@ const FinalShader = {
       g = mix(vec3(l), g, saturation);
       float d = distance(vUv, vec2(0.5));
       g *= 1.0 - vignette * smoothstep(0.3, 0.8, d);
-      gl_FragColor = vec4(clamp(g, 0.0, 1.0), c.a);
+      gl_FragColor = vec4(clamp(g, 0.0, 1.0), 1.0);
     }
   `,
 };

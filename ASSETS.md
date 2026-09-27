@@ -18,8 +18,8 @@ It takes a few seconds, needs no browser and no GPU — it runs the real rendere
 against a real seeded valley under Node — and it prints what it wrote:
 
 ```
-models: 42 models, 35 kinds mapped, 54668 triangles, 5742 KiB
-heaviest: settler 2800, animal.mossback 2474, animal.fenwolf 2418, ...
+models: 42 models, 35 kinds mapped, 54841 triangles, 5758 KiB
+heaviest: settler 2973, animal.mossback 2474, animal.fenwolf 2418, ...
 ```
 
 `models/` is git-ignored on purpose. The models are generated from the renderer,
@@ -34,15 +34,15 @@ it, vendor `manifest.json` alongside so you can tell which export you have.
 | Buildings | 27 | 35,972 | 4.5 MiB |
 | Resource piles | 8 | 3,476 | 460 KiB |
 | Trees | 2 | 2,968 | 106 KiB |
-| People and fauna | 5 | 12,252 | 526 KiB |
-| **Total** | **42** | **54,668** | **5.6 MiB** |
+| People and fauna | 5 | 12,425 | 542 KiB |
+| **Total** | **42** | **54,841** | **5.6 MiB** |
 
-The smallest model is 144 triangles (`stack.assemblies`); the largest is 2,800
+The smallest model is 144 triangles (`stack.assemblies`); the largest is 2,973
 (`settler`). Nothing here is a scanned asset — these are hand-built low-poly
 shapes that have been through eleven rounds of a look loop, so they are cheap in
 the way a stylised model is cheap and detailed in the way a considered one is.
 
-The files are uncompressed and un-indexed, which is why 54,668 triangles come to
+The files are uncompressed and un-indexed, which is why 54,841 triangles come to
 5.6 MiB. If size matters to you, run the set through `gltfpack` or
 `gltf-transform optimize` — indexing and Draco typically take about 80% off, and
 nothing here depends on the vertex layout.
@@ -181,7 +181,7 @@ would have been wrong in any table maintained by hand.
   program (`src/client/render/face.ts`), not modelled, and so are the eyeballs on the eye
   beads, so an exported `head` is plain skin with its nose and its chin and its eyes are plain flattened lenses,
   and an exported `hair` is its colour with darker ends baked into the vertex
-  colours. The export has one settler, so it carries one of the four cuts.
+  colours. The locks over the back of the hair are geometry and do export. The export has one settler, so it carries one of the four cuts.
 - **Effects.** Smoke, fire glow, muzzle flashes and weather are billboards and
   canvas-drawn textures built at runtime, and none of them are models.
 - **Landmarks.** The four survey props are close cousins of the scatter stones

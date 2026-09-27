@@ -21,12 +21,18 @@
  * r31 gives the skull a jaw and a chin, and a settler their own marks — a
  * moustache or stubble, freckles, the lines of age — dealt so that nobody who
  * had a beard loses it, and so that age goes with grey hair and nothing else.
+ *
+ * r34 grows solid locks over the back of every cut and takes the hair out of
+ * the post chain's occlusion, which painted the locks behind a cheek near black:
+ * the hair writes a marker into the scene target's alpha, and the final pass
+ * reads it (tests/post.test.ts holds that half).
  */
 
 import * as THREE from 'three';
 import { describe, expect, it } from 'vitest';
 
 import { IRIS_TONES, eyeMaterial, faceMaterial, faceTraitsOf, hairMaterial, irisOf } from '../src/client/render/face';
+import { AO_EXEMPT_ALPHA } from '../src/client/render/post';
 import { HAIR_STYLES, HAIR_TONES, PawnsView, hairStyleOf, settlerGeometry } from '../src/client/render/pawns';
 import type { HairStyle } from '../src/client/render/pawns';
 import { createWorld } from '../src/sim/worldgen';
@@ -192,6 +198,29 @@ describe('a settler’s face and hair', () => {
     }
   });
 
+  it('marks the hair out of the occlusion after the chunk that forces an opaque alpha — before it, the mark is overwritten with 1', () => {
+    const mat = hairMaterial(new THREE.Color(0x3a2616), 0, null);
+    const f = compiled(mat).fragmentShader;
+    const mark = f.indexOf(`gl_FragColor.a = ${AO_EXEMPT_ALPHA.toFixed(2)};`);
+    expect(mark).toBeGreaterThan(f.indexOf('#include <opaque_fragment>'));
+    expect(mark).toBeLessThan(f.indexOf('#include <tonemapping_fragment>'));
+    // Blended, the mark would be mixed with whatever was drawn behind the hair.
+    expect(mat.transparent).toBe(false);
+  });
+
+  it('grows locks on every cut, and none forward of the ears — a lock over the brow read as a paper cutout, one over the ear as a round head', () => {
+    // The shell is a 25 x 8 grid; everything after it is lock.
+    const SHELL = 25 * 8;
+    const geo = settlerGeometry();
+    for (const [key, style] of [['hair', 'crop'], ['hairLong', 'long'], ['hairSwept', 'swept'], ['hairShaggy', 'shaggy']] as const) {
+      const pos = geo[key].attributes.position!;
+      expect(pos.count, `${style} has locks`).toBeGreaterThan(SHELL + 50);
+      let front = 0;
+      for (let i = SHELL; i < pos.count; i++) if (pos.getZ(i) >= 0) front++;
+      expect(front, `${style}: lock vertices in front of the ears`).toBe(0);
+    }
+  });
+
   // --- experience
 
   it('puts the face on every settler’s head and the parting only on the parted cuts', () => {
@@ -228,5 +257,24 @@ describe('a settler’s face and hair', () => {
       view.dispose();
     }
     expect(seen.size).toBe(4);
+  });
+
+  it('draws every settler’s locks, and draws them out of the occlusion', () => {
+    const world = createWorld(SEED);
+    const view = new PawnsView();
+    view.onTick(world);
+    view.sync(world, 0, null, 0);
+    let settlers = 0;
+    for (const rig of view.group.children) {
+      const pawn = world.pawns.find((p) => p.x === rig.position.x && p.y === rig.position.z)!;
+      if (pawn.animal) continue;
+      settlers++;
+      const hair = part(rig, 'hair');
+      // The shell alone is 936 indices (r33); more is the locks, on the rig.
+      expect(hair.geometry.index!.count, hairStyleOf(pawn.colorSeed)).toBeGreaterThan(936);
+      expect(compiled(hair.material as THREE.Material).fragmentShader).toContain(`gl_FragColor.a = ${AO_EXEMPT_ALPHA.toFixed(2)};`);
+    }
+    expect(settlers).toBeGreaterThan(0);
+    view.dispose();
   });
 });

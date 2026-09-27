@@ -469,8 +469,8 @@ export function assembleSettler(
     roughness: 0.82,
   });
   const skinMat = new THREE.MeshStandardMaterial({ color: skin, roughness: 0.62 });
-  // The face and the strands are painted per pixel (see `face.ts`), because
-  // the budget has no triangles left for either. A beard on one in four, and
+  // The face and the strands are painted per pixel (see `face.ts`); the
+  // hair's only geometry is its shell and the locks at the back. A beard on one in four, and
   // the rest of a face's marks from the seed (`faceTraitsOf`).
   const style = hairStyleOf(colorSeed);
   const grey = HAIR_TONES[(colorSeed >> 8) % HAIR_TONES.length] === HAIR_GREY;
@@ -1966,8 +1966,8 @@ function hemOf(keys: [number, number][]): (phi: number) => number {
  * manager camera a skull cap over a face is a bald head in a second colour —
  * the colour has to change along a line that looks like a hairline.
  *
- * Four cuts, on two bits of the seed (`hairStyleOf`), every one the same grid of
- * the same 312 triangles, so the choice costs nothing against the budget:
+ * Four cuts, on two bits of the seed (`hairStyleOf`), every one the same shell
+ * grid, with each cut's own locks over the back (`HAIR_LOCKS`):
  *
  *  - **crop**: nape at the collar, a fringe deeper over one temple, and
  *    sideburns in front of where the ears would be.
@@ -2061,6 +2061,248 @@ function lockDepth(j: number): number {
   return 0.6 + 0.4 * (s - Math.floor(s));
 }
 
+/**
+ * The locks each cut lays over the back of its shell: rows of them, rooted at
+ * `root` (theta in turns of PI) and spaced as if `count` went round the whole
+ * head, each running down past the shell's hem by `tail`. `turn` is 0 for a
+ * lock on the centre line or 0.5 for a pair either side of it.
+ * `flick` kicks the tips out, `sweep` combs them across the head, `jitter`
+ * varies their length one from the next, and `tuck` (0 .. 1) lets a lock
+ * below the widest ring follow the skull in rather than hang straight: long
+ * hair hanging as a skirt reads from above as a round head.
+ */
+interface LockRow {
+  root: number;
+  count: number;
+  tail: number;
+  width: number;
+  turn: number;
+}
+const HAIR_LOCKS: Record<HairStyle, { rows: LockRow[]; flick: number; sweep: number; jitter: number; height: number; tuck: number }> = {
+  crop: {
+    rows: [
+      { root: 0.2, count: 13, tail: 0.05, width: 1.15, turn: 0.5 },
+    ],
+    flick: 0.05,
+    sweep: 0,
+    jitter: 0.05,
+    height: 0.027,
+    tuck: 0,
+  },
+  long: {
+    rows: [
+      { root: 0.22, count: 13, tail: 0.16, width: 1.15, turn: 0.5 },
+      { root: 0.4, count: 12, tail: 0.2, width: 1.10, turn: 0.5 },
+    ],
+    flick: 0.06,
+    sweep: 0,
+    jitter: 0.06,
+    height: 0.027,
+    tuck: 1,
+  },
+  swept: {
+    rows: [
+      { root: 0.2, count: 13, tail: 0.07, width: 1.19, turn: 0.5 },
+    ],
+    flick: 0.05,
+    sweep: 0.55,
+    jitter: 0.05,
+    height: 0.029,
+    tuck: 0,
+  },
+  shaggy: {
+    rows: [
+      { root: 0.2, count: 14, tail: 0.14, width: 1.15, turn: 0.5 },
+      { root: 0.38, count: 12, tail: 0.14, width: 1.06, turn: 0 },
+    ],
+    flick: 0.16,
+    sweep: 0.12,
+    jitter: 0.1,
+    height: 0.032,
+    tuck: 0,
+  },
+};
+
+/** How far outside the skull a lock is held, as the ellipsoid's own measure (1 is the skin). */
+const SKIN_CLEAR = 1.12;
+
+/** How many rings each lock is drawn with, before its tip. */
+const LOCK_RINGS = 7;
+
+/** Smoothstep on 0 .. 1, clamped: a lock rises out of the shell rather than starting at full height. */
+const smooth01 = (x: number): number => (x <= 0 ? 0 : x >= 1 ? 1 : x * x * (3 - 2 * x));
+
+/**
+ * The locks, as solid tapered hanks: each a ridged cross-section — two edges
+ * lying on the shell and a crest standing off it — swept from a root near the
+ * crown down along the head and past the shell's hem to a point, leaf-shaped,
+ * standing further off towards the tip and kicked out at the end. The shell
+ * underneath is the scalp they grow from; the locks are the silhouette, which
+ * a painted shell could never break. The underside has its own vertices so
+ * the crest's smooth shading does not wrap round the edge.
+ */
+function makeLocks(style: HairStyle): THREE.BufferGeometry {
+  const cut = HAIR_CUTS[style];
+  const spec = HAIR_LOCKS[style];
+  const hem = hemOf(cut.hem);
+  // The hem is keyed on 0 .. 2PI; a lock's angle runs either side of the face.
+  const base = (phi: number): number => hem(((phi % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2));
+  // A point on the shell (or where it would carry on past its hem), in the
+  // head's frame and in metres. Below the widest ring hair hangs rather than
+  // following the skull back in, so the horizontal reach stops growing there,
+  // unless the cut tucks, when it follows the skull in but never closer than
+  // SKIN_CLEAR outside it (the skull's semi-axes are `makeHead`'s).
+  const at = (phi: number, theta: number, off: number): THREE.Vector3 => {
+    const p = shellAt(phi, theta, off);
+    const inY = (p.y / 0.1378) ** 2;
+    const inXZ = (p.x / 0.13) ** 2 + (p.z / 0.1664) ** 2;
+    const k = Math.sqrt(Math.max(0, SKIN_CLEAR - inY) / Math.max(1e-9, inXZ));
+    return k > 1 ? p.set(p.x * k, p.y, p.z * k) : p;
+  };
+  const shellAt = (phi: number, theta: number, off: number): THREE.Vector3 => {
+    const tt = theta / base(phi);
+    const reach = Math.sin(Math.min(theta, Math.PI * 0.55)) - spec.tuck * Math.max(0, Math.sin(Math.PI * 0.55) - Math.sin(theta));
+    const x = -Math.cos(phi) * reach;
+    const y = Math.cos(theta);
+    const z = Math.sin(phi) * reach;
+    const swell = (1 + cut.flare * Math.min(tt, 1.3) ** 2) * (1 + off);
+    const occiput = z < 0 ? 1 + cut.back * Math.sin(Math.min(tt, 1) * Math.PI * 0.85) : 1;
+    return new THREE.Vector3(
+      x * swell * 0.148,
+      y * (1 + cut.lift * (1 - Math.min(tt, 1))) * (1 + off) * 0.158,
+      z * swell * occiput * 0.178,
+    );
+  };
+  const pos: number[] = [];
+  const col: number[] = [];
+  const idx: number[] = [];
+  const spineC: THREE.Vector3[] = [];
+  const spineN: THREE.Vector3[] = [];
+  const under: boolean[] = [];
+  let k = 0;
+  for (const [r, row] of spec.rows.entries()) {
+    const step = (Math.PI * 2) / row.count;
+    for (let j = 0; j < row.count; j++) {
+      // Placed round the face line and varied in mirror pairs, so the cut is
+      // as symmetric as the skull: a lopsided row leans the head's outline off
+      // the way the body faces, which is the read the manager camera needs.
+      const u = (j + row.turn) % row.count;
+      const pair = Math.min(u, row.count - u);
+      const side = u === pair ? 1 : -1;
+      const h = Math.sin((r * 31 + pair) * 12.9898) * 43758.5453;
+      const rnd = h - Math.floor(h);
+      const lean = pair === 0 || pair * 2 === row.count ? 0 : side * (rnd - 0.5) * step * 0.3;
+      const d = side * pair * step + lean;
+      const phi0 = Math.PI / 2 + d;
+      // Only the back of the head. From the manager camera a lock hanging over
+      // the ear widens the head across the way it faces, and the outline stops
+      // saying which way that is (tests/head-read.test.ts); over the brow a
+      // lock short enough to clear the eyes is a leaf laid on the fringe and
+      // reads as a paper cutout (r34). The shell's own zigzag is the fringe.
+      if (Math.abs(d) < Math.PI * 0.78) continue;
+      const tail = row.tail + (rnd - 0.5) * 2 * spec.jitter;
+      const theta1 = base(phi0) + tail * Math.PI;
+      const theta0 = row.root * Math.PI;
+      if (theta1 <= theta0 + 0.1) continue;
+      const first = k;
+      const ring = (t: number): { c: THREE.Vector3; n: THREE.Vector3; b: THREE.Vector3; w: number; hgt: number } => {
+        const phi = phi0 + spec.sweep * t * 0.6;
+        const theta = theta0 + (theta1 - theta0) * t;
+        // The root starts under the shell and rises out of it, so a lock grows
+        // from the scalp rather than being laid on it with a visible end.
+        const off = -0.03 + 0.042 * smooth01(t / 0.45) + 0.05 * t * t + spec.flick * t ** 4;
+        const c = at(phi, theta, off);
+        const e = 1e-3;
+        const along = at(phi0 + spec.sweep * (t + e) * 0.6, theta0 + (theta1 - theta0) * (t + e), off).sub(c);
+        const across = at(phi + e, theta, off).sub(at(phi - e, theta, off));
+        const n = new THREE.Vector3().crossVectors(across, along).normalize();
+        if (n.dot(c) < 0) n.negate();
+        const b = new THREE.Vector3().crossVectors(along, n).normalize();
+        const reach = Math.max(0.35, Math.sin(Math.min(theta, Math.PI * 0.55)));
+        const leaf = Math.min(1, 0.35 + 2.2 * t) * (1 - t) ** 0.75;
+        const w = step * 0.148 * reach * row.width * leaf * (0.85 + 0.3 * rnd);
+        return { c, n, b, w, hgt: spec.height * (0.5 + 0.5 * Math.sin(Math.PI * Math.min(1, 0.2 + t))) * (1 - t) ** 0.4 };
+      };
+      for (let i = 0; i < LOCK_RINGS; i++) {
+        const t = i / LOCK_RINGS;
+        const { c, n, b, w, hgt } = ring(t);
+        const L = c.clone().addScaledVector(b, -w / 2);
+        const R = c.clone().addScaledVector(b, w / 2);
+        const P = c.clone().addScaledVector(n, hgt);
+        // Top: edge, crest, edge; underside: its own two edges.
+        for (const v of [L, P, R, L, R]) pos.push(v.x, v.y, v.z);
+        // Dark at the root, where the hair above shades it, lighter to the tip.
+        const lit = 0.72 + 0.28 * Math.min(1, t * 1.6);
+        col.push(0.6 * lit, 0.6 * lit, 0.6 * lit, lit, lit, lit, 0.6 * lit, 0.6 * lit, 0.6 * lit);
+        col.push(0.74 * lit, 0.74 * lit, 0.74 * lit, 0.74 * lit, 0.74 * lit, 0.74 * lit);
+        for (let v = 0; v < 5; v++) {
+          spineC.push(c);
+          spineN.push(n);
+          under.push(v >= 3);
+        }
+        k += 5;
+      }
+      const end = ring(1);
+      pos.push(end.c.x, end.c.y, end.c.z);
+      col.push(0.95, 0.95, 0.95);
+      spineC.push(end.c);
+      spineN.push(end.n);
+      under.push(false);
+      const tipV = k;
+      k += 1;
+      const quad = (a: number, b: number, c: number, d: number): void => {
+        idx.push(a, b, c, a, c, d);
+      };
+      for (let i = 0; i < LOCK_RINGS - 1; i++) {
+        const a = first + i * 5;
+        const n2 = a + 5;
+        quad(a, n2, n2 + 1, a + 1); // left flank
+        quad(a + 1, n2 + 1, n2 + 2, a + 2); // right flank
+        quad(a + 4, n2 + 4, n2 + 3, a + 3); // underside
+      }
+      const last = first + (LOCK_RINGS - 1) * 5;
+      idx.push(last, tipV, last + 1, last + 1, tipV, last + 2, last + 4, tipV, last + 3);
+    }
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+  g.setIndex(idx);
+  // Wind every triangle outward: the flanks away from their ring's spine,
+  // the underside towards the scalp, whichever way a lock runs.
+  const p = g.attributes.position!;
+  const va = new THREE.Vector3(), vb = new THREE.Vector3(), vc = new THREE.Vector3();
+  const e1 = new THREE.Vector3(), e2 = new THREE.Vector3(), nrm = new THREE.Vector3();
+  for (let f = 0; f < idx.length; f += 3) {
+    const ref = idx[f]!;
+    va.fromBufferAttribute(p, ref);
+    vb.fromBufferAttribute(p, idx[f + 1]!);
+    vc.fromBufferAttribute(p, idx[f + 2]!);
+    nrm.crossVectors(e1.subVectors(vb, va), e2.subVectors(vc, va));
+    const want = under[ref] ? spineN[ref]!.clone().negate() : va.clone().add(vb).add(vc).divideScalar(3).sub(spineC[ref]!);
+    if (nrm.dot(want) < 0) {
+      const swap = idx[f + 1]!;
+      idx[f + 1] = idx[f + 2]!;
+      idx[f + 2] = swap;
+    }
+  }
+  g.setIndex(idx);
+  g.computeVertexNormals();
+  // Lit as a mass of hair rather than as a pile of ribbons: the crest and
+  // flanks lean their normals out from the head, and the underside takes the
+  // outward normal outright, so a lock seen from below is shaded as hair
+  // and not as the dark inside of a shell.
+  const nn = g.attributes.normal!;
+  const v = new THREE.Vector3();
+  for (let i = 0; i < nn.count; i++) {
+    v.fromBufferAttribute(nn, i);
+    if (under[i]) v.copy(spineN[i]!);
+    else v.addScaledVector(spineN[i]!, 0.35).normalize();
+    nn.setXYZ(i, v.x, v.y, v.z);
+  }
+  return g;
+}
+
 function makeHair(style: HairStyle): THREE.BufferGeometry {
   const cut = HAIR_CUTS[style];
   const COLS = 24;
@@ -2103,7 +2345,7 @@ function makeHair(style: HairStyle): THREE.BufferGeometry {
   g.computeVertexNormals();
   const n = g.attributes.normal!;
   for (let j = 0; j <= COLS; j++) n.setXYZ(j, 0, 1, 0);
-  return g;
+  return mergeGeometries([g, makeLocks(style)])!;
 }
 
 /** How deep the eye lens is, as a share of the sphere it is pressed from. */

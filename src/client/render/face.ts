@@ -21,6 +21,7 @@
  */
 
 import * as THREE from 'three';
+import { AO_EXEMPT_ALPHA } from './post';
 
 /**
  * How high on the skull the eyes sit, in the head's own frame. A little under
@@ -322,7 +323,9 @@ export function hairMaterial(hair: THREE.Color, sweep: number, part: number | nu
     shader.fragmentShader = shader.fragmentShader
       .replace('void main() {', 'varying vec3 vHairPos;\nuniform float uSweep;\nuniform vec2 uPart;\nvoid main() {\nfloat hairH = 0.0;')
       .replace('#include <color_fragment>', `#include <color_fragment>\n${HAIR_GLSL}`)
-      .replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>\n${HAIR_BUMP_GLSL}`);
+      .replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>\n${HAIR_BUMP_GLSL}`)
+      // After the chunk that forces an opaque alpha to 1: out of the post chain's occlusion.
+      .replace('#include <opaque_fragment>', `#include <opaque_fragment>\ngl_FragColor.a = ${AO_EXEMPT_ALPHA.toFixed(2)};`);
   };
   mat.customProgramCacheKey = () => HAIR_KEY;
   mat.userData.hair = { sweep: uSweep, part: uPart };

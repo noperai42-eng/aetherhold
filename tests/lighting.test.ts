@@ -809,7 +809,9 @@ describe('what a body is made of', () => {
     view.dispose();
   });
 
-  it('stays inside its triangle budget: ~3,000 for a settler, ~2,500 for an animal wearing everything it can', () => {
+  // A settler has no ceiling since r34, by the owner's call: get the look right
+  // first and scale down after. An animal keeps its 2,500.
+  it('stays inside its triangle budget: ~2,500 for an animal wearing everything it can', () => {
     const { view, world } = bodies();
     const byId = new Map(world.pawns.map((p) => [p.id, p]));
     let settlers = 0;
@@ -832,7 +834,6 @@ describe('what a body is made of', () => {
         expect(total, `${pawn!.animal} rig`).toBeLessThanOrEqual(2500);
       } else {
         settlers++;
-        expect(total, `settler rig (${pawn!.weapon})`).toBeLessThanOrEqual(3000);
       }
     }
     expect(settlers).toBeGreaterThan(0);
@@ -2029,7 +2030,7 @@ describe('what a body is made of', () => {
     view.dispose();
   });
 
-  it('holds a trader, a raider and a prisoner to the settler budget — a trader drew 3,568 against 3,000 and nothing on the map could see it', () => {
+  it('draws a trader, a raider and a prisoner, and a trader with its freight — a trader once drew 3,568 against 3,000 and nothing on the map could see it', () => {
     // The budget test above sweeps the pawns the map starts with, and on turn one
     // every one of them is a colonist. A trader carries a bundle and three
     // crates that nobody else does — 624 triangles, all of it bought with
@@ -2037,7 +2038,8 @@ describe('what a body is made of', () => {
     // settler's head. So the one body on the map that could break the budget was
     // the one body the budget was never measured on. The other two factions cost
     // nothing extra today and are here so that the next thing hung off a faction
-    // is measured the day it lands.
+    // is measured the day it lands. The settler ceiling itself went in r34 (see
+    // the budget test above); what is left is that every faction draws.
     const world = createWorld(SEED);
     const settler = world.pawns.find((p) => !p.animal && p.faction === 'colony');
     expect(settler, 'the map starts with a colonist to copy').toBeDefined();
@@ -2061,7 +2063,6 @@ describe('what a body is made of', () => {
       const total = drawn(rig).reduce((n, m) => n + triangles(m), 0);
       const who = cases.get(pawn.id);
       if (who) counts.set(who, total);
-      if (!pawn.animal) expect(total, `${who ?? 'settler'} rig (${pawn.weapon})`).toBeLessThanOrEqual(3000);
     }
     expect([...counts.keys()].sort(), 'all three factions drawn').toEqual(['prisoner', 'raider', 'trader']);
     // And the trader is really carrying the freight — otherwise the budget above

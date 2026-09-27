@@ -25,7 +25,7 @@ import * as THREE from 'three';
 import { GTAOPass } from 'three/examples/jsm/postprocessing/GTAOPass.js';
 import { describe, expect, it } from 'vitest';
 
-import { AO, GRADE, PostChain, levels } from '../src/client/render/post';
+import { AO, AO_EXEMPT_ALPHA, GRADE, PostChain, levels } from '../src/client/render/post';
 import { QUALITY } from '../src/client/render/renderer';
 
 interface Stub {
@@ -138,6 +138,25 @@ describe('building the chain', () => {
     expect(gtao.output).toBe(GTAOPass.OUTPUT.Off);
     expect(finalMaterial.uniforms.tDiffuse.value).toBe(sceneTarget.texture);
     expect(finalMaterial.uniforms.tAO.value).toBe(gtao.pdRenderTarget.texture);
+  });
+
+  it('spares a surface marked in the scene alpha from the occlusion — hair behind a cheek went near black (r34)', () => {
+    const { finalMaterial } = inside(chainOn(stubRenderer(1280, 800)));
+    // Hair takes none of it; the pin is a literal so a retune is a brief.
+    expect(AO.hair).toBe(0);
+    expect(finalMaterial.uniforms.aoExempt.value).toBe(AO.hair);
+    // The mark sits strictly between cleared (0) and opaque (1), and opaque
+    // takes the whole blend: everything that does not mark itself is unchanged.
+    expect(AO_EXEMPT_ALPHA).toBeGreaterThan(0);
+    expect(AO_EXEMPT_ALPHA).toBeLessThan(1);
+    const f = finalMaterial.fragmentShader;
+    expect(f).toContain(`aoIntensity * mix(aoExempt, 1.0, smoothstep(${AO_EXEMPT_ALPHA.toFixed(2)}, 1.0, src.a))`);
+  });
+
+  it('writes an opaque frame whatever alpha the scene target held — the marker is not coverage', () => {
+    const f = inside(chainOn(stubRenderer(1280, 800))).finalMaterial.fragmentShader;
+    expect(f).toContain('gl_FragColor = vec4(clamp(g, 0.0, 1.0), 1.0);');
+    expect(f).toContain('vec4 c = vec4(ACESFilmicToneMapping(src.rgb), 1.0);');
   });
 });
 
