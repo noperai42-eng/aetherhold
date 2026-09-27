@@ -597,7 +597,7 @@ describe('how much of a bench frame the subject gets', () => {
     ]);
   });
 
-  it('leaves eleven of the eighty-two more than half hidden, where seventeen were', () => {
+  it('leaves twelve of the eighty-two more than half hidden, where seventeen were', () => {
     // What the arrangement round was written off, per family, as it is. The first
     // column is how many of that family's grid are more than half covered by
     // something nearer the camera; the second is the mean over the family, in
@@ -619,6 +619,10 @@ describe('how much of a bench frame the subject gets', () => {
     // is a different reason again: four to a row is one row, and a row is all one
     // depth, so the only thing left to hide behind is a neighbour along it. Both
     // are footprint questions and both are a different round from this one.
+    //
+    // The twelfth is a settler, since r35: the Hume stands taller on the same
+    // pitch, so one pose in the back row is now more than half behind the one
+    // in front of it. Eleven was the count before; it is written as measured.
     const rows = BENCHES.map((b) => {
       const { shown, dist } = grid(b);
       const each = hiddenBehind(shown, dist);
@@ -637,7 +641,6 @@ describe('how much of a bench frame the subject gets', () => {
       ['settler', 1, 24], // 22 before r28: a bent knee and a hem are a wider body; 0 and 23 before r35's taller Hume
       ['building', 0, 14],
     ]);
-    // Twelve since r35: one of the taller settlers' poses is now more than half behind a neighbour.
     expect(rows.reduce((t, r) => t + (r[1] as number), 0)).toBe(12);
     expect(BENCHES.reduce((t, b) => t + (b.grid ?? 12), 0)).toBe(82);
   });
