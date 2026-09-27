@@ -464,7 +464,7 @@ describe('how much of a bench frame the subject gets', () => {
       ['tree', 32],
       ['stack', 32],
       ['animal', 34],
-      ['settler', 29],
+      ['settler', 30], // 29 before r35's taller Hume
       ['building', 30],
     ]);
   });
@@ -510,7 +510,7 @@ describe('how much of a bench frame the subject gets', () => {
       ['tree', 32, 43],
       ['stack', 32, 42],
       ['animal', 34, 38],
-      ['settler', 29, 40],
+      ['settler', 30, 41], // 29 and 40 before r35's taller Hume
       ['building', 30, 43],
     ]);
     // And where the third comes from, which is the reason it is not being taken
@@ -550,7 +550,7 @@ describe('how much of a bench frame the subject gets', () => {
       ['tree', 26],
       ['stack', 26],
       ['animal', 8],
-      ['settler', 11],
+      ['settler', 14], // 11 before r35's taller Hume
       ['building', 28],
     ]);
     // The two that move least are the two whose grids are longest and thinnest —
@@ -634,10 +634,11 @@ describe('how much of a bench frame the subject gets', () => {
       ['tree', 6, 48],
       ['stack', 3, 34],
       ['animal', 1, 17],
-      ['settler', 0, 23], // 22 before r28: a bent knee and a hem are a wider body
+      ['settler', 1, 24], // 22 before r28: a bent knee and a hem are a wider body; 0 and 23 before r35's taller Hume
       ['building', 0, 14],
     ]);
-    expect(rows.reduce((t, r) => t + (r[1] as number), 0)).toBe(11);
+    // Twelve since r35: one of the taller settlers' poses is now more than half behind a neighbour.
+    expect(rows.reduce((t, r) => t + (r[1] as number), 0)).toBe(12);
     expect(BENCHES.reduce((t, b) => t + (b.grid ?? 12), 0)).toBe(82);
   });
 
@@ -725,7 +726,7 @@ describe('how much of a bench frame the subject gets', () => {
       ['tree', 105, true],
       ['stack', 21, true],
       ['animal', 25, true],
-      ['settler', 43, true],
+      ['settler', 42, true], // 43 before r35's taller Hume
       ['building', 74, true],
     ]);
   });
@@ -782,7 +783,7 @@ describe('how much of a bench frame the subject gets', () => {
       ['tree', 447, false],
       ['stack', 36, true],
       ['animal', 30, true],
-      ['settler', 82, true], // 85 before r28 jointed the limbs
+      ['settler', 78, true], // 85 before r28 jointed the limbs; 82 before r35's Hume and its 0.55 splay slider
       ['building', 74, true],
     ]);
     // The buildings are the row where maxing changes nothing, and the reason is
@@ -839,7 +840,7 @@ describe('how much of a bench frame the subject gets', () => {
       ['tree', 138, 0.329, 1],
       ['stack', 27, 0, 0],
       ['animal', 32, 0, 0],
-      ['settler', 57, 0.057, 0.19], // 0.055 and 0.184 before r28 jointed the limbs
+      ['settler', 55, 0.05, 0.165], // 0.055 and 0.184 before r28 jointed the limbs; 57, 0.057 and 0.19 before r35
       ['building', 98, 0.194, 0.647],
     ]);
   });

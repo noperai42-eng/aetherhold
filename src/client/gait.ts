@@ -97,7 +97,7 @@ export const stepsPerSecond = (
  * A settler's leg, hip to sole. The rig hangs its legs from exactly this height,
  * which is why the soles reach the floor rather than hover above it.
  */
-export const SETTLER_LEG = 0.74;
+export const SETTLER_LEG = 0.82;
 
 /** How far the hip carries that leg, either side of straight down. */
 export const SETTLER_SWING = 0.62;

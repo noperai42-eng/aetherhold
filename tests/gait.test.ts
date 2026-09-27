@@ -82,7 +82,8 @@ describe('a foot that stays where it was put', () => {
     // Foot reaches leg·sin(swing) ahead of the hip and the same behind it, so a
     // step spans twice that and a cycle — left, then right — spans four.
     const reach = SETTLER_LEG * Math.sin(SETTLER_SWING);
-    expect(reach).toBeCloseTo(0.43, 2);
+    // r35: the leg is 0.82, a Hume's, and the stride grew with it (was 0.43).
+    expect(reach).toBeCloseTo(0.48, 2);
     expect(strideCells(SETTLER_LEG, SETTLER_SWING)).toBeCloseTo(reach * 4, 10);
   });
 
@@ -94,8 +95,9 @@ describe('a foot that stays where it was put', () => {
     // The bug, in cells: the planted foot slid backwards across the ground by
     // about the length of the step it had just taken — 0.86 of foot against
     // 0.42 of ground, better than twice as fast as the world went by.
-    expect(footScrub(SETTLER_LEG, SETTLER_SWING, 1)).toBeCloseTo(0.441, 3);
-    expect(SETTLER_PHASE).toBeCloseTo(0.4871, 4);
+    // Re-pinned in r35 for the 0.82 leg (was 0.441 and 0.4871 at 0.74).
+    expect(footScrub(SETTLER_LEG, SETTLER_SWING, 1)).toBeCloseTo(0.534, 3);
+    expect(SETTLER_PHASE).toBeCloseTo(0.4396, 4);
   });
 
   it('calls scissoring too fast a skate and scissoring too slow a moonwalk', () => {

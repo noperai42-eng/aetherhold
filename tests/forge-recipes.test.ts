@@ -234,23 +234,32 @@ const GOLDEN: Readonly<Record<string, string>> = {
   // the back of its shell, clumps that stand off it and hang past the hem at
   // the nape, so the counts and the box grow (down and back only; the front
   // of the box holds, since nothing was added over the brow).
-  'settler.torso': 'verts=189 idx=960 hash=72a7a692 box=[-0.235,-0.29,-0.1457..0.235,0.29,0.1457]',
-  'settler.belt': 'verts=42 idx=120 hash=942d5bd6 box=[-0.22,-0.03,-0.1364..0.22,0.03,0.1364]',
-  'settler.neck': 'verts=65 idx=288 hash=62287bca box=[-0.1,-0.07,-0.1..0.1,0.12,0.1]',
+  'settler.torso': 'verts=462 idx=2496 hash=be6d7700 box=[-0.216,-0.29,-0.1386..0.216,0.294,0.1414]',
+  'settler.belt': 'verts=66 idx=192 hash=94b36384 box=[-0.172,-0.03,-0.1101..0.172,0.03,0.1101]',
+  'settler.neck': 'verts=85 idx=384 hash=690207e5 box=[-0.086,-0.07,-0.086..0.086,0.12,0.086]',
   'settler.head': 'verts=231 idx=1080 hash=3bdf92bd box=[-0.13,-0.1378,-0.1664..0.13,0.1378,0.1664]',
   'settler.hair': 'verts=308 idx=1287 hash=8e387fee box=[-0.1551,-0.0809,-0.224..0.155,0.1627,0.1861]',
   'settler.hairLong': 'verts=380 idx=1521 hash=23201962 box=[-0.1548,-0.1766,-0.2427..0.1548,0.1643,0.1936]',
   'settler.hairSwept': 'verts=308 idx=1287 hash=c665b413 box=[-0.1545,-0.0998,-0.237..0.1556,0.1691,0.188]',
   'settler.hairShaggy': 'verts=380 idx=1521 hash=a2d33bc0 box=[-0.1569,-0.1919,-0.2732..0.1566,0.1675,0.1955]',
   'settler.eye': 'verts=42 idx=144 hash=673274e6 box=[-0.0152,-0.016,-0.0053..0.0152,0.016,0.0053]',
-  'settler.leg': 'verts=66 idx=300 hash=ce717741 box=[-0.078,-0.41,-0.0742..0.078,0,0.0742]',
-  'settler.shin': 'verts=36 idx=144 hash=1f50e3df box=[-0.066,-0.35,-0.066..0.066,0,0.066]',
+  'settler.leg': 'verts=170 idx=864 hash=c2165253 box=[-0.086,-0.47,-0.086..0.086,0,0.086]',
+  'settler.shin': 'verts=187 idx=960 hash=c9ceb5b1 box=[-0.062,-0.39,-0.062..0.062,0,0.062]',
   'settler.boot': 'verts=78 idx=360 hash=aaaf0c2 box=[-0.0694,-0.049,-0.122..0.0694,0.049,0.1366]',
-  'settler.arm': 'verts=88 idx=420 hash=e548b66a box=[-0.066,-0.3225,-0.0628..0.066,0,0.0628]',
-  'settler.forearm': 'verts=36 idx=144 hash=3f4c6057 box=[-0.062,-0.2425,-0.062..0.062,0,0.062]',
-  'settler.hand': 'verts=408 idx=0 hash=f5e2fb75 box=[-0.0734,-0.0821,-0.074..0.0547,0.0821,0.074]',
-  'settler.hem': 'verts=42 idx=120 hash=e97c4c9b box=[-0.24,-0.08,-0.1488..0.24,0.08,0.1488]',
+  'settler.arm': 'verts=170 idx=864 hash=5cbbcd9a box=[-0.058,-0.3375,-0.058..0.058,0,0.058]',
+  'settler.forearm': 'verts=153 idx=768 hash=fbc3f979 box=[-0.047,-0.2425,-0.047..0.047,0,0.047]',
+  'settler.hand': 'verts=408 idx=0 hash=1a249b85 box=[-0.0624,-0.0698,-0.0629..0.0465,0.0698,0.0629]',
+  'settler.hem': 'verts=132 idx=576 hash=5d9415f8 box=[-0.25,-0.11,-0.16..0.25,0.11,0.16]',
   'settler.nose': 'verts=35 idx=108 hash=40f7e602 box=[-0.0192,-0.024,-0.0229..0.0192,0.024,0.0229]',
+  // r35: the FFXI Hume kit, new parts; torso, belt, neck, limbs, hand and hem re-pinned with it.
+  'settler.pauldron': 'verts=189 idx=900 hash=bb1a014e box=[-0.0778,-0.0161,-0.0758..0.0778,0.052,0.0758]',
+  'settler.bracer': 'verts=102 idx=480 hash=80c8e056 box=[-0.055,-0.235,-0.055..0.055,-0.098,0.055]',
+  'settler.bootShaft': 'verts=136 idx=672 hash=1680f015 box=[-0.074,-0.4,-0.074..0.074,-0.182,0.074]',
+  'settler.collar': 'verts=84 idx=360 hash=57e363f3 box=[-0.088,-0.02,-0.0792..0.088,0.03,0.0792]',
+  'settler.hemTrim': 'verts=66 idx=192 hash=d3585d8a box=[-0.254,-0.014,-0.1626..0.254,0.014,0.1626]',
+  'settler.buckle': 'verts=900 idx=0 hash=1b10191d box=[-0.028,-0.025,-0.007..0.028,0.025,0.007]',
+  'settler.pouch': 'verts=900 idx=0 hash=a4e31edd box=[-0.0375,-0.04,-0.021..0.0375,0.04,0.021]',
+  'settler.strap': 'verts=98 idx=288 hash=dcd9a7f1 box=[-0.1708,-0.1198,-0.1391..0.2233,0.2198,0.1457]',
   'settler.rifleStock': 'verts=504 idx=0 hash=5f366205 box=[-0.024,-0.63,-0.1..0.024,-0.53,0.482]',
   'settler.rifleAction': 'verts=576 idx=0 hash=79f35144 box=[-0.025,-0.575,0.1..0.025,-0.481,0.72]',
   'settler.club': 'verts=648 idx=0 hash=45d9b923 box=[-0.052,-0.922,0.008..0.052,-0.53,0.112]',
@@ -677,7 +686,8 @@ describe('how a settler is posed and how far off the ground it ends up', () => {
     // `gait.test.ts` holds the scale itself. What is worth writing down here is
     // the length of the thing every measurement below is sampled across: one
     // full stride is this much of `animPhase`, which is distance and not time.
-    expect(cycle).toBeCloseTo(12.899, 3);
+    // r35: 14.293 for the 0.82 leg (12.899 at 0.74).
+    expect(cycle).toBeCloseTo(14.293, 3);
   });
 
   it('writes every one of the eight poses as the number it has always been', () => {
@@ -735,12 +745,14 @@ describe('how a settler is posed and how far off the ground it ends up', () => {
     // ceiling and the shipped body sits under it — the tip of a thumb rolled
     // past the shoulder's own line reads as hands clasped in front of the body
     // rather than as arms hanging beside it.
-    expect(thumbLimit()).toBeCloseTo(0.12628, 5);
+    // r35: the hand is cut at 0.85 for a tapered wrist, so its thumb reaches
+    // less far and the limit came in (0.12628 before); the splay went to 0.1.
+    expect(thumbLimit()).toBeCloseTo(0.1075, 5);
     expect(SETTLER_DEFAULT.armSplay).toBeLessThan(thumbLimit());
     // A shorter arm can be rolled further before the thumb gets there, and a
     // longer one cannot be rolled as far.
-    expect(thumbLimit({ ...SETTLER_DEFAULT, wristY: -0.2 })).toBeCloseTo(0.34997, 5);
-    expect(thumbLimit({ ...SETTLER_DEFAULT, wristY: -1 })).toBeCloseTo(0.07287, 5);
+    expect(thumbLimit({ ...SETTLER_DEFAULT, wristY: -0.2 })).toBeCloseTo(0.30083, 5);
+    expect(thumbLimit({ ...SETTLER_DEFAULT, wristY: -1 })).toBeCloseTo(0.06197, 5);
   });
 
   it('takes the sleeve down by the step the recipe names and not the one the colony uses', () => {
@@ -814,7 +826,9 @@ describe('how a settler is posed and how far off the ground it ends up', () => {
   it('walks a settler through the air for all but three instants of a stride', () => {
     const parts = assembleSettler('colony', 4931, 'none', settlerGeometry());
     const soles = [0, 1, 2, 3, 4, 5, 6, 7, 8].map((i) => soleAt(parts, stand('walking', (i / 8) * cycle)));
-    expect(soles).toEqual([0, 0.0364, 0.0438, 0.0638, 0, 0.0364, 0.0438, 0.0638, 0]);
+    // r35: the longer leg lifts its foot higher through the swing (0.0364,
+    // 0.0438, 0.0638 at 0.74); the three instants on the ground are unchanged.
+    expect(soles).toEqual([0, 0.044, 0.0587, 0.0714, 0, 0.044, 0.0587, 0.0714, 0]);
 
     // And the bob is a quarter-cycle out with it: highest where the feet are
     // near the ground, flat where they are furthest off it.
@@ -1474,12 +1488,12 @@ describe('the bench builds what the page asks it for', () => {
     expect(made.problems).toEqual([]);
     //
     // Jointed since r28: the thigh is cut to the knee, halfway down, and runs
-    // four centimetres past it; the shin hangs from the knee and carries the
+    // six centimetres past it (four until r35 tapered it); the shin hangs from the knee and carries the
     // boot. So the metre is the chain's — hip to knee plus knee to ankle.
     const leg = made.group!.children.find((c) => c.name === 'leg') as THREE.Mesh;
     expect(leg.position.y).toBeCloseTo(1, 6);
     leg.geometry.computeBoundingBox();
-    expect(leg.geometry.boundingBox!.min.y).toBeCloseTo(-0.54, 6);
+    expect(leg.geometry.boundingBox!.min.y).toBeCloseTo(-0.56, 6);
     const shin = leg.children.find((c) => c.name === 'shin') as THREE.Mesh;
     expect(shin.position.y, 'the knee halfway down the longer leg').toBeCloseTo(-0.5, 6);
     // And the boot is still on the end of it rather than where the old one ended.

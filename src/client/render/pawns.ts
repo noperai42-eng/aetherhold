@@ -295,15 +295,15 @@ export interface SettlerRecipe {
 export const SETTLER_DEFAULT: SettlerRecipe = {
   leg: SETTLER_LEG,
   swing: SETTLER_SWING,
-  torsoY: 1.02,
-  shoulderY: 1.28,
-  headY: 1.51,
+  torsoY: 1.08,
+  shoulderY: 1.33,
+  headY: 1.52,
   sleeve: 0.53,
   wristY: -0.575,
-  armSplay: 0.12,
+  armSplay: 0.1,
   sleeveStep: 10,
   carryArm: -1.3,
-  carryY: 1.16,
+  carryY: 1.22,
   carryZ: 0.4,
   bob: 0.035,
   stoop: 0.3,
@@ -323,7 +323,7 @@ export const SETTLER_DEFAULT: SettlerRecipe = {
  * sits at `shoulder + wristY·sin(roll) − THUMB_REACH·cos(roll)` across, and the
  * limit is where that equals the shoulder.
  */
-const THUMB_REACH = 0.073;
+const THUMB_REACH = 0.073 * 0.85; // the hand is cut at 0.85 of its r28 size (r35)
 
 export function thumbLimit(r: SettlerRecipe = SETTLER_DEFAULT): number {
   return Math.atan2(THUMB_REACH, -r.wristY);
@@ -336,6 +336,15 @@ export function thumbLimit(r: SettlerRecipe = SETTLER_DEFAULT): number {
  * at the drill in their hands.
  */
 const WORK_HEIGHT = 0.55;
+
+/**
+ * How large the head hangs, against the skull `makeHead` cuts. A Hume in Final
+ * Fantasy XI is about seven heads tall; this body at full size was six (a
+ * 0.28 m head on 1.67 m). The skull and everything painted on it stay in their
+ * own units — the face shader, the eye seat, the locks — and the rig scales
+ * the lot at once, so none of them can drift off the others (r35).
+ */
+export const HEAD_SCALE = 0.87;
 
 /**
  * Hair, black through silver. Read off `colorSeed` like the skin and the cloth
@@ -492,7 +501,19 @@ export function assembleSettler(
     skin.clone().multiplyScalar(0.9),
     hairCol.clone().multiplyScalar(0.4),
   );
-  mats.push(clothMat, sleeveMat, trouserMat, skinMat, faceMat, hairMat, gearMat, leatherMat, bootMat, eyeMat);
+  // Brass: the trim at the collar and the hem and the buckle. One warm metal
+  // on every faction's cloth is what makes a tunic an outfit (r35). Drawn both
+  // sides, because the hem's band is open and seen from below.
+  const trimMat = new THREE.MeshStandardMaterial({
+    color: 0xb58e45,
+    roughness: 0.42,
+    metalness: 0.45,
+    side: THREE.DoubleSide,
+  });
+  // The leather kit, both sides for the pauldron's open underside.
+  const kitMat = leatherMat.clone();
+  kitMat.side = THREE.DoubleSide;
+  mats.push(clothMat, sleeveMat, trouserMat, skinMat, faceMat, hairMat, gearMat, leatherMat, bootMat, eyeMat, trimMat, kitMat);
 
   const torso = new THREE.Mesh(shared.torso, clothMat);
   const head = new THREE.Mesh(shared.head, faceMat);
@@ -536,6 +557,9 @@ export function assembleSettler(
   chest.position.y = r.leg;
   torso.position.y = r.torsoY - r.leg;
   head.position.y = r.headY - r.leg;
+  // The skull, hair, eyes and nose are cut and painted at one size; the rig
+  // hangs them smaller (see `HEAD_SCALE`), so every head-local number agrees.
+  head.scale.setScalar(HEAD_SCALE);
   // The neck rises from the torso's rounded top and flares up into the skull,
   // and the belt sits where the lathe pinches in, so both are placed off the
   // torso rather than by eye.
@@ -561,6 +585,52 @@ export function assembleSettler(
   // tuned against, unmoved.
   armL.rotation.z = -r.armSplay;
   armR.rotation.z = r.armSplay;
+
+  // r35's kit. Pauldrons ride the arm so they lift with it; bracers ride the
+  // forearm; each boot's shaft rides the shin. The collar, the hem's trim, the
+  // buckle and the pouch ride the chest with the cloth they are sewn to.
+  for (const [side, arm, forearm] of [
+    [-1, armL, forearmL],
+    [1, armR, forearmR],
+  ] as const) {
+    const pauldron = new THREE.Mesh(shared.pauldron, kitMat);
+    pauldron.name = 'pauldron';
+    pauldron.position.set(side * 0.004, -0.018, 0);
+    pauldron.rotation.z = side * -0.4;
+    pauldron.castShadow = true;
+    arm.add(pauldron);
+    const bracer = new THREE.Mesh(shared.bracer, leatherMat);
+    bracer.name = 'bracer';
+    bracer.castShadow = true;
+    forearm.add(bracer);
+  }
+  for (const shin of [shinL, shinR]) {
+    const shaft = new THREE.Mesh(shared.bootShaft, bootMat);
+    shaft.name = 'bootShaft';
+    shaft.position.y = -(r.leg - kneeOf(r)) + 0.41;
+    shaft.castShadow = true;
+    shin.add(shaft);
+  }
+  const collar = new THREE.Mesh(shared.collar, trimMat);
+  collar.name = 'collar';
+  collar.position.y = r.torsoY + 0.28 - r.leg;
+  const hemTrim = new THREE.Mesh(shared.hemTrim, trimMat);
+  hemTrim.name = 'hemTrim';
+  hemTrim.position.y = hem.position.y - HEM_DROP / 2 + 0.012;
+  const buckle = new THREE.Mesh(shared.buckle, trimMat);
+  buckle.name = 'buckle';
+  buckle.position.set(0, belt.position.y, 0.172 * 0.64 + 0.005);
+  const pouch = new THREE.Mesh(shared.pouch, leatherMat);
+  pouch.name = 'pouch';
+  pouch.position.set(0.19, belt.position.y - 0.03, 0);
+  pouch.rotation.y = Math.PI / 2;
+  const strap = new THREE.Mesh(shared.strap, kitMat);
+  strap.name = 'strap';
+  strap.position.y = torso.position.y;
+  for (const m of [collar, hemTrim, buckle, pouch, strap]) {
+    m.castShadow = true;
+    chest.add(m);
+  }
 
   // Hair and eyes ride the head, so `head.rotation.x` is the whole nod. The
   // hair used to be a second mesh rotated to match by hand, which worked only
@@ -1824,6 +1894,15 @@ export interface SettlerGeometry {
   hand: THREE.BufferGeometry;
   hem: THREE.BufferGeometry;
   nose: THREE.BufferGeometry;
+  /** r35's kit: leather over the shoulder, the forearm and the shin, and brass trim. */
+  pauldron: THREE.BufferGeometry;
+  bracer: THREE.BufferGeometry;
+  bootShaft: THREE.BufferGeometry;
+  collar: THREE.BufferGeometry;
+  hemTrim: THREE.BufferGeometry;
+  buckle: THREE.BufferGeometry;
+  pouch: THREE.BufferGeometry;
+  strap: THREE.BufferGeometry;
   rifleStock: THREE.BufferGeometry;
   rifleAction: THREE.BufferGeometry;
   club: THREE.BufferGeometry;
@@ -1851,6 +1930,48 @@ function limb(radius: number, length: number, radial: number, caps = 4): THREE.B
 }
 
 /**
+ * A limb with a shape: a lathe hung from its top, `length` long, whose radius
+ * runs through `keys` — (t, r) from the top (t = 0) to the bottom (t = 1) —
+ * with a round cap on each end. A capsule is one radius all the way down and
+ * reads as a sausage; a thigh is thick at the hip and a calf swells below the
+ * knee, and that is the difference between a doll and a figure (r35). Same
+ * origin as `limb`, so the gait and the pose table see the same joint.
+ */
+function shapedLimb(length: number, keys: [number, number][], radial: number): THREE.BufferGeometry {
+  const rt = keys[0]![1];
+  const rb = keys[keys.length - 1]![1];
+  const span = length - rt - rb;
+  const pts: THREE.Vector2[] = [];
+  for (let k = 0; k < 3; k++) {
+    const a = (k / 3) * (Math.PI / 2);
+    pts.push(new THREE.Vector2(rb * Math.sin(a), -length + rb * (1 - Math.cos(a))));
+  }
+  for (let k = keys.length - 1; k >= 0; k--) {
+    const [t, r] = keys[k]!;
+    pts.push(new THREE.Vector2(r, -(rt + t * span)));
+  }
+  for (let k = 2; k >= 0; k--) {
+    const a = (k / 3) * (Math.PI / 2);
+    pts.push(new THREE.Vector2(rt * Math.sin(a), -rt + rt * Math.cos(a)));
+  }
+  return smoothNormals(new THREE.LatheGeometry(pts, radial));
+}
+
+/**
+ * An open band of leather or trim turned on a lathe: `profile` is (r, y) from
+ * the bottom up, and the last points fold back inside so its top edge has a
+ * thickness instead of a knife's edge.
+ */
+function band(profile: [number, number][], radial: number, squash = 1): THREE.BufferGeometry {
+  const g = new THREE.LatheGeometry(
+    profile.map(([r, y]) => new THREE.Vector2(r, y)),
+    radial,
+  );
+  g.scale(1, 1, squash);
+  return smoothNormals(g);
+}
+
+/**
  * Several pieces welded into one geometry, so a rifle or a forked antler is
  * a single mesh with a single material and a single draw. The merge refuses a
  * mix of indexed and unindexed parts, and `RoundedBoxGeometry` is the one
@@ -1873,21 +1994,103 @@ function weld(parts: THREE.BufferGeometry[]): THREE.BufferGeometry {
  * than the mesh keeps the trader's bundle, which rides the torso, at its own
  * proportions.
  */
-function makeTorso(): THREE.BufferGeometry {
-  const profile = [
-    [0, -0.29],
-    [0.15, -0.29],
-    [0.21, -0.25],
-    [0.2, -0.1],
-    [0.225, 0.08],
-    [0.235, 0.2],
-    [0.2, 0.27],
-    [0.1, 0.29],
-    [0, 0.29],
-  ].map(([r, y]) => new THREE.Vector2(r, y));
-  const g = new THREE.LatheGeometry(profile, 20);
-  g.scale(1, 1, 0.62);
+/**
+ * The torso's lathe, (r, y) from the bottom up — r35: a Hume's torso, not a
+ * barrel. Broad at the shoulder, drawn in to a waist at the belt and out a
+ * little over the hip, so the body is a wedge from above and a V from the front.
+ */
+const TORSO_PROFILE: readonly [number, number][] = [
+  [0, -0.29],
+  [0.13, -0.29],
+  [0.172, -0.26],
+  [0.176, -0.21],
+  [0.158, -0.15],
+  [0.162, -0.07],
+  [0.182, 0.03],
+  [0.2, 0.12],
+  [0.214, 0.19],
+  [0.216, 0.235],
+  [0.2, 0.268],
+  [0.15, 0.286],
+  [0.07, 0.294],
+  [0, 0.292],
+];
+/** The torso's front-to-back squash: a chest, not a drum. */
+const TORSO_DEPTH = 0.64;
+
+/** The torso's lathe radius at height `y`, read off `TORSO_PROFILE`. */
+function torsoRadius(y: number): number {
+  const p = TORSO_PROFILE;
+  for (let k = 1; k < p.length; k++) {
+    const [r0, y0] = p[k - 1]!;
+    const [r1, y1] = p[k]!;
+    if (y >= y0 && y <= y1 && y1 > y0) return r0 + ((y - y0) / (y1 - y0)) * (r1 - r0);
+  }
+  return y < p[0]![1] ? p[1]![0] : 0;
+}
+
+/**
+ * A leather strap worn across the body from the right shoulder to the left
+ * hip — the one piece of kit that says adventurer rather than farmhand. Each
+ * point of it is on the plane tilted `tilt` about the depth axis and stood
+ * just off the torso's own lathe there, so it hugs the chest and the back
+ * instead of floating round them as a hoop would.
+ */
+function makeStrap(): THREE.BufferGeometry {
+  const COLS = 48;
+  const tilt = 0.62;
+  const half = 0.027;
+  const pos: number[] = [];
+  const idx: number[] = [];
+  for (let j = 0; j <= COLS; j++) {
+    const phi = (j / COLS) * Math.PI * 2;
+    for (const edge of [-half, half]) {
+      // The circle's centre line: across (u) and depth; the tilt raises one
+      // side, and `edge` is the strap's width up the tilted plane.
+      const u = Math.cos(phi);
+      const w = Math.sin(phi);
+      const y0 = 0.05 + u * Math.tan(tilt) * 0.2 + edge;
+      const r = torsoRadius(y0) + 0.008;
+      const z = w * r * TORSO_DEPTH;
+      pos.push(u * r, y0, z + chestSwell(u * r, y0, z) + Math.sign(w) * 0.003);
+    }
+  }
+  for (let j = 0; j < COLS; j++) {
+    const a = j * 2;
+    idx.push(a, a + 2, a + 1, a + 1, a + 2, a + 3);
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setIndex(idx);
+  g.computeVertexNormals();
   return g;
+}
+
+/**
+ * How far the torso's cloth stands out from its lathe, front and back, at
+ * (x, y, z): a chest either side of the breastbone and shoulder blades either
+ * side of the spine, so the cloth has planes on it for the light to find.
+ */
+function chestSwell(x: number, y: number, z: number): number {
+  const band = Math.exp(-(((y - 0.13) / 0.075) ** 2));
+  const sides = Math.exp(-(((Math.abs(x) - 0.08) / 0.07) ** 2));
+  return Math.sign(z) * band * sides * (z > 0 ? 0.018 : 0.01);
+}
+
+function makeTorso(): THREE.BufferGeometry {
+  // Thirty-two round, because the flanks are what the three-quarter camera
+  // sees in outline.
+  const profile = TORSO_PROFILE.map(([r, y]) => new THREE.Vector2(r, y));
+  const g = new THREE.LatheGeometry(profile, 32);
+  g.scale(1, 1, TORSO_DEPTH);
+  const pos = g.attributes.position!;
+  for (let i = 0; i < pos.count; i++) {
+    const x = pos.getX(i);
+    const y = pos.getY(i);
+    const z = pos.getZ(i);
+    pos.setZ(i, z + chestSwell(x, y, z));
+  }
+  return smoothNormals(g);
 }
 
 /**
@@ -1896,8 +2099,8 @@ function makeTorso(): THREE.BufferGeometry {
  * is. The top edge sits under the belt, so the belt covers the seam.
  */
 function makeHem(): THREE.BufferGeometry {
-  const g = new THREE.CylinderGeometry(0.208, 0.24, HEM_DROP, 20, 1, true);
-  g.scale(1, 1, 0.62);
+  const g = new THREE.CylinderGeometry(0.168, 0.25, HEM_DROP, 32, 3, true);
+  g.scale(1, 1, 0.64);
   return g;
 }
 
@@ -2395,9 +2598,19 @@ function makeHead(): THREE.BufferGeometry {
     const chin = ramp(-0.45, -0.85, y) * ramp(0.1, 0.8, z);
     pos.setXYZ(i, x * (1 - 0.12 * jaw) * 0.13, (y - 0.06 * chin) * 0.1378, (z + 0.22 * chin) * 0.1664);
   }
-  g.computeVertexNormals();
   // The sphere's seam and poles are doubled vertices; their normals are
   // averaged, or the seam shows as a crease down the back of the skull.
+  return smoothNormals(g);
+}
+
+/**
+ * Normals recomputed for a reshaped sphere or lathe, with every doubled vertex
+ * — the seam, the poles — given the average of its copies. `computeVertexNormals`
+ * alone leaves a crease wherever a surface is stored twice.
+ */
+function smoothNormals(g: THREE.BufferGeometry): THREE.BufferGeometry {
+  g.computeVertexNormals();
+  const pos = g.attributes.position!;
   const n = g.attributes.normal!;
   const at = new Map<string, number[]>();
   for (let i = 0; i < pos.count; i++) {
@@ -2435,13 +2648,15 @@ function makeHead(): THREE.BufferGeometry {
  */
 function makeNeck(): THREE.BufferGeometry {
   const profile = [
-    [0.076, -0.07],
-    [0.062, 0.02],
-    [0.068, 0.06],
-    [0.082, 0.09],
-    [0.1, 0.12],
+    [0.066, -0.07],
+    [0.05, 0.02],
+    [0.053, 0.06],
+    [0.066, 0.09],
+    [0.086, 0.12],
   ].map(([r, y]) => new THREE.Vector2(r, y));
-  return new THREE.LatheGeometry(profile, 12);
+  // r35: a Hume's neck is long and slim; the flare is narrower to meet a
+  // skull hung at `HEAD_SCALE`.
+  return new THREE.LatheGeometry(profile, 16);
 }
 
 /**
@@ -2473,7 +2688,8 @@ function makeHand(): THREE.BufferGeometry {
     .rotateZ(1.05)
     .rotateX(0.3)
     .translate(-0.03, -0.016, 0.02);
-  return weld([palm, thumb]);
+  // r35: the whole hand at 0.85, for a forearm that tapers to a wrist.
+  return weld([palm, thumb]).scale(0.85, 0.85, 0.85);
 }
 
 /**
@@ -3270,13 +3486,13 @@ export function elbowOf(r: SettlerRecipe = SETTLER_DEFAULT): number {
 }
 
 /** How far the tunic's skirt hangs below the belt's centre. */
-const HEM_DROP = 0.16;
+const HEM_DROP = 0.22;
 
 export function settlerGeometry(r: SettlerRecipe = SETTLER_DEFAULT): SettlerGeometry {
   // The belt is an open band a hair wider than the waist of the lathe, squashed
   // the same way, so it hugs the cloth instead of cutting through it.
-  const belt = new THREE.CylinderGeometry(0.215, 0.22, 0.06, 20, 1, true);
-  belt.scale(1, 1, 0.62);
+  const belt = new THREE.CylinderGeometry(0.168, 0.172, 0.06, 32, 1, true);
+  belt.scale(1, 1, 0.64);
   return {
     torso: makeTorso(),
     belt,
@@ -3322,11 +3538,15 @@ export function settlerGeometry(r: SettlerRecipe = SETTLER_DEFAULT): SettlerGeom
     // of; the lower halves are eight, and one ring on each cap, because both
     // of their ends are buried — the top inside the thigh or the upper arm at
     // any bend, the bottom inside the boot or the hand.
-    leg: limb(0.078, kneeOf(r) + 0.04, 10, 2),
-    shin: limb(0.066, r.leg - kneeOf(r) - 0.02, 8, 1),
+    //
+    // r35: shaped, not capsules — a thigh that thins to the knee, a calf that
+    // swells below it, an upper arm that narrows to the elbow and a forearm
+    // to the wrist — and sixteen round, since the triangle ceiling is gone.
+    leg: shapedLimb(kneeOf(r) + 0.06, [[0, 0.086], [0.3, 0.082], [0.72, 0.066], [1, 0.056]], 16),
+    shin: shapedLimb(r.leg - kneeOf(r) - 0.02, [[0, 0.055], [0.22, 0.062], [0.5, 0.055], [0.85, 0.043], [1, 0.04]], 16),
     boot: makeBoot(),
-    arm: limb(0.066, elbowOf(r) + 0.035, 10, 3),
-    forearm: limb(0.062, r.sleeve - elbowOf(r), 8, 1),
+    arm: shapedLimb(elbowOf(r) + 0.05, [[0, 0.058], [0.25, 0.057], [0.7, 0.05], [1, 0.045]], 16),
+    forearm: shapedLimb(r.sleeve - elbowOf(r), [[0, 0.045], [0.3, 0.047], [1, 0.036]], 16),
     hand: makeHand(),
     // A tunic skirt from the belt to the top of the thigh, flaring a little. A
     // straight lathe torso over two tubes was a peg doll; a hem is where the
@@ -3335,6 +3555,23 @@ export function settlerGeometry(r: SettlerRecipe = SETTLER_DEFAULT): SettlerGeom
     // A small ellipsoid on the face, six round so it is mirror-symmetric: an odd
     // count puts a meridian on one cheek and a face on the other.
     nose: new THREE.SphereGeometry(0.024, 6, 4).scale(0.8, 1, 1.1),
+    // A leather cap over the shoulder, riding the arm, open underneath.
+    pauldron: new THREE.SphereGeometry(1, 20, 8, 0, Math.PI * 2, 0, Math.PI * 0.6).scale(0.078, 0.052, 0.076),
+    // Leather on the lower forearm, with a rolled rim at the elbow end.
+    bracer: band([[0.04, -0.235], [0.046, -0.2], [0.05, -0.13], [0.055, -0.11], [0.055, -0.098], [0.048, -0.098]], 16),
+    // A boot's shaft up to mid-shin, with a turned-down cuff: the boot below
+    // is only the foot, and a foot on a trouser leg is a slipper.
+    bootShaft: band(
+      [[0.046, -0.4], [0.05, -0.34], [0.058, -0.27], [0.062, -0.225], [0.07, -0.222], [0.074, -0.19], [0.068, -0.182], [0.058, -0.186]],
+      16,
+    ),
+    // A standing collar at the throat, in the trim.
+    collar: band([[0.088, -0.02], [0.08, 0.01], [0.068, 0.03], [0.062, 0.03]], 20, 0.9),
+    // The hem's own band of trim, round its bottom edge.
+    hemTrim: new THREE.CylinderGeometry(0.246, 0.254, 0.028, 32, 1, true).scale(1, 1, 0.64),
+    buckle: new RoundedBoxGeometry(0.056, 0.05, 0.014, 2, 0.005),
+    pouch: new RoundedBoxGeometry(0.075, 0.08, 0.042, 2, 0.012),
+    strap: makeStrap(),
     rifleStock: makeRifleStock(),
     rifleAction: makeRifleAction(),
     club: makeClub(),

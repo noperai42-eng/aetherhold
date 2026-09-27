@@ -765,6 +765,23 @@ the long and shaggy. The settler's 3,000 ceiling in `tests/lighting.test.ts` is 
 the owner's call (see ACCEPTANCE). Goldens `settler.hair`, `hairLong`, `hairSwept` and
 `hairShaggy` were re-pinned. Frames: `.look/shots/r34/` against `r33/`.
 
+**Built — the settler as an FFXI Hume, 2026-09-27 (r35).** The body was redrawn to
+Hume proportions: about seven heads tall (`HEAD_SCALE` 0.87 on the head, the leg
+0.74 → 0.82 in `SETTLER_LEG`), a V torso (`TORSO_PROFILE`, a 32-sided lathe with a
+chest and shoulder blades pushed out by `chestSwell`), and shaped limbs
+(`shapedLimb`, a lathe along a radius profile with round caps). The thigh tapers
+to the knee, the calf swells over a slim ankle, and the upper arm narrows to the
+wrist. The hands are 15% smaller. The kit is new geometry on `SettlerGeometry`,
+riding the bones it belongs to: `pauldron` on the arm, `bracer` on the forearm,
+`bootShaft` on the shin, and on the chest a brass `collar`, `hemTrim` and `buckle`,
+a `pouch`, and a `strap` (a bandolier on a tilted plane that follows the tunic's
+surface and swell). Normals are averaged across lathe seams by `smoothNormals`,
+extracted from `makeHead`. The boots stay darker than the cloth, which is what
+`tests/lighting.test.ts` holds. The settler goes from 2,973 to 7,573 triangles.
+Not done: the knee and elbow pinch where two lathes meet, the trousers and boots
+are both dark, the bracers read flat, and the face is only scaled. Frames:
+`.look/shots/r35/` against `r35-before/` (body views) and `r34/` (head views).
+
 **Built — the stage, 2026-09-09.** Not a family. The room every family is
 photographed in, taken on because the contact sheet asked for it three rounds
 running and `src/forge/stage.ts` was the one file on the bench that no test had

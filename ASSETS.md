@@ -18,8 +18,8 @@ It takes a few seconds, needs no browser and no GPU — it runs the real rendere
 against a real seeded valley under Node — and it prints what it wrote:
 
 ```
-models: 42 models, 35 kinds mapped, 54841 triangles, 5758 KiB
-heaviest: settler 2973, animal.mossback 2474, animal.fenwolf 2418, ...
+models: 42 models, 35 kinds mapped, 59441 triangles, 5884 KiB
+heaviest: settler 7573, animal.mossback 2474, animal.fenwolf 2418, ...
 ```
 
 `models/` is git-ignored on purpose. The models are generated from the renderer,
@@ -34,16 +34,16 @@ it, vendor `manifest.json` alongside so you can tell which export you have.
 | Buildings | 27 | 35,972 | 4.5 MiB |
 | Resource piles | 8 | 3,476 | 460 KiB |
 | Trees | 2 | 2,968 | 106 KiB |
-| People and fauna | 5 | 12,425 | 542 KiB |
-| **Total** | **42** | **54,841** | **5.6 MiB** |
+| People and fauna | 5 | 17,025 | 668 KiB |
+| **Total** | **42** | **59,441** | **5.7 MiB** |
 
-The smallest model is 144 triangles (`stack.assemblies`); the largest is 2,973
+The smallest model is 144 triangles (`stack.assemblies`); the largest is 7,573
 (`settler`). Nothing here is a scanned asset — these are hand-built low-poly
 shapes that have been through eleven rounds of a look loop, so they are cheap in
 the way a stylised model is cheap and detailed in the way a considered one is.
 
-The files are uncompressed and un-indexed, which is why 54,841 triangles come to
-5.6 MiB. If size matters to you, run the set through `gltfpack` or
+The files are uncompressed and un-indexed, which is why 59,441 triangles come to
+5.7 MiB. If size matters to you, run the set through `gltfpack` or
 `gltf-transform optimize` — indexing and Draco typically take about 80% off, and
 nothing here depends on the vertex layout.
 
@@ -60,9 +60,11 @@ stands on the floor.
 
 **Every part is named after the part it is.** A stove arrives as `stove.feet`,
 `stove.body`, `stove.door`, `stove.vents`, `stove.flue`, `stove.plate`; a settler
-as `torso`, `neck`, `belt`, `head`, `hair`, `eye`, `eye`, `leg`, `boot`, `leg`,
-`boot`, `arm`, `hand`, `arm`, `hand`, plus the `stock` and `action` of the rifle
-they are carrying. The parts keep their own local transforms, so a pawn is a
+as `torso`, `neck`, `belt`, `hem`, `head`, `hair`, `eye`, `eye`, `nose`, and on
+each side `leg`, `shin`, `boot`, `arm`, `forearm`, `hand`, with the kit riding
+those bones — a `pauldron` on each arm, a `bracer` on each forearm, a `bootShaft`
+on each shin, and `collar`, `hemTrim`, `buckle`, `pouch` and `strap` on the chest —
+plus the `stock` and `action` of the rifle they are carrying. The parts keep their own local transforms, so a pawn is a
 usable rig: rotate the node called `arm` and the arm swings.
 
 The name is on the **node**, not on the mesh or the material — `meshes[].name` and

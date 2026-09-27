@@ -877,7 +877,8 @@ const SETTLER_FIELDS: readonly Field[] = [
   { key: 'headY', label: 'head', min: 0.7, max: 2.2, step: 0.005 },
   { key: 'sleeve', label: 'sleeve', min: 0.2, max: 1, step: 0.005 },
   { key: 'wristY', label: 'wrist', min: -1, max: -0.1, step: 0.005 },
-  { key: 'armSplay', label: 'arm splay', min: 0, max: 0.6, step: 0.005 },
+  // 0.55: at the wrist slider's top (-0.1) r35's smaller hand puts `thumbLimit` at 0.555.
+  { key: 'armSplay', label: 'arm splay', min: 0, max: 0.55, step: 0.005 },
   { key: 'sleeveStep', label: 'sleeve step', min: 0, max: 30, step: 0.5 },
   { key: 'carryArm', label: 'carry arm', min: -2.2, max: 0, step: 0.01 },
   { key: 'carryY', label: 'load height', min: 0.4, max: 1.8, step: 0.005 },

@@ -467,14 +467,15 @@ describe('1e-feel-interp-phase: the bob no longer steps at 20 Hz — animPhase i
   // The `changes` count is what is load-bearing below. The `maxDelta` ceilings
   // are NOT a smoothness bound: each is the largest single-frame step a correct
   // implementation can emit at that rate, computed from the shipped constants
-  // (SETTLER_LEG 0.74 and SETTLER_SWING 0.62 give phaseScale 0.48711;
+  // (SETTLER_LEG 0.82 and SETTLER_SWING 0.62 give phaseScale 0.43958;
   // PHASE_PER_CELL 7.5; SETTLER_DEFAULT.bob 0.035). At PLAYER_RUN the bob
-  // argument advances 1.315 rad per frame at 30 fps, so the peak step is
-  // sin(1.315) * 0.035 = 0.0339 — 97% of the whole amplitude, and only 2.39
+  // argument advances 1.187 rad per frame at 30 fps, so the peak step is
+  // sin(1.187) * 0.035 = 0.0325 — 93% of the whole amplitude, and only 2.65
   // samples per half-cycle. They catch an implementation that OVERSHOOTS a
   // correct one; they cannot tell a smooth bob from a coarsely sampled one. If
   // a real smoothness bound is ever wanted, assert samples per half-cycle
-  // (2.39 / 4.78 / 11.47 at PLAYER_RUN) instead of a delta.
+  // (2.65 / 5.29 / 12.71 at PLAYER_RUN) instead of a delta. Recomputed in r35
+  // for the 0.82 leg; the ceilings came down with it (0.034 / 0.0214 / 0.0095).
   it('30 fps: bob changes on every one of 119 frame-to-frame steps while walking (was 79, ~2/3)', () => {
     const r = run(30);
     const walking = r.samples.filter((s) => s.activity === 'walking');
@@ -487,7 +488,7 @@ describe('1e-feel-interp-phase: the bob no longer steps at 20 Hz — animPhase i
     }
     expect(walking.length).toBe(120);
     expect(changes).toBe(walking.length - 1);
-    expect(maxDelta).toBeLessThanOrEqual(0.034);
+    expect(maxDelta).toBeLessThanOrEqual(0.0325);
   });
 
   it('60 fps: bob changes on every one of 239 frame-to-frame steps while walking (was 79, ~1/3)', () => {
@@ -502,7 +503,7 @@ describe('1e-feel-interp-phase: the bob no longer steps at 20 Hz — animPhase i
     }
     expect(walking.length).toBe(240);
     expect(changes).toBe(walking.length - 1);
-    expect(maxDelta).toBeLessThanOrEqual(0.0214);
+    expect(maxDelta).toBeLessThanOrEqual(0.0196);
   });
 
   it('144 fps: bob changes on every one of 575 frame-to-frame steps while walking (was 79, ~1/7)', () => {
@@ -517,7 +518,7 @@ describe('1e-feel-interp-phase: the bob no longer steps at 20 Hz — animPhase i
     }
     expect(walking.length).toBe(576);
     expect(changes).toBe(walking.length - 1);
-    expect(maxDelta).toBeLessThanOrEqual(0.0095);
+    expect(maxDelta).toBeLessThanOrEqual(0.0086);
   });
 
   it('tick-boundary values equal the raw ones exactly, at alpha 0 and alpha 1', () => {
