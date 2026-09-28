@@ -237,12 +237,14 @@ const GOLDEN: Readonly<Record<string, string>> = {
   'settler.torso': 'verts=462 idx=2496 hash=be6d7700 box=[-0.216,-0.29,-0.1386..0.216,0.294,0.1414]',
   'settler.belt': 'verts=66 idx=192 hash=94b36384 box=[-0.172,-0.03,-0.1101..0.172,0.03,0.1101]',
   'settler.neck': 'verts=85 idx=384 hash=690207e5 box=[-0.086,-0.07,-0.086..0.086,0.12,0.086]',
-  'settler.head': 'verts=231 idx=1080 hash=3bdf92bd box=[-0.13,-0.1378,-0.1664..0.13,0.1378,0.1664]',
+  // r37: the jaw draws in 26% where it drew in 12%; the box is the skull's, unchanged.
+  'settler.head': 'verts=231 idx=1080 hash=f2a04c1b box=[-0.13,-0.1378,-0.1664..0.13,0.1378,0.1664]',
   'settler.hair': 'verts=308 idx=1287 hash=8e387fee box=[-0.1551,-0.0809,-0.224..0.155,0.1627,0.1861]',
   'settler.hairLong': 'verts=380 idx=1521 hash=23201962 box=[-0.1548,-0.1766,-0.2427..0.1548,0.1643,0.1936]',
   'settler.hairSwept': 'verts=308 idx=1287 hash=c665b413 box=[-0.1545,-0.0998,-0.237..0.1556,0.1691,0.188]',
   'settler.hairShaggy': 'verts=380 idx=1521 hash=a2d33bc0 box=[-0.1569,-0.1919,-0.2732..0.1566,0.1675,0.1955]',
-  'settler.eye': 'verts=42 idx=144 hash=673274e6 box=[-0.0152,-0.016,-0.0053..0.0152,0.016,0.0053]',
+  // r37: the eye bead is wider than tall, for the almond, and twelve round.
+  'settler.eye': 'verts=117 idx=504 hash=ebc2b7aa box=[-0.0224,-0.016,-0.0064..0.0224,0.016,0.0064]',
   // r36: the thigh and upper arm run on past the joint to cover the limb below.
   'settler.leg': 'verts=187 idx=960 hash=90b3d1af box=[-0.086,-0.52,-0.086..0.086,0,0.086]',
   'settler.shin': 'verts=187 idx=960 hash=c9ceb5b1 box=[-0.062,-0.39,-0.062..0.062,0,0.062]',
@@ -251,7 +253,8 @@ const GOLDEN: Readonly<Record<string, string>> = {
   'settler.forearm': 'verts=153 idx=768 hash=fbc3f979 box=[-0.047,-0.2425,-0.047..0.047,0,0.047]',
   'settler.hand': 'verts=408 idx=0 hash=1a249b85 box=[-0.0624,-0.0698,-0.0629..0.0465,0.0698,0.0629]',
   'settler.hem': 'verts=132 idx=576 hash=5d9415f8 box=[-0.25,-0.11,-0.16..0.25,0.11,0.16]',
-  'settler.nose': 'verts=35 idx=108 hash=40f7e602 box=[-0.0192,-0.024,-0.0229..0.0192,0.024,0.0229]',
+  // r37: a bridge and a tip where the nose was a ball.
+  'settler.nose': 'verts=99 idx=420 hash=d882f674 box=[-0.0112,-0.026,-0.0114..0.0112,0.026,0.0208]',
   // r35: the FFXI Hume kit, new parts; torso, belt, neck, limbs, hand and hem re-pinned with it.
   'settler.pauldron': 'verts=189 idx=900 hash=bb1a014e box=[-0.0778,-0.0161,-0.0758..0.0778,0.052,0.0758]',
   'settler.bracer': 'verts=255 idx=1344 hash=93da08a2 box=[-0.061,-0.242,-0.061..0.061,-0.097,0.061]', // r36: rolled rims and a welt

@@ -660,7 +660,7 @@ export function assembleSettler(
   // they cost were what the knees needed to stay inside the budget.
   const nose = new THREE.Mesh(shared.nose, skinMat);
   nose.name = 'nose';
-  nose.position.set(0, EYE_Y - 0.015, 0.1536);
+  nose.position.set(0, EYE_Y - 0.015, NOSE_Z);
   head.add(nose);
 
   // Hands and boots ride the far end of their limbs, so they follow the elbow
@@ -2574,6 +2574,35 @@ const EYE_SEAT = (() => {
   return { position: new THREE.Vector3(x, y, z).addScaledVector(n, -EYE_SINK), yaw, pitch };
 })();
 
+/** How far forward the nose's centre sits; its tip is `NOSE_Z + NOSE_TIP` from the skull's centre. */
+const NOSE_Z = 0.156;
+const NOSE_TIP = 0.024;
+
+/**
+ * The nose, r37: a bridge and a tip, not a ball. A round bead on the face was
+ * the one thing that made the head a toy's, but it is also what tells the
+ * manager camera which way a face points, so the tip stands as far forward as
+ * the ball did (18 cm from the skull's centre) and only its shape changes. A
+ * sphere is drawn out tall and narrow; its front comes forward down its length,
+ * so the top is a slim bridge just proud of the brow and the bottom a tip over
+ * two flared nostrils. Ten round, an even count, so it is mirror-symmetric.
+ */
+function makeNose(): THREE.BufferGeometry {
+  const g = new THREE.SphereGeometry(1, 10, 8);
+  const pos = g.attributes.position!;
+  for (let i = 0; i < pos.count; i++) {
+    const x = pos.getX(i);
+    const y = pos.getY(i);
+    const z = pos.getZ(i);
+    // t runs 0 at the bridge to 1 at the tip.
+    const t = Math.min(1, Math.max(0, (1 - y) / 1.6));
+    const wide = 0.0065 + 0.0075 * t * t;
+    const deep = z > 0 ? 0.01 + (NOSE_TIP - 0.01) * Math.sin((t * Math.PI) / 2) : 0.012;
+    pos.setXYZ(i, x * wide, y * 0.026, z * deep);
+  }
+  return smoothNormals(g);
+}
+
 /**
  * The skull: a sphere drawn a touch tall and long, with a jaw and a chin worked
  * into its lower half. As a plain egg it had no chin at all — in profile the
@@ -2597,7 +2626,8 @@ function makeHead(): THREE.BufferGeometry {
     const z = pos.getZ(i);
     const jaw = ramp(-0.25, -0.95, y);
     const chin = ramp(-0.45, -0.85, y) * ramp(0.1, 0.8, z);
-    pos.setXYZ(i, x * (1 - 0.12 * jaw) * 0.13, (y - 0.06 * chin) * 0.1378, (z + 0.22 * chin) * 0.1664);
+    // r37: the jaw draws in 26%, not 12%, for the Hume's narrower lower face.
+    pos.setXYZ(i, x * (1 - 0.26 * jaw) * 0.13, (y - 0.06 * chin) * 0.1378, (z + 0.22 * chin) * 0.1664);
   }
   // The sphere's seam and poles are doubled vertices; their normals are
   // averaged, or the seam shows as a crease down the back of the skull.
@@ -3524,7 +3554,9 @@ export function settlerGeometry(r: SettlerRecipe = SETTLER_DEFAULT): SettlerGeom
     // r32: it stood out still. From three-quarter and from the manager camera
     // a bead is a ball stuck on a face whatever it is painted. So the same
     // sphere is pressed flat into a lens 5 mm deep and seated by `EYE_SEAT`.
-    eye: new THREE.SphereGeometry(0.016, 6, 5).scale(1, 1, EYE_FLAT),
+    // r37: wider than tall, for the almond `EYE_GLSL` draws on it, and twelve
+    // round so its rim is not a hexagon at arm's length.
+    eye: new THREE.SphereGeometry(0.016, 12, 8).scale(1.4, 1, EYE_FLAT),
     // Three rings on the caps: the top of a leg is inside the torso and the
     // bottom inside a boot, so the fourth was paid for and never seen.
     //
@@ -3557,9 +3589,7 @@ export function settlerGeometry(r: SettlerRecipe = SETTLER_DEFAULT): SettlerGeom
     // straight lathe torso over two tubes was a peg doll; a hem is where the
     // shirt stops being a barrel and becomes clothes.
     hem: makeHem(),
-    // A small ellipsoid on the face, six round so it is mirror-symmetric: an odd
-    // count puts a meridian on one cheek and a face on the other.
-    nose: new THREE.SphereGeometry(0.024, 6, 4).scale(0.8, 1, 1.1),
+    nose: makeNose(),
     // A leather cap over the shoulder, riding the arm, open underneath.
     pauldron: new THREE.SphereGeometry(1, 20, 8, 0, Math.PI * 2, 0, Math.PI * 0.6).scale(0.078, 0.052, 0.076),
     // Leather on the lower forearm: a rolled rim at each end and a raised

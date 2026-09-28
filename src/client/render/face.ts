@@ -99,7 +99,7 @@ const FACE_GLSL = /* glsl */ `
     // Eyes: set in a socket, then the white, then the lid over it.
     vec2 e = vec2(abs(p.x) - 0.05, p.y);
     float socket = 1.0 - smoothstep(0.8, 1.9, length((e - vec2(0.0, 0.004)) / vec2(0.027, 0.02)));
-    col *= 1.0 - 0.16 * socket * front;
+    col *= 1.0 - 0.1 * socket * front;
     // Age: a bag line under each eye and crow's feet at the outer corner.
     float bag = abs(length((e + vec2(0.0, 0.002)) / vec2(0.024, 0.02)) - 1.0) * 0.02;
     float bagLine = (1.0 - smoothstep(0.0012, 0.0012 + aa * 1.5, bag)) * smoothstep(0.0, -0.01, e.y)
@@ -111,18 +111,15 @@ const FACE_GLSL = /* glsl */ `
                * smoothstep(0.001, 0.003, cfr) * (1.0 - smoothstep(0.008, 0.011, cfr))
                * (1.0 - smoothstep(0.7, 0.9, abs(cfa)));
     col = mix(col, col * 0.72, 0.8 * uTraits.w * max(bagLine, crow * step(0.0, cf.x)) * front);
-    float r = length(e / vec2(0.023, 0.0135));
-    float white = 1.0 - smoothstep(1.0 - aa / 0.0135, 1.0 + aa / 0.0135, r);
-    col = mix(col, vec3(0.8, 0.77, 0.72), white * front);
-    float lidBand = abs(length(e / vec2(0.025, 0.016)) - 1.0) * 0.016;
-    float lid = (1.0 - smoothstep(0.0018, 0.0018 + aa * 1.5, lidBand)) * smoothstep(0.0, 0.006, e.y);
-    col = mix(col, brow * 0.6, lid * front);
+    // r37: the white, the lid and the lash are the bead's own (EYE_GLSL),
+    // drawn as one almond; a white painted round it here was a second outline.
 
-    // Brows: arched, heavier at the inner end.
+    // Brows: slim and nearly straight, rising a little to the outer end and
+    // heavier at the inner (r37; an arch as thick as a finger was a cartoon's).
     float bx = abs(p.x) - 0.052;
     float bt = clamp(bx / 0.03, -1.0, 1.0);
-    float by = p.y - 0.029 - 0.005 * (1.0 - bt * bt);
-    float thick = 0.0055 - 0.0018 * bt;
+    float by = p.y - 0.026 - 0.0015 * (1.0 - bt * bt) - 0.003 * bt;
+    float thick = 0.0036 - 0.0014 * bt;
     float browMask = (1.0 - smoothstep(0.026, 0.03 + aa, abs(bx)))
                    * (1.0 - smoothstep(thick, thick + aa * 1.5, abs(by)));
     col = mix(col, brow, browMask * front);
@@ -140,15 +137,15 @@ const FACE_GLSL = /* glsl */ `
     vec2 fd = fb - fa;
     float fold = length(fp - fd * clamp(dot(fp, fd) / dot(fd, fd), 0.0, 1.0));
     float foldLine = 1.0 - smoothstep(0.0015, 0.0045 + aa, fold);
-    col = mix(col, col * 0.72, (0.5 + 0.5 * uTraits.w) * foldLine * front * (1.0 - beard));
+    col = mix(col, col * 0.72, uTraits.w * foldLine * front * (1.0 - beard));
     // The shadow under the lower lip, where the chin comes forward.
     float under = (1.0 - smoothstep(0.012, 0.02, abs(p.x)))
                 * (1.0 - smoothstep(0.0, 0.005, abs(p.y + 0.0705)));
     col = mix(col, col * 0.8, 0.6 * under * front * (1.0 - beard));
-    float mx = p.x / 0.028;
-    float my = p.y + 0.056 - 0.005 * mx * mx;
-    float mw = 1.0 - smoothstep(0.75, 1.0, abs(mx));
-    float mouth = mw * (1.0 - smoothstep(0.0028, 0.0028 + aa * 1.5, abs(my)));
+    float mx = p.x / 0.02;
+    float my = p.y + 0.056 - 0.0025 * mx * mx;
+    float mw = 1.0 - smoothstep(0.7, 1.0, abs(mx));
+    float mouth = mw * (1.0 - smoothstep(0.0022 * (1.0 - 0.4 * mx * mx), 0.0022 * (1.0 - 0.4 * mx * mx) + aa * 1.5, abs(my)));
     float lower = (1.0 - smoothstep(0.55, 0.8, abs(mx)))
                 * (1.0 - smoothstep(0.003, 0.003 + aa * 2.0, abs(my + 0.0065)));
     col = mix(col, mix(skin, vec3(0.6, 0.34, 0.32), 0.35), lower * front * (1.0 - beard));
@@ -357,19 +354,51 @@ export function hairMaterial(hair: THREE.Color, sweep: number, part: number | nu
 const EYE_GLSL = /* glsl */ `
   {
     vec3 n = vEyePos / uEyeSize;
-    float ea = max(fwidth(n.x), 1e-4);
-    float r = length(n.xy - vec2(-0.2, 0.1));
+    // In units of the bead's height, so the iris is round on a bead that is
+    // wider than it is tall.
+    vec2 m = vec2(n.x * uEyeSize.x / uEyeSize.y, n.y);
+    float ea = max(fwidth(m.y), 1e-4);
     float facing = smoothstep(0.0, 0.25, n.z);
-    vec3 col = vec3(0.8, 0.77, 0.72);
-    float iris = (1.0 - smoothstep(0.62 - ea, 0.62 + ea, r)) * facing;
-    vec3 irisCol = mix(uIris, uIris * 0.45, smoothstep(0.4, 0.62, r));
+    // The almond: +x is the outer corner. Both lids run to a point at each
+    // corner, and the whole opening tilts so the outer corner is the higher.
+    float u = clamp(m.x / 1.3, -1.0, 1.0);
+    float bow = 1.0 - u * u;
+    float tilt = 0.12 * u;
+    float top = 0.6 * bow * (1.0 + 0.25 * u) + tilt;
+    float bottom = -0.4 * bow + tilt + 0.02;
+    float open = (1.0 - smoothstep(top - ea, top + ea, m.y)) * smoothstep(bottom - ea, bottom + ea, m.y)
+               * (1.0 - smoothstep(1.0 - ea, 1.0, abs(u)));
+    vec3 col = vec3(0.82, 0.79, 0.74);
+    // Shade under the upper lid, as a lid casts on the eyeball.
+    col *= 1.0 - 0.25 * smoothstep(top - 0.3, top, m.y);
+    vec2 ic = vec2(-0.1, 0.06);
+    float r = length(m - ic);
+    float iris = (1.0 - smoothstep(0.56 - ea, 0.56 + ea, r)) * facing;
+    vec3 irisCol = mix(uIris * 1.25, uIris * 0.4, smoothstep(0.2, 0.56, r));
     col = mix(col, irisCol, iris);
-    float pupil = (1.0 - smoothstep(0.27 - ea, 0.27 + ea, r)) * facing;
+    float pupil = (1.0 - smoothstep(0.21 - ea, 0.21 + ea, r)) * facing;
     col = mix(col, vec3(0.012, 0.01, 0.01), pupil);
-    float lid = smoothstep(0.52 - ea, 0.52 + ea, n.y);
-    float lash = (1.0 - smoothstep(0.07, 0.07 + ea * 1.5, abs(n.y - 0.52)));
-    col = mix(col, uLid, lid);
-    col = mix(col, uLash, lash);
+    float glint = 1.0 - smoothstep(0.07, 0.07 + ea * 1.5, length(m - ic - vec2(0.14, 0.16)));
+    col = mix(col, vec3(1.0), 0.85 * glint * iris);
+    col = mix(uLid, col, open);
+    eyeOpen = open;
+    // The lash line along the upper lid, heavier towards the outer corner and
+    // flicked out past it; a fainter line under the lower lid.
+    vec3 lashCol = mix(uLash, vec3(0.02, 0.015, 0.012), 0.5);
+    float lw = 0.07 + 0.08 * smoothstep(-0.6, 1.0, u);
+    float upper = (1.0 - smoothstep(lw, lw + ea * 1.5, m.y - top)) * step(top - 0.02, m.y)
+                * (1.0 - smoothstep(1.0, 1.0 + ea, abs(m.x / 1.3)));
+    float wx = m.x / 1.3 - 1.0;
+    float wing = (1.0 - smoothstep(0.04, 0.04 + ea * 1.5, abs(m.y - (tilt + 0.02 + wx * 0.5))))
+               * step(0.0, wx) * (1.0 - smoothstep(0.08, 0.14, wx));
+    float lower = (1.0 - smoothstep(0.035, 0.035 + ea * 1.5, abs(m.y - bottom + 0.02)))
+                * (1.0 - smoothstep(0.85, 1.0, abs(u)));
+    col = mix(col, lashCol, max(upper, wing));
+    col = mix(col, mix(uLid, lashCol, 0.45), lower * 0.7);
+    // Outside the almond and its lines the bead is not drawn at all, so the
+    // skull's own skin shows there: a lid painted on the bead faced the light
+    // differently from the face round it and read as a pale ring (r37).
+    if (max(max(open, upper), max(wing, lower)) < 0.02) discard;
     diffuseColor.rgb = col;
   }
 `;
@@ -409,7 +438,10 @@ export function eyeMaterial(size: THREE.Vector3, iris: THREE.Color, lid: THREE.C
         'void main() {',
         'varying vec3 vEyePos;\nuniform vec3 uEyeSize;\nuniform vec3 uIris;\nuniform vec3 uLid;\nuniform vec3 uLash;\nvoid main() {',
       )
-      .replace('#include <color_fragment>', `#include <color_fragment>\n${EYE_GLSL}`);
+      .replace('#include <color_fragment>', `#include <color_fragment>\nfloat eyeOpen = 1.0;\n${EYE_GLSL}`)
+      // The lid is skin, so it takes the skin's roughness: at the eyeball's
+      // gloss the bead's rim caught the light as a pale ring round the eye (r37).
+      .replace('#include <roughnessmap_fragment>', '#include <roughnessmap_fragment>\nroughnessFactor = mix(0.62, roughnessFactor, eyeOpen);');
   };
   mat.customProgramCacheKey = () => EYE_KEY;
   mat.userData.eye = uniforms;

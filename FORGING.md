@@ -782,6 +782,24 @@ Not done: the knee and elbow pinch where two lathes meet, the trousers and boots
 are both dark, the bracers read flat, and the face is only scaled. Frames:
 `.look/shots/r35/` against `r35-before/` (body views) and `r34/` (head views).
 
+**Built — the Hume's face, 2026-09-27 (r37).** The face that r35 and r36 left
+alone. The eye bead is wider than it is tall (×1.4) and twelve round, and its
+shader (`EYE_GLSL`) now draws the whole eye as one almond: two lids meeting at
+a point at each corner, the outer corner the higher, a shaded white, an iris
+with a dark rim, a pupil and a glint, and a lash line heavier towards the outer
+corner and flicked out past it. Outside the almond the bead is discarded, and
+inside it the lid takes the skin's roughness; before either change the bead's
+glossy rim showed as a pale ring round every eye. The painted white and lid ring
+in `FACE_GLSL` went, since they made a second outline. The nose is a slim bridge
+coming forward to a tip (`makeNose`) where it was a ball, and the tip still
+stands where the ball's front did, for the head-read tests. The jaw draws in 26%
+where it drew in 12%. The brows are slim and nearly straight, the mouth is
+smaller, and the nose-to-mouth fold shows only with age. Nothing above the eyes
+moved. The settler goes from 8,277 to 8,621 triangles. Not done: the face is
+still broad across the cheekbones, since the skull above the jaw is pinned by
+`tests/face.test.ts`, and the nose tip catches a bright highlight in game light.
+Frames: `.look/shots/r37/` against `r36/`.
+
 **Built — the Hume's legs and leather, 2026-09-27 (r36).** Three of r35's
 not-done items. The trousers are a step lighter (`TROUSER_TONES` are now tans and
 slates at sRGB lightness 0.41 to 0.48, where they were 0.28 to 0.35) so the leg is

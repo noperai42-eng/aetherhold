@@ -10,6 +10,10 @@
  *
  * r36 adds three: the thigh and upper arm cover the joint below them, the
  * trousers are not the boots' colour, and the bracers are shaped leather.
+ *
+ * r37 adds three for the face: the nose is a bridge and a tip, not a ball; the
+ * jaw draws in under the cheekbones; and the eye bead is wider than it is tall,
+ * for the almond its shader draws.
  */
 
 import * as THREE from 'three';
@@ -168,6 +172,41 @@ describe('the settler as a Hume', () => {
   it('shapes each bracer with a rim at both ends and a welt between — a plain flared tube read flat', () => {
     const widths = ringWidths(geo.bracer).map(([, w]) => w);
     expect(ridges(widths, 0.003)).toBeGreaterThanOrEqual(3);
+  });
+
+  it('shapes the nose as a slim bridge coming forward to a tip — the ball was a clown’s', () => {
+    const g = geo.nose;
+    g.computeBoundingBox();
+    const box = g.boundingBox!;
+    const size = box.getSize(new THREE.Vector3());
+    expect(size.x / size.y, 'width over height').toBeLessThan(0.5);
+    const pos = g.getAttribute('position');
+    let bridge = -Infinity;
+    let tip = -Infinity;
+    for (let i = 0; i < pos.count; i++) {
+      if (pos.getY(i) > box.max.y / 2) bridge = Math.max(bridge, pos.getZ(i));
+      if (pos.getY(i) < 0) tip = Math.max(tip, pos.getZ(i));
+    }
+    expect(tip - bridge, 'the tip stands forward of the bridge').toBeGreaterThan(0.005);
+  });
+
+  it('draws the jaw in under the cheekbones — as wide as the brow, the lower face was a ball', () => {
+    const pos = geo.head.getAttribute('position');
+    let widest = 0;
+    let jaw = 0;
+    for (let i = 0; i < pos.count; i++) {
+      const x = Math.abs(pos.getX(i));
+      const y = pos.getY(i);
+      widest = Math.max(widest, x);
+      if (y < -0.1 && y > -0.125) jaw = Math.max(jaw, x);
+    }
+    expect(jaw / widest).toBeLessThan(0.49);
+  });
+
+  it('makes the eye bead wider than tall, so the almond is not squeezed into a round bead', () => {
+    geo.eye.computeBoundingBox();
+    const size = geo.eye.boundingBox!.getSize(new THREE.Vector3());
+    expect(size.x / size.y).toBeGreaterThan(1.3);
   });
 
   it('dresses every settler in the colony in the whole kit', () => {

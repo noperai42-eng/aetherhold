@@ -1668,9 +1668,12 @@ describe('what a body is made of', () => {
         const eyes = head.children.filter((o): o is THREE.Mesh => o instanceof THREE.Mesh && o.name === 'eye');
         expect(eyes).toHaveLength(2);
         let brow = -Infinity;
+        // The top of the eye bead. Its bounding sphere's radius was the same
+        // number while the bead was round; r37 made it 1.4 times as wide and no
+        // taller, and the radius followed the width, not the top.
         for (const eye of eyes) {
-          eye.geometry.computeBoundingSphere();
-          brow = Math.max(brow, eye.position.y + eye.geometry.boundingSphere!.radius);
+          eye.geometry.computeBoundingBox();
+          brow = Math.max(brow, eye.position.y + eye.geometry.boundingBox!.max.y);
         }
         // The hem over the face: the lowest hair vertex on the front of the head
         // within the eyes' span, in the head's own frame — the hair is its child.
